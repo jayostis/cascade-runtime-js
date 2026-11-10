@@ -52,7 +52,7 @@ export {
   type Call,
   callsFor,
   type Cite,
-  type Claim,
+  type Citation,
   type DateKind,
   type Fields,
   holdsRecords,

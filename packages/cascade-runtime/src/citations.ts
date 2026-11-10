@@ -1,5 +1,5 @@
-// The citation checker: whether a cited record says what is claimed of it, and whether a claim that something is
-// absent is backed by what was looked through. A claim names the field it is about (the record's value, status, code,
+// The citation checker: whether a cited record says what the citation gives of it, and whether an absence that something
+// is lacking is backed by what was looked through. A citation names the field it is about (the record's value, status, code,
 // name, id, a clinical date of a kind, or words it quotes), and each is compared with that field of the cited record
 // only: never a reference range, an interpretation, an update time or a neighbouring record. No Node: the source of a
 // citation is a parameter, and the one that reads downloads from disk is `node/downloads.ts`.
@@ -13,8 +13,8 @@ export type Cite =
 
 export type DateKind = "when" | "start" | "end" | "recorded";
 
-/** A cited record and what is claimed of it, field by field. A unit is checked only beside a value. */
-export interface Claim {
+/** Where a fact points and what it says the record there holds, field by field. A unit is checked only beside a value. */
+export interface Citation {
   readonly cite: Cite;
   /** The record's own result: a number as a number, a coded or text result by its code or words. */
   readonly value?: string | number;
@@ -62,7 +62,7 @@ export type Verdict =
         | "no such field"
         | "no such source"
         | "quote too short";
-      /** Each claimed field the record does not hold, as `<field> <claimed>`. */
+      /** Each field the citation gives that the record does not hold, as `<field> <given>`. */
       readonly missing: readonly string[];
       /** For a line cited, where the file holds a record that does say it: that record's first line. */
       readonly foundAt?: readonly number[];
@@ -79,14 +79,14 @@ export interface Pointed {
   readonly fields: Fields;
   /** Where the record is from: for a pod entry, the records its values are stated by; for a download, its file. */
   readonly source: readonly string[];
-  /** For a line cited, every record of its file with the line it starts on, to say where a claim does hold. */
+  /** For a line cited, every record of its file with the line it starts on, to say where a citation does hold. */
   readonly others?: readonly {
     readonly line: number;
     readonly fields: Fields;
   }[];
 }
 
-/** A claim that a record is absent: what it is (codes and words to look for) and what was looked through. */
+/** What a reply says the records lack: what it is (codes and words to look for) and what was looked through. */
 export interface Absence {
   readonly what: string;
   readonly coverage: string;
@@ -245,13 +245,13 @@ function wholeWords(want: string): (value: string) => boolean {
   return (value) => whole.test(lower(value));
 }
 
-/** Whether the record's values of one kind of field hold the claimed one, compared as that kind. */
+/** Whether the record's values of one kind of field hold the given one, compared as that kind. */
 function holds(
   kind: keyof Fields,
-  claimed: string,
+  given: string,
   values: readonly string[],
 ): boolean {
-  const want = lower(claimed);
+  const want = lower(given);
   switch (kind) {
     case "value":
       return values.some((value) =>
@@ -279,33 +279,36 @@ function holds(
     case "text":
       return values.some(wholeWords(want));
     default:
-      return values.some((value) => isoDate(value) === isoDate(claimed));
+      return values.some((value) => isoDate(value) === isoDate(given));
   }
 }
 
-/** Each claimed field, the kind of field it is checked against, and how a reader sees it. */
-function wantedOf(claim: Claim): [keyof Fields, string, string][] {
+/** Each field the citation gives, the kind of field it is checked against, and how a reader sees it. */
+function wantedOf(citation: Citation): [keyof Fields, string, string][] {
   const wanted: [keyof Fields, string, string][] = [];
-  if (claim.value !== undefined) {
-    wanted.push(["value", String(claim.value), `value ${claim.value}`]);
-    if (claim.unit !== undefined)
-      wanted.push(["unit", claim.unit, `unit ${claim.unit}`]);
+  if (citation.value !== undefined) {
+    wanted.push(["value", String(citation.value), `value ${citation.value}`]);
+    if (citation.unit !== undefined)
+      wanted.push(["unit", citation.unit, `unit ${citation.unit}`]);
   }
   for (const kind of ["status", "code", "name", "id"] as const) {
-    const claimed = claim[kind];
-    if (claimed !== undefined)
-      wanted.push([kind, String(claimed), `${kind} ${claimed}`]);
+    const given = citation[kind];
+    if (given !== undefined)
+      wanted.push([kind, String(given), `${kind} ${given}`]);
   }
-  if (claim.date !== undefined && isoDate(claim.date) !== undefined) {
-    const kind = claim.dateKind ?? "when";
+  if (citation.date !== undefined && isoDate(citation.date) !== undefined) {
+    const kind = citation.dateKind ?? "when";
     wanted.push([
       kind,
-      claim.date,
-      `${kind === "when" ? "date" : kind} ${claim.date}`,
+      citation.date,
+      `${kind === "when" ? "date" : kind} ${citation.date}`,
     ]);
   }
-  if (claim.quote !== undefined && claim.quote.trim().split(/\s+/).length >= 2)
-    wanted.push(["text", claim.quote, `quote ${claim.quote}`]);
+  if (
+    citation.quote !== undefined &&
+    citation.quote.trim().split(/\s+/).length >= 2
+  )
+    wanted.push(["text", citation.quote, `quote ${citation.quote}`]);
   return wanted;
 }
 
@@ -330,25 +333,25 @@ export function summary(fields: Fields): string {
   return parts.join(" · ");
 }
 
-/** Whether a citation points at a record whose own fields say what is claimed. */
+/** Whether a citation points at a record whose own fields say what the citation gives. */
 export async function checkCitation(
-  claim: Claim,
+  citation: Citation,
   source: Source,
 ): Promise<Verdict> {
-  const wanted = wantedOf(claim);
+  const wanted = wantedOf(citation);
   if (wanted.length === 0)
     return { ok: false, reason: "nothing to check", missing: [] };
-  const pointed = await source.at(claim.cite);
+  const pointed = await source.at(citation.cite);
   if (pointed === undefined)
     return { ok: false, reason: "no such record", missing: [] };
   const shows = summary(pointed.fields);
   const missing = wanted
-    .filter(([kind, claimed]) => !holds(kind, claimed, pointed.fields[kind]))
+    .filter(([kind, given]) => !holds(kind, given, pointed.fields[kind]))
     .map(([, , label]) => label);
   if (missing.length === 0) return { ok: true, shows };
   const foundAt = (pointed.others ?? [])
     .filter(({ fields }) =>
-      wanted.every(([kind, claimed]) => holds(kind, claimed, fields[kind])),
+      wanted.every(([kind, given]) => holds(kind, given, fields[kind])),
     )
     .map(({ line }) => line);
   return foundAt.length > 0
@@ -816,7 +819,7 @@ const SYSTEMS: Readonly<Record<string, string>> = {
 };
 
 /**
- * A code, and beside it system:code as the compact read writes it when the record names its system, so a claim may carry
+ * A code, and beside it system:code as the compact read writes it when the record names its system, so a citation may give
  * either; a system the record does not name, or one not listed, gives no second form.
  */
 function pushCode(into: string[], code: unknown, system: unknown): void {
@@ -1323,7 +1326,7 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   deceased: ["value"],
 };
 
-/** Pod fields no claim can be checked against: links among records, ranges, interpretations and categories. */
+/** Pod fields no citation can be checked against: links among records, ranges, interpretations and categories. */
 export const POD_NOT_CHECKABLE: readonly string[] = [
   "type",
   "leadMember",

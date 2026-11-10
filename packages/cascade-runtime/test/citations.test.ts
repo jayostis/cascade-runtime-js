@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
-  type Claim,
+  type Citation,
   checkAbsence,
   checkCitation,
   checkRecordsAbsence,
@@ -71,7 +71,7 @@ const otherwise = (...missing: string[]): Expected => ({
 });
 
 test("a citation holds only when the cited record's own fields say what is claimed", async () => {
-  const cases: [string, Claim, Expected][] = [
+  const cases: [string, Citation, Expected][] = [
     [
       "a lab's value, unit and date",
       { cite: ldl, value: "131", unit: "mg/dL", date: "2025-02-18" },
@@ -957,7 +957,7 @@ const person = podRowsSource(
 );
 
 test("a pod report is read for its name, code, dates and conclusion, and the person by their subject IRI", async () => {
-  const cases: [string, Claim, boolean][] = [
+  const cases: [string, Citation, boolean][] = [
     [
       "a report by name, code, date and quote",
       {
@@ -1000,7 +1000,7 @@ test("a pod report is read for its name, code, dates and conclusion, and the per
 });
 
 test("a FHIR resource's dosage and instruction text can be quoted", async () => {
-  const cases: [string, Claim, boolean][] = [
+  const cases: [string, Citation, boolean][] = [
     [
       "a request's dosage text",
       {
@@ -1138,7 +1138,7 @@ const DERIVED = [
 ];
 
 test("a quote holds as whole words, not as a fragment of a word, in both arms", async () => {
-  const cases: [string, Claim, boolean][] = [
+  const cases: [string, Citation, boolean][] = [
     [
       "pod: a fragment from mid-word to mid-word",
       { cite: { entry: REPORT }, quote: "m. Lungs are cl" },
@@ -1181,7 +1181,7 @@ test("a quote holds as whole words, not as a fragment of a word, in both arms", 
 test("both arms read the person alike: a death is an end, a gender a value", async () => {
   const pods = { entry: PERSON };
   const patient = { file: "bundle.json", resource: "Patient/p-1" };
-  const cases: [string, Claim, Claim, boolean][] = [
+  const cases: [string, Citation, Citation, boolean][] = [
     [
       "gender",
       { cite: pods, value: "female" },
@@ -1227,7 +1227,7 @@ test("a pod medication's dosage text is quoted from the entry", async () => {
         ]
       : undefined,
   );
-  const cases: [string, Claim, boolean][] = [
+  const cases: [string, Citation, boolean][] = [
     [
       "the dosage as written",
       { cite: { entry: lisinopril }, quote: "1 tablet by mouth every morning" },
@@ -1262,7 +1262,7 @@ test("the text a source wrote for a procedure or a lab result is quoted from the
           ]
         : undefined,
   );
-  const cases: [string, Claim, boolean][] = [
+  const cases: [string, Citation, boolean][] = [
     [
       "the finding beside a procedure",
       { cite: { entry: colonoscopy }, quote: "repeat in 10 years" },
@@ -1296,7 +1296,7 @@ test("a name holds as whole words in both arms, and a gene change's coding expre
       : undefined,
   );
   const patient = { file: "bundle.json", resource: "Patient/p-1" };
-  const cases: [string, Claim, Source, boolean][] = [
+  const cases: [string, Citation, Source, boolean][] = [
     [
       "pod: a fragment of a word",
       { cite: { entry: REPORT }, name: "pulm" },

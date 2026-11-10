@@ -20,20 +20,20 @@ import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
 import { answerPath } from "./sessions.js";
 
-/** Every claim of the case's key, checked against its downloads: a key whose evidence does not hold is no key. */
+/** Every citation of the case's key, checked against its downloads: a key whose evidence does not hold is no key. The keys `claims` and `claim` of what it returns are what `check-key` has always printed. */
 export async function checkKey(id: string, log: (line: string) => void) {
   const prepared = await prepare(id, log);
   const { key } = await loadKey(id);
   const source = downloadsSource(prepared.downloads);
   const failed: { item: string; claim: number; verdict: unknown }[] = [];
-  let claims = 0;
+  let checked = 0;
   for (const item of key.items)
-    for (const [at, claim] of item.evidence.entries()) {
-      claims++;
-      const verdict = await checkCitation(claim, source);
+    for (const [at, citation] of item.evidence.entries()) {
+      checked++;
+      const verdict = await checkCitation(citation, source);
       if (!verdict.ok) failed.push({ item: item.id, claim: at, verdict });
     }
-  return { case: id, claims, failed };
+  return { case: id, claims: checked, failed };
 }
 
 /** Tools the agent runner itself calls (to load a tool, to hand back, to return structured output): no one's reading. */
