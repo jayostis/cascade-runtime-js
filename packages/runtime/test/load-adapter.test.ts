@@ -188,7 +188,7 @@ describe("Loading an adapter into the Bridge · loadAdapter(), ofMediaType()", (
     const of = ofMediaType(loaded);
     const [fhir, cda, , otherCda] = loaded.map(({ adapter }) => adapter);
 
-    it("returns the adapters whose description declares the media type, in the order they were loaded", () => {
+    it("returns the adapters whose description declares the media type, in the order `loadAdapter()` loaded them", () => {
       assert.deepEqual(of("application/fhir+json"), [fhir]);
       assert.deepEqual(of("application/cda+xml"), [cda, otherCda]);
     });

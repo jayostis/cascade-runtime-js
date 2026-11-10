@@ -110,7 +110,7 @@ describe("Replaying a story into a pod · replay(), PERFORMERS", () => {
       assert.equal(replayed.stopped?.step.name, "export");
     });
 
-    it("stops at a step of a kind it is given no performer for, naming the kind in `stopped.why`", () => {
+    it("stops at a step whose kind, here an import, it is given no performer for, naming the kind in `stopped.why`", () => {
       assert.match(replayed.stopped?.why ?? "", /kind import/);
     });
 
