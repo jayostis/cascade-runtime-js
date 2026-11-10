@@ -999,12 +999,19 @@ describe("Pulling the C-CDA documents a hospital holds · pull()", () => {
         documentOf(M.pull, "ccd-3").bytes,
       );
       assert.ok(documentOf(M.pull, "ccd-2").bytes);
+      assert.equal(documentOf(M.pull, "ccd-2").notRead, undefined);
+      assert.equal(documentOf(M.pull, "ccd-3").notRead, undefined);
     });
 
     it("returns `retrievedFrom` with a character a URL may not hold, such as `|`, written as its percent escape, `%7C`", () => {
       assert.equal(
         documentOf(M.pull, "ccd-4").retrievedFrom,
         `${base}/Binary/a%7Cb`,
+      );
+      assert.equal(documentOf(M.pull, "ccd-4").notRead, undefined);
+      assert.equal(
+        M.seen.requests.filter((request) => isBinary(request, "a%7Cb")).length,
+        1,
       );
     });
 
@@ -1058,11 +1065,14 @@ describe("Pulling the C-CDA documents a hospital holds · pull()", () => {
       }
     });
 
-    it("returns `notRead` for inline `data` that is not well-formed XML", () => {
+    it("returns `notRead` for inline `data` that is not well-formed XML, with no `retrievedFrom` and no `bytes`", () => {
+      const broken = documentOf(U.pull, "broken-inline");
       assert.equal(
-        documentOf(U.pull, "broken-inline").notRead,
+        broken.notRead,
         "its inline data is no well-formed C-CDA document",
       );
+      assert.equal(broken.retrievedFrom, undefined);
+      assert.equal(broken.bytes, undefined);
     });
 
     it("sends no request for a `url` on another origin, where the token must not go", () => {
