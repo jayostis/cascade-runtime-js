@@ -102,7 +102,7 @@ describe("Writing a kit's saved output again · npm run kit:bridge", () => {
       await rm(out, { recursive: true, force: true });
     });
 
-    it("writes the files the kit saves, and no other", async () => {
+    it("writes the graph and conversion findings files the kit saves for the documents it accepts, and no other", async () => {
       assert.deepEqual(await filesUnder(out), savedFiles.sort());
     });
 

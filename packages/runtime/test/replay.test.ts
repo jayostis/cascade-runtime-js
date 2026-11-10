@@ -180,7 +180,7 @@ describe("Replaying a story into a pod · replay(), PERFORMERS", () => {
       ]);
     });
 
-    it("lists a file the build writes in no step's `wrote`", () => {
+    it("leaves a file the build writes out of every step's `wrote`", () => {
       assert.ok(
         !replayed.steps.some(({ wrote }) =>
           wrote.includes("clinical/built.ttl"),

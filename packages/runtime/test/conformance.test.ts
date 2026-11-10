@@ -484,7 +484,7 @@ describe("Reporting a conformance run · npm run conformance -- --report <file>"
       );
     });
 
-    it("names the Bridge by a commit, or by a build of one", () => {
+    it("names the Bridge by a commit, or by a release built from one", () => {
       assert.match(
         requires.get("cascade-bridge-rs") ?? "",
         /^(build-)?[0-9a-f]{40}$/,
