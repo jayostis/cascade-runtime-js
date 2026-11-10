@@ -56,7 +56,11 @@ describe("Writing a code as an IRI · codeIri()", () => {
         "no vector holds a code with `*`",
       );
       for (const { system, literal, iri } of coded)
-        assert.equal(codeIri(spaceOf(system), literal), iri, `${system} ${literal}`);
+        assert.equal(
+          codeIri(spaceOf(system), literal),
+          iri,
+          `${system} ${literal}`,
+        );
     });
   });
 });

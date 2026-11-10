@@ -98,7 +98,10 @@ describe("Finding what an example names in words · Words.record(), Words.judgme
     });
 
     it("rejects a code that a record holds only as a literal", async () => {
-      await assert.rejects(words.record("allergy SNOMED 1234"), /names no record/);
+      await assert.rejects(
+        words.record("allergy SNOMED 1234"),
+        /names no record/,
+      );
     });
 
     it("rejects, with an Error that is no Refusal and names the code system, a code system the vocabulary does not register", async () => {

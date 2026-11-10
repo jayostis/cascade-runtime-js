@@ -12,27 +12,12 @@ import {
 } from "../src/folder-pack.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { FetchedFiles } from "../src/web/fetched-files.js";
+import { got, type Kept, kept } from "./kept.js";
 
 const POD = "https://pod.example/";
 const text = (bytes: Uint8Array | undefined): string | undefined =>
   bytes && new TextDecoder().decode(bytes);
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
-
-/** What an act gave or threw, kept so that a `before` which acts once fails only the leaves that read what it did. */
-type Kept<T> = { readonly value: T } | { readonly failure: unknown };
-
-async function kept<T>(act: () => Promise<T>): Promise<Kept<T>> {
-  try {
-    return { value: await act() };
-  } catch (failure) {
-    return { failure };
-  }
-}
-
-function got<T>(outcome: Kept<T>): T {
-  if ("failure" in outcome) throw outcome.failure;
-  return outcome.value;
-}
 
 /**
  * The runtime reaches everything it reads or writes, a pod, the vocabulary, an export, through `Files`: bytes by a path
