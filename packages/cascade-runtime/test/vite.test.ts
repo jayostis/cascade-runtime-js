@@ -20,7 +20,7 @@ const write = async (root: string, files: Record<string, string>) => {
   }
 };
 
-describe("Importing the package in a web page · browserBuildVersion()", () => {
+describe("Importing the package in a web page · browserBuildVersion(), cascadeRuntime()", () => {
   describe("given a Vite build with a `base`, using `cascadeRuntime()`", () => {
     const tree = "components/vocabulary/abc";
     let folder: string;

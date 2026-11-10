@@ -60,7 +60,7 @@ const keysOf = (changes: readonly LabChange[]) => changes.map(({ key }) => key);
  * the day its prescription was written, and for a stop the day its use ended. A change says what changed and never why,
  * so an app or a model can tell a person "your LDL fell after atorvastatin started" from their own records.
  */
-describe("Finding lab changes after a medication starts or stops · findChanges(), changesIn()", () => {
+describe("Finding lab changes after a medication starts or stops · findChanges(), changesIn(), compact(), timelineIn()", () => {
   describe("changesIn(medications, labs)", () => {
     const pending = lab("A", "2024-02-01", "pending");
     const below = lab("A", "2024-06-10", "<5");

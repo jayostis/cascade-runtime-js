@@ -15,7 +15,7 @@ import { terms } from "../src/terms.js";
  * it files kept answers under, `browserBuildVersion()`, which answers published from Node must carry to be read in the
  * page. A Vite app serves that build beside its bundle with `cascadeRuntime()` from `cascade-runtime/vite`.
  */
-describe("Importing the package in a web page · browserBuildVersion()", () => {
+describe("Importing the package in a web page · browserBuildVersion(), cascadeRuntime()", () => {
   describe("given the packed browser entry point", () => {
     let stage: string;
     let version: string;

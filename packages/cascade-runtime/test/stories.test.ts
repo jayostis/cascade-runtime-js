@@ -22,7 +22,7 @@ const day = (time: string | undefined) => (time ?? "").slice(0, 10);
 const keyOf = ({ kind, medication, test }: StoryFinding) =>
   `${kind === "after start" ? "start" : "stop"}:${medication}:${test}`;
 
-describe("Finding lab changes after a medication starts or stops · findChanges(), changesIn()", () => {
+describe("Finding lab changes after a medication starts or stops · findChanges(), changesIn(), compact(), timelineIn()", () => {
   let stories: Story[];
   let north: Awaited<ReturnType<typeof loadHospital>>;
   const pulls = new Map<string, Promise<Pull>>();

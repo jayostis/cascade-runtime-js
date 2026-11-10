@@ -47,7 +47,7 @@ import type { CheckedReply } from "./index.js";
 export const wrong: CheckedReply = { errors: [1], items: [] };
 `;
 
-describe("Importing the package in a web page · browserBuildVersion()", () => {
+describe("Importing the package in a web page · browserBuildVersion(), cascadeRuntime()", () => {
   describe('given a page written in TypeScript with `customConditions: ["browser"]`', () => {
     let right: string[];
     let wrong: string[];
