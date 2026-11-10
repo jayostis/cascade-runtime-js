@@ -560,7 +560,7 @@ test("a connect is matched by default, so a hospital's server at a new path on i
     assert.ok(moved.matched?.wrote.length);
     const sames = await fresh.ask({
       query: `${PREFIXES}SELECT ?base WHERE {
-        ?claim cascade:justification cascade:SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost ;
+        ?matcherJudgment cascade:justification cascade:SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost ;
           prov:hadMember ?server .
         ?server cascade:serverBaseUrl ?base }`,
     });
@@ -578,7 +578,11 @@ test("a Same whose one member is a finding the pod holds is filed naming no vers
   await (await openPodWith(kept, at)).close();
   const content = (subject: string): Triple[] => [
     [iri(subject), iri(`${RDF}type`), iri(`${CASCADE}FindingForReview`)],
-    [iri(subject), iri(`${OA}hasBody`), iri(`${CASCADE}ClaimsNoLongerReached`)],
+    [
+      iri(subject),
+      iri(`${OA}hasBody`),
+      iri(`${CASCADE}MatcherJudgmentsNoLongerReached`),
+    ],
   ];
   const finding = await findingName(content("urn:cascade:this-finding"));
   const path = join(
@@ -885,7 +889,7 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
         query: `${PREFIXES}SELECT DISTINCT ?version WHERE {
           ?judgment prov:wasAttributedTo <${MATCHER}> .
           { ?judgment prov:wasDerivedFrom ?version }
-          UNION { ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion ?version }
+          UNION { ?assertion cascade:assertedJudgment ?judgment ; cascade:assertedUnderRuleListVersion ?version }
           ?version prov:specializationOf/a cascade:ReferenceSeries }`,
       });
       const cited = used.map(({ version }) => version ?? "");

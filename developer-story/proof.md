@@ -174,7 +174,7 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   patient profile, as J12 claims it (`claimed` holds it, `unclaimed` is empty).
   Sam's three records are in x-e12 unchanged since x-e10: the import writes
   nothing of them and does not claim his profile, so they stay in no view
-  (`cascade:PatientNotClaimed` in `record/Why it is in no view`). The matcher joins
+  (`cascade:PatientProfileNotClaimed` in `record/Why it is in no view`). The matcher joins
   what E13 joined ("E13 writes J13 to J18 as the scenario gives them, and the
   reference descriptions it was the first to use"): hypertension is one active
   condition of three records, where before it had two (named "Hypertension"

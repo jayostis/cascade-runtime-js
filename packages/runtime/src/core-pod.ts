@@ -13,7 +13,7 @@ import { type Files, MemoryFiles, relative, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
-import { type Kept, KeptClaims } from "./kept.js";
+import { type Kept, KeptMatcherJudgments } from "./kept.js";
 import { HashedSet, type KeptSet } from "./kept-set.js";
 import { LAYOUT_GRAPH, type Layout, SYNC } from "./layout.js";
 import {
@@ -419,7 +419,7 @@ export class CorePod {
   /** The set the writer's last act hashed and the files written since, held while no step fails after hashing it. */
   #hashed: HashedSet | undefined;
   /** The answers M7 gives across table versions, kept across steps: what decides each never changes. */
-  #keptClaims: KeptClaims;
+  #keptMatcherJudgments: KeptMatcherJudgments;
   /** The build kept across steps, when the build is incremental and the last rebuild held. */
   #built: KeptBuild | undefined;
   /** The files of the build made whole for the step in progress before it wrote, written with the step's rebuild. */
@@ -435,7 +435,7 @@ export class CorePod {
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
-    this.#keptClaims = new KeptClaims(options);
+    this.#keptMatcherJudgments = new KeptMatcherJudgments(options);
     this.#head = options.head;
   }
 
@@ -990,7 +990,7 @@ export class CorePod {
       time,
     });
     fork.#references = this.#references;
-    fork.#keptClaims = this.#keptClaims;
+    fork.#keptMatcherJudgments = this.#keptMatcherJudgments;
     fork.#head = this.#head;
     fork.#headHeld = this.#headHeld;
     fork.#hashed = this.#hashed?.copy();
@@ -1027,7 +1027,7 @@ export class CorePod {
     return async (union) =>
       (
         await this.#held(KEPT, () =>
-          this.#keptClaims.of(union, () => this.#tables()),
+          this.#keptMatcherJudgments.of(union, () => this.#tables()),
         )
       ).triples;
   }
@@ -1042,10 +1042,10 @@ export class CorePod {
     if (kept === undefined) {
       const dataset = await this.#keptDataset();
       if (dataset !== undefined) {
-        // KeptClaims adds a version's rows to the union it reads and drops them after: safe on the kept dataset only
+        // KeptMatcherJudgments adds a version's rows to the union it reads and drops them after: safe on the kept dataset only
         // because a pod's reads and steps run one at a time.
         kept = this.#held(KEPT, () =>
-          this.#keptClaims.of(dataset, () => this.#tables()),
+          this.#keptMatcherJudgments.of(dataset, () => this.#tables()),
         );
       } else {
         await this.#matcherView();
@@ -1190,7 +1190,8 @@ export class CorePod {
       build: incremental,
       lens: build.lens,
       keep: async (union: Union) =>
-        (await this.#keptClaims.of(union, () => this.#tables())).triples,
+        (await this.#keptMatcherJudgments.of(union, () => this.#tables()))
+          .triples,
     };
   }
 

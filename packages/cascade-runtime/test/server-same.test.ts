@@ -108,10 +108,10 @@ function judgment(
 `;
 }
 
-function retraction(pod: Pod, claim: string): string {
+function retraction(pod: Pod, matcherJudgment: string): string {
   return `${TURTLE_PREFIXES}
 <urn:cascade:this-judgment> a prov:Activity ;
-  prov:invalidated <${claim}> ;
+  prov:invalidated <${matcherJudgment}> ;
   prov:wasAssociatedWith <${pod.owner}> ;
   prov:startedAtTime "2026-07-02T12:00:00Z"^^xsd:dateTime .
 <${pod.owner}> a prov:Person .
@@ -286,11 +286,11 @@ test("the server Same's joins, kept across steps, are what a build of the whole 
     );
 
     const [same] = await pod.ask({
-      query: `${PREFIXES}SELECT ?claim WHERE { ?claim a cascade:Judgment ; cascade:verdict cascade:Same ; prov:hadMember <${servers[0]}> }`,
+      query: `${PREFIXES}SELECT ?matcherJudgment WHERE { ?matcherJudgment a cascade:Judgment ; cascade:verdict cascade:Same ; prov:hadMember <${servers[0]}> }`,
     });
-    assert.ok(same?.claim);
+    assert.ok(same?.matcherJudgment);
     await performed("the server Same retracted", () =>
-      pod.judge(retraction(pod, same.claim ?? "")),
+      pod.judge(retraction(pod, same.matcherJudgment ?? "")),
     );
     assert.deepEqual(await joinedIds(pod), []);
   } finally {

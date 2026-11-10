@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { Graph } from "../src/graph.js";
 import {
   actDescriptionName,
-  assertionName,
+  matcherJudgmentAssertionName,
   canonical,
-  claimName,
+  matcherJudgmentName,
   containedRecordName,
   documentName,
   enteredRecordName,
@@ -18,7 +18,7 @@ import {
   recordFromCcdaWithoutIdName,
   recordFromDocumentName,
   recordFromServerName,
-  retractionName,
+  releaseRetractionName,
   revisionName,
   serverName,
   setHash,
@@ -86,17 +86,18 @@ const BY_INPUTS: Record<string, (inputs: readonly Input[]) => Promise<string>> =
         ? (assert.equal(nth(i, 1), "Organization"),
           organizationName({ server: nth(i, 0), id: nth(i, 2) }))
         : organizationName({ system: nth(i, 0), value: nth(i, 1) }),
-    ClaimNamingRule: (i) =>
-      claimName({
+    MatcherJudgmentNamingRule: (i) =>
+      matcherJudgmentName({
         maker: nth(i, 0),
         rule: nth(i, 1),
         justification: nth(i, 2),
         members: list(i, 3),
         used: list(i, 4),
       }),
-    AssertionNamingRule: (i) => assertionName(nth(i, 0), nth(i, 1)),
-    RetractionNamingRule: (i) =>
-      retractionName(nth(i, 0), nth(i, 1), nth(i, 2)),
+    MatcherJudgmentAssertionNamingRule: (i) =>
+      matcherJudgmentAssertionName(nth(i, 0), nth(i, 1)),
+    ReleaseRetractionNamingRule: (i) =>
+      releaseRetractionName(nth(i, 0), nth(i, 1), nth(i, 2)),
     TableRowNamingRule: (i) =>
       tableRowName(
         { source: nth(i, 0), property: nth(i, 1), target: nth(i, 2) },

@@ -373,13 +373,13 @@ test("the derived state holds what the person's judgments say: each counts, a Sa
     );
   const leftOut = await values(
     store,
-    `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientNotClaimed ; cascade:leftOutBecauseOf ?profile ] }`,
+    `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientProfileNotClaimed ; cascade:leftOutBecauseOf ?profile ] }`,
   );
   assert.ok(leftOut.length > 0, "no record is left out for its patient");
   assert.deepEqual(
     await values(
       store,
-      `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientNotClaimed ; cascade:leftOutBecauseOf ?profile ] }
+      `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientProfileNotClaimed ; cascade:leftOutBecauseOf ?profile ] }
        GRAPH ?file { [] cascade:verdict cascade:About ; prov:hadMember ?profile }`,
     ),
     [],
@@ -480,20 +480,20 @@ test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose m
       keep,
     );
   /** The Same the example says counts on, by the name it gives it. */
-  const same = "urn:uuid:229f494f-26fa-8d9c-a2c9-badd04fd0356";
+  const same = "urn:uuid:d9369a14-2bff-818e-9628-53cd1a1577b5";
   let kept: Triple[] = [];
   const joinedByCurrentVersion: Keep = async (held) => {
     const { rows } = await held.select(`${PREFIXES}
-      SELECT DISTINCT ?claim ?now WHERE {
-        ?claim prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:wasDerivedFrom ?input .
+      SELECT DISTINCT ?matcherJudgment ?now WHERE {
+        ?matcherJudgment prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:wasDerivedFrom ?input .
         ?input prov:specializationOf ?series .
         ?series pav:hasCurrentVersion ?now .
         FILTER (?now != ?input)
       }`);
     kept = rows
-      .filter((row) => row.get("claim")?.value === same)
+      .filter((row) => row.get("matcherJudgment")?.value === same)
       .map((row) => [
-        iri(row.get("claim")?.value ?? ""),
+        iri(row.get("matcherJudgment")?.value ?? ""),
         iri(
           "https://ns.cascadeprotocol.org/cascade#membersJoinedByCurrentTableVersion",
         ),
