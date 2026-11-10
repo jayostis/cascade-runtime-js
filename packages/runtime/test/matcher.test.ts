@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Graph } from "../src/graph.js";
 import {
-  arrival,
+  arrivalOrder,
   originsJoining,
   type MatcherRule,
   matcherRules,
@@ -102,11 +102,11 @@ test("a rule list naming a query outside matcher/, by any path, giving one justi
 });
 
 test("a first revision's time with no zone, or no time at all, refuses the run rather than aborting the replay", () => {
-  assert.deepEqual(arrival("2026-05-02T09:00:00.50+01:00"), [
+  assert.deepEqual(arrivalOrder("2026-05-02T09:00:00.50+01:00"), [
     "2026-05-02T08:00:00",
     "5",
   ]);
   for (const moment of ["2026-05-02T09:00:00", "tomorrow"]) {
-    assert.throws(() => arrival(moment), Refusal, moment);
+    assert.throws(() => arrivalOrder(moment), Refusal, moment);
   }
 });

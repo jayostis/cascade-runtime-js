@@ -200,7 +200,7 @@ function grouped(
 }
 
 /** A time's place in time order: its seconds in UTC, then the digits of any fraction of a second. */
-export function arrival(moment: string): [string, string] {
+export function arrivalOrder(moment: string): [string, string] {
   let utc: string;
   try {
     utc = inUtc(moment);
@@ -243,8 +243,8 @@ function takenRecord(
     firsts.some(({ at }) => at === undefined)
   )
     throw new Refusal(`${name} has no first revision and current version`);
-  const [earliest = arrival(""), ...later] = firsts.map(({ at }) =>
-    arrival(at as string),
+  const [earliest = arrivalOrder(""), ...later] = firsts.map(({ at }) =>
+    arrivalOrder(at as string),
   );
   return {
     name,
