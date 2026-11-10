@@ -554,6 +554,10 @@ async function showPerson(shown) {
 
     it("shows the members of each counting Same the person filed in one view entry", () => {
       assert.ok(ofVerdict("Same").length > 0, "no Same by the person");
+      assert.ok(
+        ofVerdict("Same").some(([name]) => counting.has(name)),
+        "no Same by the person counts",
+      );
       for (const [name, { members }] of ofVerdict("Same")) {
         if (!counting.has(name)) continue;
         const entries = new Set(members.map((member) => entryOf.get(member)));
