@@ -412,7 +412,8 @@ describe("Checking that tests read as a specification · checkShape()", () => {
 
 /**
  * `node scripts/spec-shape.mjs <junit> <spec.json>` runs the check in CI on each package's `spec.json`. Its exit status says
- * which of three things happened: the tests read as a specification, a title breaks a rule, or it could not check.
+ * which of three things happened: the tests read as a specification (or the check was skipped), a title breaks a rule, or
+ * it could not check.
  */
 describe("Checking a package's tests from the command line · scripts/spec-shape.mjs", () => {
   let folder: string;
@@ -436,6 +437,20 @@ describe("Checking a package's tests from the command line · scripts/spec-shape
       encoding: "utf8",
     });
   };
+
+  describe("with cases that read as a specification", () => {
+    it("exits 0, saying how many it checked", () => {
+      const done = run(
+        [
+          ["sample.test.ts", CAPABILITY, "openPod()", "returns rows"],
+          ["sample.test.ts", CAPABILITY, "openPod()", "returns an address"],
+        ],
+        SPEC,
+      );
+      assert.equal(done.status, 0, done.stdout);
+      assert.match(done.stdout, /2 cases checked, 0 problems/);
+    });
+  });
 
   describe("with a case that breaks a rule", () => {
     it("exits 1, naming each case", () => {
