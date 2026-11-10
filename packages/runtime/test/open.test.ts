@@ -186,6 +186,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
   describe("given tables that lack a series the pod was matched with", () => {
     let unheld: readonly string[] | undefined;
     let refused: string | undefined;
+    let opened: string | undefined;
     let used: string[];
 
     before(async () => {
@@ -193,9 +194,10 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
         FEATURE,
         "a pod made on the vector tables, opened with an app's, is judged by the app's tables and writes nothing of the vector tables",
       );
-      const opened = steps.at(-1);
-      unheld = opened?.unheld;
-      refused = opened?.refused;
+      const last = steps.at(-1);
+      opened = last?.step.happened.kind;
+      unheld = last?.unheld;
+      refused = last?.refused;
       const vector = await References.of(
         await vocabulary(),
         `${folder}/references/`,
@@ -214,6 +216,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
     });
 
     it("refuses nothing", () => {
+      assert.equal(opened, "open");
       assert.equal(refused, undefined);
     });
   });
@@ -223,6 +226,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
     const other = "0b6f2c1e-9d4a-4e7b-8c3f-5a1d2e6b7f90";
     let unheld: readonly string[] | undefined;
     let refused: string | undefined;
+    let opened: string | undefined;
 
     before(async () => {
       const { steps } = await replayed(
@@ -253,6 +257,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
       );
       unheld = steps.at(-1)?.unheld;
       refused = steps.at(-1)?.refused;
+      opened = steps.at(-1)?.step.happened.kind;
     });
 
     it("returns the pod's version in `unheld`", () => {
@@ -260,6 +265,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
     });
 
     it("refuses nothing", () => {
+      assert.equal(opened, "open");
       assert.equal(refused, undefined);
     });
   });
@@ -350,6 +356,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
 
   describe("when the clock moves between an open's judgments", () => {
     let refused: string | undefined;
+    let wrote: number;
     let judgments: string[];
 
     before(async () => {
@@ -388,6 +395,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
       });
       const opened = await reopened.open(await tables("app-new-rules"));
       refused = opened.refused;
+      wrote = opened.wrote.length;
       judgments = [];
       for (const path of opened.wrote) {
         const { triples } = await parseGraph(
@@ -407,12 +415,14 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
 
     it("writes no judgment and no assertion for a matcher judgment the pod already holds", () => {
       assert.equal(refused, undefined);
+      assert.ok(wrote > 0);
       assert.deepEqual(judgments, []);
     });
   });
 
   describe("given an adopted version that joins a pair the version before it did not", () => {
     let atMatch: string[];
+    let matchRefused: string | undefined;
     let atOpen: string[];
 
     before(async () => {
@@ -431,6 +441,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
         ]),
       );
       atMatch = await justifications(pod, matched.wrote);
+      matchRefused = matched.refused;
       const opened = await pod.open(
         await variantTables([
           [V1, v1Rows],
@@ -447,6 +458,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
     });
 
     it("files no Same of the pair before the open", () => {
+      assert.equal(matchRefused, undefined);
       assert.deepEqual(atMatch, []);
     });
 

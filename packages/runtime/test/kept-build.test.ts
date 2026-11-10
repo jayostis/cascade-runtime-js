@@ -394,6 +394,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
     });
 
     it("leaves the next `dataset()` every quad it held before", () => {
+      assert.ok(runs.length > 0);
       for (const run of runs)
         assert.deepEqual(run.afterSelect, run.beforeSelect, run.step);
     });
@@ -460,6 +461,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
 
     it("builds the pod whole for the `dataset()` after that", () => {
       // A pod read whole between steps does not know the snapshot the kept build used, which the manifest names.
+      assert.ok(renewals.length > 0);
       for (const one of renewals) {
         const unbuilt = (quads: string[]) =>
           quads.filter((quad) => !quad.startsWith(one.manifest));

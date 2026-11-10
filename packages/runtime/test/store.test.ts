@@ -342,6 +342,7 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
     });
 
     it("drops each graph it added", () => {
+      assert.ok(done.restored.quadsAfter.length > 0);
       for (const graph of ["<urn:four>", "<urn:five>"])
         assert.ok(
           done.restored.quadsAfter.every((quad) => !quad.endsWith(` ${graph}`)),
