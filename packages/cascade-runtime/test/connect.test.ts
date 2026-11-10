@@ -264,6 +264,7 @@ describe("Signing a person in to a hospital · connect(), loopbackSignIn()", () 
 
   describe("loopbackSignIn({ open })", () => {
     const strays: number[] = [];
+    const states: { sent?: string | null; returned?: string | null } = {};
     let redirectUri: string;
     let connection: Connection;
 
@@ -281,19 +282,28 @@ describe("Signing a person in to a hospital · connect(), loopbackSignIn()", () 
                   .status,
               );
               const approved = await fetch(authorize, { redirect: "manual" });
-              await globalThis.fetch(approved.headers.get("Location")!);
+              const redirect = approved.headers.get("Location")!;
+              states.sent = new URL(authorize).searchParams.get("state");
+              states.returned = new URL(redirect).searchParams.get("state");
+              await globalThis.fetch(redirect);
             },
           }),
       }));
     });
 
-    it("returns the hospital's redirect that carries the `state` value `connect` sent", () => {
+    it("finishes the sign-in with the hospital's redirect that carries the `state` value `connect` sent", () => {
+      assert.ok(states.sent, "connect sent a state");
+      assert.equal(states.returned, states.sent);
+      assert.notEqual(states.sent, "other");
       assert.equal(connection.patient, A_NORTH);
     });
 
-    it("responds 400 to a redirect that carries another `state`, and waits on", () => {
+    it("responds 400 to a redirect that carries another `state`", () => {
       assert.deepEqual(strays, [400]);
-      assert.equal(connection.patient, A_NORTH, "the sign-in still finished");
+    });
+
+    it("waits on after a redirect that carries another `state`, and finishes with the right one", () => {
+      assert.equal(connection.patient, A_NORTH);
     });
 
     it("stops listening once the sign-in is back", async () => {
