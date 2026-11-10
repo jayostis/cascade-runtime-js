@@ -69,7 +69,7 @@ describe("Running the pod arm at pinned commits · resolvePins(), cloneAt(), che
       );
     });
 
-    it("refuses a repository that is none a run pins, naming it", () => {
+    it("refuses a repository that no run pins, naming it", () => {
       assert.throws(
         () =>
           resolvePins({
@@ -174,7 +174,7 @@ describe("Running the pod arm at pinned commits · resolvePins(), cloneAt(), che
       "cli.js",
     );
 
-    it("starts a pinned `cascade-mcp` in its own checkout", () => {
+    it("returns a server that runs in the pinned runtime's own checkout", () => {
       assert.equal(
         mcpServer({ mcp, pods: "pods" }).cwd,
         join("C:", "pinned", "cascade-runtime-js"),
@@ -185,7 +185,7 @@ describe("Running the pod arm at pinned commits · resolvePins(), cloneAt(), che
       );
     });
 
-    it("sets no working folder for the harness's own `cascade-mcp`", () => {
+    it("returns a server with no folder of its own for the harness's own `cascade-mcp`, so it runs where the harness does", () => {
       assert.equal("cwd" in mcpServer({ pods: "pods" }), false);
     });
   });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,10 +58,14 @@ describe("Recording a run in the history · recordHistory()", () => {
   describe("given a run planned from uncommitted work", () => {
     let folder: string;
     let thrown: Error | undefined;
+    let listedBefore: string[];
+
+    const listed = () => (existsSync(HISTORY) ? readdirSync(HISTORY) : []);
 
     before(async () => {
       folder = await mkdtemp(join(tmpdir(), "cascade-evals-history-"));
       await writeFile(join(folder, "results.json"), JSON.stringify(dirty));
+      listedBefore = listed();
       thrown = await recordHistory(folder).then(
         () => undefined,
         (error: Error) => error,
@@ -78,10 +82,7 @@ describe("Recording a run in the history · recordHistory()", () => {
     });
 
     it("writes nothing to `history/`", () => {
-      assert.equal(
-        existsSync(join(HISTORY, "2026-10-31-0123456-smoke")),
-        false,
-      );
+      assert.deepEqual(listed(), listedBefore);
     });
   });
 });

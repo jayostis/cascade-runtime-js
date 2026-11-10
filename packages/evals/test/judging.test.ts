@@ -265,8 +265,8 @@ const withFact = (fact: object) =>
 /**
  * A judge grades both arms' answers without knowing which arm wrote which. Its packet holds the answers under letters,
  * stripped of what only one arm writes, and what cannot be stripped is recorded as a tell. What an answer must be to
- * be shown is decided by "Checking a model's reply against a person's records · checkReply(), replyErrors(), replySchema"
- * on cascade-runtime's page.
+ * be shown is decided by "Checking a model's reply against a person's records · checkReply(), replyErrors(),
+ * replySchema, numberedReply()" on cascade-runtime's page.
  */
 describe("Blinding the answers a judge reads · judgePackets(), blinded(), scrubbed(), tellsOf()", () => {
   describe("judgePackets(run)", () => {
@@ -295,7 +295,7 @@ describe("Blinding the answers a judge reads · judgePackets(), blinded(), scrub
       );
     });
 
-    it("draws the letters' order for each run", async () => {
+    it("draws the letters in more than one order across runs", async () => {
       const orders = new Set<string>();
       for (const run of ["r1", "r2", "r3", "r4", "r5", "r6"]) {
         const { judges } = await runOf(run, ["claude-haiku-5-5"]);
@@ -718,7 +718,7 @@ describe("Reading a judge's verdict · gradesOf(), verdictProblems()", () => {
       assert.equal(graded?.beyond[0]?.item, 0);
     });
 
-    it("returns no grade from a verdict that breaks the schema", () => {
+    it("returns no grade from a verdict that breaks the schema or is not yet written", () => {
       const judges = zero.map((it) => it.judge);
       for (const broken of ["negative", "unknown", "broken", "missing"])
         assert.ok(!judges.includes(broken), `${broken} is graded`);

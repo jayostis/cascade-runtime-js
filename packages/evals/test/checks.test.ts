@@ -114,10 +114,10 @@ const withPath = (job: Job, file_path: string, name = "Read"): Job => ({
 });
 
 /**
- * A subject may read only its case's downloads, run only its own `ask` and `pod` commands and write only its own
- * answers. `checkAnswer()` reads the job's tool uses and lists each one that went outside as a violation.
+ * A subject may read only its case's downloads, and its commands and answer file may name only its own run's folder.
+ * `checkAnswer()` reads the job's tool uses and lists each one that went outside as a violation.
  */
-describe("Holding a job to its own files and commands · checkAnswer()", () => {
+describe("Holding a job to its own downloads and run folder · checkAnswer()", () => {
   describe("checkAnswer(options)", () => {
     it("returns one violation for each command or answer file that names another run's folder", async () => {
       const wrong = await checked(jobIn("first"), "second");

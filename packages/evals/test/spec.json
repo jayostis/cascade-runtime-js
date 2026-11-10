@@ -12,7 +12,7 @@
     "Calling a job's pod server · callLogged(), stopPodServer()",
     "Finding the transcript of a job · readTranscript(), transcriptsSince()",
     "Charging each question its own cost · splitSession()",
-    "Holding a job to its own files and commands · checkAnswer()",
+    "Holding a job to its own downloads and run folder · checkAnswer()",
     "Resolving a citation to what it cites · passageOf(), podProvenance(), evidenceOf()",
     "Blinding the answers a judge reads · judgePackets(), blinded(), scrubbed(), tellsOf()",
     "Reading a judge's verdict · gradesOf(), verdictProblems()",
@@ -55,6 +55,10 @@
       "term": "cap",
       "definition": "the most tokens and dollars a config lets a run spend; a job that would pass it is not started.",
       "aliases": ["caps"]
+    },
+    {
+      "term": "cascade-mcp",
+      "definition": "the MCP server of the runtime through which the pod arm reaches a pod; the harness starts one for each job."
     },
     {
       "term": "case",
@@ -132,6 +136,11 @@
       "aliases": ["handles"]
     },
     {
+      "term": "held tables",
+      "definition": "the reference tables the harness keeps once in its work folder, `work/reference-tables`, and copies into each case's pods folder; a fetch is whole when every feed came, none refused or unread, and `.whole` marks it.",
+      "aliases": ["held", "whole"]
+    },
+    {
       "term": "inputs hash",
       "definition": "a digest of everything a session's answers depend on; a recorded session with the same hash is reused, not run again.",
       "aliases": ["hash"]
@@ -153,7 +162,7 @@
     },
     {
       "term": "judge",
-      "definition": "a model that grades both arms' answers against the key without being told which arm wrote which.",
+      "definition": "here, a model that grades both arms' answers against the key without being told which arm wrote which.",
       "aliases": ["judges", "judged"]
     },
     {
@@ -193,7 +202,7 @@
     },
     {
       "term": "plan",
-      "definition": "a run's `plan.json`: its config, cases and jobs, each job with its status.",
+      "definition": "here, a run's `plan.json`: its config, cases and jobs, each job with its status.",
       "aliases": ["plans", "planned"]
     },
     {
@@ -255,6 +264,10 @@
       "aliases": ["runs"]
     },
     {
+      "term": "runtime",
+      "definition": "here, cascade-runtime-js, the code that builds a pod and serves its tools; a pinned run builds and serves the runtime of its pinned commit."
+    },
+    {
       "term": "scrubber",
       "definition": "the function that replaces, with `[record]`, text only one arm writes: a resource reference, a file name with a line, a handle, an IRI.",
       "aliases": ["scrubbed", "scrubs"]
@@ -263,6 +276,11 @@
       "term": "session",
       "definition": "one chat: the questions a case asks in it, asked in order of one model on one arm. A subject's job is one session.",
       "aliases": ["sessions"]
+    },
+    {
+      "term": "session id",
+      "definition": "the identifier a job's child is started with (`--session-id`), which names the session's transcript file.",
+      "aliases": ["session ids"]
     },
     {
       "term": "starter copies",

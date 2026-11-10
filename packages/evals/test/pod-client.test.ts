@@ -20,8 +20,8 @@ async function listening(
 }
 
 /**
- * A pod-arm session reaches its pod through one `cascade-mcp` server per job, which numbers and logs every tool call so
- * that an absence can name the call that looked.
+ * A pod-arm session reaches its pod through one `cascade-mcp` server per job. A call through it takes the next number and
+ * is logged, with its error when it throws, so that an absence can name the call that looked.
  */
 describe("Calling a job's pod server · callLogged(), stopPodServer()", () => {
   describe("callLogged(client, folder, job, args, counter)", () => {

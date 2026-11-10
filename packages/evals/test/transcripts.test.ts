@@ -95,7 +95,7 @@ describe("Finding the transcript of a job · readTranscript(), transcriptsSince(
       assert.ok(found.has("run-1/job-a"));
     });
 
-    it("returns that session's model calls with their tokens", () => {
+    it("returns that session's model calls, each with its input and output tokens", () => {
       const [call] = found.get("run-1/job-a")!.calls;
       assert.deepEqual(
         [call?.model, call?.input, call?.output],

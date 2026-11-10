@@ -28,7 +28,7 @@ describe("Giving every case's pod the reference tables · referenceTables(), giv
       assert.doesNotThrow(() => refuseIncomplete([{ feed, refused: [] }], 1));
     });
 
-    it("refuses, with the feed's reason, when a feed put a version off", () => {
+    it("refuses, with the feed's reason, when a feed could not be read (offline, say)", () => {
       assert.throws(
         () => refuseIncomplete([{ feed, later: "offline", refused: [] }], 9),
         /offline/,
