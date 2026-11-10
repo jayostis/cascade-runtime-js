@@ -383,7 +383,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
     });
   });
 
-  describe("given the martin-okafor kit's pod, whose variant interpretations view points to entries of its variants view", () => {
+  describe("given the martin-okafor kit's pod, whose view of a variant's interpretations names, for each interpretation, the entry of the view of the person's variants that its variant is in", () => {
     let martin: Dataset;
     let variants: string;
     before(async () => {
@@ -431,7 +431,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
     });
   });
 
-  describe("given a pod whose matcher Same used a table version since revised, read with `podDataset()`", () => {
+  describe("given a pod whose matcher Same used a table version that is no longer the current version, read with `podDataset()`", () => {
     /** The Same the example says counts on, by the name it gives it. */
     const same = "urn:uuid:d9369a14-2bff-818e-9628-53cd1a1577b5";
     const countedInOneEntry = `${PREFIXES}
@@ -500,7 +500,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
       assert.equal(await together.ask(countedInOneEntry), true);
     });
 
-    it("states `prov:used` on no view built with a table version", async () => {
+    it("names the table versions a view was built with by `prov:wasDerivedFrom`", async () => {
       assert.equal(
         await together.ask(
           `${PREFIXES} ASK { GRAPH ?view { ?view a cascade:View ; prov:wasDerivedFrom ?version } ?version prov:specializationOf ?series }`,
@@ -508,6 +508,9 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
         true,
         "a view names the reference versions it was built with by prov:wasDerivedFrom",
       );
+    });
+
+    it("states `prov:used` on no view built with a table version", async () => {
       assert.equal(
         await together.ask(
           `${PREFIXES} ASK { GRAPH ?view { ?view a cascade:View ; prov:used ?version } }`,
