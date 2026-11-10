@@ -183,7 +183,8 @@ function runsTakingRecords(): Promise<TakingRun[]> {
 /**
  * With `build.incremental`, a pod keeps its dataset and what it derived from one step to the next, rebuilds only the
  * records a step reached, and lends the dataset to the matcher for the length of a run. What it then reads, derives and
- * writes is what a pod built whole after every step would.
+ * writes is what a pod built whole after every step would. `select(query)` takes a SPARQL SELECT and returns the rows it
+ * gives over the pod's dataset.
  * @rule runtime/currency.feature C8
  */
 describe("Keeping one build of a pod across steps · CorePodOptions.build, CorePod.select()", () => {
@@ -432,6 +433,11 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           let failure: unknown;
           try {
             await pod.select(query);
+          } catch (error) {
+            OxigraphStore.prototype.renewed = renewed;
+            throw error;
+          }
+          try {
             await pod.dataset("everyday");
           } catch (error) {
             failure = error;
@@ -459,7 +465,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       }
     });
 
-    it("builds the pod whole for the `dataset()` after that", () => {
+    it("returns from the next `dataset()` the quads a pod read whole holds", () => {
       // A pod read whole between steps does not know the snapshot the kept build used, which the manifest names.
       assert.ok(renewals.length > 0);
       for (const one of renewals) {
@@ -508,7 +514,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       held = { fromKept, fromFiles, records };
     });
 
-    it("returns from the kept dataset the latest revisions and the files of each record that it returns from the records' files", () => {
+    it("returns the same latest revisions and files from the kept dataset as from the records' files", () => {
       assert.ok(
         held.records.some(
           (record) => held.fromFiles.held(record).files.length > 3,
