@@ -1670,7 +1670,7 @@ cascade:NdcDrugs cascade:readByAppPages true .
     });
   });
 
-  describe("given a check on open that is still waiting for its feed", () => {
+  describe("given a pod's open that starts a check of the feed, which has not yet answered", () => {
     let started: StartedApp;
 
     before(async () => {
@@ -1681,7 +1681,7 @@ cascade:NdcDrugs cascade:readByAppPages true .
       assert.ok(!started.currentWhileChecking.includes(groups.second));
     });
 
-    it("notes a pod's open without waiting for the feed", () => {
+    it("records that a pod opened, without waiting for the feed", () => {
       assert.equal(started.fetchedWhileNoting, false);
       assert.deepEqual(started.openedWhileChecking, [groups.first]);
     });
@@ -1695,7 +1695,7 @@ cascade:NdcDrugs cascade:readByAppPages true .
       assert.ok(started.currentAfter.includes(groups.second));
     });
 
-    it("keeps its note of the pod's open through the check", () => {
+    it("still has its record of the pod's open after the check", () => {
       assert.deepEqual(started.openedAfter, [groups.first]);
     });
   });
@@ -1751,7 +1751,7 @@ describe("Starting from the tables the package carries · tables.start()", () =>
       assert.equal(reads.most, READ_AHEAD);
     });
 
-    it("makes no search list that the starter already carries: a search finds a code though any search list it made would be refused", async () => {
+    it("makes no search list that the starter already carries: a table search finds a code though any search list it made would be refused", async () => {
       const { files } = await starterCopies();
       // The copy's `listed` rejects: a search that finds a code read the list the starter carried.
       const tables = startedOn(files);
@@ -1966,7 +1966,7 @@ describe("Starting from the tables the package carries · tables.start()", () =>
       afterSearch = listed;
     });
 
-    it("makes each current version's search list once, for a start and two searches at once", () => {
+    it("makes each current version's search list once, for a start and two table searches at once", () => {
       assert.equal(listings.start, listings.current);
     });
 
@@ -1978,7 +1978,7 @@ describe("Starting from the tables the package carries · tables.start()", () =>
       assert.deepEqual(afterCheck, { read: 0, listed: listings.current });
     });
 
-    it("makes none at a search after the start", () => {
+    it("makes none at a table search after the start", () => {
       assert.equal(afterSearch, listings.current);
     });
   });
@@ -2043,7 +2043,7 @@ describe("Starting from the tables the package carries · tables.start()", () =>
       return startedOn(movedOn, stranded);
     }
 
-    it("throws `Refusal` from a search of that version, naming it", async () => {
+    it("throws `Refusal` from a table search of that version, naming it", async () => {
       await assert.rejects(
         (await upgraded()).search(groups.series, "141"),
         (error) =>
@@ -2774,7 +2774,7 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
   });
 
   describe("given a search list kept beside a version that cannot be used", () => {
-    it("makes the search list again at a search, and finds the version's codes", async () => {
+    it("makes the search list again at a table search, and finds the version's codes", async () => {
       const path = `${fileStem(groups.second)}${LISTED}`;
       const valid = JSON.parse(
         new TextDecoder().decode(await (await checkedStore(feed)).read(path)),

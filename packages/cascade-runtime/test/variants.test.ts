@@ -436,7 +436,7 @@ describe("Reading what ClinVar says of a variant · tables.variantClassification
       );
     });
 
-    it("returns `not found` for an expression on no row, and for two expressions on two rows", async () => {
+    it("returns `not found` for an expression on no row, and for two expressions of one variant, each on a different row", async () => {
       assert.equal(
         await found({ gene: "MLH1", hgvs: ["NM_000249.9:c.1A>G"] }),
         "not found",
@@ -448,7 +448,7 @@ describe("Reading what ClinVar says of a variant · tables.variantClassification
           hgvs: ["NM_000251.3:c.100A>G", "NM_000251.3:c.200A>G"],
         }),
         "not found",
-        "two expressions on two rows",
+        "two expressions of one variant, each on a different row",
       );
     });
 

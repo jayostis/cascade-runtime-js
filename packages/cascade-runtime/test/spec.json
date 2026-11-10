@@ -310,6 +310,11 @@
       "aliases": ["kits"]
     },
     {
+      "term": "label",
+      "definition": "of a series, its name as a person reads it, such as 'Vaccine groups'; a feed gives it and a check updates it.",
+      "aliases": ["labels"]
+    },
+    {
       "term": "launcher",
       "definition": "the SMART Health IT launcher, `launch.smarthealthit.org`: a public test hospital on the internet, kept by the SMART project, which this project did not write."
     },
@@ -534,6 +539,11 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#clinvarReviewStatus"
     },
     {
+      "term": "row",
+      "definition": "one line of a reference table, giving what it says of one code or variant.",
+      "aliases": ["rows"]
+    },
+    {
       "term": "rule",
       "definition": "a numbered requirement in the vocabulary that every runtime must meet, such as A14 in `runtime/arrivals.feature`; a heading on this page links the rules its API reaches.",
       "aliases": ["rules"]
@@ -566,8 +576,8 @@
     },
     {
       "term": "search",
-      "definition": "one request to a hospital for a patient's records of one type, such as Condition; a plan lists them, and a hospital may answer a search a page at a time. (Of the reference tables, to search is to find the codes of a series whose name holds the text asked, as `tables.search()` does, a page at a time.)",
-      "aliases": ["searches", "searched"]
+      "definition": "one request to a hospital for a patient's records of one type, such as Condition; a plan lists them, and a hospital may answer a search a page at a time.",
+      "aliases": ["searches"]
     },
     {
       "term": "search list",
@@ -658,6 +668,11 @@
       "definition": "what a reference table's rows say, such as product ingredients or vaccine groups; the vocabulary declares each kind.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#TableKind",
       "aliases": ["table kinds"]
+    },
+    {
+      "term": "table search",
+      "definition": "to find the codes of a series whose name holds the text asked, as `tables.search()` does, a page at a time.",
+      "aliases": ["search the tables", "table searches"]
     },
     {
       "term": "term",
