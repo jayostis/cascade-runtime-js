@@ -1,4 +1,4 @@
-import { Derivations, type Keep, QUERIES } from "./derive.js";
+import { Derivations, type SamesStillJoined, QUERIES } from "./derive.js";
 import { ENTRY_PLACEHOLDER } from "./entries.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
@@ -39,7 +39,7 @@ export type Derive = (
   union: Union,
   lens: string,
   pod: PodState,
-  keep?: Keep,
+  samesStillJoined?: SamesStillJoined,
 ) => Promise<ReadonlyMap<string, readonly Triple[]>>;
 
 /** The software a pod's manifest says built it. */
@@ -361,8 +361,8 @@ export async function vocabularyDerive(
 
 /** The build's derivations and then its files, over a union. */
 export function deriveWith(build: VocabularyBuild): Derive {
-  return async (union, lens, pod, keep) => {
-    await build.derivations.derive(union, lens, keep);
+  return async (union, lens, pod, samesStillJoined) => {
+    await build.derivations.derive(union, lens, samesStillJoined);
     return build.files(union, pod);
   };
 }

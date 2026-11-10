@@ -1,5 +1,5 @@
 import type { Derive, VocabularyBuild } from "./build.js";
-import type { DerivedStep, Keep } from "./derive.js";
+import type { DerivedStep, SamesStillJoined } from "./derive.js";
 import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
@@ -46,7 +46,7 @@ export async function built(
   lens: string,
   union: Union,
   derive?: Derive,
-  keep?: Keep,
+  samesStillJoined?: SamesStillJoined,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
   for (const path of files.filter((path) => layout.isRdf(path))) {
     const bytes = await pod.read(path);
@@ -55,7 +55,7 @@ export async function built(
     await union.loadTurtle(bytes, address + path);
   }
   if (derive === undefined || at === undefined) return new Map();
-  return derive(union, lens, { address, at, title }, keep);
+  return derive(union, lens, { address, at, title }, samesStillJoined);
 }
 
 /**
@@ -70,7 +70,7 @@ export async function dataset(
   lens: string,
   store: Store,
   derive?: Derive,
-  keep?: Keep,
+  samesStillJoined?: SamesStillJoined,
 ): Promise<Union> {
   const index = replayed.steps.findLastIndex(
     ({ step }) => step.name === through,
@@ -108,7 +108,7 @@ export async function dataset(
     lens,
     union,
     derive,
-    keep,
+    samesStillJoined,
   );
   await addLayout(union, replayed.layout, address);
   await store.add(
@@ -216,7 +216,7 @@ export async function podFiles(
 /**
  * A pod as a folder holds it, in the store: each RDF file but those the build writes a named graph, by the address its
  * owner's profile names plus its path; the lens's derived state; the files the build writes, written again for the
- * time and title the pod's manifest gives, or else those given; and the layout. Given `keep`, the Sames M7 leaves as
+ * time and title the pod's manifest gives, or else those given; and the layout. Given `samesStillJoined`, the Sames M7 leaves as
  * they were across a table version are derived with it, as a step's dataset derives them.
  */
 export async function podDataset(
@@ -226,7 +226,7 @@ export async function podDataset(
   lens: string,
   store: Store,
   otherwise: { readonly title: string; readonly at: string },
-  keep?: Keep,
+  samesStillJoined?: SamesStillJoined,
 ): Promise<PodBuild> {
   const stated = await podStated(pod, layout, store);
   const { address } = stated;
@@ -234,7 +234,7 @@ export async function podDataset(
   const at = stated.at ?? otherwise.at;
   const union = new Union(store);
   const held = await podFiles(pod, layout, address, union);
-  const derived = await build.derivations.derive(union, lens, keep);
+  const derived = await build.derivations.derive(union, lens, samesStillJoined);
   const built = await build.files(union, { address, at, title });
   await addLayout(union, layout, address);
   return {

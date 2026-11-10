@@ -19,9 +19,9 @@ function key(triple: Triple): string {
 }
 
 /** What a runtime derives just before the lens that no query can: the Sames M7 leaves as they were across a table version. */
-export type Keep = (union: Union) => Promise<readonly Triple[]>;
+export type SamesStillJoined = (union: Union) => Promise<readonly Triple[]>;
 
-/** The term `Keep` derives, which only a lens that names it reads. */
+/** The term `SamesStillJoined` derives, which only a lens that names it reads. */
 const KEPT_TERM = "membersJoinedByCurrentTableVersion";
 
 /** One derivation, or the lens, by its path in the vocabulary, and what it added that the store did not hold. */
@@ -97,13 +97,13 @@ export class Derivations {
 
   /**
    * Runs the lens's derivations in turn over the union, each adding to `urn:cascade:derived:<lens>`, and so to the
-   * union, what it constructs that the union did not already hold; returns what each added. What `keep` gives is
+   * union, what it constructs that the union did not already hold; returns what each added. What `samesStillJoined` gives is
    * added just before a lens that reads it, as the lens's. Given `last`, the path of one of them, stops after it.
    */
   async derive(
     union: Union,
     lens: string,
-    keep?: Keep,
+    samesStillJoined?: SamesStillJoined,
     last?: string,
   ): Promise<DerivedStep[]> {
     const steps = this.for(lens);
@@ -115,8 +115,10 @@ export class Derivations {
     const added: DerivedStep[] = [];
     for (const { path, query } of steps.slice(0, through)) {
       const kept =
-        keep !== undefined && under(LENSES, path) && query.includes(KEPT_TERM)
-          ? await keep(union)
+        samesStillJoined !== undefined &&
+        under(LENSES, path) &&
+        query.includes(KEPT_TERM)
+          ? await samesStillJoined(union)
           : [];
       if (kept.length > 0) await union.add(kept, DERIVED + lens);
       const constructed = (await answersQuery(query))

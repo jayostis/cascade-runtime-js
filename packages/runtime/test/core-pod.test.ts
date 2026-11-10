@@ -230,6 +230,29 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
     });
   });
 
+  describe("when a file is written to `CorePod.files`", () => {
+    let underneath: Uint8Array | undefined;
+    let read: Uint8Array | undefined;
+
+    before(async () => {
+      const files = new MemoryFiles(ADDRESS);
+      const pod = new CorePod(
+        options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+      );
+      await pod.files.write("notes.txt", new TextEncoder().encode("a note"));
+      underneath = await files.read("notes.txt");
+      read = await pod.files.read("notes.txt");
+    });
+
+    it("writes the file to the pod's own files", () => {
+      assert.equal(new TextDecoder().decode(underneath), "a note");
+    });
+
+    it("reads the file back from `CorePod.files`", () => {
+      assert.equal(new TextDecoder().decode(read), "a note");
+    });
+  });
+
   describe("CorePod.judge()", () => {
     it("files a retraction that also states `prov:used` with the retractions, not with the imports", async () => {
       const laidOut = await layout();

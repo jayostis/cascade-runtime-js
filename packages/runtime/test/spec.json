@@ -9,10 +9,12 @@
     "Writing a step's files · CorePod.import(), CorePod.open(), CorePod.judge()",
     "Reading a pod between steps · CorePod.dataset(), CorePod.revision(), CorePod.close()",
     "Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()",
+    "Building a pod's views, labels and type index · CorePodOptions.build, vocabularyDerive(), podDataset()",
     "Opening a pod with tables other than the ones it was matched with · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()",
     "Refusing a rule list a run cannot trust · matcherRules(), originsJoining()",
     "Binding a comparison query to a run's records · boundToRecords(), boundToPairs()",
     "Running the matcher on a step's records alone · CorePod.match(), readEveryRecord()",
+    "Matching a pod whose files repeat a statement · CorePod.match()",
     "Reading entries as of a record's arrival · arrivalOrder(), ArrivedEntries",
     "Reading reference tables from a folder · References.of(), References.rows(), tableTerms(), linesAbout()",
     "Reading only the rows a pod's codes find · References.rows(), rowsByCode()",
@@ -192,8 +194,13 @@
       "aliases": ["graphs", "named graph"]
     },
     {
+      "term": "group",
+      "definition": "in SPARQL, the patterns between one pair of braces. A query's WHERE group is the one its WHERE keyword opens, not one inside a sub-select, OPTIONAL, MINUS or UNION.",
+      "aliases": ["groups"]
+    },
+    {
       "term": "hash",
-      "definition": "a short code worked out from a file's bytes: the same bytes always give the same hash, and any change gives another.",
+      "definition": "a short code worked out from bytes, such as a file's or the text of an IRI: the same bytes always give the same hash, and any change gives another.",
       "aliases": ["hashes"]
     },
     {
@@ -229,6 +236,11 @@
       "term": "kept dataset",
       "definition": "a pod's dataset held in memory from one step to the next, in place of a new read of every file.",
       "aliases": ["kept build"]
+    },
+    {
+      "term": "labels",
+      "definition": "the file the build writes that gives each thing in a pod (a record, a version, a revision, a document, a view entry, the subject) one name a person can read.",
+      "aliases": ["labels file"]
     },
     {
       "term": "layout",
@@ -300,6 +312,11 @@
       "term": "phrase",
       "definition": "one wording of a step that `runtime/steps.md` defines, such as \"the pod holds no revision\".",
       "aliases": ["phrases"]
+    },
+    {
+      "term": "placeholder",
+      "definition": "the name a view entry has in a pod's derived state, `urn:cascade:entry:` and a hash, until the build names the entry in its view.",
+      "aliases": ["placeholders"]
     },
     {
       "term": "pod",
@@ -457,6 +474,11 @@
       "aliases": ["table kinds"]
     },
     {
+      "term": "table version",
+      "definition": "one release of a reference table: the rows a table kind holds as of one date, named by an IRI the pod's files use.",
+      "aliases": ["table versions"]
+    },
+    {
       "term": "target",
       "definition": "what a shape names to say which nodes it checks: a class, the subjects or objects of a property, or one node.",
       "aliases": ["targets"]
@@ -485,6 +507,10 @@
       "vocabulary": "https://www.w3.org/TR/turtle/"
     },
     {
+      "term": "type index",
+      "definition": "the file in which a pod lists, for each class of thing, the file or folder that holds it, so that another app can find the pod's views."
+    },
+    {
       "term": "unheld",
       "definition": "of a table version a pod names: not among the tables the pod is opened with."
     },
@@ -502,6 +528,12 @@
       "definition": "what a record says at one time; when a source changes a record, the pod keeps the old version and adds a new one. (Of a reference table or the runtime, \"version\" has its everyday meaning.)",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#version",
       "aliases": ["versions"]
+    },
+    {
+      "term": "view",
+      "definition": "a pod's records of one kind, such as medications, as its judgments leave them: one line for each thing however many sources reported it. A named question such as `pod/My medication history` returns a view's rows.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#View",
+      "aliases": ["views"]
     },
     {
       "term": "view entry",
@@ -533,6 +565,7 @@
     "arrivals.test.ts",
     "arrived-entries.test.ts",
     "bound-records.test.ts",
+    "bridge-package.test.ts",
     "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
@@ -544,6 +577,7 @@
     "load-adapter.test.ts",
     "matcher.test.ts",
     "open.test.ts",
+    "pod-build.test.ts",
     "references.test.ts",
     "replay.test.ts",
     "resolver.test.ts",
@@ -554,12 +588,15 @@
     "wasm-bridge.test.ts"
   ],
   "build": [
-    "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs"
+    "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs",
+    "The Bridge package a run from a checkout uses · findBridgePackage()",
+    "Picking the Bridge package for a CI run · pickBuild(), latestBuild(), keptPick(), runOf(), readerOf()"
   ],
   "randomOrder": [
     "arrivals.test.ts",
     "arrived-entries.test.ts",
     "bound-records.test.ts",
+    "bridge-package.test.ts",
     "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
@@ -571,6 +608,7 @@
     "load-adapter.test.ts",
     "matcher.test.ts",
     "open.test.ts",
+    "pod-build.test.ts",
     "references.test.ts",
     "replay.test.ts",
     "resolver.test.ts",
