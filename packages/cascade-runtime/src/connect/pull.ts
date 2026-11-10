@@ -137,7 +137,7 @@ export async function pull(
       throw new ConnectionFailure(
         "host-not-allowed",
         `a request for ${what} would go to ${url.origin}, not the FHIR base's origin`,
-        { origin: url.origin, resourceType: what },
+        { origin: url.origin, askedFor: what },
       );
     const answer = await requests.send(url, {
       what,
@@ -159,7 +159,7 @@ export async function pull(
         expired
           ? `${origin} refused ${what} with 401: the access token expired, so connect again`
           : `${origin} refused ${what} with 401: the hospital did not accept the access token (it may have expired or been revoked), so connect again`,
-        { origin, status: 401, resourceType: what },
+        { origin, status: 401, askedFor: what },
       );
     }
     return { answer, url };
@@ -180,7 +180,7 @@ export async function pull(
       throw new ConnectionFailure(
         "unauthorized",
         `${origin} refused a C-CDA document with 401: the hospital did not accept the access token, so connect again`,
-        { origin, status: 401, resourceType: "Binary" },
+        { origin, status: 401, askedFor: "Binary" },
       );
     return { answer };
   };
@@ -188,7 +188,7 @@ export async function pull(
     new ConnectionFailure(
       "hospital-error",
       `${origin} answered ${answer.status} to ${what}`,
-      { origin, status: answer.status, resourceType: what },
+      { origin, status: answer.status, askedFor: what },
     );
   const keep = (resource: unknown, what: string): void => {
     const { resourceType, id } = (resource ?? {}) as Record<string, unknown>;
@@ -201,7 +201,7 @@ export async function pull(
       throw new ConnectionFailure(
         "hospital-error",
         `${origin}'s answer for ${what} holds a resource with no FHIR type and id`,
-        { origin, resourceType: what },
+        { origin, askedFor: what },
       );
     const key = `${resourceType}/${id}`;
     if (!entries.has(key))
@@ -227,7 +227,7 @@ export async function pull(
         throw new ConnectionFailure(
           "hospital-error",
           `${origin}'s next link for ${search.type} goes back to a page already read`,
-          { origin, resourceType: search.type },
+          { origin, askedFor: search.type },
         );
       pages.add(next.href);
       const { answer, url } = await get(next, search.type);
@@ -460,7 +460,7 @@ function nextOf(
     throw new ConnectionFailure(
       "hospital-error",
       `${origin}'s next link for ${what} has no address`,
-      { origin, resourceType: what },
+      { origin, askedFor: what },
     );
   try {
     return new URL(link.url, url);
@@ -468,7 +468,7 @@ function nextOf(
     throw new ConnectionFailure(
       "hospital-error",
       `${origin}'s next link for ${what} is not an address`,
-      { origin, resourceType: what },
+      { origin, askedFor: what },
     );
   }
 }

@@ -13,6 +13,13 @@
     "Encrypting a pod with six words · openPod(), sixWords(), typedWords()",
     "Sample pods and exports to build against · replayKit(), kitDownload()",
     "Publishing a pod for a browser · answersToPublish(), samplesToPublish()",
+    "Finding a hospital to connect to · directoryOf(), searchDirectory(), TEST_DIRECTORY",
+    "Signing a person in to a hospital · connect(), loopbackSignIn()",
+    "Reading what a hospital's server says of itself · serverReport(), connectFiles()",
+    "Pulling a patient's records from a hospital · pull(), DEMO_PLAN",
+    "Pulling the C-CDA documents a hospital holds · pull()",
+    "Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()",
+    "Telling why a connection failed · ConnectionFailure",
     "Keeping reference tables up to date · tablesBeside(), tables.check()",
     "Starting from the tables the package carries · tables.start()",
     "Choosing an app's feeds and settings · configureTables(), cascade-runtime.json",
@@ -22,7 +29,6 @@
     "Reading what ClinVar says of a variant · tables.variantClassification(), pod.agreement()",
     "Asking a pod what the reference tables say of its records · pod.medicationClasses(), pod.panelResults(), pod.joinedBy()",
     "Reading only the rows a pod's codes find · tables.references()",
-    "Keeping reference tables up to date · tablesBeside(), tables.check()",
     "Tools a model reads a pod with · TOOLS",
     "Reading a folder of pods for the tools · podReads()",
     "Reading a whole pod in pages · ask tool",
@@ -71,9 +77,24 @@
       "aliases": ["answers", "answered", "answering"]
     },
     {
+      "term": "authorization code",
+      "definition": "the one-time code that arrives at the redirect URI from a sign-in, which `connect()` trades for the token.",
+      "aliases": ["authorization codes"]
+    },
+    {
       "term": "backed",
       "definition": "of an absence, borne out by what was looked through; an absence that is not comes back with `backed: false` and a `reason`.",
       "aliases": ["backs"]
+    },
+    {
+      "term": "Binary",
+      "definition": "FHIR's resource that wraps a file's bytes, base64-encoded."
+    },
+    {
+      "term": "brands bundle",
+      "definition": "the list of the hospitals that use a vendor's system, as the vendor publishes it in SMART's User-access Brands format: a FHIR Bundle of Organizations, each pointing to the endpoint its records are served from.",
+      "vocabulary": "https://hl7.org/fhir/smart-app-launch/brands.html",
+      "aliases": ["brands bundles"]
     },
     {
       "term": "builder",
@@ -83,6 +104,11 @@
     {
       "term": "C-CDA",
       "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
+    },
+    {
+      "term": "CapabilityStatement",
+      "definition": "FHIR's resource in which a server says what software it is and what it supports, served at `<FHIR base>/metadata`.",
+      "vocabulary": "https://hl7.org/fhir/R4/capabilitystatement.html"
     },
     {
       "term": "cell",
@@ -131,6 +157,12 @@
       "aliases": ["compact reads"]
     },
     {
+      "term": "connection",
+      "definition": "one sign-in of one person at one hospital's server. `connect()` returns it as a `Connection`, good for one pull; `pod.connect()` stores the pod's record of it.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ConnectToServer",
+      "aliases": ["connections"]
+    },
+    {
       "term": "current version",
       "definition": "of a series, the version a pod opened now is given: the newest one the app has kept.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#defaultTableVersion",
@@ -143,9 +175,25 @@
       "aliases": ["custodians"]
     },
     {
+      "term": "demo hospital",
+      "definition": "a pretend hospital with made-up patients, from the package cascade-sandbox, which an app or a test signs in to and pulls from with no account and no network; Cascade North and Cascade South are two.",
+      "aliases": ["demo hospitals"]
+    },
+    {
       "term": "Different",
       "definition": "a judgment that its members are separate things; it overrules a Same of the two.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Different"
+    },
+    {
+      "term": "directory",
+      "definition": "the list of hospitals an app offers a person to connect to: one row for each hospital, with its name, the vendor of its system, its FHIR base and the places it serves.",
+      "aliases": ["directories"]
+    },
+    {
+      "term": "DocumentReference",
+      "definition": "FHIR's resource for a document a hospital holds about a patient, such as a clinical note or a C-CDA document: it points to the document by URL, or carries it inline.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ClinicalNoteOrDocument",
+      "aliases": ["DocumentReferences"]
     },
     {
       "term": "download",
@@ -187,6 +235,12 @@
       "term": "FHIR",
       "definition": "Fast Healthcare Interoperability Resources: HL7's standard for health records as JSON.",
       "vocabulary": "https://hl7.org/fhir/R4/"
+    },
+    {
+      "term": "FHIR base",
+      "definition": "the URL of a hospital's FHIR server; each record there is at `<FHIR base>/<type>/<id>`.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#serverBaseUrl",
+      "aliases": ["FHIR bases"]
     },
     {
       "term": "field",
@@ -256,6 +310,10 @@
       "aliases": ["kits"]
     },
     {
+      "term": "launcher",
+      "definition": "the SMART Health IT launcher, `launch.smarthealthit.org`: a public test hospital on the internet, kept by the SMART project, which this project did not write."
+    },
+    {
       "term": "lens",
       "definition": "a choice of which judgments count when a question is answered: `everyday` is the default, and `export` is stricter, for records sent elsewhere.",
       "aliases": ["lenses"]
@@ -264,6 +322,10 @@
       "term": "lookup",
       "definition": "what the reference tables say about one code, such as its name.",
       "aliases": ["lookups"]
+    },
+    {
+      "term": "loopback",
+      "definition": "the machine's own network interface, `127.0.0.1`. An app with no server of its own gives a redirect URI there, and `loopbackSignIn()` listens on it for the hospital's redirect."
     },
     {
       "term": "map",
@@ -315,8 +377,23 @@
       "definition": "the dotted number by which a C-CDA document names a code system, such as `2.16.840.1.113883.6.1` for LOINC."
     },
     {
+      "term": "OperationOutcome",
+      "definition": "FHIR's resource for a server's warning or error message; it is no record of the patient."
+    },
+    {
       "term": "order of preference",
       "definition": "for a table kind, the series an app reads first when several hold a code, set as `preference`; a code's name comes from the first series in it that names the code."
+    },
+    {
+      "term": "Organization",
+      "definition": "FHIR's resource for a hospital, a clinic, a laboratory or another body that gives care.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Organization",
+      "aliases": ["Organizations"]
+    },
+    {
+      "term": "origin",
+      "definition": "the scheme, server name and port of a URL, such as `https://hospital.example`: what a browser treats as one site.",
+      "aliases": ["origins"]
     },
     {
       "term": "owner",
@@ -350,6 +427,16 @@
       "aliases": ["patients"]
     },
     {
+      "term": "PKCE",
+      "definition": "Proof Key for Code Exchange, RFC 7636: the part of a sign-in by which a public client shows, at the token exchange, that it is the app that began the sign-in. `connect()` always uses its S256 method.",
+      "vocabulary": "https://www.rfc-editor.org/rfc/rfc7636"
+    },
+    {
+      "term": "plan",
+      "definition": "what a pull asks a hospital for: a list of searches, each for one type of resource, and the types to read by id when a record names one that no search returned (`backfill`).",
+      "aliases": ["plans"]
+    },
+    {
       "term": "pod",
       "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
       "aliases": ["pods"]
@@ -371,6 +458,16 @@
       "definition": "one source's record of its patient, which the owner claims; `claimedProfiles` and `unclaimedProfiles` list them."
     },
     {
+      "term": "public client",
+      "definition": "an app that can keep no password of its own, as one that runs in a browser or on a person's own machine cannot; every app this package signs in is one.",
+      "aliases": ["public clients"]
+    },
+    {
+      "term": "pull",
+      "definition": "the records one patient has at one hospital, as `pull()` fetched them in one go, with the FHIR base they came from and when; also the fetching itself.",
+      "aliases": ["pulls", "pulled", "pulling"]
+    },
+    {
       "term": "record",
       "definition": "one thing said about a person's health, such as an allergy, a medication or a lab result.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Record",
@@ -378,8 +475,13 @@
     },
     {
       "term": "recorded date",
-      "definition": "when a record was written down, as against when the thing it records happened: a C-CDA record's author time, a diagnostic report's issue time.",
+      "definition": "when a record was written down, as against when the thing it records happened: a C-CDA record's author time, a report's issue time.",
       "aliases": ["recorded dates"]
+    },
+    {
+      "term": "redirect URI",
+      "definition": "the app's own URL to which a hospital sends the person's browser when the sign-in is over.",
+      "aliases": ["redirect URIs"]
     },
     {
       "term": "reference range",
@@ -402,6 +504,11 @@
       "definition": "on a call's result, why a rule turned the call down; a refused call wrote nothing."
     },
     {
+      "term": "registration",
+      "definition": "who the app is to a hospital's vendor: its client id, which is the name the vendor knows it by, its redirect URI, and the scopes it asks for, which say what it may read.",
+      "aliases": ["registrations"]
+    },
+    {
       "term": "reply",
       "definition": "a model's answer to a person's question about their records, as JSON.",
       "aliases": ["replies"]
@@ -413,7 +520,7 @@
     },
     {
       "term": "report",
-      "definition": "one laboratory's classification of one of a person's variants, as a pod holds it; `pod.agreement()` compares each with ClinVar.",
+      "definition": "one laboratory's classification of one of a person's variants, as a pod holds it; `pod.agreement()` compares each with ClinVar. (A hospital server's `serverReport()` is another thing: what the server says of itself.)",
       "aliases": ["reports"]
     },
     {
@@ -459,7 +566,7 @@
     },
     {
       "term": "search",
-      "definition": "to find the codes of a series whose name holds the text asked, as `tables.search()` does, reading the series' search lists, a page of codes at a time.",
+      "definition": "one request to a hospital for a patient's records of one type, such as Condition; a plan lists them, and a hospital may answer a search a page at a time. (Of the reference tables, to search is to find the codes of a series whose name holds the text asked, as `tables.search()` does, a page at a time.)",
       "aliases": ["searches", "searched"]
     },
     {
@@ -476,6 +583,20 @@
       "term": "series",
       "definition": "one of the reference tables across its versions, such as RxNorm's product ingredients.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
+    },
+    {
+      "term": "signal",
+      "definition": "the AbortSignal an app passes to connect() or pull() and aborts to stop it.",
+      "aliases": ["signals"]
+    },
+    {
+      "term": "SMART configuration",
+      "definition": "what a hospital's server publishes at `<FHIR base>/.well-known/smart-configuration`: where its sign-in page and its token exchange are, and what they support."
+    },
+    {
+      "term": "SMART on FHIR",
+      "definition": "the standard by which an app signs a person in to a hospital and is then let read that person's records: OAuth 2.0 as HL7's SMART App Launch profiles it for FHIR servers.",
+      "vocabulary": "https://hl7.org/fhir/smart-app-launch/"
     },
     {
       "term": "snapshot",
@@ -548,6 +669,15 @@
       "definition": "codes, words, a day and a kind of record that the caller holds an absence to as well as the absence's own, passed as `tied`; the evals take them from their answer key."
     },
     {
+      "term": "token",
+      "definition": "the access token a hospital issues when a person signs in: the key the package sends with each request for that person's records. `connect()` keeps it where the app's code cannot read it.",
+      "aliases": ["tokens", "access token"]
+    },
+    {
+      "term": "token exchange",
+      "definition": "the request in which `connect()` trades the authorization code for the token."
+    },
+    {
       "term": "tool",
       "definition": "a function a model may call: a name, a description, a JSON Schema for its input, and the code that runs it.",
       "aliases": ["tools"]
@@ -613,9 +743,13 @@
   ],
   "shaped": [
     "citations.test.ts",
+    "connect.test.ts",
+    "directory.test.ts",
+    "launcher-sandbox.test.ts",
     "outcomes.test.ts",
     "pod-tools.test.ts",
     "pod.test.ts",
+    "pull.test.ts",
     "reply.test.ts",
     "rowCache.test.ts",
     "tables.test.ts",
@@ -624,6 +758,9 @@
     "variants.test.ts"
   ],
   "build": [
+    "The launcher check, when the launcher itself is down",
+    "The launcher check, when the launcher responds",
+    "The launcher check, when the runtime's failure is not one the launcher's silence explains",
     "cascade-runtime/tools in a browser bundle",
     "Row files kept between builds of the package",
     "Starter copies of the reference tables, as the package is built with them"

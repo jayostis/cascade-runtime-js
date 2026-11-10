@@ -96,7 +96,7 @@ function endpoint(
   const failure = (why: string) =>
     new ConnectionFailure("hospital-error", `${origin}'s discovery ${why}`, {
       origin,
-      resourceType: "discovery",
+      askedFor: "discovery",
     });
   if (typeof value !== "string") throw failure(`names no ${name}`);
   let url: URL;
@@ -155,7 +155,7 @@ export async function connect(
     throw new ConnectionFailure(
       "hospital-error",
       `${origin} answered ${discovered.status} to discovery`,
-      { origin, status: discovered.status, resourceType: "discovery" },
+      { origin, status: discovered.status, askedFor: "discovery" },
     );
   const configuration = parsed(discovered, discoveryUrl, "discovery");
   const authorizeEndpoint = endpoint(
@@ -175,7 +175,7 @@ export async function connect(
     throw new ConnectionFailure(
       "hospital-error",
       `${origin}'s discovery does not offer S256 for PKCE`,
-      { origin, resourceType: "discovery" },
+      { origin, askedFor: "discovery" },
     );
 
   const verifier = random(32);
@@ -228,7 +228,7 @@ export async function connect(
     throw new ConnectionFailure(
       "hospital-error",
       `${tokenOrigin} refused the token exchange with ${exchanged.status}${error}`,
-      { origin: tokenOrigin, status: exchanged.status, resourceType: "token" },
+      { origin: tokenOrigin, status: exchanged.status, askedFor: "token" },
     );
   }
   const answer = parsed(exchanged, tokenEndpoint, "token");
@@ -237,7 +237,7 @@ export async function connect(
     new ConnectionFailure(
       "hospital-error",
       `${tokenOrigin}'s token response has no ${field}`,
-      { origin: tokenOrigin, status: exchanged.status, resourceType: "token" },
+      { origin: tokenOrigin, status: exchanged.status, askedFor: "token" },
     );
   if (typeof token !== "string" || token === "") throw missing("access_token");
   if (typeof type !== "string" || type.toLowerCase() !== "bearer")
@@ -247,7 +247,7 @@ export async function connect(
     throw new ConnectionFailure(
       "hospital-error",
       `${tokenOrigin}'s token response names a patient by no FHIR id`,
-      { origin: tokenOrigin, status: exchanged.status, resourceType: "token" },
+      { origin: tokenOrigin, status: exchanged.status, askedFor: "token" },
     );
   const expiresIn = answer.expires_in;
   const connection: Connection = Object.freeze({
@@ -342,7 +342,7 @@ export async function serverReport(
     throw new ConnectionFailure(
       "hospital-error",
       `${url.origin} answered ${answer.status} to metadata`,
-      { origin: url.origin, status: answer.status, resourceType: "metadata" },
+      { origin: url.origin, status: answer.status, askedFor: "metadata" },
     );
   return {
     fhirBase: connection.fhirBase,
