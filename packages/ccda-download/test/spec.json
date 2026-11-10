@@ -1,0 +1,117 @@
+{
+  "about": "The importer for a C-CDA document downloaded from a patient portal: it hands the file on whole for an import, with what the document's header says. `pod.look()` and `pod.import()` call it; an app does not.",
+  "capabilities": [
+    "Recognising a downloaded C-CDA document · ccdaDownload.documents(), isCdaDocument()",
+    "Saying what a C-CDA document's header states · CcdaDocument.facts()",
+    "Listing a C-CDA document's entries before an import · ccdaDownload.index(), dateOrUtcTimeOf()",
+    "Finding whose records a C-CDA document holds · scopesOf()"
+  ],
+  "glossary": [
+    {
+      "term": "adapter",
+      "definition": "the program that converts an export into records; `import` loads it on first use.",
+      "aliases": ["adapters"]
+    },
+    {
+      "term": "C-CDA",
+      "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
+    },
+    {
+      "term": "CDA",
+      "definition": "Clinical Document Architecture: HL7's XML standard for clinical documents, whose root element is `ClinicalDocument`. C-CDA is the set of CDA templates US patient portals use."
+    },
+    {
+      "term": "CDA time",
+      "definition": "a time as CDA writes it: `YYYYMMDD`, then optionally hours, minutes and seconds, then optionally an offset from UTC, such as `20250403083000-0400`.",
+      "aliases": ["CDA times"]
+    },
+    {
+      "term": "custodian",
+      "definition": "the organisation that keeps a document and answers for its true copy.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#CustodianRole",
+      "aliases": ["custodians"]
+    },
+    {
+      "term": "document",
+      "definition": "one file that an import takes whole and gives to an adapter: a FHIR resource or Bundle in JSON, or a C-CDA document. The pod keeps its bytes.",
+      "aliases": ["documents"]
+    },
+    {
+      "term": "download",
+      "definition": "a file of a person's records as a hospital's server or portal gave it, before any import: FHIR resources in JSON, or a C-CDA document.",
+      "aliases": ["downloads"]
+    },
+    {
+      "term": "export",
+      "definition": "what a person downloads of their own records: an Apple Health export, or a C-CDA document from a patient portal.",
+      "aliases": ["exports", "exported"]
+    },
+    {
+      "term": "id",
+      "definition": "in CDA, an identifier in two parts: a `root`, an OID or a UUID that says who issued it, and an optional `extension`, the value that issuer gave.",
+      "aliases": ["ids"]
+    },
+    {
+      "term": "importer",
+      "definition": "the part of the runtime that knows one form of export: it says which files are its documents and what the export states about each. `pod.look()` and `pod.import()` try each importer in turn.",
+      "aliases": ["importers"]
+    },
+    {
+      "term": "index entry",
+      "definition": "one thing `index()` lists for `pod.look()` to count: something an import would bring, with its source's name, its kind or section, and when it was received, each only where the export states it.",
+      "aliases": ["index entries"]
+    },
+    {
+      "term": "media type",
+      "definition": "the standard name of a file's format, such as `application/fhir+json`; an import offers a document to the adapters of its media type.",
+      "aliases": ["media types"]
+    },
+    {
+      "term": "NPI",
+      "definition": "National Provider Identifier: the ten-digit number the US government gives each provider of health care; in CDA an id whose root is `2.16.840.1.113883.4.6`."
+    },
+    {
+      "term": "nullFlavor",
+      "definition": "CDA's attribute that says a value is absent and why, such as `UNK` for unknown; an id that carries one identifies nothing."
+    },
+    {
+      "term": "OID",
+      "definition": "the dotted number by which a C-CDA document names a code system, such as `2.16.840.1.113883.6.1` for LOINC."
+    },
+    {
+      "term": "patient",
+      "definition": "the person an export's records are about, as that source knows them, before anyone has said who they are in the pod.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#PatientProfile",
+      "aliases": ["patients"]
+    },
+    {
+      "term": "pod",
+      "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
+      "aliases": ["pods"]
+    },
+    {
+      "term": "record",
+      "definition": "one thing said about a person's health, such as an allergy, a medication or a lab result.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Record",
+      "aliases": ["records"]
+    },
+    {
+      "term": "scope",
+      "definition": "the two ids a record from a C-CDA document is named under: one of the document's custodian and one of its patient. Two downloads with the same scope give the same record the same name.",
+      "aliases": ["scopes"]
+    },
+    {
+      "term": "section",
+      "definition": "one titled part of a C-CDA document's body, such as Medications or Allergies, holding an `entry` element for each coded record.",
+      "aliases": ["sections"]
+    },
+    {
+      "term": "Turtle",
+      "definition": "a W3C text format for writing statements in the vocabulary's terms; `pod.enter()` and `pod.judge()` take it.",
+      "vocabulary": "https://www.w3.org/TR/turtle/"
+    }
+  ],
+  "shaped": ["importer.test.ts"],
+  "build": [],
+  "randomOrder": ["importer.test.ts"]
+}
