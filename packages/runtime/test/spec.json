@@ -20,7 +20,7 @@
     "Running a feature's examples on a runtime · runConformance()",
     "Checking a replayed kit · kitChecks(), shapeFaults(), snapshotFaults(), podAddressesIn()",
     "Checking a graph against the vocabulary's shapes · Shapes.read(), Shapes.results()",
-    "Reporting a conformance run · npm run conformance -- --report",
+    "Reporting a conformance run · npm run conformance -- --report <file>",
     "Writing a kit's saved output again · npm run kit:bridge",
     "Keeping one build of a pod across steps · CorePodOptions.build, CorePod.select()",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",

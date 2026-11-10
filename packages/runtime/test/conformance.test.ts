@@ -373,7 +373,7 @@ describe("Running a feature's examples on a runtime · runConformance()", () => 
  * is check 1 of a kit, run.
  * @rule runtime/the-kit.feature Check 1
  */
-describe("Reporting a conformance run · npm run conformance -- --report", () => {
+describe("Reporting a conformance run · npm run conformance -- --report <file>", () => {
   describe("given the report of one run over the vocabulary", () => {
     let outcomes: Map<string, Outcome[]>;
     /** Each version the report says the runtime was run with, by doap:name. */
