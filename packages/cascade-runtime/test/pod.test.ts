@@ -380,7 +380,7 @@ describe("Opening a pod · openPod()", () => {
     assert.notEqual(inMemory.address, fresh.address);
   });
 
-  it("names the pod's owner and every file under that address", async () => {
+  it("gives an owner and files that all lie under its address", async () => {
     assert.ok(fresh.owner.startsWith(fresh.address));
     const rows = await fresh.ask("pod/Which file states each thing");
     assert.ok(rows.length > 0);
@@ -823,7 +823,7 @@ describe("Asking a pod questions · pod.ask()", () => {
         assert.equal(typeof value, "string", column);
   });
 
-  it("runs the app's own SELECT under the lens named, or under `everyday` when none is named", async () => {
+  it("runs the app's own SELECT under the lens named, and returns none of the `export` lens's rows when none is named", async () => {
     const query = `SELECT ?s WHERE { GRAPH <urn:cascade:derived:export> { ?s ?p ?o } } LIMIT 1`;
     assert.equal((await alex.ask({ query }, { lens: "export" })).length, 1);
     assert.deepEqual(await alex.ask({ query }), []);
@@ -1748,7 +1748,7 @@ describe("Publishing a pod for a browser · answersToPublish(), samplesToPublish
       });
     });
 
-    it("returns every kit's name and title, whichever kits were asked for", async () => {
+    it("returns the name and title of every kit the vocabulary carries, when one kit is asked for", async () => {
       const carried = (
         await readdir(inKit("conformance"), { withFileTypes: true })
       )
@@ -1760,7 +1760,7 @@ describe("Publishing a pod for a browser · answersToPublish(), samplesToPublish
       assert.match(samples.kits.get("alex-rivera") ?? "", /Alex/);
     });
 
-    it("returns each sample as the pod's files, a list of them and one pack of them, beside its `answers.json`, `pod.json` and `lookups.json`", () => {
+    it("returns a kit's sample as the pod's files, a list of them and one pack of them, beside its `answers.json`, `pod.json` and `lookups.json`", () => {
       const text = (path: string): string =>
         new TextDecoder().decode(samples.files.get(path));
       const POD = "alex-rivera/pod/";
