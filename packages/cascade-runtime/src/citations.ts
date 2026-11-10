@@ -772,14 +772,14 @@ export async function checkRecordsAbsence(
   },
   tied?: Tie,
 ): Promise<Backing> {
-  const { files: all, read, text } = downloads;
+  const { files, read, text } = downloads;
   const match = heldTo(absence, tied);
   if (!lookedFor(absence))
     return { backed: false, reason: "nothing to look for" };
   if (absence.coverage.trim() === "")
     return { backed: false, reason: "no coverage" };
-  const sources = absence.sources ?? all;
-  const left = all.filter((file) => !sources.includes(file));
+  const sources = absence.sources ?? files;
+  const left = files.filter((file) => !sources.includes(file));
   if (left.length > 0)
     return { backed: false, reason: `sources leave out: ${left.join(", ")}` };
   const unread = sources.filter((file) => !read.includes(file));
