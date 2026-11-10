@@ -425,7 +425,7 @@ describe("Reading what ClinVar says of a variant · tables.variantClassification
       );
     });
 
-    it("reads the ID alone when the variant has both, returning `not found` for an ID on no row though its expression is on one", async () => {
+    it("returns `not found` for an ID on no row, though the variant's expression is on one", async () => {
       assert.equal(
         await found({
           gene: "MLH1",

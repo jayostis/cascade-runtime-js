@@ -1959,7 +1959,7 @@ describe("Starting from the tables the package carries · tables.start()", () =>
       assert.ok(listings.most <= 2, `${listings.most} at a time`);
     });
 
-    it("makes none at a check, and reads none", () => {
+    it("touches no search list at a check", () => {
       assert.deepEqual(afterCheck, { read: 0, listed: listings.current });
     });
 
@@ -3557,7 +3557,7 @@ describe("Reading only the rows a pod's codes find · tables.references()", () =
         .filter((path) => path.startsWith(stem));
     });
 
-    it("returns the code's rows, reading the version's rows once and no index", () => {
+    it("returns the code's rows from one read of the version's rows", () => {
       assert.deepEqual(afterFirst.subjects, [cvx141]);
       assert.deepEqual(afterFirst.read, [`${fileStem(namesVersion())}.ttl`]);
     });

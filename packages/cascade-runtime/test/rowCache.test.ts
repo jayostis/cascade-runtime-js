@@ -133,8 +133,11 @@ describe("Row files kept between builds of the package", () => {
       await rm(folder, { recursive: true, force: true });
     });
 
-    it("drops a row file no read has touched for 30 days, and keeps one touched since", () => {
+    it("drops a row file no read has touched for 30 days", () => {
       assert.ok(!kept.includes(unread), "a file unread for 31 days");
+    });
+
+    it("keeps a row file a read has touched within 30 days", () => {
       assert.ok(kept.includes(recent), "a file unread for 29 days");
     });
 
