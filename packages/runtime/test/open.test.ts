@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { CorePod } from "../src/core-pod.js";
-import { type Files, MemoryFiles } from "../src/files.js";
+import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { References } from "../src/references.js";
@@ -9,203 +9,19 @@ import { replay } from "../src/replay.js";
 import { randomId } from "../src/ids.js";
 import { ntriples } from "../src/rdf.js";
 import { CASCADE } from "../src/step.js";
-import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
+import {
+  layout,
+  replayed,
+  RUNTIME,
+  storyFrom,
+  vocabulary,
+} from "./vocabulary.js";
 
 const FEATURE = "runtime/opening.feature";
 const JUDGMENT = "https://ns.cascadeprotocol.org/cascade#Judgment";
 const ASSERTION =
   "https://ns.cascadeprotocol.org/cascade#MatcherJudgmentAssertion";
-const MATCHER_RUN = "https://ns.cascadeprotocol.org/cascade#MatcherRun";
 const newStore = (): OxigraphStore => new OxigraphStore();
-
-/** The example replayed, its story's files those `source` gives for its folder, and otherwise the vocabulary's. */
-async function replayed(
-  example: string,
-  source?: (files: Files, folder: string) => Promise<Files>,
-  feature = FEATURE,
-) {
-  const files = await vocabulary();
-  const { story, folder } = await storyFrom(feature, example);
-  const pod = new MemoryFiles(story.address);
-  const { steps } = await replay({
-    runtime: RUNTIME,
-    story,
-    source: source === undefined ? files : await source(files, folder),
-    vocabulary: files,
-    folder,
-    title: "",
-    pod,
-    newStore,
-    layout: await layout(),
-  });
-  return { pod, folder, opened: steps.at(-1) };
-}
-
-test("an open writes its judgments first, then the descriptions of the versions it adopts, oldest first, and its run's file last (W1)", async () => {
-  const { pod, opened } = await replayed(
-    "adopting files no Same the adopted rows still join, and a Same of each pair only they join",
-  );
-  const kinds: string[] = [];
-  for (const path of opened?.wrote ?? []) {
-    const { triples } = await parseGraph(
-      (await pod.read(path)) ?? new Uint8Array(),
-      pod.iri + path,
-      newStore,
-    );
-    const version = triples.find(
-      ([, predicate]) => predicate.value === "http://purl.org/pav/version",
-    );
-    kinds.push(
-      triples.some(([, , object]) => object.value === MATCHER_RUN)
-        ? "run"
-        : triples.some(([, , object]) => object.value === JUDGMENT)
-          ? "judgment"
-          : triples.some(([, , object]) => object.value === ASSERTION)
-            ? "assertion"
-            : `version ${version?.[2].value ?? "?"}`,
-    );
-  }
-  assert.deepEqual(kinds, [
-    "judgment",
-    "assertion",
-    "version 2",
-    "version 3",
-    "run",
-  ]);
-});
-
-test("an open of a pod on series the tables lack writes nothing of them and names their versions as unheld (O2)", async () => {
-  const { folder, opened } = await replayed(
-    "a pod made on the vector tables, opened with an app's, is judged by the app's tables and writes nothing of the vector tables",
-  );
-  const vector = await References.of(
-    await vocabulary(),
-    `${folder}/references/`,
-    newStore,
-  );
-  const used = [
-    await vector.ruleList(),
-    ...vector.seriesOfKind(`${CASCADE}VaccineGroups`),
-  ].map((series) => vector.fallback(series));
-  assert.deepEqual(opened?.unheld, used.sort());
-  assert.equal(opened?.refused, undefined);
-});
-
-test("an open whose tables list another version of the pod's rule list matches nothing and names the pod's as unheld (O2)", async () => {
-  const rules = "f32ebeea-4ed7-4da7-b08c-031dc619538e";
-  const other = "0b6f2c1e-9d4a-4e7b-8c3f-5a1d2e6b7f90";
-  const { opened } = await replayed(
-    "adopting describes each version after the pod's up to the adopted one",
-    async (files, folder) => {
-      const source = new MemoryFiles(files.iri);
-      for (const path of await files.list(`${folder}/`)) {
-        const bytes = (await files.read(path)) ?? new Uint8Array();
-        await source.write(
-          path,
-          path === `${folder}/tables/app-later/references.ttl`
-            ? new TextEncoder().encode(
-                new TextDecoder().decode(bytes).replaceAll(rules, other),
-              )
-            : bytes,
-        );
-      }
-      await source.write(
-        `${folder}/tables/app-later/${other}.ttl`,
-        (await files.read(`runtime/rule-list/${rules}.ttl`)) ??
-          new Uint8Array(),
-      );
-      return source;
-    },
-  );
-  assert.equal(opened?.refused, undefined);
-  assert.deepEqual(opened?.unheld, [`urn:uuid:${rules}`]);
-});
-
-test("an open on a clock that moves between judgments writes nothing for a matcher judgment its recheck and its new joins both reach, asserted with the query the adopted rule list runs (O1, M9)", async () => {
-  const files = await vocabulary();
-  const { story, folder } = await storyFrom(
-    FEATURE,
-    "a rule list the pod names that M11 now refuses joins nothing, so the adopted rule list judges every pair, and finds each matcher judgment asserted with the query it runs",
-  );
-  const pod = new MemoryFiles(story.address);
-  await replay({
-    runtime: RUNTIME,
-    story: { ...story, steps: story.steps.slice(0, -1) },
-    source: files,
-    vocabulary: files,
-    folder,
-    title: "",
-    pod,
-    newStore,
-    layout: await layout(),
-  });
-  const tables = (name: string) =>
-    References.of(files, `${folder}/tables/${name}/`, newStore, files);
-  let tick = Date.parse("2026-07-03T09:00:00Z");
-  const reopened = new CorePod({
-    runtime: RUNTIME,
-    pod,
-    address: story.address,
-    subject: story.subject,
-    title: "",
-    vocabulary: files,
-    layout: await layout(),
-    newStore,
-    time: { newId: randomId, now: () => new Date(tick++).toISOString() },
-    importers: [],
-    references: () => tables("app"),
-  });
-  const opened = await reopened.open(await tables("app-new-rules"));
-  assert.equal(opened.refused, undefined);
-  const judgments = [];
-  for (const path of opened.wrote) {
-    const { triples } = await parseGraph(
-      (await pod.read(path)) ?? new Uint8Array(),
-      pod.iri + path,
-      newStore,
-    );
-    if (
-      triples.some(
-        ([, , object]) =>
-          object.value === JUDGMENT || object.value === ASSERTION,
-      )
-    )
-      judgments.push(path);
-  }
-  assert.deepEqual(judgments, []);
-});
-
-test("a refused open leaves the pod matching with the tables it had", async () => {
-  const files = await vocabulary();
-  const { story, folder } = await storyFrom(
-    FEATURE,
-    "opening again with the same tables writes nothing",
-  );
-  const app = await References.of(
-    files,
-    `${folder}/tables/app/`,
-    newStore,
-    files,
-  );
-  const empty = new MemoryFiles("https://tables.example/");
-  await empty.write("references.ttl", new Uint8Array());
-  const pod = new CorePod({
-    runtime: RUNTIME,
-    pod: new MemoryFiles(story.address),
-    address: story.address,
-    subject: story.subject,
-    title: "",
-    vocabulary: files,
-    layout: await layout(),
-    newStore,
-    time: { newId: randomId, now: () => "2026-07-01T09:00:00Z" },
-    importers: [],
-    references: () => Promise.resolve(app),
-  });
-  await pod.create();
-  assert.ok((await pod.open(await References.of(empty, "", newStore))).refused);
-  assert.equal((await pod.match()).refused, undefined);
-});
 
 const VARIANTS = "urn:uuid:3f0c1b52-6a4e-4d8e-9b1f-2c7a5e9d4b10";
 const [V1, V2, V3] = [
@@ -343,110 +159,404 @@ async function justifications(
   return found;
 }
 
-test("an open judges a pair its adopted version joins on one row as new though the version it replaces holds that expression on two, and reads neither version's rows with the other's (O1)", async () => {
-  const before: [number, string][] = [
-    [90011, "NM_000249.3:c.2042C>T"],
-    [90099, "NM_000249.3:c.2042C>T"],
-  ];
-  const tables = await variantTables([[V1, before]]);
-  const { pod, matched } = await variantPod(
-    tables,
-    await described(tables, [VARIANTS, V1, await tables.ruleList(), RULES_10]),
-  );
-  assert.deepEqual(await justifications(pod, matched.wrote), []);
-  const opened = await pod.open(
-    await variantTables([
-      [V1, before],
-      [
-        V2,
-        [
-          [90011, "NM_000249.3:c.2042C>T"],
-          [90099, "NM_000249.3:c.9999A>G"],
-        ],
-      ],
-    ]),
-  );
-  assert.deepEqual(await justifications(pod, opened.wrote), [SAME_VARIATION]);
-});
+/** The files under `prefix` that `wrote` names, as `[path, text]`. */
+async function writtenUnder(
+  done: Awaited<ReturnType<typeof replayed>>,
+  prefix: string,
+): Promise<[string, string][]> {
+  const found: [string, string][] = [];
+  for (const path of done.steps.at(-1)?.wrote ?? [])
+    if (path.startsWith(prefix))
+      found.push([path, new TextDecoder().decode(await done.pod.read(path))]);
+  return found;
+}
 
-test("a pod holding the description of a version newer than the tables' current one is matched by the current one's rows (M13)", async () => {
-  const newer = await variantTables([
-    [V2, [[90011, "NM_000249.3:c.2042C>T"]]],
-    [V3, []],
-  ]);
-  const { pod, matched } = await variantPod(
-    await variantTables([[V2, [[90011, "NM_000249.3:c.2042C>T"]]]]),
-    await described(newer, [V3]),
-  );
-  assert.deepEqual(await justifications(pod, matched.wrote), [SAME_VARIATION]);
-});
+/**
+ * An app opens a pod with the reference tables it carries, which may be newer, older or other than those the pod was last
+ * matched with. `open` adopts what the tables hold of the pod's series, and returns in `unheld` the versions they do not
+ * hold, so an app can say a newer app has been here. `select(query)` takes a SPARQL SELECT and returns the rows it gives
+ * over the pod's dataset.
+ * @rule runtime/opening.feature O1
+ * @rule runtime/opening.feature O2
+ * @rule runtime/matcher.feature M9
+ * @rule runtime/matcher.feature M13
+ * @rule runtime/matcher.feature M18
+ * @rule runtime/naming.feature N15
+ */
+describe("Opening a pod with tables other than the ones it was matched with · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()", () => {
+  describe("given tables that lack a series the pod was matched with", () => {
+    let unheld: readonly string[] | undefined;
+    let refused: string | undefined;
+    let opened: string | undefined;
+    let used: string[];
 
-test("what the pod answers after a match and an open still holds the pod's reference descriptions, which the matcher leaves out of its comparisons", async () => {
-  const tables = await variantTables([
-    [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
-  ]);
-  const { pod } = await variantPod(tables, await described(tables, [V1]));
-  const versions = async () =>
-    (
-      await pod.select(
-        `SELECT ?version WHERE { ?version <http://www.w3.org/ns/prov#specializationOf> <${VARIANTS}> }`,
-      )
-    ).rows.map((row) => row.get("version")?.value);
-  assert.deepEqual(await versions(), [V1]);
-  await pod.open(
-    await variantTables([
-      [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
-      [V2, [[90011, "NM_000249.3:c.2042C>T"]]],
-    ]),
-  );
-  assert.deepEqual((await versions()).sort(), [V1, V2]);
-});
+    before(async () => {
+      const { folder, steps } = await replayed(
+        FEATURE,
+        "a pod made on the vector tables, opened with an app's, is judged by the app's tables and writes nothing of the vector tables",
+      );
+      const last = steps.at(-1);
+      opened = last?.step.happened.kind;
+      unheld = last?.unheld;
+      refused = last?.refused;
+      const vector = await References.of(
+        await vocabulary(),
+        `${folder}/references/`,
+        newStore,
+      );
+      used = [
+        await vector.ruleList(),
+        ...vector.seriesOfKind(`${CASCADE}VaccineGroups`),
+      ]
+        .map((series) => vector.fallback(series))
+        .sort();
+    });
 
-test("two writers on one release write its retractions under one name with one content, before the open's run (N15)", async () => {
-  const runs = await Promise.all(
-    [0, 1].map(() =>
-      replayed(
-        "adopting a release that declares R4 wrong retracts the assertions of R4's two matcher judgments before the open's matcher runs, and neither matcher judgment counts nor lapses",
-        undefined,
-        "runtime/naming.feature",
-      ),
-    ),
-  );
-  const [first, second] = await Promise.all(
-    runs.map(async ({ pod, opened }) => {
-      const retractions: [string, string][] = [];
-      for (const path of opened?.wrote ?? [])
-        if (path.startsWith("judgments/retractions/"))
-          retractions.push([
-            path,
-            new TextDecoder().decode(await pod.read(path)),
-          ]);
-      return retractions;
-    }),
-  );
-  assert.equal(first?.length, 2);
-  assert.deepEqual(first, second);
-});
+    it("returns the pod's versions of those series in `unheld`", () => {
+      assert.deepEqual(unheld, used);
+    });
 
-test("two writers' first runs under a rule list version file its one finding of the matcher judgments it no longer reaches under one name with one content (M18)", async () => {
-  const runs = await Promise.all(
-    [0, 1].map(() =>
-      replayed(
-        "opening a pod matched under version 6 with version 7 files one finding naming the matcher judgments of the rule version 7 changed that it did not file again",
-        undefined,
-        "runtime/matcher.feature",
-      ),
-    ),
-  );
-  const [first, second] = await Promise.all(
-    runs.map(async ({ pod, opened }) => {
-      const findings: [string, string][] = [];
-      for (const path of opened?.wrote ?? [])
-        if (path.startsWith("findings/"))
-          findings.push([path, new TextDecoder().decode(await pod.read(path))]);
-      return findings;
-    }),
-  );
-  assert.equal(first?.length, 1);
-  assert.deepEqual(first, second);
+    it("refuses nothing", () => {
+      assert.equal(opened, "open");
+      assert.equal(refused, undefined);
+    });
+  });
+
+  describe("given tables that list another version of the pod's rule list, on no line with it", () => {
+    const rules = "f32ebeea-4ed7-4da7-b08c-031dc619538e";
+    const other = "0b6f2c1e-9d4a-4e7b-8c3f-5a1d2e6b7f90";
+    let unheld: readonly string[] | undefined;
+    let refused: string | undefined;
+    let opened: string | undefined;
+
+    before(async () => {
+      const { steps } = await replayed(
+        FEATURE,
+        "adopting describes each version after the pod's up to the adopted one",
+        {
+          source: async (files, folder) => {
+            const source = new MemoryFiles(files.iri);
+            for (const path of await files.list(`${folder}/`)) {
+              const bytes = (await files.read(path)) ?? new Uint8Array();
+              await source.write(
+                path,
+                path === `${folder}/tables/app-later/references.ttl`
+                  ? new TextEncoder().encode(
+                      new TextDecoder().decode(bytes).replaceAll(rules, other),
+                    )
+                  : bytes,
+              );
+            }
+            await source.write(
+              `${folder}/tables/app-later/${other}.ttl`,
+              (await files.read(`runtime/rule-list/${rules}.ttl`)) ??
+                new Uint8Array(),
+            );
+            return source;
+          },
+        },
+      );
+      unheld = steps.at(-1)?.unheld;
+      refused = steps.at(-1)?.refused;
+      opened = steps.at(-1)?.step.happened.kind;
+    });
+
+    it("returns the pod's version in `unheld`", () => {
+      assert.deepEqual(unheld, [`urn:uuid:${rules}`]);
+    });
+
+    it("refuses nothing", () => {
+      assert.equal(opened, "open");
+      assert.equal(refused, undefined);
+    });
+  });
+
+  describe("CorePod.unheldTableVersions()", () => {
+    it("returns the version a pod names of a series when the tables hold only the version it revises", async () => {
+      const pod = new MemoryFiles("https://pod.example/");
+      await pod.write(
+        "judgments/matcher-judgment.ttl",
+        new TextEncoder()
+          .encode(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix pav: <http://purl.org/pav/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+<urn:x:map> a cascade:ReferenceSeries ; cascade:tableKind cascade:SubstanceIngredients .
+<urn:x:map-1> prov:specializationOf <urn:x:map> ; pav:version "1" .
+<urn:x:map-2> prov:specializationOf <urn:x:map> ; pav:version "2" ; prov:wasRevisionOf <urn:x:map-1> .
+<urn:x:matcher-judgment> a cascade:Judgment ; cascade:verdict cascade:Same ; prov:wasAttributedTo cascade:CascadeMatcher ;
+    cascade:matcherRule cascade:SameMappedCodeRule ; prov:wasDerivedFrom <urn:x:map-1> ; prov:hadMember <urn:x:a> , <urn:x:b> .
+<urn:x:assertion> a cascade:MatcherJudgmentAssertion ; cascade:assertedJudgment <urn:x:matcher-judgment> .
+`),
+      );
+      const held = {
+        seriesOf: (version: string) =>
+          version === "urn:x:map-1" ? "urn:x:map" : undefined,
+      } as unknown as References;
+      const core = new CorePod({
+        runtime: RUNTIME,
+        pod,
+        address: "https://pod.example/",
+        subject: "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53",
+        title: "",
+        vocabulary: await vocabulary(),
+        layout: await layout(),
+        newStore,
+        time: { newId: randomId, now: () => "2026-02-01T08:00:00Z" },
+        importers: [],
+        references: () => Promise.resolve(held),
+      });
+      assert.deepEqual(await core.unheldTableVersions(), ["urn:x:map-2"]);
+    });
+  });
+
+  describe("given tables with no rule list", () => {
+    let refused: string | undefined;
+    let matched: string | undefined;
+
+    before(async () => {
+      const files = await vocabulary();
+      const { story, folder } = await storyFrom(
+        FEATURE,
+        "opening again with the same tables writes nothing",
+      );
+      const app = await References.of(
+        files,
+        `${folder}/tables/app/`,
+        newStore,
+        files,
+      );
+      const empty = new MemoryFiles("https://tables.example/");
+      await empty.write("references.ttl", new Uint8Array());
+      const pod = new CorePod({
+        runtime: RUNTIME,
+        pod: new MemoryFiles(story.address),
+        address: story.address,
+        subject: story.subject,
+        title: "",
+        vocabulary: files,
+        layout: await layout(),
+        newStore,
+        time: { newId: randomId, now: () => "2026-07-01T09:00:00Z" },
+        importers: [],
+        references: () => Promise.resolve(app),
+      });
+      await pod.create();
+      refused = (await pod.open(await References.of(empty, "", newStore)))
+        .refused;
+      matched = (await pod.match()).refused;
+    });
+
+    it("returns `refused`", () => {
+      assert.ok(refused);
+    });
+
+    it("leaves the pod able to run its matcher with the tables it had", () => {
+      assert.equal(matched, undefined);
+    });
+  });
+
+  describe("when the clock moves between an open's judgments", () => {
+    let refused: string | undefined;
+    let wrote: number;
+    let judgments: string[];
+
+    before(async () => {
+      const files = await vocabulary();
+      const { story, folder } = await storyFrom(
+        FEATURE,
+        "a rule list the pod names that M11 now refuses joins nothing, so the adopted rule list judges every pair, and finds each matcher judgment asserted with the query it runs",
+      );
+      const pod = new MemoryFiles(story.address);
+      await replay({
+        runtime: RUNTIME,
+        story: { ...story, steps: story.steps.slice(0, -1) },
+        source: files,
+        vocabulary: files,
+        folder,
+        title: "",
+        pod,
+        newStore,
+        layout: await layout(),
+      });
+      const tables = (name: string) =>
+        References.of(files, `${folder}/tables/${name}/`, newStore, files);
+      let tick = Date.parse("2026-07-03T09:00:00Z");
+      const reopened = new CorePod({
+        runtime: RUNTIME,
+        pod,
+        address: story.address,
+        subject: story.subject,
+        title: "",
+        vocabulary: files,
+        layout: await layout(),
+        newStore,
+        time: { newId: randomId, now: () => new Date(tick++).toISOString() },
+        importers: [],
+        references: () => tables("app"),
+      });
+      const opened = await reopened.open(await tables("app-new-rules"));
+      refused = opened.refused;
+      wrote = opened.wrote.length;
+      judgments = [];
+      for (const path of opened.wrote) {
+        const { triples } = await parseGraph(
+          (await pod.read(path)) ?? new Uint8Array(),
+          pod.iri + path,
+          newStore,
+        );
+        if (
+          triples.some(
+            ([, , object]) =>
+              object.value === JUDGMENT || object.value === ASSERTION,
+          )
+        )
+          judgments.push(path);
+      }
+    });
+
+    it("writes no judgment and no assertion for a matcher judgment the pod already holds", () => {
+      assert.equal(refused, undefined);
+      assert.ok(wrote > 0);
+      assert.deepEqual(judgments, []);
+    });
+  });
+
+  describe("given an adopted version that joins a pair the version before it did not", () => {
+    let atMatch: string[];
+    let matchRefused: string | undefined;
+    let atOpen: string[];
+
+    before(async () => {
+      const v1Rows: [number, string][] = [
+        [90011, "NM_000249.3:c.2042C>T"],
+        [90099, "NM_000249.3:c.2042C>T"],
+      ];
+      const tables = await variantTables([[V1, v1Rows]]);
+      const { pod, matched } = await variantPod(
+        tables,
+        await described(tables, [
+          VARIANTS,
+          V1,
+          await tables.ruleList(),
+          RULES_10,
+        ]),
+      );
+      atMatch = await justifications(pod, matched.wrote);
+      matchRefused = matched.refused;
+      const opened = await pod.open(
+        await variantTables([
+          [V1, v1Rows],
+          [
+            V2,
+            [
+              [90011, "NM_000249.3:c.2042C>T"],
+              [90099, "NM_000249.3:c.9999A>G"],
+            ],
+          ],
+        ]),
+      );
+      atOpen = await justifications(pod, opened.wrote);
+    });
+
+    it("files no Same of the pair before the open", () => {
+      assert.equal(matchRefused, undefined);
+      assert.deepEqual(atMatch, []);
+    });
+
+    it("files the pair's Same at the open, by the adopted version's rows alone", () => {
+      assert.deepEqual(atOpen, [SAME_VARIATION]);
+    });
+  });
+
+  describe("given a pod that holds the description of a version newer than the tables' current one", () => {
+    it("matches by the rows of the tables' current version", async () => {
+      const newer = await variantTables([
+        [V2, [[90011, "NM_000249.3:c.2042C>T"]]],
+        [V3, []],
+      ]);
+      const { pod, matched } = await variantPod(
+        await variantTables([[V2, [[90011, "NM_000249.3:c.2042C>T"]]]]),
+        await described(newer, [V3]),
+      );
+      assert.deepEqual(await justifications(pod, matched.wrote), [
+        SAME_VARIATION,
+      ]);
+    });
+  });
+
+  describe("CorePod.select()", () => {
+    let afterMatch: (string | undefined)[];
+    let afterOpen: (string | undefined)[];
+
+    before(async () => {
+      const tables = await variantTables([
+        [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
+      ]);
+      const { pod } = await variantPod(tables, await described(tables, [V1]));
+      const versions = async () =>
+        (
+          await pod.select(
+            `SELECT ?version WHERE { ?version <http://www.w3.org/ns/prov#specializationOf> <${VARIANTS}> }`,
+          )
+        ).rows.map((row) => row.get("version")?.value);
+      afterMatch = await versions();
+      await pod.open(
+        await variantTables([
+          [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
+          [V2, [[90011, "NM_000249.3:c.2042C>T"]]],
+        ]),
+      );
+      afterOpen = (await versions()).sort();
+    });
+
+    it("returns the pod's description of a table version after a match", () => {
+      assert.deepEqual(afterMatch, [V1]);
+    });
+
+    it("returns, from a query for the versions of a series, the adopted version's description too, after an open", () => {
+      assert.deepEqual(afterOpen, [V1, V2]);
+    });
+  });
+
+  describe("given two pods taken through the same steps", () => {
+    let retractions: [[string, string][], [string, string][]];
+    let findings: [[string, string][], [string, string][]];
+
+    before(async () => {
+      const twice = (feature: string, example: string) =>
+        Promise.all([0, 1].map(() => replayed(feature, example)));
+      const [released, matched] = await Promise.all([
+        twice(
+          "runtime/naming.feature",
+          "adopting a release that declares R4 wrong retracts the assertions of R4's two matcher judgments before the open's matcher runs, and neither matcher judgment counts nor lapses",
+        ),
+        twice(
+          "runtime/matcher.feature",
+          "opening a pod matched under version 6 with version 7 files one finding naming the matcher judgments of the rule version 7 changed that it did not file again",
+        ),
+      ]);
+      const under = async (runs: typeof released, prefix: string) =>
+        Promise.all(runs.map((done) => writtenUnder(done, prefix)));
+      const [firstRetractions = [], secondRetractions = []] = await under(
+        released,
+        "judgments/retractions/",
+      );
+      const [firstFindings = [], secondFindings = []] = await under(
+        matched,
+        "findings/",
+      );
+      retractions = [firstRetractions, secondRetractions];
+      findings = [firstFindings, secondFindings];
+    });
+
+    it("writes a release's two retractions under the same paths, with the same bytes, in both", () => {
+      assert.equal(retractions[0].length, 2);
+      assert.deepEqual(retractions[0], retractions[1]);
+    });
+
+    it("writes the finding of matcher judgments no longer reached under the same path, with the same bytes, in both", () => {
+      assert.equal(findings[0].length, 1);
+      assert.deepEqual(findings[0], findings[1]);
+    });
+  });
 });

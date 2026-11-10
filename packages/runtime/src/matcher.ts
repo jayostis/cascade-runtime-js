@@ -161,7 +161,7 @@ export async function matcherRules(
 }
 
 /** The origins whose rows join each ordered pair under the rule, each one of the origins it may cite: "" for a rule that reads no table (M5). */
-export function joined(
+export function originsJoining(
   rule: MatcherRule,
   rows: readonly Row[],
   origins: ReadonlySet<string>,
@@ -200,7 +200,7 @@ function grouped(
 }
 
 /** A time's place in time order: its seconds in UTC, then the digits of any fraction of a second. */
-export function arrival(moment: string): [string, string] {
+export function arrivalOrder(moment: string): [string, string] {
   let utc: string;
   try {
     utc = inUtc(moment);
@@ -243,8 +243,8 @@ function takenRecord(
     firsts.some(({ at }) => at === undefined)
   )
     throw new Refusal(`${name} has no first revision and current version`);
-  const [earliest = arrival(""), ...later] = firsts.map(({ at }) =>
-    arrival(at as string),
+  const [earliest = arrivalOrder(""), ...later] = firsts.map(({ at }) =>
+    arrivalOrder(at as string),
   );
   return {
     name,
@@ -536,7 +536,7 @@ async function joins(
   for (const { rule, text } of found) {
     const rows = await rowsOf(text);
     const pairs = new Map<string, Set<string>>();
-    for (const [key, origins] of joined(
+    for (const [key, origins] of originsJoining(
       rule,
       rows,
       rule.kind === undefined
@@ -1949,7 +1949,7 @@ export function migrateRuleListVersions(
  * what that and any rule or series new to the pod join (O1); a version the tables do not hold is left out (O2). Gives
  * the versions the pod names that the tables do not hold, and the run's act, if it wrote one.
  */
-export async function openPod(
+export async function openWithTables(
   context: StepContext,
   references: References,
 ): Promise<{ readonly unheld: string[]; readonly activity?: string }> {

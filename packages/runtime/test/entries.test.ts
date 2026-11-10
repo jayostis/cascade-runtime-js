@@ -1,28 +1,17 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { Derivations } from "../src/derive.js";
 import { answersQuery, ENTRIES, entries } from "../src/entries.js";
 import { MemoryFiles, readText } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Triple, written } from "../src/rdf.js";
 import { Union } from "../src/store.js";
+import { random } from "./random.js";
 import { vocabulary } from "./vocabulary.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const SEEDS = Number(process.env["CASCADE_RANDOM_SEEDS"] ?? 8);
 const FIRST_SEED = Number(process.env["CASCADE_RANDOM_FIRST_SEED"] ?? 1);
-
-/** Mulberry32: the same seed draws the same pod. */
-function random(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /**
  * Records of two kinds, some left out, some of both kinds, and things of none, joined both ways as the derivations
@@ -71,6 +60,7 @@ function drawn(seed: number, size: number): Triple[] {
   return triples;
 }
 
+/** The entries of the triples as `entries` finds them, and as the vocabulary's `entries.rq` constructs them, each as sorted lines. */
 async function both(triples: readonly Triple[]): Promise<[string[], string[]]> {
   const union = new Union(new OxigraphStore());
   await union.add(triples, "urn:test:pod");
@@ -79,30 +69,6 @@ async function both(triples: readonly Triple[]): Promise<[string[], string[]]> {
     found.map((triple) => triple.map(written).join(" ")).sort();
   return [lines(await entries(union)), lines(await union.construct(query))];
 }
-
-test("the union-find gives the entries entries.rq constructs, on seeded random pods", async () => {
-  for (let seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
-    const [found, constructed] = await both(drawn(seed, 400));
-    assert.ok(constructed.length > 300, `seed ${seed}`);
-    assert.deepEqual(found, constructed, `seed ${seed}`);
-  }
-});
-
-test("the union-find gives entries.rq's one entry of a chain of 300 members", async () => {
-  const chain: Triple[] = [];
-  const member = (at: number) => iri(`urn:uuid:chain-${(at * 7919) % 300}`);
-  for (let at = 0; at < 300; at++) {
-    chain.push([member(at), iri(`${CASCADE}recordKind`), literal("Allergy")]);
-    if (at > 0)
-      chain.push(
-        [member(at - 1), iri(`${CASCADE}currentlySame`), member(at)],
-        [member(at), iri(`${CASCADE}currentlySame`), member(at - 1)],
-      );
-  }
-  const [found, constructed] = await both(chain);
-  assert.equal(new Set(found.map((line) => line.split(" ")[2])).size, 1);
-  assert.deepEqual(found, constructed);
-});
 
 /** A store that counts the CONSTRUCTs it answers. */
 class Counting extends OxigraphStore {
@@ -116,7 +82,7 @@ class Counting extends OxigraphStore {
   }
 }
 
-/** What the derivations give over the chain with `text` as entries.rq, and how many CONSTRUCTs they ran. */
+/** What the derivations give over a random pod with `text` as entries.rq, and how many CONSTRUCTs they ran. */
 async function derivedWith(
   text: string,
 ): Promise<{ lines: string[]; constructs: number }> {
@@ -152,16 +118,79 @@ async function derivedWith(
   };
 }
 
-test("the vocabulary's entries.rq is the text the union-find answers, and any other text is run as it is", async () => {
-  const text = await readText(await vocabulary(), ENTRIES);
-  assert.ok(await answersQuery(text));
-  const pinned = await derivedWith(text);
-  assert.equal(pinned.constructs, 1);
-  assert.ok(pinned.lines.length > 0);
-  const changed = text.replace("MIN(STR(?m))", "MAX(STR(?m))");
-  assert.notEqual(changed, text);
-  assert.equal(await answersQuery(changed), false);
-  const run = await derivedWith(changed);
-  assert.equal(run.constructs, 2);
-  assert.notDeepEqual(run.lines, pinned.lines);
+describe("Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()", () => {
+  describe("entries(dataset)", () => {
+    it("returns the triples `entries.rq` constructs, on seeded random pods of 400 records", async () => {
+      for (let seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
+        const [found, constructed] = await both(drawn(seed, 400));
+        assert.ok(constructed.length > 300, `seed ${seed}`);
+        assert.deepEqual(found, constructed, `seed ${seed}`);
+      }
+    });
+
+    it("returns the one entry `entries.rq` gives 300 records each Same as the next", async () => {
+      const chain: Triple[] = [];
+      const member = (at: number) => iri(`urn:uuid:chain-${(at * 7919) % 300}`);
+      for (let at = 0; at < 300; at++) {
+        chain.push([
+          member(at),
+          iri(`${CASCADE}recordKind`),
+          literal("Allergy"),
+        ]);
+        if (at > 0)
+          chain.push(
+            [member(at - 1), iri(`${CASCADE}currentlySame`), member(at)],
+            [member(at), iri(`${CASCADE}currentlySame`), member(at - 1)],
+          );
+      }
+      const [found, constructed] = await both(chain);
+      assert.equal(new Set(found.map((line) => line.split(" ")[2])).size, 1);
+      assert.deepEqual(found, constructed);
+    });
+  });
+
+  describe("given an `entries.rq` whose text is not the one `entries` was written for", () => {
+    let text: string;
+    let changed: string;
+    let answered: boolean;
+    let pinned: { lines: string[]; constructs: number };
+    let run: { lines: string[]; constructs: number };
+
+    before(async () => {
+      text = await readText(await vocabulary(), ENTRIES);
+      changed = text.replace("MIN(STR(?m))", "MAX(STR(?m))");
+      answered = await answersQuery(changed);
+      pinned = await derivedWith(text);
+      run = await derivedWith(changed);
+    });
+
+    it("runs the query as it is written", () => {
+      assert.notEqual(changed, text);
+      assert.equal(answered, false);
+      assert.equal(run.constructs, 2);
+      assert.notDeepEqual(run.lines, pinned.lines);
+    });
+  });
+
+  /**
+   * Red means the vocabulary changed `entries.rq`. The pod is still right, because the changed query runs as it is
+   * written, but slowly (#246), until `entries()` is checked against the new text and `ENTRIES_TEXT` in `src/entries.ts`
+   * is set to the new text's hash.
+   */
+  describe("given the vocabulary's own `entries.rq` (tripwire)", () => {
+    let answered: boolean;
+    let pinned: { lines: string[]; constructs: number };
+
+    before(async () => {
+      const text = await readText(await vocabulary(), ENTRIES);
+      answered = await answersQuery(text);
+      pinned = await derivedWith(text);
+    });
+
+    it("returns its triples through `entries`, without running it", () => {
+      assert.ok(answered);
+      assert.equal(pinned.constructs, 1);
+      assert.ok(pinned.lines.length > 0);
+    });
+  });
 });
