@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { keptRows, prunedRows } from "../src/node/rowCache.js";
+import { withKeptRows, pruneRows } from "../src/node/rowCache.js";
 
 test("a row file named by its content is fetched once and then read from the folder, unless its bytes no longer hash to its name", async () => {
   const folder = await mkdtemp(join(tmpdir(), "rows-"));
@@ -24,7 +24,7 @@ test("a row file named by its content is fetched once and then read from the fol
       asked.push(String(input));
       return new Response(bytes);
     };
-    const fetching = keptRows(live, folder);
+    const fetching = withKeptRows(live, folder);
     await fetching(url);
     const again = await fetching(url);
     assert.deepEqual(new Uint8Array(await again.arrayBuffer()), bytes);
@@ -44,7 +44,7 @@ test("a row file named by its content is fetched once and then read from the fol
     );
     const blocked = join(folder, "regular-file");
     await writeFile(blocked, "not a folder");
-    const unkept = keptRows(live, join(blocked, "rows"));
+    const unkept = withKeptRows(live, join(blocked, "rows"));
     const answered = await unkept(url);
     assert.deepEqual(new Uint8Array(await answered.arrayBuffer()), bytes);
   } finally {
@@ -75,8 +75,11 @@ test("pruning the folder drops a row file unread for 30 days and a half-written 
     await aged("notes.nq.gz", 31 * day);
     await aged("someone-elses.tmp", 2 * 60 * 60 * 1000);
     const live: typeof fetch = async () => new Response("never asked");
-    await keptRows(live, folder)(`https://tables.example/rows/${hash}.nq.gz`);
-    await prunedRows(folder, now + 1000);
+    await withKeptRows(
+      live,
+      folder,
+    )(`https://tables.example/rows/${hash}.nq.gz`);
+    await pruneRows(folder, now + 1000);
     assert.deepEqual(
       (await readdir(folder)).sort(),
       [
@@ -87,7 +90,7 @@ test("pruning the folder drops a row file unread for 30 days and a half-written 
         "someone-elses.tmp",
       ].sort(),
     );
-    await prunedRows(join(folder, "absent"), now);
+    await pruneRows(join(folder, "absent"), now);
   } finally {
     await rm(folder, { recursive: true, force: true });
   }

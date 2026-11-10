@@ -39,7 +39,7 @@ import {
   resolve,
   type Resolved,
 } from "@cascade-runtime/runtime/node";
-import { keptRows, prunedRows, ROWS_CACHE } from "../src/node/rowCache.js";
+import { withKeptRows, pruneRows, ROWS_CACHE } from "../src/node/rowCache.js";
 import { LISTED, PUBLISHED_ROWS, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 import {
@@ -234,7 +234,7 @@ async function packComponents(): Promise<{
     });
   await copyFile(join(ROOT, CONFIG_FILE), join(COMPONENTS, CONFIG_FILE));
   await packStarterTables(config.tables.feeds, treeOf(vocabulary));
-  if (ROWS !== "") await prunedRows(ROWS);
+  if (ROWS !== "") await pruneRows(ROWS);
   const resolved = [vocabulary, ...adapters, ...others];
   const record: Packed = {
     components: resolved.map(({ component, version }) => ({
@@ -271,7 +271,7 @@ async function packStarterTables(
     {
       feeds,
       vocabulary: new FolderFiles(vocabulary),
-      fetch: keptRows(fetch, ROWS),
+      fetch: withKeptRows(fetch, ROWS),
       newStore: () => new OxigraphStore(),
     },
     (path, bytes) => written.write(path, bytes),
