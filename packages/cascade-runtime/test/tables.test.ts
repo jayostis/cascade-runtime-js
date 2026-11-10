@@ -2092,14 +2092,6 @@ describe("Choosing an app's feeds and settings · configureTables(), cascade-run
       ]);
     });
 
-    it("ignores the package's own file", async () => {
-      const app = await appWith({ tables: { feeds: [OTHER_FEED] } });
-      assert.deepEqual(
-        await appSettings(app, join(app, "cascade-runtime.json")),
-        {},
-      );
-    });
-
     it("throws, saying what is wrong, for a file that sets what it may not or sets it wrongly", async () => {
       const cases: [string, unknown, RegExp][] = [
         [
@@ -2129,6 +2121,15 @@ describe("Choosing an app's feeds and settings · configureTables(), cascade-run
           expected,
           input,
         );
+    });
+  });
+
+  describe("given a folder whose `cascade-runtime.json` is the package's own", () => {
+    it("reads nothing from a `cascade-runtime.json` that is the package's own", async () => {
+      const app = await mkdtemp(join(scratch, "app-"));
+      const own = join(app, "cascade-runtime.json");
+      await writeFile(own, JSON.stringify({ tables: { feeds: [OTHER_FEED] } }));
+      assert.deepEqual(await appSettings(app, own), {});
     });
   });
 
