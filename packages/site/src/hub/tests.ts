@@ -119,6 +119,8 @@ summary::-webkit-details-marker { display: none; }
 ul.tree summary::before, details.build > summary::before, .glossary > summary::before {
   content: "\\25B8"; color: var(--quiet); display: inline-block; width: 1em; transition: transform .1s; }
 details[open] > summary::before { transform: rotate(90deg); }
+summary { list-style: none; }
+dfn { font-style: normal; }
 .level-name { font-weight: 600; }
 li.case { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; column-gap: .5rem; }
 li.case > .said, li.case > pre.failure { grid-column: 2 / -1; }
@@ -146,9 +148,9 @@ h3.package { margin: 0 0 .2rem; display: flex; flex-wrap: wrap; align-items: bas
 .glossary > summary { font-weight: 600; color: var(--text); }
 .glossary-filter { display: block; box-sizing: border-box; width: 100%; max-width: 22rem; margin: .5rem 0; padding: .3rem .6rem;
                    font: inherit; color: var(--text); background: var(--bg, #fff); border: 1px solid var(--rule); border-radius: 6px; }
-.glossary dl { margin: .3rem 0; display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .35rem 1.2rem; }
+.glossary dl { margin: .3rem 0; display: grid; grid-template-columns: minmax(8rem, 14rem) 1fr; gap: .3rem 1.2rem; font-size: .9rem; }
 .glossary dt { font-weight: 600; }
-.glossary dd { margin: 0; max-width: 70ch; }
+.glossary dd { margin: 0; max-width: 70ch; overflow-wrap: anywhere; }
 .glossary .aliases { font-weight: 400; color: var(--quiet); }
 .glossary dt:target { background: var(--panel); }
 .glossary .none-match { color: var(--quiet); }
