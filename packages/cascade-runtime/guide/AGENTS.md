@@ -2,8 +2,8 @@
 
 ## What this is
 
-A pod holds one person's health records, from their hospitals and their own
-entries, with their judgments on them, read and written only through the calls
+A pod holds one person's health records, from their hospitals and what they
+entered themselves, with their judgments on them, read and written only through the calls
 of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 
 ## What a pod holds
@@ -216,8 +216,8 @@ lays them out. Of `components/` a page reads `cascade-runtime.json`,
 `packed.json`, and for `tables/` and each component `packed.json` names
 (`<repository name>/<commit>`) its pack `<folder>.json` and the files its
 `files.json` lists; never the tables' listings, which a page makes itself.
-A pod's answers are kept under `entryVersion()`, fixed when the package was
-packed, as `entryVersion()` of `cascade-runtime/published` gives it in Node, so
+A pod's answers are kept under `browserBuildVersion()`, fixed when the package was
+packed, as `browserBuildVersion()` of `cascade-runtime/published` gives it in Node, so
 answers published from Node are read in the page without the engine.
 A browser app's TypeScript reads the browser build's types only with
 `"customConditions": ["browser"]` in its `tsconfig.json`; without it, it is
@@ -530,7 +530,7 @@ async function search(word) {
   hospitals that disagree are both shown, and the `?sources` of each profile.
   No column gives sex: no term holds it.
 - `pod/What each folder holds`: each folder's things by type.
-- `pod/What each import brought in`: each import's or entry's revisions.
+- `pod/What each import brought in`: each import's or entry session's revisions.
 - `pod/What each report says of a variant`: each report's ACMG classification
   of the variant it names (`?report`, `?variant`, `?classification`, `?date`),
   and the lab's organization record and its name (`?lab`, `?labName`).
@@ -559,7 +559,7 @@ async function search(word) {
 
 ## Enter what the person wrote
 
-The app names an entry's session once, a new `urn:uuid:` kept in the entry, so
+The app names each entry session once, a new `urn:uuid:` kept in its Turtle, so
 its records keep their names on every replay; `enter` refuses
 `<urn:cascade:this-entry>`. The record is `<urn:cascade:output-0>` and its content
 `<urn:cascade:output-0-version>`.
@@ -579,7 +579,7 @@ function iri(value) {
   throw new Error(`${text(value)} is no IRI`);
 }
 
-function entry(pod, type, statements) {
+function entrySession(pod, type, statements) {
   const session = `urn:uuid:${crypto.randomUUID()}`;
   return `${PREFIXES}
 <${session}> a prov:Activity ; rdfs:label "entered by the person" ;
@@ -592,26 +592,26 @@ function entry(pod, type, statements) {
 }
 
 const allergy = (pod, { allergen, code, criticality, reaction }) =>
-  entry(pod, "cascade:AllergyOrIntolerance", [
+  entrySession(pod, "cascade:AllergyOrIntolerance", [
     `cascade:allergen ${text(allergen)}`,
     code && `cascade:allergenCode ${iri(code)}`,
     criticality && `cascade:allergyCriticality ${text(criticality)}`,
     reaction && `cascade:reactionManifestationText ${text(reaction)}`,
   ]);
 const condition = (pod, name, status, onset) =>
-  entry(pod, "cascade:ProblemOrDiagnosis", [
+  entrySession(pod, "cascade:ProblemOrDiagnosis", [
     `cascade:conditionName ${text(name)}`,
     `cascade:clinicalStatus ${text(status)}`,
     onset && `cascade:onsetDate ${day(onset)}`,
   ]);
 const immunization = (pod, vaccine, code, given) =>
-  entry(pod, "cascade:Vaccination", [
+  entrySession(pod, "cascade:Vaccination", [
     `cascade:vaccineName ${text(vaccine)}`,
     `cascade:vaccineCode ${iri(code)}`,
     `cascade:vaccinationOccurrenceTime ${day(given)}`,
   ]);
 const procedure = (pod, name, snomed, performed) =>
-  entry(pod, "cascade:MedicalProcedure", [
+  entrySession(pod, "cascade:MedicalProcedure", [
     `cascade:procedureName ${text(name)}`,
     `cascade:snomedCode ${iri(snomed)}`,
     `cascade:procedureDate ${day(performed)}`,

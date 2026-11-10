@@ -132,15 +132,15 @@ const STARTER_TABLES = "tables";
 /** This module's URL, named apart from `new URL`, so that no bundler rewrites the folder made from it. */
 const HERE = import.meta.url;
 
-declare const CASCADE_ENTRY_VERSION: string | undefined;
+declare const CASCADE_BROWSER_BUILD_VERSION: string | undefined;
 
-/** The version of this browser entry, fixed when the package was packed, which every answer it keeps is kept under. */
-export function entryVersion(): string {
-  if (typeof CASCADE_ENTRY_VERSION !== "string")
+/** The version of this browser build, fixed when the package was packed, which every answer it keeps is kept under. */
+export function browserBuildVersion(): string {
+  if (typeof CASCADE_BROWSER_BUILD_VERSION !== "string")
     throw new Error(
-      "this browser entry was not packed: its version is fixed by `npm run build:package`",
+      "this browser build was not packed: its version is fixed by `npm run build:package`",
     );
-  return CASCADE_ENTRY_VERSION;
+  return CASCADE_BROWSER_BUILD_VERSION;
 }
 
 /** The folder `configureRuntime` names; undefined for the folder this module is in. */
@@ -233,7 +233,7 @@ const reading = once((): Promise<Read> => {
 });
 
 async function read(): Promise<Read> {
-  const runtime = entryVersion();
+  const runtime = browserBuildVersion();
   const folder = components();
   const [config, packed] = await Promise.all([
     fetched("cascade-runtime.json").then(async (r) =>
@@ -503,7 +503,7 @@ const resolved = once(async (): Promise<Resolved> => {
   };
 });
 
-/** The Bridge's module, beside the browser entry or under the base, compiled once per page. */
+/** The Bridge's module, beside the browser build or under the base, compiled once per page. */
 const bridgeCompiled = once((): Promise<WebAssembly.Module> =>
   compiledBridge(
     base === undefined
@@ -514,7 +514,7 @@ const bridgeCompiled = once((): Promise<WebAssembly.Module> =>
 
 let derivedAt: DeriveKey | undefined;
 
-/** Argon2id in its worker, beside the browser entry or under the base. */
+/** Argon2id in its worker, beside the browser build or under the base. */
 function derive(): DeriveKey {
   if (base === undefined) return argon2id;
   derivedAt ??= argon2idAt(new URL("argon2-worker.js", base));
@@ -950,7 +950,7 @@ declare const CASCADE_RUNTIME_DIRTY: boolean | undefined;
 function performer(): string {
   if (typeof CASCADE_RUNTIME_COMMIT !== "string")
     throw new Error(
-      "this browser entry was not packed: its commit is fixed by `npm run build:package`",
+      "this browser build was not packed: its commit is fixed by `npm run build:package`",
     );
   const tree = runtimeIri(CASCADE_RUNTIME_COMMIT);
   return typeof CASCADE_RUNTIME_DIRTY === "boolean" && CASCADE_RUNTIME_DIRTY

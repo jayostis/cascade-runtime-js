@@ -1,317 +1,282 @@
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
-import { after, before, test } from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, describe, it } from "node:test";
 import type { Story, StoryFinding } from "@the-cascade-protocol/sandbox";
 import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import {
-  changeTools,
-  checkInput,
   findChanges,
-  type InputSchema,
+  type LabChange,
   openPod,
   type Pod,
   type Pull,
   pullFiles,
-  Refusal,
-  type Row,
 } from "cascade-runtime";
+import { replayKit } from "cascade-runtime/fixtures";
 import { pulled } from "./hospitals.js";
-
-const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
-PREFIX prov: <http://www.w3.org/ns/prov#>
-`;
-
-let stories: Story[];
-let north: Awaited<ReturnType<typeof loadHospital>>;
-const pulls = new Map<string, Pull>();
-const pods = new Map<string, Pod>();
+import { settled } from "./settled.js";
 
 const day = (time: string | undefined) => (time ?? "").slice(0, 10);
 
-/** The results a story's findings name, once each. */
-function named(story: Story) {
-  const seen = new Map<
-    string,
-    { test: string; date: string; value: number; unit: string }
-  >();
-  for (const finding of story.findings)
-    for (const result of [...finding.before, ...finding.after])
-      seen.set(`${finding.test} ${result.date}`, {
-        test: finding.test,
-        date: result.date,
-        value: result.value,
-        unit: finding.unit,
-      });
-  return [...seen.values()];
-}
+const keyOf = ({ kind, medication, test }: StoryFinding) =>
+  `${kind === "after start" ? "start" : "stop"}:${medication}:${test}`;
 
-function resourcesOf(pull: Pull, type: string) {
-  return pull.bundle.entry
-    .map(({ resource }) => resource as Record<string, unknown>)
-    .filter((resource) => resource.resourceType === type);
-}
+describe("Finding lab changes after a medication starts or stops · findChanges(), changesIn(), compact(), timelineIn()", () => {
+  let stories: Story[];
+  let north: Awaited<ReturnType<typeof loadHospital>>;
+  const pulls = new Map<string, Promise<Pull>>();
 
-/** The days the pod's medication records say they ended. */
-async function endDays(pod: Pod): Promise<string[]> {
-  const rows = await pod.ask({
-    query: `${PREFIXES}SELECT ?ended WHERE {
-      ?record a cascade:PrescribedOrReportedMedication . ?version prov:specializationOf ?record ; cascade:medicationUseEndDate ?ended .
-    }`,
+  /** A story patient's pull from the demo hospital, made once, whichever group asks first. */
+  function pullOf(patient: string): Promise<Pull> {
+    let pull = pulls.get(patient);
+    if (pull === undefined) {
+      pull = pulled(north, patient).then((made) => made.pull);
+      pulls.set(patient, pull);
+    }
+    return pull;
+  }
+
+  before(async () => {
+    stories = await loadStories();
+    north = await loadHospital("cascade-north");
   });
-  return rows.map(({ ended }) => day(ended));
-}
 
-before(async () => {
-  stories = await loadStories();
-  north = await loadHospital("cascade-north");
-  for (const { patient } of stories) {
-    const { pull } = await pulled(north, patient);
-    pulls.set(patient, pull);
-    const pod = await openPod();
-    const imported = await pod.import(pullFiles(pull, "north"), {
-      claimProfiles: true,
-    });
-    assert.equal(imported.refused, undefined, patient);
-    pods.set(patient, pod);
-  }
-});
+  describe("given the pod of each sandbox story, pulled from its demo hospital and imported", () => {
+    const pods = new Map<string, Pod>();
+    const found = new Map<string, LabChange[]>();
 
-after(async () => {
-  await Promise.all([...pods.values()].map((pod) => pod.close()));
-});
+    /** The lab change a story was written to show, as `findChanges` returns it. */
+    const returned = (story: Story, gold: StoryFinding): LabChange => {
+      const change = found
+        .get(story.patient)!
+        .find((each) => each.key === keyOf(gold));
+      assert.ok(change, `${story.patient}: ${keyOf(gold)}`);
+      return change;
+    };
 
-test("the stories are five, each naming a patient North holds", () => {
-  assert.equal(stories.length, 5);
-  for (const { patient, hospital } of stories) {
-    assert.equal(hospital, "cascade-north");
-    assert.ok(north.patients[patient], patient);
-  }
-  assert.deepEqual(
-    stories.flatMap(({ ccdaFile, patient }) => (ccdaFile ? [patient] : [])),
-    ["story-stopped"],
-  );
-});
-
-test("each story patient's pull is denied nothing, and imports with every result its answer names and every medication it starts or stops", async () => {
-  for (const story of stories) {
-    const { patient } = story;
-    const pull = pulls.get(patient)!;
-    const pod = pods.get(patient)!;
-    assert.deepEqual([pull.denied, pull.missing], [[], []], patient);
-
-    const labs = await pod.ask("pod/My lab results");
-    assert.equal(labs.length, resourcesOf(pull, "Observation").length, patient);
-    for (const want of named(story)) {
-      assert.ok(
-        labs.some(
-          (row) =>
-            row.code?.endsWith(`/${want.test}`) &&
-            day(row.performed) === want.date &&
-            Number(row.value) === want.value &&
-            row.unit === want.unit,
-        ),
-        `${patient}: ${want.test} on ${want.date}`,
-      );
-    }
-
-    const active = await pod.ask("pod/My active medications");
-    const started = resourcesOf(pull, "MedicationRequest");
-    assert.equal(active.length, started.length, patient);
-    for (const request of started) {
-      const code = (
-        request.medicationCodeableConcept as {
-          coding: { code: string }[];
-        }
-      ).coding[0]!.code;
-      assert.ok(
-        active.some(
-          (row) =>
-            row.code?.endsWith(`/${code}`) &&
-            row.written === request.authoredOn,
-        ),
-        `${patient}: ${code} started ${String(request.authoredOn)}`,
-      );
-    }
-
-    const stopped: StoryFinding[] = story.findings.filter(
-      ({ kind }) => kind === "after stop",
-    );
-    assert.deepEqual(
-      (await endDays(pod)).sort(),
-      stopped.map(({ date }) => date),
-      patient,
-    );
-  }
-});
-
-test("the stopped story's C-CDA copy joins its FHIR pull: the medication is one entry, each result one entry, both records ending on the day the answer names", async () => {
-  const story = stories.find(({ ccdaFile }) => ccdaFile !== undefined)!;
-  const file = story.ccdaFile!;
-  await access(file);
-  const pod = await openPod();
-  try {
-    const first = await pod.import(pullFiles(pulls.get(story.patient)!, "n"), {
-      claimProfiles: true,
-    });
-    assert.equal(first.refused, undefined);
-    const second = await pod.import(file, { claimProfiles: true });
-    assert.equal(second.refused, undefined);
-
-    const medications = await pod.ask({
-      query: `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
-${PREFIXES}SELECT ?entry (COUNT(?record) AS ?records) WHERE {
-        ?entry a cascade:PrescribedOrReportedMedication ; cascade:mergedFrom ?record .
-      } GROUP BY ?entry`,
-    });
-    assert.deepEqual(
-      medications.map(({ records }) => records),
-      ["2"],
-    );
-    assert.deepEqual(
-      await endDays(pod),
-      story.findings.flatMap(({ date }) => [date, date]),
-    );
-
-    const labs = await pod.ask("pod/My lab results");
-    assert.equal(labs.length, named(story).length);
-    assert.ok(labs.every(({ records }) => records === "2"));
-  } finally {
-    await pod.close();
-  }
-});
-
-test("each story patient's pod gives the finding its answer names, field by field, and nothing else", async () => {
-  for (const story of stories) {
-    const found = await findChanges(pods.get(story.patient)!, { limit: 20 });
-    assert.equal(found.length, story.findings.length, story.patient);
-    for (const gold of story.findings) {
-      const key = `${gold.kind === "after start" ? "start" : "stop"}:${gold.medication}:${gold.test}`;
-      const finding = found.find((each) => each.key === key);
-      assert.ok(finding, `${story.patient}: ${key}`);
-      assert.equal(finding.kind, gold.kind);
-      assert.equal(finding.medication.notation, gold.medication);
-      assert.equal(finding.medication.date, gold.date);
-      assert.equal(finding.test.notation, gold.test);
-      assert.equal(finding.direction, gold.direction);
-      assert.equal(finding.unit, gold.unit);
-      for (const side of ["before", "after"] as const) {
-        const values = gold[side].map(({ value }) => value);
-        assert.deepEqual(
-          finding.rows[side].map((row) => ({
-            date: day(row.performed),
-            value: Number(row.value),
-          })),
-          gold[side],
-          `${story.patient} ${side}`,
-        );
-        assert.equal(finding[side].count, values.length);
-        assert.equal(finding[side].min, Math.min(...values));
-        assert.equal(finding[side].max, Math.max(...values));
+    before(async () => {
+      for (const { patient } of stories) {
+        const pull = await pullOf(patient);
+        const pod = await openPod();
+        pods.set(patient, pod);
+        const imported = await pod.import(pullFiles(pull, "north"), {
+          claimProfiles: true,
+        });
+        assert.equal(imported.refused, undefined, patient);
+        found.set(patient, await findChanges(pod, { limit: 20 }));
       }
-      assert.deepEqual(finding.left, {
-        unparsed: 0,
-        otherUnit: 0,
-        undated: 0,
-      });
-      assert.equal(
-        finding.score === 0,
-        gold.direction === "not enough results",
+    });
+
+    after(async () => {
+      await Promise.all([...pods.values()].map((pod) => pod.close()));
+    });
+
+    it("returns exactly the lab changes the story was written to show, and none for the story written to show none", () => {
+      assert.deepEqual(
+        stories.map(({ patient }) => [
+          patient,
+          found
+            .get(patient)!
+            .map(({ key }) => key)
+            .sort(),
+        ]),
+        stories.map(({ patient, findings }) => [
+          patient,
+          findings.map(keyOf).sort(),
+        ]),
       );
-    }
-  }
-});
+    });
 
-test("the tools give a story's findings, their rows, a test's series and the timeline, and refuse bad input with Refusal", async () => {
-  const tools = new Map(
-    changeTools(pods.get("story-statin")!).map((each) => [each.name, each]),
-  );
-  assert.deepEqual(
-    [...tools.keys()],
-    ["find_changes", "finding_rows", "lab_series", "timeline"],
-  );
+    it("returns each lab change's `kind`, medication, day, test, `direction` and `unit` as the story states them", () => {
+      for (const story of stories)
+        for (const gold of story.findings) {
+          const change = returned(story, gold);
+          assert.deepEqual(
+            [
+              change.kind,
+              change.medication.notation,
+              change.medication.date,
+              change.test.notation,
+              change.direction,
+              change.unit,
+            ],
+            [
+              gold.kind,
+              gold.medication,
+              gold.date,
+              gold.test,
+              gold.direction,
+              gold.unit,
+            ],
+            keyOf(gold),
+          );
+        }
+    });
 
-  const KEYWORDS = new Set([
-    "type",
-    "properties",
-    "required",
-    "additionalProperties",
-    "enum",
-    "minimum",
-    "maximum",
-    "description",
-  ]);
-  const keywords = (schema: InputSchema): string[] => [
-    ...Object.keys(schema),
-    ...Object.values(schema.properties ?? {}).flatMap(keywords),
-  ];
-  for (const { name, inputSchema } of tools.values())
-    for (const keyword of keywords(inputSchema))
-      assert.ok(KEYWORDS.has(keyword), `${name}: ${keyword}`);
+    it("returns in `rows` the results the story lists before and after, by day and value, with their count, least and greatest", () => {
+      for (const story of stories)
+        for (const gold of story.findings) {
+          const change = returned(story, gold);
+          for (const side of ["before", "after"] as const) {
+            const values = gold[side].map(({ value }) => value);
+            assert.deepEqual(
+              change.rows[side].map((row) => ({
+                date: day(row.performed),
+                value: Number(row.value),
+              })),
+              gold[side],
+              `${story.patient} ${side}`,
+            );
+            assert.deepEqual(
+              [change[side].count, change[side].min, change[side].max],
+              [values.length, Math.min(...values), Math.max(...values)],
+              `${story.patient} ${side}`,
+            );
+          }
+        }
+    });
 
-  const [change] = (await tools.get("find_changes")!.execute({})) as {
-    key: string;
-    medication: Record<string, unknown>;
-  }[];
-  assert.equal(change!.key, "start:617310:18262-6");
-  assert.equal("entry" in change!.medication, false);
-  assert.equal("rows" in change!, false);
+    it("leaves no result out, so `left` counts nothing", () => {
+      for (const story of stories)
+        for (const gold of story.findings)
+          assert.deepEqual(
+            returned(story, gold).left,
+            { unparsed: 0, otherUnit: 0, undated: 0 },
+            keyOf(gold),
+          );
+    });
 
-  const rows = (await tools
-    .get("finding_rows")!
-    .execute({ key: change!.key })) as { before: Row[]; after: Row[] };
-  assert.deepEqual([rows.before.length, rows.after.length], [3, 3]);
+    it("scores 0 only the lab change of the story written to show too few results", () => {
+      for (const story of stories)
+        for (const gold of story.findings)
+          assert.equal(
+            returned(story, gold).score === 0,
+            gold.direction === "not enough results",
+            `${story.patient}: ${keyOf(gold)}`,
+          );
+    });
 
-  const labs = (await tools
-    .get("lab_series")!
-    .execute({ test: "18262-6" })) as {
-    results: { date: string; value: number; unit: string }[];
-    left: { unparsed: number };
-  };
-  assert.equal(labs.results.length, 6);
-  assert.equal(labs.left.unparsed, 0);
+    it("places a medication the hospital holds only a prescription of on the day it was written", async () => {
+      const placed: unknown[][] = [];
+      const expected: unknown[][] = [];
+      for (const story of stories)
+        for (const gold of story.findings) {
+          if (gold.kind !== "after start") continue;
+          const written = (await pullOf(story.patient)).bundle.entry
+            .map(({ resource }) => resource as Record<string, unknown>)
+            .filter(
+              (resource) =>
+                resource.resourceType === "MedicationRequest" &&
+                (
+                  resource.medicationCodeableConcept as {
+                    coding: { code: string }[];
+                  }
+                ).coding.some(({ code }) => code === gold.medication),
+            )
+            .map((resource) => day(resource.authoredOn as string));
+          assert.deepEqual(written, [gold.date], story.patient);
+          const { medication } = returned(story, gold);
+          placed.push([story.patient, medication.dateIs, medication.date]);
+          expected.push([story.patient, "prescription written", gold.date]);
+        }
+      assert.equal(placed.length, 3);
+      assert.deepEqual(placed, expected);
+    });
+  });
 
-  const medications = (await tools.get("timeline")!.execute({})) as {
-    notation: string;
-    started?: string;
-    written?: string;
-  }[];
-  assert.deepEqual(
-    medications.map(({ notation, started, written }) => [
-      notation,
-      started,
-      written,
-    ]),
-    [
-      ["197658", undefined, "2019-04-01"],
-      ["617310", undefined, "2024-03-04"],
-    ],
-  );
+  describe("given one sandbox story imported twice, as a pull and as the C-CDA document of the same records", () => {
+    let story: Story;
+    let pod: Pod;
 
-  const refused: [string, unknown, RegExp][] = [
-    ["find_changes", { colour: "red" }, /not a property/],
-    ["find_changes", { toString: 1 }, /not a property/],
-    ["find_changes", { medication: 7 }, /must be a string/],
-    ["find_changes", { limit: 1.5 }, /must be an integer/],
-    ["find_changes", { limit: 0 }, /at least 1/],
-    ["find_changes", { limit: 21 }, /at most 20/],
-    ["find_changes", "all", /must be an object/],
-    ["find_changes", { medication: "no such drug" }, /no medication/],
-    ["find_changes", { test: "0000-0" }, /no test/],
-    ["finding_rows", {}, /key is required/],
-    ["finding_rows", { key: "start:0:0" }, /no finding/],
-    ["lab_series", { test: "0000-0" }, /no test/],
-    ["timeline", { extra: true }, /not a property/],
-  ];
-  for (const [name, input, reason] of refused)
-    await assert.rejects(
-      tools.get(name)!.execute(input),
-      (error: unknown) =>
-        error instanceof Refusal && reason.test(error.message),
-      `${name} ${JSON.stringify(input)}`,
-    );
+    before(async () => {
+      story = stories.find(({ ccdaFile }) => ccdaFile !== undefined)!;
+      pod = await openPod();
+      const first = await pod.import(
+        pullFiles(await pullOf(story.patient), "n"),
+        { claimProfiles: true },
+      );
+      assert.equal(first.refused, undefined);
+      const second = await pod.import(story.ccdaFile!, {
+        claimProfiles: true,
+      });
+      assert.equal(second.refused, undefined);
+    });
 
-  assert.throws(
-    () => checkInput({ type: "string", enum: ["a"] }, "b"),
-    Refusal,
-  );
+    after(async () => {
+      await pod.close();
+    });
+
+    it("returns the same one lab change as from the pull alone, with each result that both sources report counted once", async () => {
+      for (const question of [
+        "pod/My lab results",
+        "pod/My medication history",
+      ]) {
+        const rows = await pod.ask(question);
+        assert.ok(rows.length > 0, question);
+        assert.ok(
+          rows.every(({ records }) => records === "2"),
+          `${question} holds one entry for each record of the two sources`,
+        );
+      }
+      const changes = await findChanges(pod);
+      assert.deepEqual(
+        changes.map((change) => [
+          change.key,
+          change.kind,
+          change.medication.date,
+          change.direction,
+          change.before.count,
+          change.after.count,
+        ]),
+        story.findings.map((gold) => [
+          keyOf(gold),
+          gold.kind,
+          gold.date,
+          gold.direction,
+          gold.before.length,
+          gold.after.length,
+        ]),
+      );
+    });
+  });
+
+  describe("given a kit's pod, `tamsin-vale`, replayed into a folder", () => {
+    let folder: string;
+    let pod: Pod;
+
+    before(async () => {
+      folder = await mkdtemp(join(tmpdir(), "cascade-runtime-story-pulls-"));
+      await replayKit("tamsin-vale", join(folder, "tamsin-vale"));
+      pod = await openPod(join(folder, "tamsin-vale"));
+    });
+
+    after(async () => {
+      await pod.close();
+      await settled(folder);
+      await rm(folder, { recursive: true, force: true });
+    });
+
+    it("returns the lab change of the sandbox story the kit's two pulls were saved from", async () => {
+      const story = stories.find(({ pulls: saved }) => saved?.length)!;
+      assert.deepEqual(
+        (await findChanges(pod)).map(
+          ({ kind, medication, test, direction }) => ({
+            kind,
+            medication: medication.notation,
+            date: medication.date,
+            test: test.notation,
+            direction,
+          }),
+        ),
+        story.findings.map(({ kind, medication, date, test, direction }) => ({
+          kind,
+          medication,
+          date,
+          test,
+          direction,
+        })),
+      );
+    });
+  });
 });

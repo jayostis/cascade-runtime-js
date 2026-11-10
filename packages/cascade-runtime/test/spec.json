@@ -10,9 +10,11 @@
     "Entering a record by hand · pod.enter()",
     "Recording the owner's judgment · pod.judge()",
     "Opening a pod again · openPod()",
+    "Keeping an open pod's answers current · pod.ask()",
     "Encrypting a pod with six words · openPod(), sixWords(), typedWords()",
     "Sample pods and exports to build against · replayKit(), kitDownload()",
     "Publishing a pod for a browser · answersToPublish(), samplesToPublish()",
+    "Importing the package in a web page · browserBuildVersion(), cascadeRuntime()",
     "Finding a hospital to connect to · directoryOf(), searchDirectory(), TEST_DIRECTORY",
     "Signing a person in to a hospital · connect(), loopbackSignIn()",
     "Reading what a hospital's server says of itself · serverReport(), connectFiles()",
@@ -29,16 +31,19 @@
     "Reading what ClinVar says of a variant · tables.variantClassification(), pod.agreement()",
     "Asking a pod what the reference tables say of its records · pod.medicationClasses(), pod.panelResults(), pod.joinedBy()",
     "Reading only the rows a pod's codes find · tables.references()",
+    "Finding lab changes after a medication starts or stops · findChanges(), changesIn(), compact(), timelineIn()",
     "Tools a model reads a pod with · TOOLS",
     "Reading a folder of pods for the tools · podReads()",
     "Reading a whole pod in pages · ask tool",
     "Checking a pod against the reference tables · reference_table_checks tool",
     "Offering tools to a model in a web page · toolRegistry()",
+    "Checking a tool's input against its schema · checkInput()",
     "Checking a model's reply against a person's records · checkReply(), replyErrors(), replySchema",
     "Checking what a reply says a pod lacks · checkAbsence()",
     "Checking a citation of a download · checkCitation(), downloadsSource(), isoDate()",
     "Checking a citation of a view entry · checkCitation(), podRowsSource()",
-    "Checking what a reply says downloads lack · checkRecordsAbsence()"
+    "Checking what a reply says downloads lack · checkRecordsAbsence()",
+    "Building an app from the guide · guide/AGENTS.md"
   ],
   "glossary": [
     {
@@ -53,7 +58,7 @@
     },
     {
       "term": "act",
-      "definition": "one thing done to a pod that writes files to it: an import, an entry, a connection to a hospital's server, or a run of the matcher.",
+      "definition": "one thing done to a pod that writes files to it: an import, an entry session, a connection to a hospital's server, or a run of the matcher.",
       "vocabulary": "http://www.w3.org/ns/prov#Activity",
       "aliases": ["acts"]
     },
@@ -100,6 +105,11 @@
       "term": "builder",
       "definition": "a program that builds a reference table on the app's own machine from its publisher's release, as is needed where a licence keeps a feed from publishing the rows.",
       "aliases": ["builders"]
+    },
+    {
+      "term": "bundler",
+      "definition": "a program, such as Vite or esbuild, that joins an app's modules into the files a web page loads.",
+      "aliases": ["bundlers"]
     },
     {
       "term": "C-CDA",
@@ -163,6 +173,11 @@
       "aliases": ["connections"]
     },
     {
+      "term": "criticality",
+      "definition": "how dangerous a reaction to an allergen could be, as a source states it: `low`, `high` or `unable-to-assess`.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#allergyCriticality"
+    },
+    {
       "term": "current version",
       "definition": "of a series, the version a pod opened now is given: the newest one the app has kept.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#defaultTableVersion",
@@ -173,6 +188,10 @@
       "definition": "the organisation that keeps a document and answers for its true copy.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#CustodianRole",
       "aliases": ["custodians"]
+    },
+    {
+      "term": "dateIs",
+      "definition": "on a lab change's `medication`, which of its days the change is placed on: `start of use`, `end of use` or `prescription written`."
     },
     {
       "term": "demo hospital",
@@ -207,9 +226,14 @@
       "aliases": ["drug classes", "class", "classes", "classed"]
     },
     {
-      "term": "entry",
-      "definition": "a record the owner typed in themselves, which no source holds.",
-      "aliases": ["entries"]
+      "term": "entry point",
+      "definition": "a name an app imports the package by: `cascade-runtime`, or one with a path after it, such as `cascade-runtime/check`. The browser entry point is the build of `cascade-runtime` that a bundler gives a web page in place of Node's.",
+      "aliases": ["entry points"]
+    },
+    {
+      "term": "entry session",
+      "definition": "one call of `pod.enter()`: the act that files what the owner typed, as one owner-entered record or several, under a `urn:uuid:` name the app makes once.",
+      "aliases": ["entry sessions"]
     },
     {
       "term": "Erroneous",
@@ -252,6 +276,10 @@
       "definition": "something the matcher noticed about a pod's records and filed for the owner to answer with a judgment.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#FindingForReview",
       "aliases": ["findings"]
+    },
+    {
+      "term": "guide",
+      "definition": "`guide/AGENTS.md`, the document the package ships for a developer, or a coding agent, who is building an app on a pod."
     },
     {
       "term": "handle",
@@ -308,6 +336,11 @@
       "term": "kit",
       "definition": "a story and the exports it uses, which the vocabulary carries for testing, such as `alex-rivera`.",
       "aliases": ["kits"]
+    },
+    {
+      "term": "lab change",
+      "definition": "a difference between one lab test's results before and after the day a medication started or stopped, as `findChanges()` reports it; it says what moved and never why.",
+      "aliases": ["lab changes"]
     },
     {
       "term": "label",
@@ -406,9 +439,19 @@
       "aliases": ["owners"]
     },
     {
+      "term": "owner-entered record",
+      "definition": "a record the owner typed in themselves and filed with `pod.enter()`, such as an allergy they know they have; no source holds it, and being the owner's own it needs no claim.",
+      "aliases": ["owner-entered records"]
+    },
+    {
       "term": "pack",
       "aliases": ["packs"],
       "definition": "one file holding all of a sample's files, so a page fetches them at once."
+    },
+    {
+      "term": "packed package",
+      "definition": "the package as `npm run build:package` makes it for publishing: its compiled code, its browser build and the vocabulary and adapters it carries. A source checkout is not packed.",
+      "aliases": ["packed"]
     },
     {
       "term": "panel",
@@ -534,6 +577,12 @@
       "aliases": ["resources"]
     },
     {
+      "term": "retraction",
+      "definition": "the owner taking back a judgment they filed: the judgment stays in the pod and no longer counts.",
+      "vocabulary": "http://www.w3.org/ns/prov#invalidated",
+      "aliases": ["retractions", "retract", "retracts", "retracted"]
+    },
+    {
       "term": "review status",
       "definition": "ClinVar's statement of how well a classification is supported, such as `criteria provided, multiple submitters, no conflicts`.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#clinvarReviewStatus"
@@ -570,6 +619,17 @@
       "aliases": ["samples"]
     },
     {
+      "term": "sandbox story",
+      "definition": "a made-up patient at a demo hospital whose records were written to show one outcome, such as a lab result that falls after a medication starts, with that outcome written down beside them.",
+      "aliases": ["sandbox stories"]
+    },
+    {
+      "term": "schema",
+      "definition": "a description, in JSON Schema, of what a tool's input may hold: its properties, the type of each, which are required, and the values or bounds each allows (`enum`, `minimum`, `maximum`).",
+      "vocabulary": "https://json-schema.org/",
+      "aliases": ["schemas"]
+    },
+    {
       "term": "sealed",
       "aliases": ["seal", "seals"],
       "definition": "of a pod or a file, encrypted on disk so that only the secret opens it."
@@ -593,6 +653,11 @@
       "term": "series",
       "definition": "one of the reference tables across its versions, such as RxNorm's product ingredients.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
+    },
+    {
+      "term": "shapes",
+      "definition": "the vocabulary's requirements on what a record, a judgment or a file of a pod must state, written in SHACL, the W3C language for checking data.",
+      "vocabulary": "https://www.w3.org/TR/shacl/"
     },
     {
       "term": "signal",
@@ -636,7 +701,7 @@
     },
     {
       "term": "step",
-      "definition": "one scripted action on a pod, such as making it, an import, an entry or a judgment, named by a letter and a number such as `J10`.",
+      "definition": "one scripted action on a pod, such as making it, an import, an entry session or a judgment, named by a letter and a number such as `J10`.",
       "aliases": ["steps"]
     },
     {
@@ -673,6 +738,11 @@
       "term": "table search",
       "definition": "to find the codes of a series whose name holds the text asked, as `tables.search()` does, a page at a time.",
       "aliases": ["search the tables", "table searches"]
+    },
+    {
+      "term": "template",
+      "definition": "Turtle with blanks, given in the guide, which an app fills in with what a person typed or decided and passes to `pod.enter()` or `pod.judge()`.",
+      "aliases": ["templates"]
     },
     {
       "term": "term",
@@ -742,7 +812,7 @@
       "term": "view entry",
       "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
-      "aliases": ["view entries"]
+      "aliases": ["view entries", "entry", "entries"]
     },
     {
       "term": "vocabulary",
@@ -757,20 +827,33 @@
     }
   ],
   "shaped": [
+    "browser-types.test.ts",
+    "changes.test.ts",
+    "check.test.ts",
     "citations.test.ts",
     "connect.test.ts",
     "directory.test.ts",
+    "entry.test.ts",
+    "failure-annotations.test.ts",
+    "guide.test.ts",
     "launcher-sandbox.test.ts",
     "outcomes.test.ts",
+    "pack-dependencies.test.ts",
+    "people-copies.test.ts",
     "pod-tools.test.ts",
     "pod.test.ts",
     "pull.test.ts",
     "reply.test.ts",
     "rowCache.test.ts",
+    "server-same.test.ts",
+    "stories.test.ts",
+    "story-pulls.test.ts",
     "tables.test.ts",
     "terms.test.ts",
     "tools.test.ts",
-    "variants.test.ts"
+    "transpile.test.ts",
+    "variants.test.ts",
+    "vite.test.ts"
   ],
   "build": [
     "The launcher check, when the launcher itself is down",
@@ -778,7 +861,11 @@
     "The launcher check, when the runtime's failure is not one the launcher's silence explains",
     "cascade-runtime/tools in a browser bundle",
     "Row files kept between builds of the package",
-    "Starter copies of the reference tables, as the package is built with them"
+    "Starter copies of the reference tables, as the package is built with them",
+    "Transpiling before the tests · scripts/transpile.mjs",
+    "Dependencies of the packed package · mergedDependencies(), undeclaredImports(), vendored()",
+    "Annotating a red run's failures · failure-annotations.ts",
+    "Tripwire: copies of the kits' data kept in other repositories"
   ],
   "randomOrder": [
     "browser-types.test.ts",
@@ -788,6 +875,7 @@
     "connect.test.ts",
     "directory.test.ts",
     "entry.test.ts",
+    "failure-annotations.test.ts",
     "guide.test.ts",
     "kinds-read.test.ts",
     "launcher-sandbox.test.ts",

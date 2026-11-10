@@ -5,8 +5,8 @@ import { Refusal } from "@cascade-runtime/runtime/refusal";
 import {
   changeTools,
   compact,
-  type CompactFinding,
-  type Finding,
+  type CompactLabChange,
+  type LabChange,
 } from "./changes.js";
 import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
@@ -195,17 +195,17 @@ export const COMPACT_QUESTIONS: readonly string[] = QUESTIONS.filter(
 export const DEFAULT_ROWS = 50;
 export const MAXIMUM_ROWS = 500;
 
-/** A finding as `find_changes` gives it: compact, with the entry of its medication kept so it can be cited. */
-export type CitedFinding = CompactFinding & {
-  medication: CompactFinding["medication"] & { entry: string };
+/** A lab change as `find_changes` gives it: compact, with the entry of its medication kept so it can be cited. */
+export type CitedLabChange = CompactLabChange & {
+  medication: CompactLabChange["medication"] & { entry: string };
 };
 
-/** `finding` as `find_changes` gives it. */
-export function citedFinding(finding: Finding): CitedFinding {
-  const small = compact(finding);
+/** `change` as `find_changes` gives it. */
+export function citedLabChange(change: LabChange): CitedLabChange {
+  const small = compact(change);
   return {
     ...small,
-    medication: { ...small.medication, entry: finding.medication.entry },
+    medication: { ...small.medication, entry: change.medication.entry },
   };
 }
 
@@ -230,7 +230,7 @@ export interface PodReads {
     pod: string;
     tool: string;
     input?: object;
-  }): Promise<{ value: unknown; found?: readonly Finding[] }>;
+  }): Promise<{ value: unknown; found?: readonly LabChange[] }>;
   /** What the reference tables and the pod's verdicts against them answer for the pod; absent, or none, when the tables are off. */
   tables?(input: { pod: string }): Promise<TableLookups | undefined>;
 }
@@ -362,7 +362,7 @@ async function tableChecks(
   };
 }
 
-/** What a door gives the tools: `address.trend(pod, { test, medication })`, the page that draws a finding's results, where it has one. */
+/** What a door gives the tools: `address.trend(pod, { test, medication })`, the page that draws a lab change's results, where it has one. */
 export interface Door {
   readonly address?: {
     readonly trend?: (
@@ -378,7 +378,7 @@ export type ToolInput = Readonly<Record<string, unknown>>;
 /**
  * A tool: `tier` the person's consent (every one here is `free`, a read); `ofPod` when it takes the pod's name in
  * `input.pod`, which `inputSchema` leaves out (`withPod` adds it); `findings`, on `find_changes`, its answer with the
- * findings and their rows beside it.
+ * lab changes and their rows beside it.
  */
 export interface PodTool {
   readonly name: string;
@@ -392,7 +392,7 @@ export interface PodTool {
     reads: PodReads,
     input: ToolInput,
     door?: Door,
-  ): Promise<{ value: unknown[]; found: readonly Finding[] }>;
+  ): Promise<{ value: unknown[]; found: readonly LabChange[] }>;
 }
 
 /** `schema` with the pod's name beside its own properties: a tool of one pod as MCP and a chat take its input. */
@@ -415,7 +415,7 @@ export function withPod(schema: InputSchema): InputSchema {
 export const schemaOf = (tool: PodTool): InputSchema =>
   tool.ofPod ? withPod(tool.inputSchema) : tool.inputSchema;
 
-/** The test and medication codes of the trend a finding is about, the medication's name where it has no code. */
+/** The test and medication codes of the trend a lab change is about, the medication's name where it has no code. */
 export function trendOf({
   test,
   medication,
@@ -460,12 +460,12 @@ function checked(tool: PodTool): PodTool {
   };
 }
 
-/** `find_changes` as `run` gives it, with `found` beside `value`; with `address.trend`, each finding carries `view`. */
+/** `find_changes` as `run` gives it, with `found` beside `value`; with `address.trend`, each lab change carries `view`. */
 async function findings(
   reads: PodReads,
   { pod, ...input }: ToolInput,
   door?: Door,
-): Promise<{ value: unknown[]; found: readonly Finding[] }> {
+): Promise<{ value: unknown[]; found: readonly LabChange[] }> {
   const { value, found = [] } = await reads.tool({
     pod: pod as string,
     tool: "find_changes",
@@ -476,17 +476,17 @@ async function findings(
     found,
     value:
       trend === undefined
-        ? (value as CitedFinding[])
-        : (value as CitedFinding[]).map((finding) => ({
-            ...finding,
-            view: trend(pod as string, trendOf(finding)),
+        ? (value as CitedLabChange[])
+        : (value as CitedLabChange[]).map((change) => ({
+            ...change,
+            view: trend(pod as string, trendOf(change)),
           })),
   };
 }
 
 /**
  * Every tool, each `{ name, description, inputSchema, tier, ofPod, run(reads, input, door) }`. `run` calls only
- * `reads`; with `door.address.trend`, each finding of `find_changes` carries `view`, the address of the page that
+ * `reads`; with `door.address.trend`, each lab change of `find_changes` carries `view`, the address of the page that
  * draws its results.
  */
 export const TOOLS: readonly PodTool[] = (
