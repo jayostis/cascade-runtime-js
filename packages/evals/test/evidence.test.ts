@@ -6,7 +6,7 @@ import { after, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
 import type { Prepared } from "../src/cases.js";
 import { checkAbsence } from "cascade-runtime";
-import { answer } from "../src/pod-client.js";
+import { callLogged } from "../src/pod-client.js";
 import { passageOf, unescaped } from "../src/evidence.js";
 import { evidenceOf } from "../src/record.js";
 import { type Job, PASSAGE_CAP, type ToolCallRecord } from "../src/results.js";
@@ -189,7 +189,7 @@ test("a call that throws is logged under its number, so a restarted server does 
   } as unknown as Client;
   const counter = { made: 0 };
   await assert.rejects(
-    answer(client, log, "j", ["ask", "{}"], counter),
+    callLogged(client, log, "j", ["ask", "{}"], counter),
     /pod went away/,
   );
   const lines = (await readFile(join(log, "tool-calls.jsonl"), "utf8"))
