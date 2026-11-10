@@ -495,7 +495,7 @@ async function main(): Promise<void> {
   const { resolved, components, bridge, bridgeFolder } = await packComponents();
   const { bundled, dependencies } = await packCode(bridgeFolder, manifest);
   const dirty = head.uncommitted > 0;
-  const entryVersion = await bundleBrowser(BROWSER, {
+  const browserBuildVersion = await bundleBrowser(BROWSER, {
     commit,
     dirty,
     components,
@@ -517,7 +517,12 @@ async function main(): Promise<void> {
     files: [...(manifest.files ?? []), "components"],
     dependencies,
     bundleDependencies: Object.keys(bundled).sort(),
-    cascadeRuntime: { commit, dirty, tarball: address, entryVersion },
+    cascadeRuntime: {
+      commit,
+      dirty,
+      tarball: address,
+      browserBuildVersion,
+    },
   });
 
   for (const file of await readdir(BUILD))

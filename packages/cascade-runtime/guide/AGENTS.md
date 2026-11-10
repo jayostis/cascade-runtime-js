@@ -216,8 +216,8 @@ lays them out. Of `components/` a page reads `cascade-runtime.json`,
 `packed.json`, and for `tables/` and each component `packed.json` names
 (`<repository name>/<commit>`) its pack `<folder>.json` and the files its
 `files.json` lists; never the tables' listings, which a page makes itself.
-A pod's answers are kept under `entryVersion()`, fixed when the package was
-packed, as `entryVersion()` of `cascade-runtime/published` gives it in Node, so
+A pod's answers are kept under `browserBuildVersion()`, fixed when the package was
+packed, as `browserBuildVersion()` of `cascade-runtime/published` gives it in Node, so
 answers published from Node are read in the page without the engine.
 A browser app's TypeScript reads the browser build's types only with
 `"customConditions": ["browser"]` in its `tsconfig.json`; without it, it is

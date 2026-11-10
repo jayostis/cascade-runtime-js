@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { bundleBrowser } from "../pack/browser.js";
-import { entryVersion } from "../src/node/published.js";
+import { browserBuildVersion } from "../src/node/published.js";
 import { terms } from "../src/terms.js";
 
 test("the browser entry keys its answers under the version its installed package gives, fixed when it was packed, and carries terms", async () => {
@@ -30,13 +30,13 @@ test("the browser entry keys its answers under the version its installed package
       join(stage, "package.json"),
       JSON.stringify({
         type: "module",
-        cascadeRuntime: { entryVersion: version },
+        cascadeRuntime: { browserBuildVersion: version },
       }),
     );
     const entry = (await import(
       pathToFileURL(join(stage, "dist", "browser", "index.js")).href
-    )) as { entryVersion(): string; terms: unknown };
-    assert.equal(entry.entryVersion(), await entryVersion(stage));
+    )) as { browserBuildVersion(): string; terms: unknown };
+    assert.equal(entry.browserBuildVersion(), await browserBuildVersion(stage));
     assert.deepEqual(entry.terms, terms);
   } finally {
     await rm(stage, { recursive: true, force: true });
