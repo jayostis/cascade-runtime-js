@@ -17,7 +17,7 @@
     "Reading reference tables from a folder · References.of(), References.rows(), tableTerms(), linesAbout()",
     "Reading only the rows a pod's codes find · References.rows(), rowsByCode()",
     "Replaying a story into a pod · replay(), PERFORMERS",
-    "Running a feature's examples on a runtime · runConformance()",
+    "Running a feature's examples and a kit's checks on a runtime · runConformance()",
     "Checking a replayed kit · kitChecks(), shapeFaults(), snapshotFaults(), podAddressesIn()",
     "Checking a graph against the vocabulary's shapes · Shapes.read(), Shapes.results()",
     "Reporting a conformance run · npm run conformance -- --report <file>",

@@ -230,7 +230,7 @@ async function runStuckKit(): Promise<
  * each example's steps, replays them into a pod of its own and returns one outcome for each example, failed with a
  * sentence saying why when a step cannot be read or the replay stops.
  */
-describe("Running a feature's examples on a runtime · runConformance()", () => {
+describe("Running a feature's examples and a kit's checks on a runtime · runConformance()", () => {
   describe("given a feature file of examples that cannot pass", () => {
     let reported: Reported;
 
