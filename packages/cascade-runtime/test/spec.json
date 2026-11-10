@@ -288,6 +288,7 @@
       "definition": "the `Refusal` thrown when a pod does not open with the secret given, or with none; its `outcome` gives the reason, such as `incorrect secret`."
     }
   ],
+  "shaped": ["pod.test.ts", "terms.test.ts"],
   "build": [],
   "randomOrder": [
     "browser-types.test.ts",
