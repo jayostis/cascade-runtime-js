@@ -11,6 +11,13 @@ import {
 } from "../junit.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
+import {
+  ctrfEntry,
+  glossaryList,
+  glossaryOf,
+  type Entry,
+  Links,
+} from "./glossary.js";
 import type { PagesContext, TestRun } from "./context.js";
 import { SPEC_FOLDER } from "./spec.js";
 
@@ -79,6 +86,13 @@ ul.tree summary { cursor: pointer; }
 .counts .failed { color: #a3201f; font-weight: 600; }
 h3.package { margin: 1.4rem 0 .2rem; }
 .package-line { color: var(--quiet); margin: .1rem 0; }
+.glossary { margin: .4rem 0; }
+.glossary > summary { cursor: pointer; font-weight: 600; }
+.glossary dl { margin: .3rem 0; columns: 24rem; }
+.glossary dt { font-weight: 600; margin-top: .3rem; break-after: avoid; }
+.glossary dd { margin: 0 0 .2rem 1rem; max-width: 70ch; }
+.glossary .aliases { font-weight: 400; color: var(--quiet); }
+.glossary dt:target { background: var(--panel); }
 .what { margin: .3rem 0; max-width: 70ch; }
 .source, .said { color: var(--quiet); font-size: .85rem; margin: .2rem 0; }
 .said .what { color: inherit; }
@@ -134,9 +148,11 @@ interface Spec {
   readonly about?: string;
   readonly capabilities: readonly string[];
   readonly build: readonly string[];
+  /** Terms the package's tests use in one sense, defined once on its page. */
+  readonly glossary: readonly Entry[];
 }
 
-function specOf(raw: unknown): Spec {
+function specOf(raw: unknown, folder: string): Spec {
   const given = (typeof raw === "object" && raw !== null ? raw : {}) as Record<
     string,
     unknown
@@ -149,6 +165,7 @@ function specOf(raw: unknown): Spec {
     ...(typeof given["about"] === "string" ? { about: given["about"] } : {}),
     capabilities: names(given["capabilities"]),
     build: names(given["build"]),
+    glossary: glossaryOf(given["glossary"], folder),
   };
 }
 
@@ -268,11 +285,11 @@ function ruleOf(tag: string): { feature: string; id: string; href: string } {
   };
 }
 
-function prose(description: string | undefined): Html {
+function prose(description: string | undefined, links: Links): Html {
   const paragraphs = (description ?? "")
     .split("\n\n")
     .filter((one) => one !== "");
-  return markup`${paragraphs.map((one) => markup`<p class="what">${one}</p>\n`)}`;
+  return markup`${paragraphs.map((one) => markup`<p class="what">${links.link(one)}</p>\n`)}`;
 }
 
 function rulesOf(tags: readonly string[]): Html {
@@ -282,22 +299,31 @@ function rulesOf(tags: readonly string[]): Html {
     : markup`<span class="rules">Rule${rules.length === 1 ? "" : "s"}: ${rules.map(({ feature, id, href }, at) => markup`${at === 0 ? "" : ", "}<a href="${href}">${feature} ${id}</a>`)}.</span> `;
 }
 
-function leaf(one: TestCase, suite: Suite, run: TestRun): Html {
+/** A case's name linked to its source; a glossary term in it links to its entry, the source link stopping short of it. */
+function named(name: string, source: string, links: Links): Html {
+  return markup`${links.pieces(name).map((piece) => (typeof piece === "string" ? markup`<a href="${source}">${piece}</a>` : markup`<a href="#${piece.id}">${piece.text}</a>`))}`;
+}
+
+function leaf(one: TestCase, suite: Suite, run: TestRun, links: Links): Html {
   const source = `${suite.repository}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
   const said =
     one.description === undefined && one.rules.length === 0
       ? ""
-      : markup`<div class="said">${prose(one.description)}${rulesOf(one.rules)}</div>`;
-  return markup`<li class="case"><span class="result ${one.result}">${one.result}</span> <a href="${source}">${one.name}</a><span class="time">${seconds(one.seconds)}</span>${said}${one.message === undefined ? "" : markup`<pre class="failure">${shown(one.message)}</pre>`}</li>\n`;
+      : markup`<div class="said">${prose(one.description, links)}${rulesOf(one.rules)}</div>`;
+  return markup`<li class="case"><span class="result ${one.result}">${one.result}</span> ${named(one.name, source, links)}<span class="time">${seconds(one.seconds)}</span>${said}${one.message === undefined ? "" : markup`<pre class="failure">${shown(one.message)}</pre>`}</li>\n`;
 }
 
 /** A situation, or a level under one: its description, its rules and what it holds. */
-function branch(level: Level, suite: Suite, run: TestRun): Html {
+function branch(level: Level, suite: Suite, run: TestRun, links: Links): Html {
+  const name = links.link(level.name);
+  const said = prose(level.info?.description, links);
   const children = inOrder(level).map((entry) =>
-    isLevel(entry) ? branch(entry, suite, run) : leaf(entry, suite, run),
+    isLevel(entry)
+      ? branch(entry, suite, run, links)
+      : leaf(entry, suite, run, links),
   );
-  return markup`<li><details${new Html(failing(level) ? " open" : "")}><summary>${level.name} ${counts(level.cases)}</summary>
-${prose(level.info?.description)}${rulesOf(level.info?.rules ?? [])}<ul class="tree">
+  return markup`<li><details${new Html(failing(level) ? " open" : "")}><summary>${name} ${counts(level.cases)}</summary>
+${said}${rulesOf(level.info?.rules ?? [])}<ul class="tree">
 ${children}</ul></details></li>\n`;
 }
 
@@ -341,16 +367,25 @@ function capabilitiesOf(cases: readonly TestCase[]): Capability[] {
   });
 }
 
-function capability(one: Capability, suite: Suite, run: TestRun): Html {
+function capability(
+  one: Capability,
+  suite: Suite,
+  run: TestRun,
+  glossary: readonly Entry[],
+): Html {
+  const links = new Links(glossary);
+  const said = prose(one.info?.description, links);
   const children = inOrder(one.level).map((entry) =>
-    isLevel(entry) ? branch(entry, suite, run) : leaf(entry, suite, run),
+    isLevel(entry)
+      ? branch(entry, suite, run, links)
+      : leaf(entry, suite, run, links),
   );
   const files = [...one.files].map(([file, line]) => {
     const href = `${suite.repository}/blob/${run.commit}/${file}${line === undefined ? "" : `#L${line}`}`;
     return markup`<a href="${href}">${placeOf(file)[1] ?? file}</a>`;
   });
   return markup`<li class="capability"><details open><summary>${one.name} ${counts(one.cases)}</summary>
-${prose(one.info?.description)}<p class="source">${rulesOf(one.info?.rules ?? [])}From ${files.map((link, at) => markup`${at === 0 ? "" : ", "}${link}`)}.</p>
+${said}<p class="source">${rulesOf(one.info?.rules ?? [])}From ${files.map((link, at) => markup`${at === 0 ? "" : ", "}${link}`)}.</p>
 <ul class="tree">
 ${children}</ul></details></li>\n`;
 }
@@ -380,7 +415,7 @@ function packageSection(
   suite: Suite,
   run: TestRun,
 ): Html {
-  const spec = specOf(info?.spec);
+  const spec = specOf(info?.spec, folder);
   const all = capabilitiesOf(cases);
   const inBuild = (one: Capability): boolean =>
     spec.build.includes(one.name) ||
@@ -398,14 +433,14 @@ function packageSection(
       ? ""
       : markup`<p class="package-line"><code>${info.name}</code> ${info.version} · commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>${unreleased(info.version) ? " · unreleased: what main does today, not a compatibility promise" : ""}</p>\n`;
   return markup`<h3 class="package"><code>${folder}</code> ${counts(cases)}</h3>
-${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}<ul class="tree top">
-${main.map((one) => capability(one, suite, run))}</ul>
+${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}${spec.glossary.length === 0 ? "" : glossaryList(spec.glossary)}<ul class="tree top">
+${main.map((one) => capability(one, suite, run, spec.glossary))}</ul>
 ${
   build.length === 0
     ? ""
     : markup`<details class="build"${new Html(count(buildCases, "failed") > 0 ? " open" : "")}><summary>Build and packaging ${counts(buildCases)}</summary>
 <ul class="tree top">
-${build.map((one) => capability(one, suite, run))}</ul></details>
+${build.map((one) => capability(one, suite, run, spec.glossary))}</ul></details>
 `
 }`;
 }
@@ -453,6 +488,20 @@ function extraOf(one: TestCase): { extra?: unknown } {
   return Object.keys(extra).length === 0 ? {} : { extra };
 }
 
+/** The glossary of each package that has one, for an agent reading CTRF. */
+function extraOfGlossaries(
+  suite: Suite,
+  packages: ReadonlyMap<string, PackageInfo>,
+): { extra?: unknown } {
+  if (!suite.tree) return {};
+  const glossary: Record<string, unknown[]> = {};
+  for (const [folder, info] of packages) {
+    const entries = specOf(info.spec, folder).glossary;
+    if (entries.length > 0) glossary[folder] = entries.map(ctrfEntry);
+  }
+  return Object.keys(glossary).length === 0 ? {} : { extra: { glossary } };
+}
+
 /** A suite's results as CTRF (https://ctrf.io), each case with the describes it sits in as its suite. */
 function ctrf(
   suite: Suite,
@@ -460,6 +509,7 @@ function ctrf(
   cases: readonly TestCase[],
   report: string,
   failedOutside: number,
+  packages: ReadonlyMap<string, PackageInfo>,
 ): unknown {
   const start = Date.parse(run.at);
   const duration =
@@ -470,6 +520,7 @@ function ctrf(
     specVersion: "0.2.0",
     timestamp: run.at,
     generatedBy: "cascade-runtime-js packages/site",
+    ...extraOfGlossaries(suite, packages),
     results: {
       tool: { name: suite.tool },
       summary: {
@@ -557,6 +608,7 @@ ${unlisted}${shownCases}`,
       cases,
       run.report,
       counted !== undefined && hidden ? counted - failed : 0,
+      packages,
     ),
   };
 }

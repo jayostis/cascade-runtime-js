@@ -783,7 +783,7 @@ test("the first use of a term or alias in each capability links to its entry, as
   assert.equal(hrefsTo(importing, "claim"), 1);
   assert.match(
     importing,
-    /<a href="#glossary-cascade-runtime-claim">claim<\/a> is kept in the pod/,
+    /<a href="#glossary-cascade-runtime-claim">claim<\/a> is kept in the <a href="#glossary-cascade-runtime-pod">pod<\/a>\./,
   );
   assert.match(importing, /Claims stay/);
   assert.doesNotMatch(importing, /`claim`<\/a>|>claim<\/a>`/);
@@ -802,14 +802,17 @@ test("the first use of a term or alias in each capability links to its entry, as
 test("a level name and a leaf name link the first use, the leaf keeping its source link", async () => {
   const { markup } = await pageWith({
     runtime: {
-      report: WITH_GLOSSARY.replace(/"A claim is kept[^"]*"/, '"Reads."'),
+      report: WITH_GLOSSARY.replace(
+        /"A claim is kept[^"]*"/,
+        '"Reads."',
+      ).replace("holds claims", "holds records"),
       ...RUN,
     },
   });
   const part = partOf(markup, "runtime");
   assert.match(
     part,
-    /<summary>when the <a href="#glossary-cascade-runtime-pod">Pod<\/a> holds claims/,
+    /<summary>when the <a href="#glossary-cascade-runtime-pod">Pod<\/a> holds records/,
   );
   assert.match(
     part,
