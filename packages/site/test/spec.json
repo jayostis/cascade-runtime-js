@@ -354,6 +354,7 @@
     "tests-tree.test.ts",
     "tests-glossary.test.ts",
     "junit.test.ts",
+    "read-ctrf.test.ts",
     "ctrf.test.ts",
     "junit-reporter.test.ts",
     "spec-shape.test.ts",

@@ -24,7 +24,7 @@ const ONE = { name: "example-0001", status: "passed", duration: 0 };
  */
 describe("Reading a report already in CTRF · readCtrf()", () => {
   describe("`readCtrf(json)`", () => {
-    it("reads each test's `suite` as its levels, outermost first", () => {
+    it("reads each test's `suite` as its levels, from the capability down", () => {
       const [one] = readCtrf(reportOf({ ...ONE, suite: LEVELS })).cases;
       assert.deepEqual(one?.describes, LEVELS);
     });

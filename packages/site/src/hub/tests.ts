@@ -1,3 +1,4 @@
+import { readCtrf } from "../ctrf.js";
 import { Html, markup } from "../html.js";
 import { frontPageLink, pageNameOf, ruleHref } from "../links.js";
 import {
@@ -47,6 +48,7 @@ const RUNNERS: readonly Suite["runner"][] = [
   "pytest",
   "vitest",
   "nextest",
+  "ctrf",
 ];
 
 /** The suites of `packages/site/test-suites.json`; throws, naming it, at an entry missing a field or naming no known runner. */
@@ -705,6 +707,7 @@ function extraOf(one: TestCase): { extra?: unknown } {
   });
   const rules = one.rules.map(ruleOf);
   const extra = {
+    ...one.extra,
     ...(levels.length === 0 ? {} : { levels }),
     ...(one.description === undefined ? {} : { description: one.description }),
     ...(rules.length === 0 ? {} : { rules }),
@@ -736,14 +739,12 @@ function ctrf(
   suite: Suite,
   run: TestRun,
   cases: readonly TestCase[],
-  report: string,
+  duration: number,
   failedOutside: number,
   packages: ReadonlyMap<string, PackageInfo>,
+  tool: string,
 ): unknown {
   const start = Date.parse(run.at);
-  const duration =
-    declaredDuration(report) ??
-    cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0);
   return {
     reportFormat: "CTRF",
     specVersion: "0.2.0",
@@ -751,7 +752,7 @@ function ctrf(
     generatedBy: "cascade-runtime-js packages/site",
     ...extraOfGlossaries(suite, run, cases, packages),
     results: {
-      tool: { name: suite.runner },
+      tool: { name: tool },
       summary: {
         tests: cases.length,
         passed: count(cases, "passed"),
@@ -788,9 +789,19 @@ interface Part {
   readonly ctrf?: unknown;
 }
 
-/** The cases of a run's report, read as the report's format has them. */
-function casesOf(run: TestRun): JunitReport {
-  return readJunit(run.report);
+/** The cases of a run's report, read as its suite's runner writes it; a `ctrf` suite's report is already CTRF. */
+function casesOf(
+  suite: Suite,
+  run: TestRun,
+): JunitReport & { readonly tool?: string } {
+  if (suite.runner !== "ctrf") return readJunit(run.report);
+  const { cases, tool } = readCtrf(run.report);
+  return {
+    cases,
+    packages: new Map(),
+    failingSuites: 0,
+    ...(tool === undefined ? {} : { tool }),
+  };
 }
 
 /** What a suite's page shows of its run: the summary, the counts and the tree, or why there is none. */
@@ -803,8 +814,9 @@ function part(suite: Suite, run: TestRun | undefined): Part {
   let cases: TestCase[];
   let failingSuites: number;
   let packages: ReadonlyMap<string, PackageInfo>;
+  let tool: string | undefined;
   try {
-    ({ cases, failingSuites, packages } = casesOf(run));
+    ({ cases, failingSuites, packages, tool } = casesOf(suite, run));
   } catch (error) {
     return {
       html: markup`<p class="prose">${runLine(suite, run)}.</p>
@@ -813,7 +825,9 @@ function part(suite: Suite, run: TestRun | undefined): Part {
     };
   }
   const failed = count(cases, "failed");
-  const counted = declaredFailures(run.report);
+  // Only node:test's XML declares failures and a duration outside its cases.
+  const counted =
+    suite.runner === "ctrf" ? undefined : declaredFailures(run.report);
   // failingSuites includes describe suites holding a failed case, which node does not count in its failures; the threshold stays so that it never alarms falsely.
   const hidden = counted !== undefined && counted > failed + failingSuites;
   const unlisted =
@@ -824,7 +838,7 @@ function part(suite: Suite, run: TestRun | undefined): Part {
   const shownCases =
     cases.length === 0 ? "" : packageSections(cases, packages, suite, run);
   const milliseconds =
-    declaredDuration(run.report) ??
+    (suite.runner === "ctrf" ? undefined : declaredDuration(run.report)) ??
     cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0);
   const none =
     failed === 0 && !hidden
@@ -837,9 +851,10 @@ ${unlisted}${none}${shownCases}`,
       suite,
       run,
       cases,
-      run.report,
+      milliseconds,
       counted !== undefined && hidden ? counted - failed : 0,
       packages,
+      tool ?? suite.runner,
     ),
   };
 }
