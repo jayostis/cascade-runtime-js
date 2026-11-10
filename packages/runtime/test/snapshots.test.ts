@@ -362,12 +362,15 @@ test("a set hash multiplied in a few files at a time, in any order, and kept bet
     }
     assert.equal(await hashed.setHash(), whole);
     const paths = new Set(files.keys());
-    const reopened = await HashedSet.kept(await hashed.kept(), paths);
+    const reopened = await HashedSet.ofKept(await hashed.kept(), paths);
     assert.equal(await reopened?.setHash(), whole);
     const [first = ""] = paths;
     const swapped = new Set([...paths].filter((path) => path !== first));
     swapped.add(`records/${randomId()}.ttl`);
-    assert.equal(await HashedSet.kept(await hashed.kept(), swapped), undefined);
+    assert.equal(
+      await HashedSet.ofKept(await hashed.kept(), swapped),
+      undefined,
+    );
     assert.equal(
       hashed.missing(swapped, () => true),
       undefined,

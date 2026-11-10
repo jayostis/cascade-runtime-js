@@ -115,7 +115,7 @@ export class HashedSet {
   }
 
   /** The set kept as `kept()` wrote it, when the paths are exactly its files; undefined otherwise. */
-  static async kept(
+  static async ofKept(
     kept: KeptSet,
     paths: ReadonlySet<string>,
   ): Promise<HashedSet | undefined> {
