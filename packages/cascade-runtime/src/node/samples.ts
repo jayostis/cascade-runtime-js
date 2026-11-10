@@ -11,7 +11,7 @@ import { type Components, FolderFiles } from "@cascade-runtime/runtime/node";
 import type { Pod } from "../pod.js";
 import type { Tables } from "../tables.js";
 import { kitsIn, replayKitFrom, withKit } from "./kits.js";
-import { publishedAnswers } from "./published.js";
+import { answersToPublish } from "./published.js";
 import { partsOf } from "./resolved.js";
 
 /** The folder a sample's pod is copied from, beside its pack, its answers and its lookups. */
@@ -119,7 +119,7 @@ export async function samplesOf(
         `${kit}/${POD}.pack.json`,
         encoder.encode(JSON.stringify(packFolder(paths, pod))),
       );
-      for (const [path, bytes] of await publishedAnswers(
+      for (const [path, bytes] of await answersToPublish(
         parts,
         kit,
         pod,

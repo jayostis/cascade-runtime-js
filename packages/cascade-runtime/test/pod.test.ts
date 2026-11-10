@@ -56,7 +56,7 @@ import { Answers } from "../src/answers.js";
 import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
-import { partsOf, publishedAnswers } from "../src/node/published.js";
+import { partsOf, answersToPublish } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 import { samplesOf } from "../src/node/samples.js";
 import { keptPod, openPodWith, type Parts } from "../src/pod.js";
@@ -1047,7 +1047,7 @@ test("a published pod's answers, as the site computes them, are read back withou
   const codes = (await pod.ask(QUESTION)).flatMap((row) =>
     Object.values(row).filter((value) => value.startsWith("http")),
   );
-  for (const [path, bytes] of await publishedAnswers(
+  for (const [path, bytes] of await answersToPublish(
     publishing,
     "pod",
     published,

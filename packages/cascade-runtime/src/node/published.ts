@@ -68,7 +68,7 @@ export async function publishedSamples(
  * `runtime`, the version of the browser entry that copies it; `pod.json` also says which `tables` it was computed with.
  * Given `look`, what it asks of the tables about the pod, as the page that shows it asks, is kept as `lookups.json`.
  */
-export async function publishedAnswers(
+export async function answersToPublish(
   parts: Parts,
   name: string,
   pod: ReadonlyMap<string, Uint8Array>,

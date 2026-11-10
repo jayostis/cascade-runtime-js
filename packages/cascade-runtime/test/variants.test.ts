@@ -22,7 +22,7 @@ import {
   FolderFiles,
 } from "@cascade-runtime/runtime/node";
 import { Answers } from "../src/answers.js";
-import { publishedAnswers } from "../src/node/published.js";
+import { answersToPublish } from "../src/node/published.js";
 import { answersBeside, partsOf } from "../src/node/resolved.js";
 import { keptPod, openPodWith, type Parts, type Pod } from "../src/pod.js";
 import {
@@ -538,7 +538,7 @@ test("a report agrees with ClinVar when its value is among the row's, differs wh
       if (bytes !== undefined) published.set(path, bytes);
     }
     const answers = new MemoryFiles("urn:test:answers/");
-    for (const [path, bytes] of await publishedAnswers(
+    for (const [path, bytes] of await answersToPublish(
       withTables(app),
       "martin",
       published,
