@@ -1694,7 +1694,7 @@ describe("Starting from the tables the package carries · tables.start()", () =>
   const cvx141 = `${CVX}141`;
 
   describe("tables.start()", () => {
-    it("returns the bytes it copied into an empty store", async () => {
+    it("returns more than 0 bytes for an empty store", async () => {
       const { files } = await starterCopies();
       assert.ok((await startedOn(files).start()) > 0);
     });
@@ -1736,7 +1736,7 @@ describe("Starting from the tables the package carries · tables.start()", () =>
       assert.equal(reads.most, READ_AHEAD);
     });
 
-    it("makes no search list that the starter already carries", async () => {
+    it("makes no search list that the starter already carries: a search finds a code though any search list it made would be refused", async () => {
       const { files } = await starterCopies();
       // The copy's `listed` rejects: a search that finds a code read the list the starter carried.
       const tables = startedOn(files);
