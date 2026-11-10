@@ -197,7 +197,7 @@ function verdict(
   );
 }
 
-/** Alex's first entry as the owner of `of` enters it; `session` names another act than the kit's. */
+/** Alex's first entry session as the owner of `of` enters it; `session` names another act than the kit's. */
 async function entryFor(of: Pod, session?: string): Promise<string> {
   const people = await triplesOf(`${KIT}/scripted-input/people.ttl`);
   const alex = people.find(
@@ -293,7 +293,7 @@ function pageParts(): Pick<
   };
 }
 
-/** A new pod, with Alex's first entry filed in it, and the entry and the record it was merged into. */
+/** A new pod, with Alex's first owner-entered record filed in it, and the view entry it is in and the record. */
 async function enteredPod(
   name: string,
 ): Promise<{ pod: Pod; entry: string; record: string }> {
@@ -309,7 +309,7 @@ async function enteredPod(
   return { pod, entry, record };
 }
 
-/** An entry by the owner of `of`, filed without the matcher, and the parents of the snapshot its act left. */
+/** An entry session by the owner of `of`, filed without the matcher, and the parents of the snapshot its act left. */
 async function parentsOf(
   at: string,
   of: Pod,
@@ -851,9 +851,8 @@ describe("Asking a pod questions · pod.ask()", () => {
 });
 
 /**
- * A person can add a record no hospital holds, such as an allergy they know they have. The app writes the entry in
- * Turtle from the template in `packages/cascade-runtime/guide/AGENTS.md`, and because it is the owner's own, it needs
- * no claim.
+ * A person can add a record no hospital holds, such as an allergy they know they have. The app writes the record in
+ * Turtle from a template in the guide, and because it is the owner's own, it needs no claim.
  * @rule runtime/arrivals.feature A12
  * @rule runtime/arrivals.feature A14
  * @rule conformance/alex-rivera/alex-rivera.feature P16
@@ -894,7 +893,7 @@ describe("Entering a record by hand · pod.enter()", () => {
     await owned.close();
   });
 
-  it("returns the entry's act as `activity` and the matcher's run on it as `matched`", () => {
+  it("returns the entry session as `activity` and the matcher's run on it as `matched`", () => {
     assert.equal(entered.refused, undefined);
     assert.ok(entered.activity);
     assert.ok(entered.matched);
@@ -905,7 +904,7 @@ describe("Entering a record by hand · pod.enter()", () => {
     assert.equal(peanuts.length, 1);
   });
 
-  it("returns `refused`, with nothing written, for an entry the pod's rules turn down", () => {
+  it("returns `refused`, with nothing written, for Turtle the pod's rules turn down", () => {
     assert.ok(twice.refused);
     assert.deepEqual(twice.wrote, []);
     assert.deepEqual(left, held);

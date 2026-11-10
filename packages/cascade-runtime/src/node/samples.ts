@@ -17,7 +17,7 @@ import { partsOf } from "./resolved.js";
 /** The folder a sample's pod is copied from, beside its pack, its answers and its lookups. */
 const POD = "pod";
 
-/** What the published samples are made from: the components, the starter copies of the feeds' series, and the version of the browser entry that copies them. */
+/** What the published samples are made from: the components, the starter copies of the feeds' series, and the version of the browser build that copies them. */
 export interface SampleSource {
   readonly components: Components;
   readonly starter?: Files;
@@ -34,7 +34,7 @@ export interface SampleOptions {
 export interface Samples {
   /** Every kit the vocabulary carries, by its name, with its title. */
   readonly kits: ReadonlyMap<string, string>;
-  /** The version of the browser entry, which every answer kept is kept under. */
+  /** The version of the browser build, which every answer kept is kept under. */
   readonly runtime: string;
   /** Each sample's files, by their paths under the samples' root. */
   readonly files: ReadonlyMap<string, Uint8Array>;
