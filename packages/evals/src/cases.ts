@@ -245,7 +245,7 @@ const sameComponents = (a: readonly Component[], b: readonly Component[]) =>
  * A prepared record is kept for these downloads, components and reference tables only if it carries its build time and
  * its tables: older ones do not.
  */
-export const keeps = (
+export const reusesPreparedPod = (
   kept: Pick<Prepared, "downloadsSha256" | "components" | "build" | "tables">,
   downloadsSha256: string,
   components: readonly Component[],
@@ -284,7 +284,7 @@ export async function prepare(
   if (existsSync(record)) {
     const kept = JSON.parse(await readFile(record, "utf8")) as Prepared;
     if (
-      keeps(kept, found.downloads.sha256, resolved, tables.id) &&
+      reusesPreparedPod(kept, found.downloads.sha256, resolved, tables.id) &&
       existsSync(join(kept.pods, kept.pod))
     )
       return kept;
