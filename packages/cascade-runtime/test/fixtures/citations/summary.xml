@@ -22,7 +22,7 @@
         <effectiveTime value="20260303"/>
         <component>
           <observation classCode="OBS" moodCode="EVN">
-            <id root="2.16.840.1.113883.19.5" extension="LAB-61209"/><author><time value="20260304"/></author>
+            <id root="2.16.840.1.113883.19.5" extension="LAB-61209"/><author><templateId root="2.16.840.1.113883.10.20.22.4.119"/><time value="20260304"/></author>
             <code code="3016-3" codeSystem="2.16.840.1.113883.6.1" displayName="Thyrotropin [Units/volume] in Serum or Plasma"/>
             <statusCode code="completed"/>
             <effectiveTime value="20260303091500"/>

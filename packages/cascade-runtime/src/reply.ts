@@ -9,7 +9,7 @@ import {
   type Backing,
   checkAbsence,
   checkCitation,
-  type Claim,
+  type Citation,
   type DateKind,
   entryHeld,
   type Fields,
@@ -58,9 +58,9 @@ export interface PodReplyFact {
   readonly quote?: string;
 }
 
-/** A fact of a reply about downloads: what a record says, where it is, and what is claimed of it, field by field. */
-export type RecordsReplyFact = Omit<Claim, "cite"> & {
-  readonly cite: Claim["cite"];
+/** A fact of a reply about downloads: what a record says, where it is, and what it says the record holds, field by field. */
+export type RecordsReplyFact = Omit<Citation, "cite"> & {
+  readonly cite: Citation["cite"];
   readonly says: string;
   readonly provider: string;
 };
@@ -364,12 +364,12 @@ export interface CheckedReply {
   readonly items: readonly CheckedItem[];
 }
 
-/** The claim a fact about downloads makes, without its words: what the checker compares with the record. */
-const claimOf = ({
+/** The citation a fact about downloads makes, without its words: what the checker compares with the record. */
+const citationOf = ({
   says: _says,
   provider: _provider,
-  ...claim
-}: RecordsReplyFact): Claim => claim;
+  ...citation
+}: RecordsReplyFact): Citation => citation;
 
 /** The kind of field each field a fact may name is checked as. */
 const KIND: Readonly<Record<FactField, keyof Fields>> = {
@@ -581,7 +581,7 @@ async function checkReplyUnder(
       };
     pointed.length = 0;
     const verdict = await checkCitation(
-      claimOf(fact as RecordsReplyFact),
+      citationOf(fact as RecordsReplyFact),
       watching(source),
     );
     return {

@@ -9,7 +9,7 @@ import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { componentsOf } from "@cascade-runtime/runtime/node";
-import { type Claim, openPod, type Pod, type Tie } from "cascade-runtime";
+import { type Citation, openPod, type Pod, type Tie } from "cascade-runtime";
 import { type Environment, pinnedPod } from "./pinned.js";
 import { CASES, WORK } from "./paths.js";
 import { giveTables, referenceTables } from "./reference-tables.js";
@@ -53,7 +53,7 @@ export interface KeyItem {
   readonly kind: "fact" | "absence" | "negation" | "gap" | "trap" | "near-trap";
   readonly title: string;
   readonly lookingFor: string;
-  readonly evidence: readonly (Claim & { readonly says?: string })[];
+  readonly evidence: readonly (Citation & { readonly says?: string })[];
   readonly absent?: readonly string[];
   readonly links: readonly string[];
   readonly found: string;
