@@ -352,14 +352,18 @@ describe("Picking the Bridge package for a CI run · pickBuild(), latestBuild(),
         expected: (bridge) => bridge.built,
       },
       {
-        leaf: "passes over a named PR of another repository that cannot be read",
+        leaf: "passes over a named PR of another repository that cannot be read, and follows a later one that can",
         run: onPull,
-        pulls: () => ({
+        pulls: (bridge) => ({
           [`${RUNTIME}/pull/1`]: pull(RUNTIME, {
-            body: named(`${OTHER}/pull/3`),
+            body: named(`${OTHER}/pull/3`, `${OTHER}/pull/2`),
           }),
+          [`${OTHER}/pull/2`]: pull(OTHER, {
+            body: named(`${BRIDGE}/pull/7`),
+          }),
+          [`${BRIDGE}/pull/7`]: pull(BRIDGE, { head: bridge.built }),
         }),
-        expected: (bridge) => bridge.two,
+        expected: (bridge) => bridge.built,
       },
       {
         leaf: "picks the Bridge's branch named like the run's target branch when the named Bridge PR is merged",
@@ -637,7 +641,7 @@ describe("Picking the Bridge package for a CI run · pickBuild(), latestBuild(),
       );
     });
 
-    it("rejects a named Bridge PR that file marks as not read", async () => {
+    it("rejects a named Bridge PR that the file `CASCADE_PULL_REQUESTS` marks as not read", async () => {
       await eventOf(named(`${BRIDGE}/pull/2`));
       await writeFile(handed, JSON.stringify({ [`${BRIDGE}/pull/2`]: null }));
       await assert.rejects(
