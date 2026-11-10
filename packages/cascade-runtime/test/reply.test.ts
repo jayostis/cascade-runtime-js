@@ -9,6 +9,7 @@ import {
   checkReply,
   type CheckedFact,
   downloadsSource,
+  numberedReply,
   type PodAsker,
   replyErrors,
   replySchema,
@@ -701,6 +702,28 @@ describe("Checking a model's reply against a person's records · checkReply(), r
       assert.deepEqual(
         answered.items[0]!.facts.map(({ verdict }) => verdict.ok),
         [true],
+      );
+    });
+  });
+
+  describe("numberedReply(reply)", () => {
+    it("numbers an item without `n` by its place and keeps an `n` that is given", () => {
+      const items = (reply as { items: object[] }).items.map((item) =>
+        Object.fromEntries(Object.entries(item).filter(([key]) => key !== "n")),
+      );
+      assert.ok(items.length >= 3, "the recorded reply has items to number");
+      const given = items.map((item, at) =>
+        at === 1 ? { ...item, n: 7 } : item,
+      );
+      const numbers = (value: unknown): number[] =>
+        (value as { items: { n: number }[] }).items.map(({ n }) => n);
+      assert.deepEqual(
+        numbers(numberedReply({ ...(reply as object), items })),
+        items.map((_item, at) => at + 1),
+      );
+      assert.deepEqual(
+        numbers(numberedReply({ ...(reply as object), items: given })),
+        items.map((_item, at) => (at === 1 ? 7 : at + 1)),
       );
     });
   });
