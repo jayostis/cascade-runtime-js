@@ -47,6 +47,11 @@
       "aliases": ["adapters"]
     },
     {
+      "term": "anchor",
+      "definition": "the part of a web address after `#`, which takes a reader to one place on a page: the `id` of a heading, a rule or an entry.",
+      "aliases": ["anchors"]
+    },
+    {
       "term": "build section",
       "definition": "the closed section at the end of a package on a tests page, headed \"Build and packaging\", for the cases of a file or capability that a package's `spec.json` lists under `build`, checks of how the package is built; it is not part of the specification.",
       "aliases": ["build check", "build checks"]
@@ -365,6 +370,7 @@
     "agent-files.test.ts",
     "links.test.ts",
     "addresses.test.ts",
-    "markdown.test.ts"
+    "markdown.test.ts",
+    "link-check.test.ts"
   ]
 }

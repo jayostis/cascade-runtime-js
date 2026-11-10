@@ -407,7 +407,7 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
         );
     });
 
-    it("links, from a named question, each vocabulary term its query names", () => {
+    it("links, from a named question, a vocabulary term its query names", () => {
       const used = page("views/allergies.html").blocks.flatMap(({ hrefs }) =>
         hrefs.filter((href) => href.startsWith("../terms/#")),
       );
@@ -429,7 +429,7 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
       );
     });
 
-    it("links, from a view's page, each rule that names the view", () => {
+    it("links, from a view's page, a rule that names the view", () => {
       // Rule A15 of `runtime/arrivals.feature` names `clinical/allergies.ttl` today; if the feature renumbers, change this.
       assert.ok(
         page("views/allergies.html").hrefs.includes(

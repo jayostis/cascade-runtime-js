@@ -30,7 +30,7 @@ const headingsOf = (markdown: string) => ({
 });
 
 /**
- * The API page shows the guide and the README of the cascade-runtime package as pages, so a developer reads on the site
+ * The API page shows the guide and the README of the `cascade-runtime` package as pages, so a developer reads on the site
  * what a coding agent reads as `AGENTS.md`.
  */
 describe("The API page · apiSection", () => {

@@ -228,8 +228,11 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       assert.ok(result.said.includes(`${origin}/down`), result.said);
     });
 
-    it("never asks a host on its allow list", () => {
-      assert.ok(!asked.some((line) => line.includes("never-asked")));
+    it("never asks a host it is told to skip by name", () => {
+      assert.ok(
+        result.said.includes("1 allowlisted host (loinc.org) not asked"),
+        result.said,
+      );
     });
   });
 
@@ -271,18 +274,19 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
     });
 
     it("names the page that holds each", () => {
-      const line = result.said
-        .split("\n")
-        .find((one) => one.includes("gone.png"));
-      assert.ok(line?.includes("sub/page.html"), result.said);
-      assert.ok(
-        result.said
-          .split("\n")
-          .some(
-            (one) => one.includes("missing.html") && one.includes("index.html"),
-          ),
-        result.said,
-      );
+      for (const [dead, holder] of [
+        ["missing.html", "index.html"],
+        ["sub/page.html#nowhere", "index.html"],
+        ["#no-such-id", "index.html"],
+        [`${origin}/gone`, "index.html"],
+        ["gone.png", "sub/page.html"],
+      ] as const)
+        assert.ok(
+          result.said
+            .split("\n")
+            .some((one) => one.includes(dead) && one.includes(holder)),
+          `${dead} is not named with ${holder} in:\n${result.said}`,
+        );
     });
 
     it("leaves a link that resolves unnamed", () => {

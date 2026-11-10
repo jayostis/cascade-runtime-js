@@ -40,7 +40,7 @@ describe("Rendering Markdown as a page · renderMarkdown()", () => {
         "[x](javascript:alert(1)) [y](data:text/html,a)",
       ).text;
       assert.ok(!/javascript:|data:/i.test(html), html);
-      assert.ok(html.includes("x") && html.includes("y"));
+      assert.equal(html, "<p>x y</p>\n");
     });
 
     it("keeps a relative link and an `http:` link", () => {

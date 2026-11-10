@@ -69,7 +69,7 @@ describe("Conformance results on the specification · readSpecReport(), specSect
       ]);
     });
 
-    it("matches results whose vocabulary address lacks its last slash", async () => {
+    it("matches results that give the vocabulary's GitHub `tree/<commit>/` address without its final `/`", async () => {
       const slashless = await pagesOf(vocabulary, ASSERTIONS, [
         { name: "cascade-vocabulary", iri: TREE.slice(0, -1), revision: "abc" },
       ]);
@@ -144,7 +144,7 @@ describe("Conformance results on the specification · readSpecReport(), specSect
       assert.ok(front.hrefs.includes("conformance/"));
     });
 
-    it("counts for each feature its rules, its rules with no example, and its examples passed, failed and not run", () => {
+    it("counts for a feature its rules, its rules with no example, and its examples passed, failed and not run", () => {
       assert.match(
         conformance.said,
         /feature rules rules with no example examples pass examples fail examples not run checks pass/,

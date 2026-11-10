@@ -214,7 +214,7 @@ describe("A newcomer's first pages · startSection, examplesSection, trySection"
       return new Promise<string>((done) =>
         runInNewContext(script, {
           URL,
-          setTimeout,
+          setTimeout: (run: () => void) => setTimeout(run, 1),
           location: {
             href: `${here}index.html?pod=alex-rivera&entry=a1#records`,
             search: "?pod=alex-rivera&entry=a1",
@@ -252,7 +252,7 @@ describe("A newcomer's first pages · startSection, examplesSection, trySection"
       );
     });
 
-    it("unregisters the service worker of its own folder and no other", async () => {
+    it("unregisters the browser's background script (a service worker) of its own folder and no other", async () => {
       const unregistered: string[] = [];
       await sentFrom(
         [here, "https://jayostis.github.io/cascade-starter-kit/try/"],

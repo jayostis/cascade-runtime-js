@@ -128,7 +128,12 @@ describe("Decision notes as pages · specSection", () => {
 
     it("gives each heading of the note an id", () => {
       assert.equal(note.h1, "Which revision is current");
-      for (const id of ["why", "choice", "still-open"])
+      for (const id of [
+        "which-revision-is-current",
+        "why",
+        "choice",
+        "still-open",
+      ])
         assert.ok(note.ids.has(id), id);
     });
 
@@ -220,7 +225,7 @@ describe("Decision notes as pages · specSection", () => {
     });
   });
 
-  describe("with a note whose table Markdown renders otherwise than the site reads it", () => {
+  describe("with a note of unusual layout", () => {
     let odd: ReadonlyMap<string, Uint8Array>;
     let index: ReturnType<typeof readPage>;
     let oddRule: ReturnType<typeof readPage>;
