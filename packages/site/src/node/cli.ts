@@ -46,9 +46,10 @@ import type {
   AdapterRead,
   Conformance,
   PagesContext,
-  TestReports,
+  SuiteRun,
   TestRun,
 } from "../hub/context.js";
+import { nameOf, suitesOf } from "../hub/tests.js";
 import { buildTree } from "../sections.js";
 import { Site, type SiteOptions } from "../site.js";
 import { readSpecReport, type SpecReport, specPages } from "../spec.js";
@@ -298,8 +299,9 @@ const reportFileOf = (named: string | undefined): string =>
   absolute(named ?? join(ROOT, "build", "conformance", "earl.nt"));
 
 /**
- * One suite's newest run on main, kept in a folder as `junit.xml` with `run.json` beside it (`commit`, `at`, `url`). A
- * folder without both, or a `run.json` that does not name the run, is no run: the page says so for that suite.
+ * One suite's newest run on main, kept in a folder as `junit.xml` with `run.json` beside it (`commit`, `at`, `url`), and
+ * the `spec.json` its artifact held, when it held one. A folder without both, or a `run.json` that does not name the run,
+ * is no run: the page says so for that suite.
  */
 async function readTestRun(
   folder: string,
@@ -331,19 +333,42 @@ async function readTestRun(
     );
     return undefined;
   }
-  return { report: await readFile(reportFile, "utf8"), commit, at, url };
+  const specFile = join(folder, "spec.json");
+  let spec: unknown;
+  if (existsSync(specFile))
+    try {
+      spec = JSON.parse(await readFile(specFile, "utf8"));
+    } catch (error) {
+      log(
+        `${specFile} cannot be read (${error instanceof Error ? error.message : String(error)}), so the ${suite} page has no spec`,
+      );
+    }
+  return {
+    report: await readFile(reportFile, "utf8"),
+    commit,
+    at,
+    url,
+    ...(spec === undefined ? {} : { spec }),
+  };
 }
 
-/** The runtime's and the vocabulary's newest runs on main, from `<folder>/runtime` and `<folder>/vocabulary`. */
-async function readTestReports(folder: string): Promise<TestReports> {
-  const [runtime, vocabulary] = await Promise.all([
-    readTestRun(join(folder, "runtime"), "runtime"),
-    readTestRun(join(folder, "vocabulary"), "vocabulary"),
-  ]);
-  return {
-    ...(runtime === undefined ? {} : { runtime }),
-    ...(vocabulary === undefined ? {} : { vocabulary }),
-  };
+/** Each suite `packages/site/test-suites.json` lists, with its newest run on main from `<folder>/<repository's name>/`. */
+async function readTestReports(folder: string): Promise<SuiteRun[]> {
+  const suites = suitesOf(
+    JSON.parse(
+      await readFile(
+        join(ROOT, "packages", "site", "test-suites.json"),
+        "utf8",
+      ),
+    ),
+  );
+  return Promise.all(
+    suites.map(async (suite) => {
+      const name = nameOf(suite);
+      const run = await readTestRun(join(folder, name), name);
+      return run === undefined ? { suite } : { suite, run };
+    }),
+  );
 }
 
 const testsFolderOf = (named: string | undefined): string =>
@@ -498,8 +523,9 @@ function pagesContext(
  * once it is written. The one command that the pull request's docs site and the deploy both run. `--no-kits` leaves out
  * what is made of the kits, which is most of the time. `--report` names the conformance run's EARL report, with its
  * table.md beside it; the spec and conformance pages show every result as not run when there is none. `--tests` names the
- * folder of the unit test reports, `runtime/` and `vocabulary/` in it, each with `junit.xml` and `run.json`; the page of
- * a suite with none says it is not available.
+ * folder of the unit test reports, a folder in it for each suite of `packages/site/test-suites.json` named as its
+ * repository, each with `junit.xml`, `run.json` and perhaps `spec.json`; the page of a suite with none says it is not
+ * available.
  */
 async function buildPages(args: string[]): Promise<number> {
   const { values } = parseArgs({

@@ -39,18 +39,29 @@ async function page(): Promise<string> {
   const { tree } = await buildTree({
     sections: [testsSection],
     ctx: {
-      tests: async () => ({
-        runtime: {
-          report: REPORT,
-          commit: "0123456789abcdef0123456789abcdef01234567",
-          at: "2026-11-04T22:12:35Z",
-          url: "https://github.com/jayostis/cascade-runtime-js/actions/runs/42",
+      tests: async () => [
+        {
+          suite: {
+            repository: "jayostis/cascade-runtime-js",
+            title: "The runtime's tests",
+            about: "npm test, node:test over every package",
+            workflow: "check.yml",
+            artifact: "runtime-tests",
+            report: "junit.xml",
+            runner: "node:test" as const,
+          },
+          run: {
+            report: REPORT,
+            commit: "0123456789abcdef0123456789abcdef01234567",
+            at: "2026-11-04T22:12:35Z",
+            url: "https://github.com/jayostis/cascade-runtime-js/actions/runs/42",
+          },
         },
-      }),
+      ],
     },
     front: (rows) => hubFiles(["Records"], rows),
   });
-  const bytes = tree.get("conformance/tests/index.html");
+  const bytes = tree.get("conformance/tests/cascade-runtime-js/index.html");
   assert.ok(bytes, "the tests page is written");
   return new TextDecoder().decode(bytes);
 }
@@ -60,7 +71,7 @@ test("the tests page's script expands and collapses every level, failures-only h
   try {
     const tab = await browser.newPage();
     await tab.setContent(await page());
-    const part = tab.locator('[data-part="runtime"]');
+    const part = tab.locator('[data-part="cascade-runtime-js"]');
     const visible = async (selector: string): Promise<number> =>
       await part
         .locator(selector)

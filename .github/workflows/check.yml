@@ -582,10 +582,11 @@ jobs:
         with:
           name: conformance
           path: build/conformance
-      # The unit test page shows the newest run of each suite on main, case by case: for each repository, the newest push or
-      # nightly run of its check workflow that still holds the report's artifact (a cancelled or unfinished run does not),
-      # so the page is at most one push behind and the deploy never waits for a suite. Where the job's token may not
-      # download it, the page says "not available" for that suite and the deploy goes on.
+      # Each repository's unit test page shows the newest run of its suite on main, case by case: for each suite of
+      # packages/site/test-suites.json, the newest push or nightly run of its workflow that still holds the report's
+      # artifact (a cancelled or unfinished run does not), so a page is at most one push behind and the deploy never waits
+      # for a suite. Where the job's token may not download it, or the repository uploads none yet, its page says "not
+      # available" and the deploy goes on.
       - name: The test reports
         continue-on-error: true
         shell: bash
@@ -593,23 +594,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          # fetch <repository> <artifact> <folder> <the report's file in the artifact>
+          # fetch <repository> <workflow> <artifact> <the report's file in the artifact> <folder>
           fetch() {
-            local repository=$1 artifact=$2 kept=$3 file=$4 runs id sha at url try="$3/.try"
+            local repository=$1 workflow=$2 artifact=$3 file=$4 kept=$5 runs held id sha at url try="$5/.try"
             mkdir -p "$kept"
-            if ! runs=$(gh run list -R "$repository" -w check.yml -b main --limit 20 \
+            if ! runs=$(gh run list -R "$repository" -w "$workflow" -b main --limit 20 \
               --json databaseId,event,headSha,createdAt,url \
               --jq '.[] | select(.event == "push" or .event == "schedule") | [.databaseId, .headSha, .createdAt, .url] | @tsv'); then
-              echo "::warning::cannot list the runs of $repository, so its test report is not available"
+              echo "::warning::cannot list the $workflow runs of $repository, so its test report is not available"
+              return 0
+            fi
+            # The runs that still hold an artifact of that name, so a repository that uploads none costs one call, not a
+            # download for each of its runs.
+            if ! held=$(gh api --paginate "repos/$repository/actions/artifacts?name=$artifact&per_page=100" \
+              --jq '.artifacts[] | select(.expired | not) | .workflow_run.id'); then
+              echo "::warning::cannot list the $artifact artifacts of $repository, so its test report is not available"
               return 0
             fi
             while IFS=$'\t' read -r id sha at url; do
               [ -n "$id" ] || continue
+              grep -qx "$id" <<< "$held" || continue
               # A fresh folder per candidate: gh does not overwrite and exits 0 on "The file exists", so a half-kept artifact
               # (run.json without the report) would poison every older candidate. The report being there is the success.
               rm -rf "$try"
               mkdir -p "$try"
-              gh run download "$id" -R "$repository" -n "$artifact" -D "$try" >/dev/null 2>&1 || true
+              gh run download "$id" -R "$repository" -n "$artifact" -D "$try" </dev/null >/dev/null 2>&1 || true
               if [ -f "$try/$file" ]; then
                 [ "$file" = junit.xml ] || mv "$try/$file" "$try/junit.xml"
                 [ -f "$try/run.json" ] || printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$sha" "$at" "$url" > "$try/run.json"
@@ -622,8 +631,11 @@ jobs:
             rm -rf "$try"
             echo "::warning::none of the newest runs of $repository holds a $artifact artifact this job can download, so its test report is not available"
           }
-          fetch "$GITHUB_REPOSITORY" runtime-tests build/tests/runtime junit.xml
-          fetch jayostis/cascade-vocabulary pytest-junit build/tests/vocabulary pytest-junit.xml
+          mapfile -t suites < <(jq -r '.[] | [.repository, .workflow, .artifact, .report] | @tsv' packages/site/test-suites.json)
+          for suite in "${suites[@]}"; do
+            IFS=$'\t' read -r repository workflow artifact file <<< "$suite"
+            fetch "$repository" "$workflow" "$artifact" "$file" "build/tests/${repository#*/}"
+          done
       - name: Build the Pages tree
         run: npm run build:pages -- --report build/conformance/earl.ttl --tests build/tests
         env:
