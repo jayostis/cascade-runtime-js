@@ -26,8 +26,8 @@ const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
  */
 describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, ExportedFiles", () => {
   /**
-   * Each leaf runs over both kinds, naming the kind in the message. A `before` writes `subject/7c/a.ttl` by path,
-   * `records/b.ttl` by IRI and `records/long.ttl` (`0123456789`) into each; no leaf writes a file.
+   * Each leaf runs over both kinds, naming the kind in the message. Each holds `subject/7c/a.ttl`, written by path,
+   * `records/b.ttl`, written by IRI, and `records/long.ttl` (`0123456789`); no leaf writes a file.
    */
   describe("given files in memory, and given a folder on disk", () => {
     let folder: string;
@@ -350,7 +350,7 @@ describe("Fetching a folder of files in a web page · FetchedFiles, packFolder()
    * One `FetchedFiles` reads the folder `c/` of `https://site.example/components/`, whose pack is `c.json`. The pack's
    * address answers 500 the first time it is asked. It is read once with the pack served and once with the address
    * answering 404, and the server is asked every question the reads cause. Each read changes what the next fetches, so
-   * all are made in a `before` and the leaves read what it kept.
+   * the leaves read what the reads left.
    */
   describe("given a `FetchedFiles` with a pack's address", () => {
     let withPack: Kept<Fetching>;

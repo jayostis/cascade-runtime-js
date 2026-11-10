@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { before, describe, it, mock } from "node:test";
+import { before, describe, it } from "node:test";
 import { MemoryFiles } from "../src/files.js";
 import { Graph } from "../src/graph.js";
-import { KeptBuild } from "../src/incremental.js";
 import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, RDF } from "../src/rdf.js";
 import { cleosReplay } from "./cleo.js";
+import { countRebuildsInPart } from "./rebuilds.js";
 import { ROOT } from "./vocabulary.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
@@ -26,19 +26,19 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
   /**
    * `build.verify` (`PodBuildOption.verify`) makes a pod that rebuilt a step in part build itself whole as well, and
    * throw where the two differ: in a graph of derived state, or in a file the build writes. A replay that does not throw
-   * is one in which they never differed. Each kit's story is replayed once, in a `before`, with a count of the steps
-   * that were rebuilt in part.
+   * is one in which they never differed. Each kit's story is replayed once, with a count of the steps that were
+   * rebuilt in part.
    */
   describe("given every kit replayed with `build.verify`", () => {
     let replays: { kit: string; error: unknown; inPart: number }[];
 
     before(async () => {
       const local = await localVocabulary(ROOT);
-      const verify = mock.method(KeptBuild.prototype, "verify");
+      const rebuilds = countRebuildsInPart();
       replays = [];
       try {
         for (const kit of await kits()) {
-          const calls = verify.mock.callCount();
+          const calls = rebuilds.count();
           let error: unknown;
           try {
             await featurePod(local, kit, new MemoryFiles(ADDRESS), {
@@ -50,11 +50,11 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           replays.push({
             kit,
             error,
-            inPart: verify.mock.callCount() - calls,
+            inPart: rebuilds.count() - calls,
           });
         }
       } finally {
-        verify.mock.restore();
+        rebuilds.stop();
       }
     });
 

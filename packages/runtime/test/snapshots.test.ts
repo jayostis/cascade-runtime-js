@@ -466,8 +466,7 @@ describe("Chaining each act's snapshot to the writer's last · CorePod.head, Cor
 describe("Receiving another writer's files · CorePod.receive()", () => {
   /**
    * A writer receives the files of another that entered `second-entry`, once with every write allowed and then once for
-   * each of its writes, stopped there. The stopped receive is made again on the same pod. Every receive is made in a
-   * `before`, because each changes what the next one finds.
+   * each of its writes, stopped there. The stopped receive is made again on the same pod.
    */
   describe("when a receive stops at one of its writes and is made again", () => {
     let outcome: Kept<{

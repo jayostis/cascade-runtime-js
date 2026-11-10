@@ -617,8 +617,8 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
   });
 
   /**
-   * The vectors give `containedRecordName()` its container's version id as a string, never an empty one; an adapter
-   * that writes `versionId: ""` must name the record as one that leaves it out.
+   * The vectors never pass an empty `versionId`; an adapter that writes `versionId: ""` must still name the record as
+   * one that leaves it out.
    */
   describe("containedRecordName()", () => {
     it("reads an empty `versionId` as none, and names from `lastUpdated`", async () => {
@@ -636,7 +636,8 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
     });
   });
 
-  /** As above for `keyFingerprint`: an adapter that writes `""` must name the record as one that leaves it out. */
+  /** As above for `keyFingerprint`: the vectors never pass an empty one, and an adapter that writes `""` must still name the
+   * record as one that leaves it out. */
   describe("recordFromCcdaWithoutIdName()", () => {
     it("reads an empty `keyFingerprint` as none, and names from `membersFingerprint`", async () => {
       const entry = {

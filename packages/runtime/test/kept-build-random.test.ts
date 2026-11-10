@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { before, describe, it, mock } from "node:test";
+import { before, describe, it } from "node:test";
 import { deriveWith, vocabularyBuild } from "../src/build.js";
 import type { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { importersNamed } from "../src/importers.js";
-import { KeptBuild } from "../src/incremental.js";
 import { localVocabulary, thisRuntime } from "../src/node/runtime.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { type Perform, PERFORMERS, Replay } from "../src/replay.js";
 import type { Happened, Step } from "../src/story.js";
 import { random } from "./random.js";
+import { countRebuildsInPart } from "./rebuilds.js";
 import { ROOT } from "./vocabulary.js";
 
 const CLEO = "urn:uuid:e3b7a9c2-4d16-4f85-9a3e-7c1b5d9f2e48";
@@ -467,12 +467,12 @@ let drawing: Promise<readonly Drawn[]> | undefined;
 /** Every story of the seeds drawn and replayed once, with the error each threw or undefined; no seed's failure stops the next. */
 function drawnStories(): Promise<readonly Drawn[]> {
   drawing ??= (async () => {
-    const verify = mock.method(KeptBuild.prototype, "verify");
+    const rebuilds = countRebuildsInPart();
     const drawn: Drawn[] = [];
     try {
       for (let seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
         const started = performance.now();
-        const calls = verify.mock.callCount();
+        const calls = rebuilds.count();
         let error: unknown;
         let counts = { refused: 0, overUnnamed: 0 };
         let steps = 0;
@@ -486,7 +486,7 @@ function drawnStories(): Promise<readonly Drawn[]> {
         drawn.push({
           seed,
           error,
-          inPart: verify.mock.callCount() - calls,
+          inPart: rebuilds.count() - calls,
           overUnnamed: counts.overUnnamed,
         });
         if (process.env["CASCADE_RANDOM_SEEDS"] !== undefined)
@@ -495,7 +495,7 @@ function drawnStories(): Promise<readonly Drawn[]> {
           );
       }
     } finally {
-      verify.mock.restore();
+      rebuilds.stop();
     }
     return drawn;
   })();
