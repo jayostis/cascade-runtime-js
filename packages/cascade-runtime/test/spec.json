@@ -190,6 +190,10 @@
       "aliases": ["custodians"]
     },
     {
+      "term": "dateIs",
+      "definition": "on a lab change's `medication`, which of its days the change is placed on: `start of use`, `end of use` or `prescription written`."
+    },
+    {
       "term": "demo hospital",
       "definition": "a pretend hospital with made-up patients, from the package cascade-sandbox, which an app or a test signs in to and pulls from with no account and no network; Cascade North and Cascade South are two.",
       "aliases": ["demo hospitals"]
