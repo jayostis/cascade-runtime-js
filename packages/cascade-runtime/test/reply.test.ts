@@ -500,7 +500,7 @@ describe("Checking a model's reply against a person's records · checkReply(), r
       assert.deepEqual(reasons([bare!]), ["nothing to check: quote"]);
     });
 
-    it("returns `filled` whatever the verdict", async () => {
+    it("returns `filled` for a field the view entry lacks", async () => {
       const [lacking] = await pointed(fact(HBA1C, "end"));
       assert.equal(lacking!.filled?.label, A1C_LABEL);
     });
