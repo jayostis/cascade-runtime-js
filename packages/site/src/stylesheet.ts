@@ -59,4 +59,11 @@ details pre { background: var(--panel); padding: .75rem; overflow-x: auto; borde
   td:empty { display: none; }
   td::before { content: attr(data-label); display: block; color: var(--quiet); font: .75rem ui-monospace, monospace; }
 }
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; --text: #e6e9ef; --quiet: #a3adbf; --line: #2b3240; --rule: #3a4252; --panel: #1b212c;
+          --link: #7db3ff; --bg: #12161d; }
+  body { background: var(--bg); }
+  html pre.failure { background: #3a1a1a; }
+  html .note tr:target { background: #4a4119; }
+}
 `;

@@ -76,6 +76,7 @@ function rowsOf(markup: string, heading: string): string[][] {
 function text(markup: string): string {
   return markup
     .replaceAll("<wbr>", "")
+    .replace(/<span class="icon" aria-hidden="true">[^<]*<\/span>/g, "")
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .replaceAll("&lt;", "<")
@@ -200,20 +201,20 @@ function partOf(markup: string, heading: string): string {
 function levelsOf(markup: string, heading: string): string[] {
   const part = partOf(markup, heading);
   return [...part.matchAll(/<summary>([\s\S]*?)<\/summary>/g)].map(([, said]) =>
-    text(said ?? ""),
+    text(said ?? "").replace(/(passed|failed) (?=\d)/g, "$1, "),
   );
 }
 
 /** The cases of the tree after the heading, as their name, result and time, in the page's order. */
 function casesOf(markup: string, heading: string): string[][] {
   const part = partOf(markup, heading);
-  return [...part.matchAll(/<li class="case">([\s\S]*?)<\/li>/g)].map(
+  return [...part.matchAll(/<li class="case"[^>]*>([\s\S]*?)<\/li>/g)].map(
     ([, item]) => {
       const leaf = (item ?? "").replace(/<pre[\s\S]*?<\/pre>/g, "");
       const pick = (pattern: RegExp) => text(pattern.exec(leaf)?.[1] ?? "");
       return [
         pick(/<a [^>]*>([\s\S]*?)<\/a>/),
-        pick(/<span class="result [^"]*">([\s\S]*?)<\/span>/),
+        pick(/<span class="label">([\s\S]*?)<\/span>/),
         pick(/<span class="time">([\s\S]*?)<\/span>/),
       ];
     },
@@ -778,8 +779,8 @@ test("the first use of a term or alias in each capability links to its entry, as
   });
   const part = partOf(markup, "runtime");
   const importing = part.slice(
-    part.indexOf("Importing"),
-    part.indexOf("Asking <span"),
+    part.indexOf(">Importing"),
+    part.indexOf(">Asking<"),
   );
   assert.equal(hrefsTo(importing, "claim"), 1);
   assert.match(
@@ -790,7 +791,7 @@ test("the first use of a term or alias in each capability links to its entry, as
   assert.doesNotMatch(importing, /`claim`<\/a>|>claim<\/a>`/);
   assert.doesNotMatch(importing, /dis<a|>disclaimed/);
   assert.equal(hrefsTo(importing, "pod"), 1);
-  const asking = part.slice(part.indexOf("Asking <span"));
+  const asking = part.slice(part.indexOf(">Asking<"));
   assert.equal(hrefsTo(asking, "claim"), 1, "a second capability links again");
   assert.equal(hrefsTo(asking, "export"), 1, "a leaf name links");
   assert.doesNotMatch(
@@ -813,7 +814,7 @@ test("a level name and a leaf name link the first use, the leaf keeping its sour
   const part = partOf(markup, "runtime");
   assert.match(
     part,
-    /<summary>when the <a href="#glossary-cascade-runtime-pod">Pod<\/a> holds records/,
+    /<summary><span class="level-name">when the <a href="#glossary-cascade-runtime-pod">Pod<\/a> holds records/,
   );
   assert.match(
     part,
@@ -864,4 +865,158 @@ test("a glossary term written with a capital links only as written, so plain Eng
   assert.deepEqual(linked("Claims are kept"), [
     { text: "Claims", id: "glossary-cascade-runtime-claim" },
   ]);
+});
+
+/** A suite's summary bar, as its tallies and the text around them. */
+function barOf(markup: string, heading: string) {
+  const bar = /<div class="summary-bar"[\s\S]*?<\/div>/.exec(
+    partOf(markup, heading),
+  )?.[0];
+  assert.ok(bar, `${heading} has a summary bar`);
+  const tallies = Object.fromEntries(
+    [...bar.matchAll(/data-status="(\w+)" data-count="(\d+)"/g)].map(
+      ([, status, n]) => [status, Number(n)],
+    ),
+  );
+  return { bar, tallies, said: text(bar) };
+}
+
+test("each suite's summary bar counts its results, names its package, version, commit and run time, and says unreleased only for an unreleased version", async () => {
+  const { markup } = await pageWith({
+    runtime: { report: NODE, ...RUN },
+    vocabulary: { report: PYTEST, ...OTHER_RUN },
+  });
+  const runtime = barOf(markup, "runtime");
+  assert.deepEqual(runtime.tallies, { passed: 2, failed: 1, skipped: 1 });
+  assert.match(runtime.said, /0123456/);
+
+  const vocabulary = barOf(markup, "vocabulary");
+  assert.deepEqual(vocabulary.tallies, { passed: 1, failed: 1, skipped: 1 });
+  assert.match(vocabulary.said, /fedcba9/);
+  assert.match(
+    vocabulary.said,
+    /212 ms/,
+    "a report with no declared total has its cases times added up",
+  );
+
+  const named = barOf(
+    (await pageWith({ runtime: { report: GROUPED, ...RUN } })).markup,
+    "runtime",
+  );
+  assert.match(named.said, /cascade-runtime 0\.0\.0 unreleased/);
+  const released = report(
+    packageProperty("cascade-runtime", "cascade-runtime", "1.2.0", {}),
+    described("A", {}, leafOf("b", pod, 2)),
+  );
+  const { said } = barOf(
+    (await pageWith({ runtime: { report: released, ...RUN } })).markup,
+    "runtime",
+  );
+  assert.match(said, /cascade-runtime 1\.2\.0/);
+  assert.doesNotMatch(said, /unreleased/);
+
+  const timed = barOf(
+    (await pageWith({ runtime: { report: NODE_UNLISTED, ...RUN } })).markup,
+    "runtime",
+  );
+  assert.match(
+    timed.said,
+    /132 ms/,
+    "node's declared duration is the run time",
+  );
+});
+
+test("the controls are buttons that start hidden, one set in each part, over a part whose levels and cases carry what they act on", async () => {
+  const { markup } = await pageWith({
+    runtime: { report: NODE, ...RUN },
+    vocabulary: { report: PYTEST, ...OTHER_RUN },
+  });
+  const actions = (heading: string): string[] =>
+    [
+      ...partOf(markup, heading).matchAll(
+        /<button type="button" data-action="([\w-]+)"/g,
+      ),
+    ].map(([, action]) => action ?? "");
+  assert.deepEqual(actions("runtime"), [
+    "expand-all",
+    "collapse-all",
+    "failures-only",
+  ]);
+  assert.deepEqual(
+    actions("vocabulary"),
+    ["failures-only"],
+    "a table has nothing to expand",
+  );
+  for (const heading of ["runtime", "vocabulary"])
+    assert.match(
+      partOf(markup, heading),
+      /<span class="controls" data-controls hidden>/,
+    );
+  assert.match(
+    markup,
+    /<section data-part="runtime">[\s\S]*<section data-part="vocabulary">/,
+  );
+  const runtime = partOf(markup, "runtime");
+  assert.match(runtime, /<li class="case" data-result="failed">/);
+  assert.match(runtime, /<li class="case" data-result="passed">/);
+  assert.match(runtime, /<li class="capability" data-failed="1">/);
+  assert.match(runtime, /<li class="capability" data-failed="0">/);
+  assert.match(partOf(markup, "vocabulary"), /<tr data-result="failed">/);
+  assert.match(markup, /<script>[\s\S]*data-action[\s\S]*<\/script>/);
+  assert.doesNotMatch(
+    runtime.replace(/<span class="controls"[\s\S]*?<\/span>/, ""),
+    /\shidden[\s>]/,
+    "nothing but the controls is hidden before script runs",
+  );
+});
+
+test("a case reads as an icon and its word, the word kept for a reader without the icon, in the tree and in the table", async () => {
+  const { markup } = await pageWith({
+    runtime: { report: NODE, ...RUN },
+    vocabulary: { report: PYTEST, ...OTHER_RUN },
+  });
+  const status = (result: string, icon: string) =>
+    `<span class="result ${result}"><span class="icon" aria-hidden="true">${icon}</span> <span class="label">${result}</span></span>`;
+  for (const heading of ["runtime", "vocabulary"]) {
+    const part = partOf(markup, heading);
+    assert.ok(part.includes(status("passed", "✓")), `${heading} passed`);
+    assert.ok(part.includes(status("failed", "✗")), `${heading} failed`);
+    assert.ok(part.includes(status("skipped", "○")), `${heading} skipped`);
+  }
+  assert.doesNotMatch(
+    markup,
+    /<span class="result \w+">[^<]*<\/span>/,
+    "no result is only its word, or only an icon",
+  );
+});
+
+test("a capability's API names after its dot are code, and a package's glossary has a filter hidden until script runs, each term followed by its definition", async () => {
+  const named = report(
+    "",
+    described(
+      "Pulling records · pull(), pullAll()",
+      { description: "Fetches." },
+      leafOf("fetches", pod, 3),
+    ),
+  );
+  const { markup } = await pageWith({ runtime: { report: named, ...RUN } });
+  assert.match(
+    markup,
+    /<span class="cap-name">Pulling records<\/span> <span class="api">pull\(\), pullAll\(\)<\/span>/,
+  );
+
+  const glossary = partOf(
+    (await pageWith({ runtime: { report: WITH_GLOSSARY, ...RUN } })).markup,
+    "runtime",
+  );
+  assert.match(
+    glossary,
+    /<input type="search" class="glossary-filter" data-glossary-filter hidden [^>]*aria-label="[^"]+">/,
+  );
+  const dl = /<dl>([\s\S]*?)<\/dl>/.exec(glossary)?.[1] ?? "";
+  const terms = dl.match(/<dt /g)?.length ?? 0;
+  assert.ok(terms >= 3);
+  assert.equal(dl.match(/<dd>[\s\S]*?<\/dd>/g)?.length, terms);
+  assert.match(dl, /^\s*<dt [^>]*>[\s\S]*?<\/dt>\s*<dd>/);
+  assert.match(glossary, /<p class="none-match" hidden>/);
 });

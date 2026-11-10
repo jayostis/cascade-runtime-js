@@ -131,6 +131,7 @@ export class Links {
 /** The glossary as a definition list, open until the reader closes it. */
 export function glossaryList(entries: readonly Entry[]): Html {
   return markup`<details class="glossary" open><summary>Glossary</summary>
+<input type="search" class="glossary-filter" data-glossary-filter hidden placeholder="Filter the glossary" aria-label="Filter the glossary">
 <dl>
 ${entries.map(
   ({
@@ -140,9 +141,10 @@ ${entries.map(
     aliases,
     id,
   }) => markup`<dt id="${id}"><dfn>${term}</dfn>${aliases.length === 0 ? "" : markup` <span class="aliases">(${aliases.join(", ")})</span>`}</dt>
-<dd>${definition}${vocabulary === undefined ? "" : vocabularyLink(vocabulary)}
+<dd>${definition}${vocabulary === undefined ? "" : vocabularyLink(vocabulary)}</dd>
 `,
-)}</dl></details>
+)}</dl>
+<p class="none-match" hidden>No entry matches.</p></details>
 `;
 }
 
