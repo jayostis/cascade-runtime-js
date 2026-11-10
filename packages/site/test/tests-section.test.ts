@@ -80,9 +80,10 @@ const OTHER_RUN = {
 async function pageWith(
   reports: { readonly runtime?: TestRun; readonly vocabulary?: TestRun },
   others: readonly SuiteRun[] = [],
+  runtime: Suite = RUNTIME,
 ) {
   const runs: SuiteRun[] = [
-    { suite: RUNTIME, ...(reports.runtime ? { run: reports.runtime } : {}) },
+    { suite: runtime, ...(reports.runtime ? { run: reports.runtime } : {}) },
     {
       suite: VOCABULARY,
       ...(reports.vocabulary ? { run: reports.vocabulary } : {}),
@@ -1259,4 +1260,72 @@ test("a capability's API names after its dot are code, and a package's glossary 
   assert.equal(dl.match(/<dd>[\s\S]*?<\/dd>/g)?.length, terms);
   assert.match(dl, /^\s*<dt [^>]*>[\s\S]*?<\/dt>\s*<dd>/);
   assert.match(glossary, /<p class="none-match" hidden>/);
+});
+
+/** Four packages with one passed case each, in the order a report lists them; `failing` names one whose case failed. */
+const FOUR_PACKAGES = (failing?: string): string =>
+  report(
+    ["apple-health", "cascade-runtime", "site", "runtime"]
+      .map((dir) => packageProperty(dir, dir, "0.0.0", {}))
+      .join(""),
+    ["apple-health", "cascade-runtime", "site", "runtime"]
+      .map((dir) =>
+        described(
+          `A capability of ${dir}`,
+          {},
+          leafOf(
+            "does it",
+            FILE(dir, "a.test"),
+            3,
+            dir === failing ? { failure: "broke" } : {},
+          ),
+        ),
+      )
+      .join(""),
+  );
+
+/** The packages of the runtime's page, in the order the page shows them. */
+const packagesOf = (markup: string): string[] =>
+  [...markup.matchAll(/<h3 class="package"><code>([^<]*)<\/code>/g)].map(
+    ([, name]) => name ?? "",
+  );
+
+const LISTING = { ...RUNTIME, packages: ["cascade-runtime", "site"] } as Suite;
+
+test("a suite that lists its packages keeps the order, and refuses a list that is not names", () => {
+  assert.deepEqual(
+    suitesOf([{ ...VOCABULARY, packages: ["b", "a"] }])[0]?.packages,
+    ["b", "a"],
+  );
+  for (const packages of ["site", [3], [""], { site: 1 }])
+    assert.throws(
+      () => suitesOf([{ ...VOCABULARY, packages }]),
+      /packages/,
+      JSON.stringify(packages),
+    );
+});
+
+test("a page shows the packages a suite lists in that order, then the others by name, and a package with a failed case first", async () => {
+  const listed = await pageWith(
+    { runtime: { report: FOUR_PACKAGES(), ...RUN } },
+    [],
+    LISTING,
+  );
+  assert.deepEqual(packagesOf(listed.markup).slice(0, 4), [
+    "cascade-runtime",
+    "site",
+    "apple-health",
+    "runtime",
+  ]);
+  const red = await pageWith(
+    { runtime: { report: FOUR_PACKAGES("runtime"), ...RUN } },
+    [],
+    LISTING,
+  );
+  assert.deepEqual(packagesOf(red.markup).slice(0, 4), [
+    "runtime",
+    "cascade-runtime",
+    "site",
+    "apple-health",
+  ]);
 });
