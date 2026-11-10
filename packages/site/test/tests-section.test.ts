@@ -926,6 +926,18 @@ test("each suite's summary bar counts its results, names its package, version, c
   );
 });
 
+test("a summary bar shows a failed pill only when a case failed, so a green run has no red one", async () => {
+  const green = report(
+    packageProperty("cascade-runtime", "cascade-runtime", "0.0.0", {}),
+    described("A", {}, leafOf("b", pod, 2)),
+  );
+  const { tallies } = barOf(
+    (await pageWith({ runtime: { report: green, ...RUN } })).markup,
+    "runtime",
+  );
+  assert.deepEqual(tallies, { passed: 1, skipped: 0 });
+});
+
 test("the controls are buttons that start hidden, one set in each part, over a part whose levels and cases carry what they act on", async () => {
   const { markup } = await pageWith({
     runtime: { report: NODE, ...RUN },

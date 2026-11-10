@@ -601,7 +601,7 @@ function summaryBar(
     : markup``;
   return markup`<div class="summary-bar" role="group" aria-label="Summary of the ${suite.key}'s tests">
 ${known}<span class="run">commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a></span>
-<span class="tallies">${badge("passed", count(cases, "passed"))}${badge("failed", count(cases, "failed"))}${badge("skipped", count(cases, "skipped"))}</span>
+<span class="tallies">${badge("passed", count(cases, "passed"))}${count(cases, "failed") === 0 ? "" : badge("failed", count(cases, "failed"))}${badge("skipped", count(cases, "skipped"))}</span>
 <span class="duration" title="run time">${seconds(milliseconds / 1000)}</span>
 <span class="controls" data-controls hidden>${controls}<button type="button" data-action="failures-only" aria-pressed="false">Failures only</button></span>
 </div>
