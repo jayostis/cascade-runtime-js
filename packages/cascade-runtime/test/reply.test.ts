@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { before, describe, it } from "node:test";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   checkReply,
@@ -92,74 +92,45 @@ const WHAT_IT_SHOWS = [
 const ask = async (question: string) =>
   question === "entry/What it shows" ? WHAT_IT_SHOWS : [];
 
-describe("a model's reply, with the calls it ran", () => {
-  let checked: Awaited<ReturnType<typeof checkReply>>;
-  before(async () => {
-    checked = await checkReply(reply, { ask, ran });
+test("a model's reply is checked fact by fact and absence by absence, against the pod's rows and the calls it ran", async () => {
+  const checked = await checkReply(reply, { ask, ran });
+  assert.deepEqual(checked.errors, []);
+  const [scan, ruledOut, dimer, later] = checked.items;
+  const facts = [...scan!.facts, ...ruledOut!.facts, ...dimer!.facts];
+  assert.deepEqual(
+    facts.map(({ verdict }) => verdict.ok),
+    [true, true, true, true],
+  );
+  assert.deepEqual(dimer!.facts[0]!.filled, {
+    entry: LAB,
+    label: "D-dimer",
+    value: "0.92 mg/L{FEU}",
+    date: "2025-07-08",
+    dateKind: "when",
+    held: ["0.92"],
+    sources: [],
   });
-
-  it("has no errors", () => {
-    assert.deepEqual(checked.errors, []);
-  });
-
-  it("checks each fact against the pod's rows", () => {
-    const [scan, ruledOut, dimer] = checked.items;
-    const facts = [...scan!.facts, ...ruledOut!.facts, ...dimer!.facts];
-    assert.deepEqual(
-      facts.map(({ verdict }) => verdict.ok),
-      [true, true, true, true],
-    );
-  });
-
-  it("fills a fact with what the pod holds of its entry", () => {
-    const [, , dimer] = checked.items;
-    assert.deepEqual(dimer!.facts[0]!.filled, {
-      entry: LAB,
-      label: "D-dimer",
-      value: "0.92 mg/L{FEU}",
-      date: "2025-07-08",
-      dateKind: "when",
-      held: ["0.92"],
-      sources: [],
-    });
-  });
-
-  it("names the source of the record a fact rests on", () => {
-    const [scan] = checked.items;
-    assert.deepEqual(scan!.facts[0]!.record?.source, [MEMBER]);
-  });
-
-  it("backs an absence by the calls that ran", () => {
-    const [, , , later] = checked.items;
-    assert.deepEqual(
-      later!.absences.map(({ backing }) => backing),
-      [{ backed: true }],
-    );
-  });
+  assert.deepEqual(scan!.facts[0]!.record?.source, [MEMBER]);
+  assert.deepEqual(
+    later!.absences.map(({ backing }) => backing),
+    [{ backed: true }],
+  );
 });
 
-describe("a reply that breaks the contract", () => {
+test("a reply that breaks the contract is reported with the schema's errors and checked for nothing", async () => {
+  assert.equal(replySchema.required.join(), "answer,short,items");
   const broken = { answer: "x", short: "y", items: [] };
-
-  it("requires an answer, a short and items", () => {
-    assert.equal(replySchema.required.join(), "answer,short,items");
-  });
-
-  it("is reported with the schema's errors", () => {
-    assert.deepEqual(replyErrors(broken), [
-      "/items must NOT have fewer than 1 items",
-    ]);
-  });
-
-  it("is checked for nothing", async () => {
-    const checked = await checkReply(broken, { ask, ran });
-    assert.deepEqual(checked.errors, replyErrors(broken));
-    assert.deepEqual(checked.items, []);
-  });
+  assert.deepEqual(replyErrors(broken), [
+    "/items must NOT have fewer than 1 items",
+  ]);
+  const checked = await checkReply(broken, { ask, ran });
+  assert.deepEqual(checked.errors, replyErrors(broken));
+  assert.deepEqual(checked.items, []);
 });
 
-describe("a reply checked against downloads", () => {
+test("a reply checked against downloads is held to the contract that cites a file and copies what it says", async () => {
   const files: Source = { at: async () => undefined };
+  assert.notDeepEqual((await checkReply(reply, { files, ran })).errors, []);
   const copied = {
     answer: "…",
     short: "…",
@@ -179,49 +150,31 @@ describe("a reply checked against downloads", () => {
       },
     ],
   };
-
-  it("is held to the contract that cites a file", async () => {
-    assert.notDeepEqual((await checkReply(reply, { files, ran })).errors, []);
-  });
-
-  it("is given a reply that copies, and checks no entry cite for lack of a pod", async () => {
-    const checked = await checkReply(copied, { files, ran });
-    assert.deepEqual(checked.errors, []);
-    assert.deepEqual(
-      checked.items[0]!.facts.map(
-        ({ verdict }) => !verdict.ok && verdict.reason,
-      ),
-      ["nothing to check against"],
-      "an entry cite with no pod to ask is not checked, which is not the cite being invented",
-    );
-  });
-
-  it("holds a reply a recorded run copied to the pod's rows", async () => {
-    const answered = await checkCopiedReply(copied, { ask, ran });
-    assert.deepEqual(answered.errors, []);
-    assert.deepEqual(
-      answered.items[0]!.facts.map(({ verdict }) => verdict.ok),
-      [true],
-      "a reply a recorded run copied is held to the pod's rows, not turned away for lacking a field",
-    );
-  });
-
-  it("turns away an app's reply that copies", async () => {
-    const pointing = await checkReply(copied, { ask, ran });
-    assert.notDeepEqual(
-      pointing.errors,
-      [],
-      "an app's reply that copies is turned away",
-    );
-    // @ts-expect-error an app cannot ask checkReply to hold a reply to the contract that copies
-    await checkReply(copied, { ask, copied: true, ran });
-  });
-
-  it("refuses a call naming neither a pod nor downloads", async () => {
-    // @ts-expect-error a call names a pod to ask or the downloads to read, and at least one of them
-    const neither = checkReply(reply, { ran });
-    await assert.rejects(neither, /`ask`.*`files`.*neither/);
-  });
+  const checked = await checkReply(copied, { files, ran });
+  assert.deepEqual(checked.errors, []);
+  assert.deepEqual(
+    checked.items[0]!.facts.map(({ verdict }) => !verdict.ok && verdict.reason),
+    ["nothing to check against"],
+    "an entry cite with no pod to ask is not checked, which is not the cite being invented",
+  );
+  const answered = await checkCopiedReply(copied, { ask, ran });
+  assert.deepEqual(answered.errors, []);
+  assert.deepEqual(
+    answered.items[0]!.facts.map(({ verdict }) => verdict.ok),
+    [true],
+    "a reply a recorded run copied is held to the pod's rows, not turned away for lacking a field",
+  );
+  const pointing = await checkReply(copied, { ask, ran });
+  assert.notDeepEqual(
+    pointing.errors,
+    [],
+    "an app's reply that copies is turned away",
+  );
+  // @ts-expect-error an app cannot ask checkReply to hold a reply to the contract that copies
+  await checkReply(copied, { ask, copied: true, ran });
+  // @ts-expect-error a call names a pod to ask or the downloads to read, and at least one of them
+  const neither = checkReply(reply, { ran });
+  await assert.rejects(neither, /`ask`.*`files`.*neither/);
 });
 
 // Priya's pod (the eval case priya-natarajan), cut to the rows the checker reads of her and of two entries, with one provenance row
@@ -261,132 +214,125 @@ const reasons = (facts: readonly CheckedFact[]) =>
     verdict.ok ? "ok" : `${verdict.reason}: ${verdict.missing.join(", ")}`,
   );
 
-describe("a pod that cannot be read", () => {
-  it("rejects checkReply once and leaves no rejection unhandled", async () => {
-    const unhandled: unknown[] = [];
-    const onUnhandled = (why: unknown) => unhandled.push(why);
-    process.on("unhandledRejection", onUnhandled);
-    try {
-      for (const cited of [HBA1C, PERSON]) {
-        const failing = (question: string) =>
-          Promise.reject(new Error(`cannot read ${question}`));
-        await assert.rejects(
-          checkReply(
-            {
-              answer: "…",
-              short: "…",
-              items: [
-                {
-                  says: "…",
-                  why: "…",
-                  confidence: "high",
-                  facts: [fact(cited, "value")],
-                },
-              ],
-            },
-            { ask: failing, ran: [] },
-          ),
-          /cannot read/,
-        );
-      }
-      await new Promise((done) => setImmediate(done));
-      assert.deepEqual(unhandled, []);
-    } finally {
-      process.off("unhandledRejection", onUnhandled);
+test("a pod that cannot be read rejects checkReply once and leaves no rejection unhandled", async () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (why: unknown) => unhandled.push(why);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    for (const cited of [HBA1C, PERSON]) {
+      const failing = (question: string) =>
+        Promise.reject(new Error(`cannot read ${question}`));
+      await assert.rejects(
+        checkReply(
+          {
+            answer: "…",
+            short: "…",
+            items: [
+              {
+                says: "…",
+                why: "…",
+                confidence: "high",
+                facts: [fact(cited, "value")],
+              },
+            ],
+          },
+          { ask: failing, ran: [] },
+        ),
+        /cannot read/,
+      );
     }
-  });
+    await new Promise((done) => setImmediate(done));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
 });
 
-describe("a fact pointing into a pod", () => {
-  it("comes back with what the pod holds of the entry it names", async () => {
-    const [result, lab, clinic] = await pointed(
-      fact(HBA1C, "value"),
-      fact(HBA1C, "value", { source: "S12" }),
-      fact(HBA1C, "date", { source: "S3" }),
-    );
-    assert.deepEqual(reasons([result!, lab!, clinic!]), ["ok", "ok", "ok"]);
-    const filled = {
-      entry: `${POD}/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712`,
-      label: "Hemoglobin A1c/Hemoglobin.total in Blood",
-      value: "6.9 %",
-      date: "2025-09-22",
-      dateKind: "when",
-    };
-    assert.deepEqual(result!.filled, {
-      ...filled,
-      held: ["6.9"],
-      sources: [
-        "S3 Fernhill Family Clinic",
-        "S12 Northbay Clinical Laboratories",
-      ],
-    });
-    assert.deepEqual(lab!.filled, {
-      ...filled,
-      held: ["6.9"],
-      sources: ["S12 Northbay Clinical Laboratories"],
-    });
-    assert.deepEqual(clinic!.filled, {
-      ...filled,
-      held: ["2025-09-22T16:15:00Z"],
-      sources: ["S3 Fernhill Family Clinic"],
-    });
+test("a fact names an entry the pod holds and the field it rests on, and comes back with what the pod holds of it", async () => {
+  const [result, lab, clinic] = await pointed(
+    fact(HBA1C, "value"),
+    fact(HBA1C, "value", { source: "S12" }),
+    fact(HBA1C, "date", { source: "S3" }),
+  );
+  assert.deepEqual(reasons([result!, lab!, clinic!]), ["ok", "ok", "ok"]);
+  const filled = {
+    entry: `${POD}/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712`,
+    label: "Hemoglobin A1c/Hemoglobin.total in Blood",
+    value: "6.9 %",
+    date: "2025-09-22",
+    dateKind: "when",
+  };
+  assert.deepEqual(result!.filled, {
+    ...filled,
+    held: ["6.9"],
+    sources: [
+      "S3 Fernhill Family Clinic",
+      "S12 Northbay Clinical Laboratories",
+    ],
   });
+  assert.deepEqual(lab!.filled, {
+    ...filled,
+    held: ["6.9"],
+    sources: ["S12 Northbay Clinical Laboratories"],
+  });
+  assert.deepEqual(clinic!.filled, {
+    ...filled,
+    held: ["2025-09-22T16:15:00Z"],
+    sources: ["S3 Fernhill Family Clinic"],
+  });
+  const [born] = await pointed(fact(PERSON, "date"));
+  assert.deepEqual(reasons([born!]), ["ok"], "the person, who has no entry");
+  assert.deepEqual(
+    [born!.filled?.entry, born!.filled?.date, born!.filled?.held],
+    [PERSON, "1968-11-04", ["1968-11-04"]],
+  );
+});
 
-  it("may name the person, who has no entry", async () => {
-    const [born] = await pointed(fact(PERSON, "date"));
-    assert.deepEqual(reasons([born!]), ["ok"], "the person, who has no entry");
-    assert.deepEqual(
-      [born!.filled?.entry, born!.filled?.date, born!.filled?.held],
-      [PERSON, "1968-11-04", ["1968-11-04"]],
-    );
-  });
+test("a fact naming one of an entry's sources is held to what that source says", async () => {
+  const facts = await pointed(
+    fact(NOTE, "date"),
+    fact(NOTE, "date", { source: "S6" }),
+    fact(NOTE, "date", { source: "S3" }),
+  );
+  assert.deepEqual(reasons(facts), ["ok", "ok", "ok"]);
+  assert.deepEqual(
+    facts.map(({ filled }) => [filled?.date, filled?.held]),
+    [
+      ["2026-06-22", ["2026-06-22T18:03:44Z", "2026-01-05T17:12:05Z"]],
+      ["2026-06-22", ["2026-06-22T18:03:44Z"]],
+      ["2026-01-05", ["2026-01-05T17:12:05Z"]],
+    ],
+  );
+});
 
-  it("naming one of an entry's sources is held to what that source says", async () => {
-    const facts = await pointed(
-      fact(NOTE, "date"),
-      fact(NOTE, "date", { source: "S6" }),
-      fact(NOTE, "date", { source: "S3" }),
-    );
-    assert.deepEqual(reasons(facts), ["ok", "ok", "ok"]);
-    assert.deepEqual(
-      facts.map(({ filled }) => [filled?.date, filled?.held]),
-      [
-        ["2026-06-22", ["2026-06-22T18:03:44Z", "2026-01-05T17:12:05Z"]],
-        ["2026-06-22", ["2026-06-22T18:03:44Z"]],
-        ["2026-01-05", ["2026-01-05T17:12:05Z"]],
-      ],
-    );
-  });
-
-  it("fails by name for a handle, field, source or quote the pod lacks", async () => {
-    const facts = await pointed(
-      fact("Lffffffff", "value"),
-      fact(HBA1C, "end"),
-      fact(HBA1C, "value", { source: "S1" }),
-      fact(NOTE, "text", { quote: "new diagnosis of type 1 diabetes" }),
-      fact(NOTE, "text", { quote: "new diagnosis of type 2 diabetes" }),
-      fact(NOTE, "text"),
-      fact(HBA1C, "value", { quote: "new diagnosis of type 2 diabetes" }),
-      fact(NOTE, "text", { quote: "the" }),
-      fact(NOTE, "text", { quote: "new diagnosis" }),
-    );
-    assert.deepEqual(reasons(facts), [
-      "no such record: entry Lffffffff",
-      "no such field: end",
-      "no such source: source S1",
-      "says otherwise: quote new diagnosis of type 1 diabetes",
-      "ok",
-      "nothing to check: quote",
-      "says otherwise: quote new diagnosis of type 2 diabetes",
-      "quote too short: quote the",
-      "quote too short: quote new diagnosis",
-    ]);
-    assert.equal(facts[0]!.filled, undefined);
-    assert.equal(
-      facts[1]!.filled?.label,
-      "Hemoglobin A1c/Hemoglobin.total in Blood",
-    );
-  });
+test("a handle the pod does not hold, a field or source the entry lacks, and a quote not in its text each fail, by name", async () => {
+  const facts = await pointed(
+    fact("Lffffffff", "value"),
+    fact(HBA1C, "end"),
+    fact(HBA1C, "value", { source: "S1" }),
+    fact(NOTE, "text", { quote: "new diagnosis of type 1 diabetes" }),
+    fact(NOTE, "text", { quote: "new diagnosis of type 2 diabetes" }),
+    fact(NOTE, "text"),
+    fact(HBA1C, "value", { quote: "new diagnosis of type 2 diabetes" }),
+    fact(NOTE, "text", { quote: "the" }),
+    fact(NOTE, "text", { quote: "new diagnosis" }),
+  );
+  assert.deepEqual(reasons(facts), [
+    "no such record: entry Lffffffff",
+    "no such field: end",
+    "no such source: source S1",
+    "says otherwise: quote new diagnosis of type 1 diabetes",
+    "ok",
+    "nothing to check: quote",
+    "says otherwise: quote new diagnosis of type 2 diabetes",
+    "quote too short: quote the",
+    "quote too short: quote new diagnosis",
+  ]);
+  assert.equal(facts[0]!.filled, undefined);
+  assert.equal(
+    facts[1]!.filled?.label,
+    "Hemoglobin A1c/Hemoglobin.total in Blood",
+  );
 });
 
 /** Each place a schema uses what a provider's structured output does not take; a map of schemas by name is no schema. */
@@ -445,12 +391,11 @@ function beyondStructuredOutput(
   ];
 }
 
-describe("the contract of a reply", () => {
-  it("about a pod is one a provider's structured output takes", () => {
-    assert.deepEqual(beyondStructuredOutput(replySchema), []);
-  });
-
-  it("that copies what a file says is not", () => {
-    assert.notDeepEqual(beyondStructuredOutput(recordsReplySchema), []);
-  });
+test("the contract of a reply about a pod is one a provider's structured output takes", () => {
+  assert.deepEqual(beyondStructuredOutput(replySchema), []);
+  assert.notDeepEqual(
+    beyondStructuredOutput(recordsReplySchema),
+    [],
+    "the contract that copies what a file says is not",
+  );
 });

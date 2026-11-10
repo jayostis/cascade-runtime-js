@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
@@ -42,36 +42,34 @@ export const none: CheckedReply = { errors: [], items: [] };
 export const wrong: CheckedReply = { errors: [1], items: [] };
 `;
 
-describe("a page that renders a checked reply", () => {
-  it("types it from the browser entry", () => {
-    const options: ts.CompilerOptions = {
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      target: ts.ScriptTarget.ES2023,
-      customConditions: ["browser"],
-      strict: true,
-      noEmit: true,
-      skipLibCheck: true,
-      types: [],
-    };
-    const host = ts.createCompilerHost(options);
-    const read = host.getSourceFile.bind(host);
-    host.getSourceFile = (name, ...rest) =>
-      name === PAGE
-        ? ts.createSourceFile(
-            name,
-            PAGE_SOURCE,
-            options.target ?? ts.ScriptTarget.ES2023,
-          )
-        : read(name, ...rest);
-    const readable = host.fileExists.bind(host);
-    host.fileExists = (name) => name === PAGE || readable(name);
-    const program = ts.createProgram([PAGE], options, host);
-    const page = program.getSourceFile(PAGE);
-    assert.ok(page);
-    const problems = program
-      .getSemanticDiagnostics(page)
-      .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
-    assert.deepEqual(problems, []);
-  });
+test("a page types a checked reply from the browser entry", () => {
+  const options: ts.CompilerOptions = {
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    target: ts.ScriptTarget.ES2023,
+    customConditions: ["browser"],
+    strict: true,
+    noEmit: true,
+    skipLibCheck: true,
+    types: [],
+  };
+  const host = ts.createCompilerHost(options);
+  const read = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, ...rest) =>
+    name === PAGE
+      ? ts.createSourceFile(
+          name,
+          PAGE_SOURCE,
+          options.target ?? ts.ScriptTarget.ES2023,
+        )
+      : read(name, ...rest);
+  const readable = host.fileExists.bind(host);
+  host.fileExists = (name) => name === PAGE || readable(name);
+  const program = ts.createProgram([PAGE], options, host);
+  const page = program.getSourceFile(PAGE);
+  assert.ok(page);
+  const problems = program
+    .getSemanticDiagnostics(page)
+    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+  assert.deepEqual(problems, []);
 });

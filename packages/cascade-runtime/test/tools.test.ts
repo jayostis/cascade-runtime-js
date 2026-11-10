@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { before, describe, it } from "node:test";
+import { test } from "node:test";
 import {
   type ModelContext,
   Refusal,
@@ -14,61 +14,49 @@ const tool = (name: string): Tool => ({
   execute: async () => name,
 });
 
-describe("toolRegistry", () => {
-  describe("registering tools", () => {
-    let registry: ReturnType<typeof toolRegistry>;
-    const first = new AbortController();
-    const second = new AbortController();
-    const listed = () => registry.tools().map(({ name }) => name);
+test("a registered tool is listed until its signal aborts, in the order registered; a name registered twice is refused, and a tool whose signal has aborted is never listed", () => {
+  const registry = toolRegistry();
+  const first = new AbortController();
+  const second = new AbortController();
+  registry.register(tool("a"), { signal: first.signal });
+  registry.register(tool("b"), { signal: second.signal });
+  assert.deepEqual(
+    registry.tools().map(({ name }) => name),
+    ["a", "b"],
+  );
+  assert.throws(
+    () => registry.register(tool("a"), { signal: second.signal }),
+    Refusal,
+  );
 
-    before(() => {
-      registry = toolRegistry();
-      registry.register(tool("a"), { signal: first.signal });
-      registry.register(tool("b"), { signal: second.signal });
-    });
+  first.abort();
+  assert.deepEqual(
+    registry.tools().map(({ name }) => name),
+    ["b"],
+  );
+  registry.register(tool("a"), { signal: second.signal });
+  assert.deepEqual(
+    registry.tools().map(({ name }) => name),
+    ["b", "a"],
+  );
 
-    it("lists them in the order registered", () => {
-      assert.deepEqual(listed(), ["a", "b"]);
-    });
+  second.abort();
+  const gone = AbortSignal.abort();
+  registry.register(tool("c"), { signal: gone });
+  assert.deepEqual(registry.tools(), []);
+});
 
-    it("refuses a name registered twice", () => {
-      assert.throws(
-        () => registry.register(tool("a"), { signal: second.signal }),
-        Refusal,
-      );
-    });
-
-    it("stops listing a tool when its signal aborts", () => {
-      first.abort();
-      assert.deepEqual(listed(), ["b"]);
-    });
-
-    it("accepts the name of a tool that has gone", () => {
-      registry.register(tool("a"), { signal: second.signal });
-      assert.deepEqual(listed(), ["b", "a"]);
-    });
-
-    it("never lists a tool whose signal has already aborted", () => {
-      second.abort();
-      registry.register(tool("c"), { signal: AbortSignal.abort() });
-      assert.deepEqual(registry.tools(), []);
-    });
-  });
-
-  describe("given a model context", () => {
-    it("registers the same tool and signal there too", () => {
-      const seen: { tool: Tool; signal: AbortSignal }[] = [];
-      const context: ModelContext = {
-        registerTool: (given, { signal }) => seen.push({ tool: given, signal }),
-      };
-      const registry = toolRegistry(context);
-      const one = tool("a");
-      const controller = new AbortController();
-      registry.register(one, { signal: controller.signal });
-      assert.equal(seen.length, 1);
-      assert.equal(seen[0]!.tool, one);
-      assert.equal(seen[0]!.signal, controller.signal);
-      assert.deepEqual(registry.tools(), [one]);
-    });
-  });
+test("given a model context, the same tool and signal are registered there too", () => {
+  const seen: { tool: Tool; signal: AbortSignal }[] = [];
+  const context: ModelContext = {
+    registerTool: (given, { signal }) => seen.push({ tool: given, signal }),
+  };
+  const registry = toolRegistry(context);
+  const one = tool("a");
+  const controller = new AbortController();
+  registry.register(one, { signal: controller.signal });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]!.tool, one);
+  assert.equal(seen[0]!.signal, controller.signal);
+  assert.deepEqual(registry.tools(), [one]);
 });
