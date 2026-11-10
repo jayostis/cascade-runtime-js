@@ -1323,7 +1323,7 @@ export class CorePod {
       this.#hashed ??
       (kept === undefined
         ? undefined
-        : await HashedSet.kept(kept, new Set(listing.filter(inSet))));
+        : await HashedSet.ofKept(kept, new Set(listing.filter(inSet))));
     this.#hashed = undefined;
     const paths = [...listing, ...written.keys()];
     const missing = held?.missing(paths, inSet);

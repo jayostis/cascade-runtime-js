@@ -7,9 +7,14 @@
     "Turning an adapter's arrivals into revisions · CorePod.import(), reachedIn()",
     "Refusing a step that cannot be filed · Performed.refused",
     "Writing a step's files · CorePod.import(), CorePod.open(), CorePod.judge()",
+    "Chaining each act's snapshot to the writer's last · CorePod.head, CorePodOptions.head",
+    "Naming what a pod holds · versionName(), recordFromServerName(), normalisedBaseUrl(), snapshotName()",
+    "Writing a code as an IRI · codeIri()",
+    "Minting IDs and telling the time · clock, StoryTime",
     "Reading a pod between steps · CorePod.dataset(), CorePod.revision(), CorePod.close()",
     "Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()",
     "Building a pod's views, labels and type index · CorePodOptions.build, vocabularyDerive(), podDataset()",
+    "Receiving another writer's files · CorePod.receive()",
     "Opening a pod with tables other than the ones it was matched with · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()",
     "Refusing a rule list a run cannot trust · matcherRules(), originsJoining()",
     "Binding a comparison query to a run's records · boundToRecords(), boundToPairs()",
@@ -20,11 +25,16 @@
     "Reading only the rows a pod's codes find · References.rows(), rowsByCode()",
     "Replaying a story into a pod · replay(), PERFORMERS",
     "Running a feature's examples and a kit's checks on a runtime · runConformance()",
+    "Finding what an example names in words · Words.record(), Words.judgment()",
     "Checking a replayed kit · kitChecks(), shapeFaults(), snapshotFaults(), podAddressesIn()",
     "Checking a graph against the vocabulary's shapes · Shapes.read(), Shapes.results()",
     "Reporting a conformance run · npm run conformance -- --report <file>",
     "Writing a kit's saved output again · npm run kit:bridge",
     "Keeping one build of a pod across steps · CorePodOptions.build, CorePod.select()",
+    "Keeping a writer's set hash between sessions · Head.set",
+    "Reading and writing files by path · Files, MemoryFiles, FolderFiles, ExportedFiles",
+    "Fetching a folder of files in a web page · FetchedFiles, packFolder(), unpackFolder()",
+    "Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
     "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"
   ],
@@ -63,9 +73,18 @@
       "aliases": ["adopts", "adopted", "adopting"]
     },
     {
+      "term": "Argon2id",
+      "definition": "the slow key derivation that turns a secret into a pod's key, so that guessing a secret costs time."
+    },
+    {
       "term": "arrival",
       "definition": "one state of one record as a source reported it, as an adapter hands it to the runtime, before it is filed.",
       "aliases": ["arrivals"]
+    },
+    {
+      "term": "base URL",
+      "aliases": ["base URLs"],
+      "definition": "the address of a hospital server's API, which a record read from that server is named from."
     },
     {
       "term": "blank node",
@@ -77,8 +96,20 @@
       "definition": "the program that runs an adapter on a document and returns what it converted, or the reason it failed."
     },
     {
+      "term": "built whole",
+      "definition": "of a pod: its derived state and the files its build writes worked out from every file, with nothing kept from before."
+    },
+    {
       "term": "C-CDA",
       "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
+    },
+    {
+      "term": "canonical N-Quads",
+      "definition": "a graph's statements written one to a line in the single spelling and order the W3C's RDFC-1.0 fixes, so equal graphs give equal text."
+    },
+    {
+      "term": "canonical path",
+      "definition": "a path written the one plain way: no `.` or `..` part, no doubled or leading slash, no backslash."
     },
     {
       "term": "check",
@@ -89,6 +120,10 @@
       "term": "checkout",
       "definition": "a folder holding a repository at one commit; a sibling checkout is one in the folder beside the runtime's own.",
       "aliases": ["checkouts", "sibling checkout"]
+    },
+    {
+      "term": "ClinVar",
+      "definition": "a public database of genetic variants; each has a ClinVar ID."
     },
     {
       "term": "code system",
@@ -123,6 +158,12 @@
       "definition": "of a series, the version a pod opened now is given: the newest one the app has kept.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#defaultTableVersion",
       "aliases": ["current versions"]
+    },
+    {
+      "term": "custodian",
+      "definition": "the organisation that keeps a document and answers for its true copy.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#CustodianRole",
+      "aliases": ["custodians"]
     },
     {
       "term": "dataset",
@@ -168,6 +209,11 @@
       "aliases": ["entry sessions"]
     },
     {
+      "term": "example",
+      "aliases": ["examples"],
+      "definition": "in a feature, one named run: steps on a pod, then what a query of it must return."
+    },
+    {
       "term": "export",
       "definition": "what a person downloads of their own records: an Apple Health export, or a C-CDA document from a patient portal.",
       "aliases": ["exports", "exported"]
@@ -178,10 +224,29 @@
       "aliases": ["faults"]
     },
     {
+      "term": "feature",
+      "aliases": ["features"],
+      "definition": "a file of the vocabulary that states rules of a pod and, under each, examples."
+    },
+    {
       "term": "finding",
       "definition": "something the matcher noticed about a pod's records and filed for the owner to answer with a judgment.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#FindingForReview",
       "aliases": ["findings"]
+    },
+    {
+      "term": "fingerprint",
+      "aliases": ["fingerprints"],
+      "definition": "a number the C-CDA adapter works out from the strings of a record that has no id, to tell such records apart."
+    },
+    {
+      "term": "first parent",
+      "definition": "the parent snapshot that is the same writer's previous snapshot; a writer's first snapshot has none."
+    },
+    {
+      "term": "fixture",
+      "aliases": ["fixtures"],
+      "definition": "a sealed pod, or one sealed file, that the pod encryption vectors carry together with the secrets that open it."
     },
     {
       "term": "focus node",
@@ -199,9 +264,27 @@
       "aliases": ["groups"]
     },
     {
+      "term": "handle",
+      "aliases": ["handles"],
+      "definition": "a short name a kit gives a record or a judgment, with the inputs its name is made from, in the kit's `handles.json`."
+    },
+    {
       "term": "hash",
       "definition": "a short code worked out from bytes, such as a file's or the text of an IRI: the same bytes always give the same hash, and any change gives another.",
       "aliases": ["hashes"]
+    },
+    {
+      "term": "head",
+      "definition": "the snapshot of this app's latest act in a pod."
+    },
+    {
+      "term": "header",
+      "aliases": ["headers"],
+      "definition": "the one file of a sealed pod left readable, `settings/encryption.json`, which says how the pod is sealed."
+    },
+    {
+      "term": "HGVS expression",
+      "definition": "the standard way to write a genetic variant, such as `NM_000249.4:c.2042C>T`."
     },
     {
       "term": "import",
@@ -236,6 +319,11 @@
       "term": "kept dataset",
       "definition": "a pod's dataset held in memory from one step to the next, in place of a new read of every file.",
       "aliases": ["kept build"]
+    },
+    {
+      "term": "kit",
+      "definition": "a story and the exports it uses, which the vocabulary carries for testing, such as `alex-rivera`.",
+      "aliases": ["kits"]
     },
     {
       "term": "labels",
@@ -292,8 +380,26 @@
       "aliases": ["members"]
     },
     {
+      "term": "merged parent",
+      "aliases": ["merged parents"],
+      "definition": "a parent snapshot that is another head, taken in as a git merge takes in a branch."
+    },
+    {
+      "term": "MuHash3072",
+      "definition": "the set hash Bitcoin Core uses: one number for each member, multiplied together modulo a 3072-bit prime, so the order of members does not matter."
+    },
+    {
       "term": "N-Triples",
       "definition": "a W3C text format that writes one statement a line."
+    },
+    {
+      "term": "naming rule",
+      "aliases": ["naming rules"],
+      "definition": "a term of the vocabulary that says how one kind of thing is named, from its content or from listed inputs, such as `cascade:VersionNamingRule`."
+    },
+    {
+      "term": "new writer",
+      "definition": "a writer with no head, or with one the pod does not hold; its first snapshot has no first parent and merges every head in the pod."
     },
     {
       "term": "outline",
@@ -303,6 +409,22 @@
       "term": "owner",
       "definition": "the person who keeps a pod and decides what its records mean; in every pod on this page, the subject acting for themselves.",
       "aliases": ["owners"]
+    },
+    {
+      "term": "pack",
+      "aliases": ["packs"],
+      "definition": "one file holding all of a sample's files, so a page fetches them at once."
+    },
+    {
+      "term": "parent snapshot",
+      "aliases": ["parent", "parents"],
+      "definition": "the snapshot that an act's snapshot names as the one before it; a pod's first snapshot has none."
+    },
+    {
+      "term": "patient",
+      "definition": "the person an export's records are about, as that source knows them, before anyone has said who they are in the pod.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#PatientProfile",
+      "aliases": ["patients"]
     },
     {
       "term": "performer",
@@ -333,6 +455,14 @@
       "aliases": ["quads"]
     },
     {
+      "term": "realm",
+      "definition": "one JavaScript global environment, such as a page or an iframe; an object made in another realm fails `instanceof` here."
+    },
+    {
+      "term": "rebuilt in part",
+      "definition": "of a step with a kept build: only the records the step reached are derived and written again."
+    },
+    {
       "term": "record",
       "definition": "one thing said about a person's health, such as an allergy, a medication or a lab result.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Record",
@@ -351,6 +481,11 @@
     {
       "term": "refused",
       "definition": "on a call's result, why a rule turned the call down; a refused call wrote no file of the person's, though a pod with a build still rewrites its manifest."
+    },
+    {
+      "term": "register",
+      "definition": "of a code system, to give it a URI space in the vocabulary, from which a code's IRI is made.",
+      "aliases": ["registers", "registered"]
     },
     {
       "term": "release",
@@ -404,8 +539,23 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Same"
     },
     {
+      "term": "sample",
+      "definition": "a kit's pod saved as files a web page can read.",
+      "aliases": ["samples"]
+    },
+    {
       "term": "saved output",
       "definition": "the graph and conversion findings a kit keeps for each document its story imports, as the Bridge made them."
+    },
+    {
+      "term": "sealed",
+      "aliases": ["seal", "seals"],
+      "definition": "of a pod or a file, encrypted on disk so that only the secret opens it."
+    },
+    {
+      "term": "secret",
+      "aliases": ["secrets"],
+      "definition": "the six words that open an encrypted pod; `sixWords()` draws them from the EFF long word list, a public list of 7,776 easy-to-type words."
     },
     {
       "term": "seeded",
@@ -422,6 +572,16 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
     },
     {
+      "term": "session",
+      "aliases": ["sessions"],
+      "definition": "one stretch in which a writer has a pod open. (An entry session is another thing: the act of entering records.)"
+    },
+    {
+      "term": "set hash",
+      "aliases": ["set hashes"],
+      "definition": "one hash over the paths and bytes of the files of the set, the same in whatever order they were added."
+    },
+    {
       "term": "SHACL",
       "definition": "the W3C's Shapes Constraint Language, in which the vocabulary's shapes are written."
     },
@@ -430,6 +590,12 @@
       "definition": "the vocabulary's requirements on what a record, a judgment or a file of a pod must state, written in SHACL, the W3C language for checking data.",
       "vocabulary": "https://www.w3.org/TR/shacl/",
       "aliases": ["shape"]
+    },
+    {
+      "term": "snapshot",
+      "definition": "the set of files a pod held as one act left it, which names the snapshot before it as a git commit names its parent.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Snapshot",
+      "aliases": ["snapshots"]
     },
     {
       "term": "source",
@@ -445,6 +611,11 @@
       "term": "SPARQL constraint",
       "definition": "a constraint of a shape written as a SPARQL query, each row of which is one thing wrong with the focus node `$this`.",
       "aliases": ["SPARQL constraints"]
+    },
+    {
+      "term": "stand-in",
+      "definition": "in a test, a fast hash used in place of Argon2id where no real key is under test.",
+      "aliases": ["stand-ins"]
     },
     {
       "term": "step",
@@ -466,6 +637,11 @@
       "definition": "the person a pod is about.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Subject",
       "aliases": ["subjects"]
+    },
+    {
+      "term": "sync",
+      "aliases": ["syncs"],
+      "definition": "the act a writer writes after it received another writer's files; its snapshot merges the heads that arrived."
     },
     {
       "term": "table kind",
@@ -494,6 +670,10 @@
       "aliases": ["the build's"]
     },
     {
+      "term": "the set",
+      "definition": "the files of a pod that a set hash covers; the layout says which, and an act's own file and a sync's file are left out of the hash their snapshot states."
+    },
+    {
       "term": "transmitter",
       "definition": "the party that passed a document on without writing it, as Apple Health does a hospital's record."
     },
@@ -520,8 +700,17 @@
       "aliases": ["unions"]
     },
     {
+      "term": "Unopened",
+      "definition": "the `Refusal` thrown when a pod does not open with the secret given, or with none; its `outcome` gives the reason, such as `incorrect secret`."
+    },
+    {
       "term": "URI space",
       "definition": "the beginning that every IRI of one code system's codes shares."
+    },
+    {
+      "term": "vector",
+      "aliases": ["vectors"],
+      "definition": "a test case the vocabulary publishes for every runtime: inputs, and the result each must give, such as a name."
     },
     {
       "term": "version",
@@ -566,16 +755,23 @@
     "arrived-entries.test.ts",
     "bound-records.test.ts",
     "bridge-package.test.ts",
+    "code-iri.test.ts",
     "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
     "developer-story.test.ts",
+    "encryption.test.ts",
     "entries.test.ts",
+    "files.test.ts",
+    "ids.test.ts",
+    "kept-build-kits.test.ts",
+    "kept-build-random.test.ts",
     "kept-build.test.ts",
     "kit-bridge.test.ts",
     "kit.test.ts",
     "load-adapter.test.ts",
     "matcher.test.ts",
+    "naming-vectors.test.ts",
     "open.test.ts",
     "pod-build.test.ts",
     "references.test.ts",
@@ -584,10 +780,14 @@
     "saved-output-bridge.test.ts",
     "scoped-runs.test.ts",
     "shapes.test.ts",
+    "snapshots.test.ts",
+    "stems.test.ts",
     "store.test.ts",
-    "wasm-bridge.test.ts"
+    "wasm-bridge.test.ts",
+    "words.test.ts"
   ],
   "build": [
+    "Tripwire: a code system's IRI stem typed into code",
     "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs",
     "The Bridge package a run from a checkout uses · findBridgePackage()",
     "Picking the Bridge package for a CI run · pickBuild(), latestBuild(), keptPick(), runOf(), readerOf()"
@@ -597,16 +797,23 @@
     "arrived-entries.test.ts",
     "bound-records.test.ts",
     "bridge-package.test.ts",
+    "code-iri.test.ts",
     "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
     "developer-story.test.ts",
+    "encryption.test.ts",
     "entries.test.ts",
+    "files.test.ts",
+    "ids.test.ts",
+    "kept-build-kits.test.ts",
+    "kept-build-random.test.ts",
     "kept-build.test.ts",
     "kit-bridge.test.ts",
     "kit.test.ts",
     "load-adapter.test.ts",
     "matcher.test.ts",
+    "naming-vectors.test.ts",
     "open.test.ts",
     "pod-build.test.ts",
     "references.test.ts",
@@ -615,7 +822,10 @@
     "saved-output-bridge.test.ts",
     "scoped-runs.test.ts",
     "shapes.test.ts",
+    "snapshots.test.ts",
+    "stems.test.ts",
     "store.test.ts",
-    "wasm-bridge.test.ts"
+    "wasm-bridge.test.ts",
+    "words.test.ts"
   ]
 }

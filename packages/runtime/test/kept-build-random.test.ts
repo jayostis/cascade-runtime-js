@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { deriveWith, vocabularyBuild } from "../src/build.js";
 import type { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
@@ -8,6 +8,8 @@ import { localVocabulary, thisRuntime } from "../src/node/runtime.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { type Perform, PERFORMERS, Replay } from "../src/replay.js";
 import type { Happened, Step } from "../src/story.js";
+import { random } from "./random.js";
+import { countRebuildsInPart } from "./rebuilds.js";
 import { ROOT } from "./vocabulary.js";
 
 const CLEO = "urn:uuid:e3b7a9c2-4d16-4f85-9a3e-7c1b5d9f2e48";
@@ -53,18 +55,6 @@ const PREFIXES = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 const SEEDS = Number(process.env["CASCADE_RANDOM_SEEDS"] ?? 8);
 const FIRST_SEED = Number(process.env["CASCADE_RANDOM_FIRST_SEED"] ?? 1);
 const STEPS = Number(process.env["CASCADE_RANDOM_STEPS"] ?? 20);
-
-/** Mulberry32: the same seed draws the same story. */
-function random(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 class Draw {
   readonly #next: () => number;
@@ -464,20 +454,109 @@ async function story(seed: number) {
   return { steps, counts };
 }
 
-test("after every step of stories drawn at random, the build kept across steps holds what a build of the whole pod holds (C8)", async () => {
-  let overUnnamed = 0;
-  for (let seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
-    const started = performance.now();
-    const { steps, counts } = await story(seed);
-    overUnnamed += counts.overUnnamed;
-    if (process.env["CASCADE_RANDOM_SEEDS"] !== undefined)
-      console.log(
-        `seed ${seed}: ${steps.length} steps, ${counts.refused} with nothing to judge, ${counts.overUnnamed} over the unnamed pull's records alone, ${Math.round(performance.now() - started)} ms`,
+interface Drawn {
+  readonly seed: number;
+  readonly error: unknown;
+  /** How many steps of the story the pod rebuilt in part: how often `KeptBuild.verify` ran. */
+  readonly inPart: number;
+  readonly overUnnamed: number;
+}
+
+let drawing: Promise<readonly Drawn[]> | undefined;
+
+/** Every story of the seeds drawn and replayed once, with the error each threw or undefined; no seed's failure stops the next. */
+function drawnStories(): Promise<readonly Drawn[]> {
+  drawing ??= (async () => {
+    const rebuilds = countRebuildsInPart();
+    const drawn: Drawn[] = [];
+    try {
+      for (let seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
+        const started = performance.now();
+        const calls = rebuilds.count();
+        let error: unknown;
+        let counts = { refused: 0, overUnnamed: 0 };
+        let steps = 0;
+        try {
+          const told = await story(seed);
+          counts = told.counts;
+          steps = told.steps.length;
+        } catch (thrown) {
+          error = thrown;
+        }
+        drawn.push({
+          seed,
+          error,
+          inPart: rebuilds.count() - calls,
+          overUnnamed: counts.overUnnamed,
+        });
+        if (process.env["CASCADE_RANDOM_SEEDS"] !== undefined)
+          console.log(
+            `seed ${seed}: ${steps} steps, ${counts.refused} with nothing to judge, ${counts.overUnnamed} over the unnamed pull's records alone, ${Math.round(performance.now() - started)} ms`,
+          );
+      }
+    } finally {
+      rebuilds.stop();
+    }
+    return drawn;
+  })();
+  return drawing;
+}
+
+describe("Keeping one build of a pod across steps · CorePodOptions.build, CorePod.select()", () => {
+  /**
+   * Stories of 20 steps drawn from the seeds 1 to 8 (`CASCADE_RANDOM_SEEDS`, `CASCADE_RANDOM_FIRST_SEED` and
+   * `CASCADE_RANDOM_STEPS` change them), each replayed once with `build.verify`: after a step rebuilt in part the pod
+   * builds itself whole as well and throws where the two differ. A drawn story reaches step orders no kit does: a
+   * judgment over records a later import names, a sync after a newer table.
+   */
+  describe("given stories drawn from seeds, replayed with `build.verify`", () => {
+    let drawn: readonly Drawn[];
+
+    before(async () => {
+      drawn = await drawnStories();
+    });
+
+    it("leaves, after each step rebuilt in part, the derived state and the built files of a pod built whole", () => {
+      assert.ok(drawn.length > 0, "no story was drawn");
+      assert.deepEqual(
+        drawn
+          .filter(({ error }) => error !== undefined)
+          .map(
+            ({ seed, error }) =>
+              `seed ${seed}: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        [],
       );
-  }
-  if (SEEDS >= 8)
-    assert.ok(
-      overUnnamed > 0,
-      "no story judged the unnamed pull's records alone before the lower-case pull",
+    });
+
+    it("rebuilds at least one step of each story in part", () => {
+      assert.ok(drawn.length > 0, "no story was drawn");
+      for (const { seed, inPart } of drawn)
+        assert.ok(inPart > 0, `seed ${seed} rebuilt no step in part`);
+    });
+  });
+
+  /**
+   * Red means that no drawn story any longer judges the unnamed import's records alone before the lower-case import
+   * names them, the order in which a judgment's label once stayed stale. The weights in `story()` need raising; the
+   * runtime is not at fault. It needs the 8 seeds CI draws.
+   */
+  describe("given the seeds CI draws (tripwire)", () => {
+    let drawn: readonly Drawn[];
+
+    before(async () => {
+      drawn = await drawnStories();
+    });
+
+    it(
+      "draws a story that judges records before a later import names them",
+      { skip: SEEDS < 8 && "fewer than the 8 seeds that draw such a story" },
+      () => {
+        assert.ok(
+          drawn.reduce((sum, { overUnnamed }) => sum + overUnnamed, 0) > 0,
+          "no story judged the unnamed pull's records alone before the lower-case pull",
+        );
+      },
     );
+  });
 });

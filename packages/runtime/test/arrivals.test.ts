@@ -296,7 +296,7 @@ async function threeStatesOfOneRecord(): Promise<Replayed> {
  * @rule runtime/naming.feature N4
  */
 describe("Turning an adapter's arrivals into revisions · CorePod.import(), reachedIn()", () => {
-  describe("given an arrival whose selector is a node of its own", () => {
+  describe("given an arrival whose selector has statements of its own, as a blank node or as a node named by an IRI", () => {
     let saved: Replayed;
     let named: Replayed;
 
@@ -307,11 +307,11 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
       ]);
     });
 
-    it("carries a blank selector into the revision as `<revision>#selector`, with its three statements", async () => {
+    it("carries a blank selector into the revision, which states its three statements about `<revision>#selector`", async () => {
       await carriesSelector(saved);
     });
 
-    it("carries a selector named by an IRI the same way", async () => {
+    it("carries a selector named by an IRI as it carries a blank one: the revision states the selector's statements", async () => {
       await carriesSelector(named);
     });
   });
