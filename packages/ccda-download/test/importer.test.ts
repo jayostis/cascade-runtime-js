@@ -214,7 +214,12 @@ describe("Listing a C-CDA document's entries before an import · ccdaDownload.in
       );
     });
 
-    it("gives the custodian's name, not the author's, with its white space collapsed", () => {
+    it("gives the custodian's name, not the author's, with its white space collapsed, and no other field than the section and the time", () => {
+      assert.deepEqual(entries[0], {
+        source: "Kestrel Harbor Hospital",
+        section: "Allergies and Intolerances",
+        received: "2025-04-03T12:30:00Z",
+      });
       assert.deepEqual(
         entries.map(({ source }) => source),
         Array(4).fill("Kestrel Harbor Hospital"),
@@ -304,10 +309,10 @@ describe("Finding whose records a C-CDA document holds · scopesOf()", () => {
       );
     });
 
-    it("returns the custodian's id and the first id of the patient", () => {
-      assert.deepEqual(flavoured?.patient, {
-        root: "2.16.1",
-        extension: "P-7",
+    it("returns the custodian's id and the first id of the patient, and no other key", () => {
+      assert.deepEqual(flavoured, {
+        custodian: { root: "2.16.9" },
+        patient: { root: "2.16.1", extension: "P-7" },
       });
     });
 
