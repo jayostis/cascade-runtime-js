@@ -246,7 +246,7 @@ export async function shapeFaults(
         .map(([s]) => s.value),
     ),
   ].map((subject) => `<${subject}> has prov:used and is no prov:Activity`);
-  return [...(await run.shapes.violations(triples)), ...usedByNoAct];
+  return [...(await run.shapes.resultLines(triples)), ...usedByNoAct];
 }
 
 /** A file's triples, with the thing named `name`, and every IRI under it, renamed to the placeholder. */

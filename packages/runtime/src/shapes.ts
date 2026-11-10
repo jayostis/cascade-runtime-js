@@ -111,7 +111,7 @@ export class Shapes {
   }
 
   /** Each result, as a line naming its focus node, its path and its message. */
-  async violations(triples: readonly Triple[]): Promise<string[]> {
+  async resultLines(triples: readonly Triple[]): Promise<string[]> {
     return (await this.results(triples))
       .map(
         (result) =>

@@ -373,7 +373,7 @@ test("the pod the examples leave conforms to the vocabulary's shapes", async () 
   }
   assert.ok(triples.length > 0);
   const shapes = await Shapes.read(vocabulary.files, () => new OxigraphStore());
-  assert.deepEqual(await shapes.violations(triples), []);
+  assert.deepEqual(await shapes.resultLines(triples), []);
 });
 
 test("each template does what the guide says, read through the vocabulary's questions", async () => {
