@@ -1,5 +1,5 @@
 {
-  "about": "`cascade-mcp`, a command that serves a folder of pods to an MCP client, such as Claude Desktop or VS Code, over its standard input and output. It offers the tools of `cascade-runtime/tools`, which only read.",
+  "about": "cascade-mcp, a command that serves a folder of pods to an MCP client, such as Claude Desktop or VS Code, over its standard input and output. It offers the tools of cascade-runtime/tools, which only read.",
   "capabilities": [
     "Serving a folder of pods to an MCP client · cascade-mcp --pods, --check-tables",
     "Starting cascade-mcp · --pods, --help"
@@ -25,10 +25,6 @@
       "definition": "public code lists, such as RxNorm for medicines, that tell a runtime when two codes mean one thing.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries",
       "aliases": ["reference table"]
-    },
-    {
-      "term": "Refusal",
-      "definition": "the error thrown when the package declines a request it understood, such as a name it does not have; it has written nothing."
     },
     {
       "term": "standard error",

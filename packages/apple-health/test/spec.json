@@ -1,16 +1,11 @@
 {
-  "about": "The importer for an Apple Health export: it finds the export's clinical record files and says where and when Apple Health received each. `pod.look()` and `pod.import()` call it; an app does not.",
+  "about": "The importer for an Apple Health export: it finds the export's clinical record files and says where and when Apple Health received each. pod.look() and pod.import() call it; an app does not.",
   "capabilities": [
     "Finding the documents of an Apple Health export · appleHealthExport.documents()",
     "Saying where an Apple Health record came from · AppleHealthDocument.facts()",
     "Listing an Apple Health export's records before an import · appleHealthExport.index()"
   ],
   "glossary": [
-    {
-      "term": "adapter",
-      "definition": "the program that converts an export into records; `import` loads it on first use.",
-      "aliases": ["adapters"]
-    },
     {
       "term": "attributed",
       "definition": "of a document, said to be the work of a party, by `prov:wasAttributedTo`; a pod reads this to say whose word a record is.",
@@ -25,10 +20,6 @@
       "term": "document",
       "definition": "one file that an import takes whole and gives to an adapter: a FHIR resource or Bundle in JSON, or a C-CDA document. The pod keeps its bytes.",
       "aliases": ["documents"]
-    },
-    {
-      "term": "envelope",
-      "definition": "which of an adapter's envelopes reads a document: `#envelope-resource` for a file holding one FHIR resource, `#envelope-bundle` for a Bundle."
     },
     {
       "term": "export",
@@ -84,11 +75,6 @@
       "term": "transmitter",
       "definition": "a party that passed a document on without writing it, as Apple Health does with a hospital's records. A document is never attributed to its transmitter.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#TransmitterRole"
-    },
-    {
-      "term": "Turtle",
-      "definition": "a W3C text format for writing statements in the vocabulary's terms; `pod.enter()` and `pod.judge()` take it.",
-      "vocabulary": "https://www.w3.org/TR/turtle/"
     }
   ],
   "shaped": ["importer.test.ts"],

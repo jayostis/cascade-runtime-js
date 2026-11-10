@@ -311,7 +311,7 @@ describe("Finding whose records a C-CDA document holds · scopesOf()", () => {
       });
     });
 
-    it("skips a custodian id that has a `nullFlavor`, and drops an empty extension", () => {
+    it("skips a custodian id that has a nullFlavor, and drops an empty extension", () => {
       assert.deepEqual(flavoured?.custodian, { root: "2.16.9" });
     });
 
