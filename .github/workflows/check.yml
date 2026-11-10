@@ -606,7 +606,7 @@ jobs:
             fi
             # The runs that still hold an artifact of that name, so a repository that uploads none costs one call, not a
             # download for each of its runs.
-            if ! held=$(gh api "repos/$repository/actions/artifacts?name=$artifact&per_page=100" \
+            if ! held=$(gh api --paginate "repos/$repository/actions/artifacts?name=$artifact&per_page=100" \
               --jq '.artifacts[] | select(.expired | not) | .workflow_run.id'); then
               echo "::warning::cannot list the $artifact artifacts of $repository, so its test report is not available"
               return 0
