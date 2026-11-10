@@ -34,13 +34,13 @@ export async function entryVersion(folder: string = PACKAGE): Promise<string> {
 }
 
 /**
- * The kits' published samples, made from what the installed package carries: its components, its starter copies of
+ * The kits' samples to publish, made from what the installed package carries: its components, its starter copies of
  * the feeds' series, and its browser entry's version, which every answer is kept under. Each sample's files are keyed
  * as a page beside the samples' root reads them: `<kit>/pod/…` with `<kit>/pod/files.json`, `<kit>/pod.pack.json`,
  * `<kit>/answers.json`, `<kit>/pod.json` and, given `look`, `<kit>/lookups.json`. A kit the package does not carry is
  * refused.
  */
-export async function publishedSamples(
+export async function samplesToPublish(
   options: SampleOptions = {},
 ): Promise<Samples> {
   const components = join(PACKAGE, "components");
