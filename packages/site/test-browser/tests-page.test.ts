@@ -4,36 +4,36 @@ import { chromium } from "playwright";
 import { hubFiles } from "../src/front-page.js";
 import { testsSection } from "../src/hub/tests.js";
 import { buildTree } from "../src/sections.js";
+import {
+  described,
+  FILE,
+  leafOf,
+  packageProperty,
+  report,
+} from "../test/report.js";
 
-const attribute = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+const A = FILE("cascade-runtime", "a.test");
 
-const prop = (name: string, value: string): string =>
-  `<property name="${name}" value="${attribute(value)}"/>`;
-
-const FILE =
-  "/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/cascade-runtime/dist/test/a.test.js";
-
-const leaf = (name: string, failed: boolean): string =>
-  `<testcase name="${name}" time="0.001" classname="test" file="${FILE}" line="3">${failed ? '<failure message="broke">broke</failure>' : ""}</testcase>`;
-
-const capability = (name: string, cases: string): string =>
-  `<testsuite name="${name}" time="0.001" tests="2" failures="0">${cases}</testsuite>`;
-
-const REPORT = `<?xml version="1.0" encoding="utf-8"?><testsuites><properties>${prop(
-  "package:cascade-runtime",
-  JSON.stringify({
-    name: "cascade-runtime",
-    version: "0.0.0",
-    spec: {
-      capabilities: ["Alpha", "Beta"],
-      glossary: [
-        { term: "claim", definition: "A say-so." },
-        { term: "pod", definition: "A person's own store." },
-      ],
-    },
+const REPORT = report(
+  packageProperty("cascade-runtime", "cascade-runtime", "0.0.0", {
+    capabilities: ["Alpha", "Beta"],
+    glossary: [
+      { term: "claim", definition: "A say-so." },
+      { term: "pod", definition: "A person's own store." },
+    ],
   }),
-)}</properties>${capability("Alpha", leaf("good alpha", false) + leaf("bad alpha", true))}${capability("Beta", leaf("good beta one", false) + leaf("good beta two", false))}</testsuites>`;
+  described(
+    "Alpha",
+    {},
+    leafOf("good alpha", A, 3) +
+      leafOf("bad alpha", A, 3, { failure: "broke" }),
+  ) +
+    described(
+      "Beta",
+      {},
+      leafOf("good beta one", A, 3) + leafOf("good beta two", A, 3),
+    ),
+);
 
 async function page(): Promise<string> {
   const { tree } = await buildTree({

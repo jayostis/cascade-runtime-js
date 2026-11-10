@@ -8,6 +8,7 @@ import { readJunit } from "../src/junit.js";
 import { suitesOf, testsSection } from "../src/hub/tests.js";
 import { buildTree } from "../src/sections.js";
 import { readPage } from "./page.js";
+import { described, FILE, leafOf, packageProperty, report } from "./report.js";
 
 const R = "cascade-runtime-js";
 const V = "cascade-vocabulary";
@@ -682,47 +683,6 @@ test("the CTRF file is linked once, in its part, and a file outside packages/<pk
   });
   assert.ok(levelsOf(other, R).some((l) => /^x\.test\.js|scripts\/x/.test(l)));
 });
-
-/** A property element, the way scripts/junit-reporter.mjs writes it. */
-const prop = (name: string, value: string): string =>
-  `<property name="${name}" value="${value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll("\n", "&#10;")}"/>`;
-
-const FILE = (pkg: string, name: string): string =>
-  `/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/${pkg}/dist/test/${name}.js`;
-
-interface Marked {
-  readonly description?: string;
-  readonly rules?: readonly string[];
-  readonly line?: number;
-}
-
-const marks = (m: Marked): string => {
-  const list = [
-    ...(m.description === undefined
-      ? []
-      : [prop("description", m.description)]),
-    ...(m.rules ?? []).map((rule) => prop("rule", rule)),
-    ...(m.line === undefined ? [] : [prop("line", String(m.line))]),
-  ];
-  return list.length === 0 ? "" : `<properties>${list.join("")}</properties>`;
-};
-
-const described = (name: string, m: Marked, inner: string): string =>
-  `<testsuite name="${name}" time="0.001" tests="1" failures="0">${marks(m)}${inner}</testsuite>`;
-
-const leafOf = (name: string, file: string, line: number, m: Marked = {}) =>
-  `<testcase name="${name}" time="0.001" classname="test" file="${file}" line="${line}">${marks(m)}</testcase>`;
-
-const packageProperty = (
-  dir: string,
-  name: string,
-  version: string,
-  spec: unknown,
-): string =>
-  `<properties>${prop(`package:${dir}`, JSON.stringify({ name, version, spec }))}</properties>`;
-
-const report = (packages: string, body: string): string =>
-  `<?xml version="1.0" encoding="utf-8"?>\n<testsuites>${packages}${body}</testsuites>\n`;
 
 const pod = FILE("cascade-runtime", "pod.test");
 const terms = FILE("cascade-runtime", "terms.test");
