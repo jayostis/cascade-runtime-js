@@ -1,5 +1,5 @@
 import { boundToRecords } from "./bound-records.js";
-import { derivationsOf, type Keep, QUERIES } from "./derive.js";
+import { derivationsOf, type SamesStillJoined, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
@@ -433,18 +433,20 @@ async function takenRecords(
 
 /**
  * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, the
- * union of a new store; with `keep`, the Sames M7 leaves as they were count on.
+ * union of a new store; with `samesStillJoined`, the Sames M7 leaves as they were count on.
  */
 export async function matcherView(
   context: Pick<
     StepContext,
     "layout" | "pod" | "address" | "vocabulary" | "newStore"
   >,
-  keep?: Keep,
+  samesStillJoined?: SamesStillJoined,
 ): Promise<Union> {
   const union = new Union(context.newStore());
   await podFiles(context.pod, context.layout, context.address, union);
-  await (await derivationsOf(context.vocabulary)).derive(union, LENS, keep);
+  await (
+    await derivationsOf(context.vocabulary)
+  ).derive(union, LENS, samesStillJoined);
   return union;
 }
 

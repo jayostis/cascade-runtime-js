@@ -10,7 +10,7 @@ import {
 import { dataset, podDataset, podStated } from "../src/dataset.js";
 import { KeptBuild } from "../src/incremental.js";
 import { CorePod } from "../src/core-pod.js";
-import { DERIVED, type Keep } from "../src/derive.js";
+import { DERIVED, type SamesStillJoined } from "../src/derive.js";
 import { viewEntryName } from "../src/names.js";
 import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
@@ -272,7 +272,7 @@ test("a build after each step reads no file back, or one the pod held at its ope
       newStore: () => new OxigraphStore(),
       build: incremental,
       lens: LENS,
-      keep: () => Promise.resolve([]),
+      samesStillJoined: () => Promise.resolve([]),
     },
     {
       address,
@@ -469,7 +469,7 @@ test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose m
   );
   const last = replayed.steps.at(-1);
   assert.ok(last);
-  const read = (keep?: Keep) =>
+  const read = (samesStillJoined?: SamesStillJoined) =>
     podDataset(
       replayed.pod,
       kit.layout,
@@ -477,12 +477,12 @@ test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose m
       kit.config.lens,
       new OxigraphStore(),
       { title: replayed.title, at: last.step.when },
-      keep,
+      samesStillJoined,
     );
   /** The Same the example says counts on, by the name it gives it. */
   const same = "urn:uuid:d9369a14-2bff-818e-9628-53cd1a1577b5";
   let kept: Triple[] = [];
-  const joinedByCurrentVersion: Keep = async (held) => {
+  const joinedByCurrentVersion: SamesStillJoined = async (held) => {
     const { rows } = await held.select(`${PREFIXES}
       SELECT DISTINCT ?matcherJudgment ?now WHERE {
         ?matcherJudgment prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:wasDerivedFrom ?input .

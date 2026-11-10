@@ -8,7 +8,7 @@ import {
   type VocabularyBuild,
 } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
-import type { Keep } from "./derive.js";
+import type { SamesStillJoined } from "./derive.js";
 import { type Files, MemoryFiles, relative, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
@@ -475,7 +475,12 @@ export class CorePod {
       }
     } else {
       const at = (await podStated(pod, layout, union.store)).at ?? time.now();
-      await build.derive(union, lens, { address, at, title }, this.#keep());
+      await build.derive(
+        union,
+        lens,
+        { address, at, title },
+        this.#samesStillJoined(),
+      );
     }
     await addLayout(union, layout, address);
     return union;
@@ -868,7 +873,7 @@ export class CorePod {
       const dataset =
         build?.lens === MATCHER_LENS ? await this.#keptUnderLens() : undefined;
       if (dataset === undefined)
-        return matcherView(this.#options, this.#keep());
+        return matcherView(this.#options, this.#samesStillJoined());
       const rebuilt = new Set(layout.rebuilt.map((path) => address + path));
       const left = [...dataset.graphs].filter(
         (graph) => graph === LAYOUT_GRAPH || rebuilt.has(graph),
@@ -1023,7 +1028,7 @@ export class CorePod {
    * The Sames M7 leaves as they were across a table version, over the tables the pod is read with: found once a step for
    * every union read under a lens that reads them, each holding the same files.
    */
-  #keep(): Keep {
+  #samesStillJoined(): SamesStillJoined {
     return async (union) =>
       (
         await this.#held(KEPT, () =>
@@ -1189,7 +1194,7 @@ export class CorePod {
       newStore,
       build: incremental,
       lens: build.lens,
-      keep: async (union: Union) =>
+      samesStillJoined: async (union: Union) =>
         (await this.#keptMatcherJudgments.of(union, () => this.#tables()))
           .triples,
     };
@@ -1408,7 +1413,7 @@ export class CorePod {
       build.lens,
       union,
       build.derive,
-      this.#keep(),
+      this.#samesStillJoined(),
     );
     await writeAll(
       pod,
