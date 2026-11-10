@@ -24,7 +24,7 @@ const { ask, sessionInputsHash, splitSession } =
   await import("../src/sessions.js");
 const { passageOf, podProvenance } = await import("../src/evidence.js");
 const { countsOf, instancesOf } = await import("../src/instances.js");
-const { keeps } = await import("../src/cases.js");
+const { reusesPreparedPod } = await import("../src/cases.js");
 const { ARM_PARTS, versionOf } = await import("../src/prompts.js");
 const { blinded } = await import("../src/judging.js");
 const { finish } = await import("../src/record.js");
@@ -954,9 +954,9 @@ test("a prepared pod is reused only with its build time and the reference tables
     build: { seconds: 1, modelCalls: 0, tokens: 0, usd: 0 },
     tables: { id: "t", versions: ["v"] },
   } as never;
-  assert.equal(keeps(kept, "d", components as never, "t"), true);
+  assert.equal(reusesPreparedPod(kept, "d", components as never, "t"), true);
   assert.equal(
-    keeps(
+    reusesPreparedPod(
       { ...(kept as object), build: undefined } as never,
       "d",
       components as never,
@@ -964,10 +964,16 @@ test("a prepared pod is reused only with its build time and the reference tables
     ),
     false,
   );
-  assert.equal(keeps(kept, "other", components as never, "t"), false);
-  assert.equal(keeps(kept, "d", components as never, "newer"), false);
   assert.equal(
-    keeps(
+    reusesPreparedPod(kept, "other", components as never, "t"),
+    false,
+  );
+  assert.equal(
+    reusesPreparedPod(kept, "d", components as never, "newer"),
+    false,
+  );
+  assert.equal(
+    reusesPreparedPod(
       { ...(kept as object), tables: undefined } as never,
       "d",
       components as never,
