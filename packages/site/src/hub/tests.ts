@@ -657,7 +657,7 @@ function byPackage(
 }
 
 /** A suite's cases as the page reads them: each package, with its capabilities in the order its spec gives. */
-function tree(
+function packageSections(
   cases: readonly TestCase[],
   packages: ReadonlyMap<string, PackageInfo>,
   suite: Suite,
@@ -799,7 +799,7 @@ function part(suite: Suite, run: TestRun | undefined): Part {
 `
       : "";
   const shownCases =
-    cases.length === 0 ? "" : tree(cases, packages, suite, run);
+    cases.length === 0 ? "" : packageSections(cases, packages, suite, run);
   const milliseconds =
     declaredDuration(run.report) ??
     cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0);
