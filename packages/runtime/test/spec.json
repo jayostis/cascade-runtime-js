@@ -19,7 +19,7 @@
   "glossary": [
     {
       "term": "act",
-      "definition": "one thing done to a pod that writes files to it: an import, an entry, a connection to a hospital's server, or a run of the matcher.",
+      "definition": "one thing done to a pod that writes files to it: an import, an entry session, a connection to a hospital's server, or a run of the matcher.",
       "vocabulary": "http://www.w3.org/ns/prov#Activity",
       "aliases": ["acts"]
     },
@@ -317,7 +317,7 @@
     },
     {
       "term": "step",
-      "definition": "one scripted action on a pod, such as making it, an import, an entry or a judgment, named by a letter and a number such as `J10`.",
+      "definition": "one scripted action on a pod, such as making it, an import, an entry session or a judgment, named by a letter and a number such as `J10`.",
       "aliases": ["steps"]
     },
     {
