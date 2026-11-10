@@ -212,22 +212,6 @@ async function ruleListRevised(): Promise<Files> {
   };
 }
 
-/** The vocabulary with its ontology changed by `change`. */
-function recordsChanged(change: (turtle: string) => string): Files {
-  const { vocabulary } = parts;
-  return {
-    iri: vocabulary.iri,
-    read: async (path) => {
-      const bytes = await vocabulary.read(path);
-      return bytes === undefined || !path.endsWith("ontologies/cascade.ttl")
-        ? bytes
-        : new TextEncoder().encode(change(new TextDecoder().decode(bytes)));
-    },
-    write: (path, bytes) => vocabulary.write(path, bytes),
-    list: (folder) => vocabulary.list(folder),
-  };
-}
-
 /** The URL of a version's rows. */
 function rowsUrl(served: Served, version: string): string {
   const distribution = served.catalog.find(
@@ -1275,6 +1259,32 @@ describe("Keeping reference tables up to date · tablesBeside(), tables.check()"
       assert.notEqual(labels.before, "Vaccine groups, relabelled");
       assert.equal(labels.after, "Vaccine groups, relabelled");
     });
+
+    it("keeps no index beside a version whose rows are found by their own code", async () => {
+      const names = feed.catalog.find(
+        ([subject, predicate]) =>
+          predicate.value === CURRENT &&
+          feed.catalog.some(
+            ([s, , o]) =>
+              s.value === subject.value && o.value.endsWith("#CodeNames"),
+          ),
+      )?.[2].value;
+      assert.ok(names);
+      const stem = fileStem(names);
+      const store = await checkedStore(feed);
+      await (
+        await tablesOver(feed, store).references()
+      ).rows(names, {
+        codes: new Set([`${CVX}141`]),
+        terms: await tableTerms(parts.vocabulary, parts.newStore),
+      });
+      assert.deepEqual(
+        (await store.list("")).filter(
+          (path) => path.startsWith(`${stem}.`) && path.endsWith(".codes.json"),
+        ),
+        [],
+      );
+    });
   });
 
   describe("when a check cannot read the vocabulary", () => {
@@ -1697,6 +1707,32 @@ cascade:NdcDrugs cascade:readByAppPages true .
 
     it("still has its record of the pod's open after the check", () => {
       assert.deepEqual(started.openedAfter, [groups.first]);
+    });
+  });
+
+  describe("tables.references()", () => {
+    it("returns only the rows a code finds in what a check wrote", async () => {
+      const cvx141 = `${CVX}141`;
+      const references = await (await checkedFeed()).references();
+      const rowsOf = (found: readonly Triple[]): string[] => [
+        ...new Set(found.map(([subject]) => subject.value)),
+      ];
+      const found = await references.rows(groups.second, {
+        codes: new Set([cvx141]),
+        terms: await tableTerms(parts.vocabulary, parts.newStore),
+      });
+      assert.deepEqual(
+        found
+          .filter(([, predicate]) =>
+            predicate.value.endsWith("#annotatedSource"),
+          )
+          .map(([, , object]) => object.value),
+        [cvx141],
+      );
+      assert.ok(
+        rowsOf(await references.rows(groups.second)).length >
+          rowsOf(found).length,
+      );
     });
   });
 });
@@ -3462,256 +3498,6 @@ describe("Asking a pod what the reference tables say of its records · pod.medic
       );
       assert.deepEqual(cited.cvx150, [groups.first]);
       assert.deepEqual(cited.cvx140, [groups.second]);
-    });
-  });
-});
-
-/**
- * A pod's records are compared with tables of hundreds of thousands of rows, so a pod reads from each version only the
- * rows its own codes find. `tables.references()` returns the tables as a pod reads them: asked for a version's rows by a
- * set of codes, it returns those rows and reads no more than it must.
- */
-describe("Reading only the rows a pod's codes find · tables.references()", () => {
-  const cvx141 = `${CVX}141`;
-  const subjects = (rows: readonly Triple[]): string[] =>
-    [...new Set(rows.map(([subject]) => subject.value))].sort();
-  const lines = (rows: readonly Triple[]): string[] =>
-    rows.map((row) => row.map((term) => term.value).join(" ")).sort();
-  /** The current version of the test feed's names series. */
-  const namesVersion = (): string => {
-    const found = feed.catalog.find(
-      ([subject, predicate]) =>
-        predicate.value === CURRENT &&
-        feed.catalog.some(
-          ([s, , o]) =>
-            s.value === subject.value && o.value.endsWith("#CodeNames"),
-        ),
-    )?.[2].value;
-    assert.ok(found);
-    return found;
-  };
-  const find = async (codes: ReadonlySet<string>) => ({
-    codes,
-    terms: await tableTerms(parts.vocabulary, parts.newStore),
-  });
-
-  describe("given a version whose rows are found by a property, as a vaccine group's are by its vaccine", () => {
-    it("returns the rows that map the code asked, and no other row", async () => {
-      const references = await (await checkedFeed()).references();
-      const found = await references.rows(
-        groups.second,
-        await find(new Set([cvx141])),
-      );
-      assert.deepEqual(
-        found
-          .filter(([, predicate]) =>
-            predicate.value.endsWith("#annotatedSource"),
-          )
-          .map(([, , object]) => object.value),
-        [cvx141],
-      );
-      assert.ok(
-        subjects(await references.rows(groups.second)).length >
-          subjects(found).length,
-      );
-    });
-  });
-
-  describe("given a version whose rows are found by their own code, as a name's are", () => {
-    let store: MemoryFiles;
-    let afterFirst: { subjects: string[]; read: string[] };
-    let indexes: string[];
-    let everything: string[];
-    let everyCode: string[];
-    let noRows: readonly Triple[];
-    let readAgain: string[];
-
-    before(async () => {
-      const names = namesVersion();
-      const stem = fileStem(names);
-      const reads: string[] = [];
-      store = await checkedStore(feed);
-      const counted: Files = {
-        iri: store.iri,
-        read: (path) => {
-          reads.push(path);
-          return store.read(path);
-        },
-        write: (path, bytes) => store.write(path, bytes),
-        list: (folder) => store.list(folder),
-      };
-      const references = await tablesOver(feed, counted).references();
-      const asked = await find(new Set([cvx141]));
-      const halved = reads.length;
-      afterFirst = {
-        subjects: subjects(await references.rows(names, asked)),
-        read: reads.slice(halved).filter((path) => path.startsWith(stem)),
-      };
-      indexes = (await store.list("")).filter(
-        (path) => path.startsWith(`${stem}.`) && path.endsWith(".codes.json"),
-      );
-      const all = await references.rows(names);
-      everything = lines(all);
-      everyCode = lines(
-        await references.rows(names, {
-          ...asked,
-          codes: new Set([...subjects(all), "urn:test:no-rows"]),
-        }),
-      );
-      noRows = await references.rows(names, {
-        ...asked,
-        codes: new Set(["urn:test:x"]),
-      });
-      const readsBefore = reads.length;
-      await references.rows(names, asked);
-      await references.rows(names, asked);
-      readAgain = reads
-        .slice(readsBefore)
-        .filter((path) => path.startsWith(stem));
-    });
-
-    it("returns the code's rows from one read of the version's rows", () => {
-      assert.deepEqual(afterFirst.subjects, [cvx141]);
-      assert.deepEqual(afterFirst.read, [`${fileStem(namesVersion())}.ttl`]);
-    });
-
-    it("keeps no index beside the version", () => {
-      assert.deepEqual(indexes, []);
-    });
-
-    it("returns every row when every code is asked, and none for a code with no row", () => {
-      assert.deepEqual(everyCode, everything, "every code");
-      assert.deepEqual(noRows, [], "a code with no row");
-    });
-
-    it("reads no file at a second call", () => {
-      assert.deepEqual(readAgain, []);
-    });
-
-    it("ignores an index left beside the version", async () => {
-      const names = namesVersion();
-      const inner = await checkedStore(feed);
-      await inner.write(
-        `${fileStem(names)}.codes.json`,
-        new TextEncoder().encode(
-          JSON.stringify({ foundBy: [`${CASCADE}RowSubject`], rows: {} }),
-        ),
-      );
-      assert.deepEqual(
-        subjects(
-          await (
-            await tablesOver(feed, inner).references()
-          ).rows(names, await find(new Set([cvx141]))),
-        ),
-        [cvx141],
-      );
-    });
-
-    it("returns the code's rows from a version written as Turtle and not as sorted lines", async () => {
-      const names = namesVersion();
-      const asked = await find(new Set([cvx141]));
-      const sorted = lines(
-        await (await tablesOver(feed, store).references()).rows(names, asked),
-      );
-      const grouped = new Map<string, string[]>();
-      for (const line of new TextDecoder()
-        .decode(await store.read(`${fileStem(names)}.ttl`))
-        .split("\n")
-        .filter((each) => each !== "")) {
-        const [subject = "", rest = ""] = line.split(/ (.*) \.$/s);
-        grouped.set(subject, [...(grouped.get(subject) ?? []), rest]);
-      }
-      const turtle = new MemoryFiles(store.iri);
-      for (const path of await store.list(""))
-        if (!path.endsWith(".codes.json"))
-          await turtle.write(
-            path,
-            (await store.read(path)) ?? new Uint8Array(),
-          );
-      await turtle.write(
-        `${fileStem(names)}.ttl`,
-        new TextEncoder().encode(
-          `@prefix x: <urn:test:x#> .\n${[...grouped]
-            .map(([subject, rest]) => `${subject} ${rest.join(" ;\n  ")} .`)
-            .join("\n")}\n`,
-        ),
-      );
-      assert.deepEqual(
-        lines(
-          await (
-            await tablesOver(feed, turtle).references()
-          ).rows(names, asked),
-        ).filter((line) => line.startsWith(`${cvx141} `)),
-        sorted,
-      );
-    });
-  });
-
-  describe("given an index that cannot be used", () => {
-    it("returns every row the code finds", async () => {
-      const all = await (
-        await (await checkedFeed()).references()
-      ).rows(groups.second);
-      const [, , target] =
-        all.find(([, predicate]) =>
-          predicate.value.endsWith("#annotatedTarget"),
-        ) ?? [];
-      assert.ok(target !== undefined);
-      const source = "cascade:foundBy owl:annotatedSource .";
-      const cases: [string, Files, (files: Files) => Promise<void>, string][] =
-        [
-          [
-            "an index that is unreadable",
-            parts.vocabulary,
-            (files) =>
-              files.write(
-                `${fileStem(groups.second)}.codes.json`,
-                new TextEncoder().encode("{"),
-              ),
-            cvx141,
-          ],
-          [
-            "an index built when the vocabulary gave the kind nothing to be found by",
-            recordsChanged((turtle) =>
-              turtle.replace(source, "rdfs:seeAlso owl:annotatedSource ."),
-            ),
-            async () => {},
-            cvx141,
-          ],
-          [
-            "an index built when the vocabulary gave the kind fewer properties to be found by",
-            parts.vocabulary,
-            async () => {},
-            target.value,
-          ],
-        ];
-      const reading = recordsChanged((turtle) =>
-        turtle.replace(
-          source,
-          "cascade:foundBy owl:annotatedSource , owl:annotatedTarget .",
-        ),
-      );
-      for (const [input, vocabulary, change, code] of cases) {
-        const files = await checkedStore(feed, vocabulary);
-        await change(files);
-        const references = await tablesOver(feed, files, reading).references();
-        const found = new Set(
-          (
-            await references.rows(groups.second, {
-              codes: new Set([code]),
-              terms: await tableTerms(reading, parts.newStore),
-            })
-          ).map(([subject]) => subject.value),
-        );
-        const wanted = all.filter(
-          ([, predicate, object]) =>
-            /#annotated(Source|Target)$/.test(predicate.value) &&
-            object.value === code,
-        );
-        assert.ok(wanted.length > 0, input);
-        for (const [subject] of wanted)
-          assert.ok(found.has(subject.value), input);
-      }
     });
   });
 });

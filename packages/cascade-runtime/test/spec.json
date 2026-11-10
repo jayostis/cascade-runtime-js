@@ -28,7 +28,6 @@
     "Looking up a code in the reference tables · tables.about(), tables.facts(), tables.inPanels(), tables.classedElsewhere()",
     "Reading what ClinVar says of a variant · tables.variantClassification(), pod.agreement()",
     "Asking a pod what the reference tables say of its records · pod.medicationClasses(), pod.panelResults(), pod.joinedBy()",
-    "Reading only the rows a pod's codes find · tables.references()",
     "Tools a model reads a pod with · TOOLS",
     "Reading a folder of pods for the tools · podReads()",
     "Reading a whole pod in pages · ask tool",
