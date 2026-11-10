@@ -52,6 +52,7 @@ export class FakeGraphDB {
     this.saved = new Map();
     this.asked.length = 0;
     this.refuseStatementsAfter = undefined;
+    this.answer = { head: { vars: [] }, results: { bindings: [] } };
     this.#statements = 0;
   }
 
