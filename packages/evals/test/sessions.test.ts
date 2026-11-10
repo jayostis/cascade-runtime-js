@@ -1,17 +1,10 @@
 import assert from "node:assert/strict";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import type { BeyondVerdict, ItemVerdict } from "../src/results.js";
+import { downloads, PULL } from "./recorded-downloads.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-sessions-"));
 process.env.CASCADE_EVALS_TRANSCRIPTS = join(folder, "transcripts");
@@ -19,19 +12,13 @@ const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
 const { caseIds, loadCase, loadKey } = await import("../src/cases.js");
 const { errorsOf } = await import("../src/schemas.js");
-const { PRONOUNS, replyErrors } = await import("cascade-runtime");
-const { ask, sessionInputsHash, splitSession } =
-  await import("../src/sessions.js");
-const { passageOf, podProvenance } = await import("../src/evidence.js");
+const { PRONOUNS } = await import("cascade-runtime");
+const { sessionInputsHash, splitSession } = await import("../src/sessions.js");
 const { countsOf, instancesOf } = await import("../src/instances.js");
-const { keeps } = await import("../src/cases.js");
+const { reusesPreparedPod } = await import("../src/cases.js");
 const { ARM_PARTS, versionOf } = await import("../src/prompts.js");
-const { blinded } = await import("../src/judging.js");
 const { finish } = await import("../src/record.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
-
-const fixture = (path: string) =>
-  fileURLToPath(new URL(`../../test/fixtures/${path}`, import.meta.url));
 
 test("every case asks its questions in sessions, and its key holds an item for each question and none for another", async () => {
   for (const id of await caseIds()) {
@@ -99,57 +86,6 @@ test("how a child was run is in the session hash: other tools or another runner,
   assert.notEqual(hash(["Bash"], "1"), hash(["Bash"], "2"));
 });
 
-const valid = JSON.stringify({
-  answer: "r",
-  short: "s",
-  items: [
-    { n: 1, says: "x", why: "", confidence: "high", facts: [], absences: [] },
-  ],
-});
-
-test("the questions are handed out one at a time, in order, each once the last is answered, and logged", async () => {
-  const run = join(folder, "ask");
-  const job = "c.s.pod.opus-5-5.r1";
-  await mkdir(join(run, "prompts", job), { recursive: true });
-  await mkdir(join(run, "answers", job), { recursive: true });
-  await writeFile(join(run, "prompts", job, "a.txt"), "First, in her words.");
-  await writeFile(join(run, "prompts", job, "b.txt"), "Second, in her words.");
-  await writeFile(
-    join(run, "plan.json"),
-    JSON.stringify({
-      run: "ask",
-      folder: run,
-      jobs: [
-        {
-          id: job,
-          role: "subject",
-          session: "s",
-          questions: ["a", "b"],
-          answers: `answers/${job}`,
-          prompt: `prompts/${job}.txt`,
-        },
-      ],
-    }),
-  );
-  assert.equal(await ask(run, job), "First, in her words.");
-  assert.match(await ask(run, job), /answers.c\.s\.pod\.opus-5-5\.r1.a\.json/);
-  await writeFile(join(run, "answers", job, "a.json"), valid);
-  assert.equal(await ask(run, job), "Second, in her words.");
-  await writeFile(join(run, "answers", job, "b.json"), valid);
-  assert.match(await ask(run, job), /no more questions/i);
-  const log = (await readFile(join(run, "asked.jsonl"), "utf8"))
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line) as { job: string; question: string });
-  assert.deepEqual(
-    log.map((it) => [it.job, it.question]),
-    [
-      [job, "a"],
-      [job, "b"],
-    ],
-  );
-});
-
 const call = (
   at: string,
   input: number,
@@ -202,90 +138,6 @@ test("a session's calls split at each hand-out: before the first is the session'
   );
   const pod = splitSession(calls, asked, "2026-10-31T10:01:20.000Z", "pod");
   assert.equal(pod.shared.recordsContext, undefined);
-});
-
-const PULL = {
-  source: "Cascade North Demo Hospital",
-  retrievedAt: "2026-10-15T00:00:00Z",
-};
-
-async function downloads(at: string) {
-  for (const name of ["north-2024-02", "north-2025-02", "north-2026-10"]) {
-    await mkdir(join(at, name), { recursive: true });
-    await copyFile(
-      fileURLToPath(
-        new URL(
-          "../../../cascade-runtime/test/fixtures/citations/bundle.json",
-          import.meta.url,
-        ),
-      ),
-      join(at, name, "bundle.json"),
-    );
-    await writeFile(join(at, name, "pull.json"), JSON.stringify(PULL));
-  }
-  return at;
-}
-
-test("a grab-bag citation resolves to the passage it names and its download's date; a pod entry to its records, revisions and documents", async () => {
-  const at = await downloads(join(folder, "passages"));
-  const file = "north-2026-10/bundle.json";
-  const lines = (await readFile(join(at, file), "utf8")).split("\n");
-  const passage = await passageOf(at, {
-    file,
-    resource: "MedicationRequest/m-1",
-  });
-  assert.ok(passage !== undefined);
-  assert.equal(passage.pointer, "/entry/7/resource");
-  assert.match(passage.text, /Jardiance 10 mg tablet/);
-  const bundle = JSON.parse(lines.join("\n")) as {
-    entry: { resource: unknown }[];
-  };
-  assert.deepEqual(JSON.parse(passage.text), bundle.entry[7]!.resource);
-  assert.ok(
-    lines
-      .slice(passage.from - 1, passage.to)
-      .join("\n")
-      .includes(passage.text),
-  );
-  assert.deepEqual(passage.download, PULL);
-  const line = await passageOf(at, { file, line: 3 });
-  assert.deepEqual([line?.from, line?.to, line?.text], [3, 3, lines[2]]);
-  assert.equal(
-    await passageOf(at, { file, resource: "Condition/none" }),
-    undefined,
-  );
-  const resolve = await podProvenance(fixture("pod-provenance"));
-  const entry = resolve(
-    "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3",
-  );
-  assert.equal(entry?.type, "PrescribedOrReportedMedication");
-  const [member] = entry!.members;
-  assert.equal(member?.sourceId, "story-stopped-medrx-2");
-  assert.equal(
-    member?.sourceUrl,
-    "https://cascade-north.demo.invalid/fhir/MedicationRequest/story-stopped-medrx-2",
-  );
-  const [revision] = member!.revisions;
-  assert.equal(revision?.observedAsOf, "2026-10-15T00:00:00Z");
-  assert.equal(revision?.selector, "/entry/5");
-  assert.deepEqual(
-    [
-      revision?.document?.retrievedOn,
-      revision?.document?.author,
-      revision?.document?.server,
-    ],
-    [
-      "2026-10-15T00:00:00Z",
-      "Cascade North Demo Hospital",
-      "https://cascade-north.demo.invalid/fhir",
-    ],
-  );
-  assert.equal(
-    resolve(
-      "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#none",
-    ),
-    undefined,
-  );
 });
 
 test("an arm is counted from its judges: a verdict they share, else split; beyond the key by its verdict", () => {
@@ -954,9 +806,9 @@ test("a prepared pod is reused only with its build time and the reference tables
     build: { seconds: 1, modelCalls: 0, tokens: 0, usd: 0 },
     tables: { id: "t", versions: ["v"] },
   } as never;
-  assert.equal(keeps(kept, "d", components as never, "t"), true);
+  assert.equal(reusesPreparedPod(kept, "d", components as never, "t"), true);
   assert.equal(
-    keeps(
+    reusesPreparedPod(
       { ...(kept as object), build: undefined } as never,
       "d",
       components as never,
@@ -964,10 +816,16 @@ test("a prepared pod is reused only with its build time and the reference tables
     ),
     false,
   );
-  assert.equal(keeps(kept, "other", components as never, "t"), false);
-  assert.equal(keeps(kept, "d", components as never, "newer"), false);
   assert.equal(
-    keeps(
+    reusesPreparedPod(kept, "other", components as never, "t"),
+    false,
+  );
+  assert.equal(
+    reusesPreparedPod(kept, "d", components as never, "newer"),
+    false,
+  );
+  assert.equal(
+    reusesPreparedPod(
       { ...(kept as object), tables: undefined } as never,
       "d",
       components as never,
@@ -997,69 +855,6 @@ test("an arm's prompt version covers everything that reaches its prompt: changin
       example: "x",
     }) === versionOf("records"),
     false,
-  );
-});
-
-test("the pod prompt shows the whole-pod read as the exact command that works: the pod's name in an input the ask tool's schema accepts", async () => {
-  const { sessionPrompt } = await import("../src/prompts.js");
-  const { TOOLS, schemaOf } = await import("cascade-runtime/tools");
-  const { Ajv2020 } = await import("ajv/dist/2020.js");
-  const command = "node cli.js pod --run run --job job";
-  const prompt = sessionPrompt({
-    arm: "pod",
-    tag: "t",
-    name: "Tamsin Vale",
-    pronoun: "her",
-    today: "2026-01-01",
-    ask: "ask",
-    command,
-    pod: "tamsin-vale",
-  });
-  const shown = [...prompt.matchAll(/ ask '([^']*)'/g)].map((it) => it[1]!);
-  assert.equal(shown.length, 1);
-  const input = JSON.parse(shown[0]!) as Record<string, unknown>;
-  assert.equal(input.format, "compact");
-  assert.ok(prompt.includes(`${command} ask '${shown[0]}'`));
-  const ask = TOOLS.find((it) => it.name === "ask")!;
-  const validate = new Ajv2020({ strict: false }).compile(schemaOf(ask));
-  assert.ok(validate(input), JSON.stringify(validate.errors));
-  assert.equal(input.pod, "tamsin-vale");
-});
-
-test("an answer may link facts across its items, and a judge reads that link", () => {
-  const fact = (says: string) => ({
-    says,
-    cite: { entry: "pod://p/clinical/medications.ttl#a" },
-    field: "name",
-  });
-  const item = (n: number, says: string) => ({
-    n,
-    says,
-    why: "",
-    confidence: "high",
-    facts: [fact(says)],
-    absences: [],
-  });
-  const answer = {
-    answer: "r",
-    short: "s",
-    items: [item(1, "Metformin listed active"), item(2, "Metformin completed")],
-    links: [
-      {
-        from: { item: 1, fact: 0 },
-        to: { item: 2, fact: 0 },
-        says: "the later copy closes the earlier one",
-      },
-    ],
-  };
-  assert.deepEqual(replyErrors(answer), []);
-  assert.match(
-    blinded(answer as never),
-    /^- Link: item 1 fact 0 to item 2 fact 0: the later copy closes the earlier one$/m,
-  );
-  assert.notDeepEqual(
-    replyErrors({ ...answer, links: [{ from: 1, to: 2 }] }),
-    [],
   );
 });
 

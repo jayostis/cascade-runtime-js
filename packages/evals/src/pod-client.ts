@@ -205,7 +205,7 @@ export async function podServe(given: string, job: string): Promise<void> {
           connection.end("stopped\n", stop);
           return;
         }
-        connection.end(await answer(client, folder, job, call, counter));
+        connection.end(await callLogged(client, folder, job, call, counter));
       } catch (error) {
         connection.end(`the pod server failed: ${(error as Error).message}\n`);
       }
@@ -231,7 +231,7 @@ export async function podServe(given: string, job: string): Promise<void> {
  * One call through the job's MCP client: the tools, or a tool's answer, logged with the entries it named and
  * numbered, the number printed after the answer so an absence can name the call that looked.
  */
-export async function answer(
+export async function callLogged(
   client: Client,
   folder: string,
   job: string,

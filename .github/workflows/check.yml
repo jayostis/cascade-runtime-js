@@ -97,6 +97,11 @@ jobs:
       - name: Tests of the runtime core in random order
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: node scripts/random-order.mjs runtime
+      # The same for the files packages/evals/test/spec.json lists. One of them writes into the package's runs/ folder, so this is one
+      # run, never several at once.
+      - name: Tests of the eval harness in random order
+        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+        run: node scripts/random-order.mjs evals
       # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice. Its JUnit report is
       # read for the test page's shape below, as the `runtime-tests` job reads its own.
       - id: suite
@@ -124,6 +129,7 @@ jobs:
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/graphdb/test/spec.json
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/mcp/test/spec.json
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/runtime/test/spec.json
+          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/evals/test/spec.json
 
   # The docs site as Pages would serve it: `build-pages` runs the same command, and this job keeps the tree it wrote.
   browser:
@@ -551,6 +557,7 @@ jobs:
           node scripts/spec-shape.mjs "$kept/junit.xml" packages/graphdb/test/spec.json
           node scripts/spec-shape.mjs "$kept/junit.xml" packages/mcp/test/spec.json
           node scripts/spec-shape.mjs "$kept/junit.xml" packages/runtime/test/spec.json
+          node scripts/spec-shape.mjs "$kept/junit.xml" packages/evals/test/spec.json
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:

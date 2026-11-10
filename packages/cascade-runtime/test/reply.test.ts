@@ -9,6 +9,7 @@ import {
   checkReply,
   type CheckedFact,
   downloadsSource,
+  numberedReply,
   type PodAsker,
   replyErrors,
   replySchema,
@@ -274,7 +275,7 @@ async function viewFields(): Promise<string[]> {
  * cites, and returns what the pod itself holds of that record, so an app shows the pod's words and never the model's.
  * @rule runtime/naming.feature N13
  */
-describe("Checking a model's reply against a person's records · checkReply(), replyErrors(), replySchema", () => {
+describe("Checking a model's reply against a person's records · checkReply(), replyErrors(), replySchema, numberedReply()", () => {
   describe("given a reply about a pod (`ask`)", () => {
     it("checks every fact and absence of a recorded reply: its four facts hold and its one absence is backed", async () => {
       const checked = await checkReply(reply, { ask, ran });
@@ -587,6 +588,94 @@ describe("Checking a model's reply against a person's records · checkReply(), r
     });
   });
 
+  describe("given a reply that draws links", () => {
+    const item = (n: number) => ({
+      n,
+      says: "…",
+      why: "…",
+      confidence: "high",
+      facts: [{ says: "…", cite: { entry: "Lcd05f84f" }, field: "value" }],
+    });
+    const linked = (link: unknown) => ({
+      answer: "x",
+      short: "y",
+      items: [item(1), item(2)],
+      links: [link],
+    });
+    const says = "the later copy closes the earlier one";
+
+    it("returns no error for a link from a fact of one item to a fact of another", () => {
+      assert.deepEqual(
+        replyErrors(
+          linked({
+            from: { item: 1, fact: 0 },
+            to: { item: 2, fact: 0 },
+            says,
+          }),
+        ),
+        [],
+      );
+    });
+
+    it("returns an error for a link that names its facts by number, not by their item and place", () => {
+      assert.notDeepEqual(replyErrors(linked({ from: 1, to: 2, says })), []);
+    });
+
+    it("returns an error, at the link, for a link that names item 0 or a fact before the first", () => {
+      assert.deepEqual(
+        replyErrors(
+          linked({
+            from: { item: 0, fact: 0 },
+            to: { item: 2, fact: 0 },
+            says,
+          }),
+        ),
+        ["/links/0 must name items from 1 and facts from 0"],
+      );
+      assert.deepEqual(
+        replyErrors(
+          linked({
+            from: { item: 1, fact: 0 },
+            to: { item: 2, fact: -1 },
+            says,
+          }),
+        ),
+        ["/links/0 must name items from 1 and facts from 0"],
+      );
+    });
+
+    it("returns an error, at the link, for a link within an item that names a fact before the first", () => {
+      const within = {
+        answer: "x",
+        short: "y",
+        items: [{ ...item(1), links: [{ from: -1, to: 0, says }] }],
+      };
+      assert.deepEqual(replyErrors(within), [
+        "/items/0/links/0 must name facts from 0",
+      ]);
+    });
+  });
+
+  describe("given a reply with an item that rests on no fact and no absence", () => {
+    it("returns no error for an item that gives only the model's own knowledge", () => {
+      assert.deepEqual(
+        replyErrors({
+          answer: "x",
+          short: "y",
+          items: [
+            {
+              says: "…",
+              why: "…",
+              confidence: "low",
+              knowledge: { says: "Allergy to a drug can fade over years." },
+            },
+          ],
+        }),
+        [],
+      );
+    });
+  });
+
   describe("given a reply written to the other contract", () => {
     const files: Source = { at: async () => undefined };
     const copied = {
@@ -701,6 +790,32 @@ describe("Checking a model's reply against a person's records · checkReply(), r
       assert.deepEqual(
         answered.items[0]!.facts.map(({ verdict }) => verdict.ok),
         [true],
+      );
+    });
+  });
+
+  describe("numberedReply(reply)", () => {
+    const items = (reply as { items: object[] }).items.map((item) =>
+      Object.fromEntries(Object.entries(item).filter(([key]) => key !== "n")),
+    );
+    const numbers = (value: unknown): number[] =>
+      (value as { items: { n: number }[] }).items.map(({ n }) => n);
+
+    it("numbers an item without `n` by its place, from 1", () => {
+      assert.ok(items.length >= 3, "the recorded reply has items to number");
+      assert.deepEqual(
+        numbers(numberedReply({ ...(reply as object), items })),
+        items.map((_item, at) => at + 1),
+      );
+    });
+
+    it("keeps an `n` that an item is given", () => {
+      const given = items.map((item, at) =>
+        at === 1 ? { ...item, n: 7 } : item,
+      );
+      assert.deepEqual(
+        numbers(numberedReply({ ...(reply as object), items: given })),
+        items.map((_item, at) => (at === 1 ? 7 : at + 1)),
       );
     });
   });
