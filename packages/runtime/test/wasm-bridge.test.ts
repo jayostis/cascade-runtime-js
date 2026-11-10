@@ -161,6 +161,7 @@ async function differences(): Promise<{
   readonly skipped: string[];
   readonly converted: number;
   readonly unaccepted: number;
+  readonly acceptedUnaccepted: number;
 }> {
   const files = await vocabulary();
   const importers = importersNamed(components.config.importers);
@@ -169,6 +170,7 @@ async function differences(): Promise<{
   const seen = new Set<string>();
   let converted = 0;
   let unaccepted = 0;
+  let acceptedUnaccepted = 0;
   for (const kit of await kitsOf(files)) {
     const { story, folder } = await storyFrom(
       `${kit}/${kit.slice(kit.lastIndexOf("/") + 1)}.feature`,
@@ -224,10 +226,7 @@ async function differences(): Promise<{
         if (refused !== undefined) {
           seen.add(known);
           unaccepted++;
-          if (accepting !== undefined)
-            differ.push(
-              `${named}: saved as unaccepted, but an adapter accepts it`,
-            );
+          if (accepting !== undefined) acceptedUnaccepted++;
           continue;
         }
         if (graph === undefined) {
@@ -259,7 +258,7 @@ async function differences(): Promise<{
       }
     }
   }
-  return { differ, skipped, converted, unaccepted };
+  return { differ, skipped, converted, unaccepted, acceptedUnaccepted };
 }
 
 /** A pod's files as one graph, but the imports' own, with each revision and the import that made it as blank nodes. */
@@ -328,8 +327,9 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       assert.equal(found.converted, 52);
     });
 
-    it("accepts with no adapter a document the kit saves as unaccepted", () => {
+    it("has no adapter accept the document the kit saves as unaccepted", () => {
       assert.equal(found.unaccepted, 1);
+      assert.equal(found.acceptedUnaccepted, 0);
     });
 
     it("skips only an import whose export its importer cannot read and for which the kit saves nothing", () => {
