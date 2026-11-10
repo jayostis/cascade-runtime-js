@@ -412,7 +412,7 @@ describe("Looking into an export before importing · pod.look()", () => {
   let first: Looked;
   let fromBytes: Looked;
   let stored: Looked;
-  let claimed: Looked;
+  let afterClaim: Looked;
   let broken: unknown;
 
   before(async () => {
@@ -436,7 +436,7 @@ describe("Looking into an export before importing · pod.look()", () => {
     stored = await priya.look(download);
     for (const profile of imported.unclaimedProfiles)
       await priya.judge(about(priya, profile));
-    claimed = await priya.look(download);
+    afterClaim = await priya.look(download);
     const notXml = join(pods, "broken.xml");
     await writeFile(notXml, '<ClinicalDocument xmlns="urn:hl7-org:v3"><id>');
     broken = await priya.look(notXml).then(
@@ -520,19 +520,19 @@ describe("Looking into an export before importing · pod.look()", () => {
   });
 
   describe("given a pod that has imported before", () => {
-    it("marks a source `claimed` only once the owner has said its records are their own", () => {
+    it("marks a source `holdsSubjectsRecords` only once the owner has said its records are their own", () => {
       assert.deepEqual(
-        stored.map((source) => source.claimed),
+        stored.map((source) => source.holdsSubjectsRecords),
         [false],
         "a C-CDA stored and not claimed",
       );
       assert.deepEqual(
-        claimed.map((source) => source.claimed),
+        afterClaim.map((source) => source.holdsSubjectsRecords),
         [true],
         "a C-CDA once the owner claims its patient",
       );
       assert.deepEqual(
-        byPath.map((source) => source.claimed),
+        byPath.map((source) => source.holdsSubjectsRecords),
         [true, false, true],
         "an Apple Health export of which two servers were imported and claimed",
       );

@@ -183,7 +183,7 @@ export interface ExportSource {
    * The pod holds the subject's records from that server or, for a source with none, from a document whose author is
    * the source.
    */
-  readonly claimed: boolean;
+  readonly holdsSubjectsRecords: boolean;
 }
 
 export interface Done {
@@ -724,13 +724,13 @@ class OpenPod implements Pod {
           ?document prov:wasAttributedTo/(<http://www.w3.org/2000/01/rdf-schema#label>|^prov:specializationOf/<http://xmlns.com/foaf/0.1/name>) ?author .
         }
       }`);
-    const claimedServers = new Set(
+    const serversHoldingSubjectsRecords = new Set(
       rows.flatMap((row) => {
         const server = row.get("server")?.value;
         return server === undefined ? [] : [normalised(server)];
       }),
     );
-    const claimedAuthors = new Set(
+    const authorsHoldingSubjectsRecords = new Set(
       rows.flatMap((row) => {
         const author = row.get("author")?.value;
         return author === undefined ? [] : [spaced(author)];
@@ -772,11 +772,11 @@ class OpenPod implements Pod {
         records: sorted(records),
         ...(sections.size === 0 ? {} : { sections: sorted(sections) }),
         received: [...received].sort(),
-        claimed:
+        holdsSubjectsRecords:
           source.server === undefined
             ? source.name !== undefined &&
-              claimedAuthors.has(spaced(source.name))
-            : claimedServers.has(source.server),
+              authorsHoldingSubjectsRecords.has(spaced(source.name))
+            : serversHoldingSubjectsRecords.has(source.server),
       }));
   }
 

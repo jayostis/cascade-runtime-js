@@ -277,8 +277,11 @@ test("the hospital example brings patient A's North record into a pod of its own
   assert.equal(looked.length, 1, "the hospital example asked nothing");
   const sources = looked[0]!.asked as ExportSource[];
   assert.deepEqual(
-    sources.map(({ server, claimed }) => ({ server, claimed })),
-    [{ server: hospital.fhirBase, claimed: false }],
+    sources.map(({ server, holdsSubjectsRecords }) => ({
+      server,
+      holdsSubjectsRecords,
+    })),
+    [{ server: hospital.fhirBase, holdsSubjectsRecords: false }],
   );
   const active = recordsAt(patients[A_NORTH]!).filter(
     (resource) =>

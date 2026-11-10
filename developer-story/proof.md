@@ -161,7 +161,7 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   `https://ehr.larkspur.example/fhir/R4`, 2, 2, 1, 1, both already claimed (J1,
   J2); Larkspur Valley Health at `https://fhir.larkspur.example/r4`, 2, 2, 1, 1,
   received 2027-03-18, not claimed. (`export.xml` of x-e12; `look`'s `name`,
-  `server`, `records`, `received`, `claimed`; the test "the look reads the
+  `server`, `records`, `received`, `holdsSubjectsRecords`; the test "the look reads the
   export's index and writes nothing" in
   `packages/cascade-runtime/test/pod.test.ts`.) Meridian's counts include Sam's
   allergy and two conditions, which the look cannot tell apart. The app calls

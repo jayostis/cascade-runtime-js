@@ -277,7 +277,7 @@ export default defineConfig({ plugins: [react(), cascadeRuntime()] });
 On each export or downloaded C-CDA file the person picks, `look` reads its index
 and writes nothing: one source per hospital server, or per document's custodian,
 with its `name`, a FHIR source's `server`, `records` by kind, a C-CDA's entries
-per `sections` title, the times `received`, and `claimed`. Ask the person
+per `sections` title, the times `received`, and `holdsSubjectsRecords`. Ask the person
 whether the export is theirs; `import` it only after a yes. On a no, call nothing: the pod keeps none of it.
 
 ```js
@@ -309,7 +309,7 @@ await bringIn(pickExport());
 await bringIn(pickExport());
 ```
 
-The look names no patient: `claimed` means the pod holds the subject's records
+The look names no patient: `holdsSubjectsRecords` means the pod holds the subject's records
 from that server, or from a document that custodian wrote, not that this
 export's are theirs; a second server is a source of its own, and so is a
 hospital's custodian beside its server. `import` with the yes claims every profile not yet claimed, runs the
@@ -754,7 +754,7 @@ changes nothing else, or the person judges the pairs one by one.
 ## When an export holds someone else's records
 
 An export can carry another person's records, a child's, under a hospital the
-look shows claimed, and `import` claims that profile too. Only `claimedProfiles`, shown
+look lists as holding the subject's records (`holdsSubjectsRecords`), and `import` claims that profile too. Only `claimedProfiles`, shown
 to the person, catches it: retract the About of any profile not theirs.
 
 ```js
