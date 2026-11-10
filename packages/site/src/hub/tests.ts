@@ -5,6 +5,7 @@ import {
   declaredFailures,
   readJunit,
   type Described,
+  type JunitReport,
   type PackageInfo,
   type Result,
   type TestCase,
@@ -787,6 +788,11 @@ interface Part {
   readonly ctrf?: unknown;
 }
 
+/** The cases of a run's report, read as the report's format has them. */
+function casesOf(run: TestRun): JunitReport {
+  return readJunit(run.report);
+}
+
 /** What a suite's page shows of its run: the summary, the counts and the tree, or why there is none. */
 function part(suite: Suite, run: TestRun | undefined): Part {
   if (run === undefined)
@@ -798,7 +804,7 @@ function part(suite: Suite, run: TestRun | undefined): Part {
   let failingSuites: number;
   let packages: ReadonlyMap<string, PackageInfo>;
   try {
-    ({ cases, failingSuites, packages } = readJunit(run.report));
+    ({ cases, failingSuites, packages } = casesOf(run));
   } catch (error) {
     return {
       html: markup`<p class="prose">${runLine(suite, run)}.</p>
