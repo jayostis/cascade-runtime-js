@@ -2220,7 +2220,7 @@ test("an app's tables are answered with what they hold while the check on open i
   try {
     const tables = await tablesBeside(join(scratch, "opened"));
     assert.ok(!(await tables.current()).includes(groups.second));
-    await tables.opened(pod, [groups.first], "alex");
+    await tables.recordOpen(pod, [groups.first], "alex");
     assert.equal(
       fetched,
       false,
@@ -2761,7 +2761,7 @@ test("a pod a browser copied before its versions were kept, saved as null, adopt
   try {
     const pod = "https://example.org/pod/";
     const first = (await resolved()).tablesIn(dir);
-    await first.opened(pod, ["https://example.org/v1"]);
+    await first.recordOpen(pod, ["https://example.org/v1"]);
     const saved = JSON.parse(await readFile(join(dir, "tables.json"), "utf8"));
     saved.pods[pod] = null;
     await writeFile(join(dir, "tables.json"), JSON.stringify(saved));

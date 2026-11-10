@@ -238,7 +238,7 @@ export class Tables {
   /**
    * Records that the pod was opened with the versions and, given, the name the app opened it by.
    */
-  opened(
+  recordOpen(
     pod: string,
     versions: readonly string[],
     name?: string,
@@ -250,13 +250,13 @@ export class Tables {
     }));
   }
 
-  /** The app's last snapshot in the pod, as `keptHead` recorded it; none for a pod it never wrote to. */
+  /** The app's last snapshot in the pod, as `keepHead` recorded it; none for a pod it never wrote to. */
   async headOf(pod: string): Promise<Head | undefined> {
     return (await this.#held.read()).heads?.[pod];
   }
 
   /** Records the app's last snapshot in the pod, which it hands back as the writer's head when it next opens the pod. */
-  keptHead(pod: string, head: Head): Promise<void> {
+  keepHead(pod: string, head: Head): Promise<void> {
     return this.#held.change((held) => ({
       ...held,
       heads: { ...held.heads, [pod]: head },
@@ -264,7 +264,7 @@ export class Tables {
   }
 
   /** Records the name the app opens the pod by, when it is not the one recorded. */
-  async named(pod: string, name: string): Promise<void> {
+  async recordName(pod: string, name: string): Promise<void> {
     if ((await this.#held.read()).names?.[pod] === name) return;
     await this.#held.change((held) => ({
       ...held,
