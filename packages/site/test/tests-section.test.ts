@@ -1,14 +1,36 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { hubFiles } from "../src/front-page.js";
-import type { TestReports } from "../src/hub/context.js";
+import type { Suite, SuiteRun, TestRun } from "../src/hub/context.js";
 import { glossaryOf, Links } from "../src/hub/glossary.js";
 import { readJunit } from "../src/junit.js";
-import { testsSection } from "../src/hub/tests.js";
+import { suitesOf, testsSection } from "../src/hub/tests.js";
 import { buildTree } from "../src/sections.js";
 import { readPage } from "./page.js";
 
-const PATH = "conformance/tests/index.html";
+const R = "cascade-runtime-js";
+const V = "cascade-vocabulary";
+const PATH = `conformance/tests/${R}/index.html`;
+const pageOf = (name: string): string => `conformance/tests/${name}/index.html`;
+const ctrfPath = (name: string): string =>
+  `conformance/tests/${name}/${name}.ctrf.json`;
+
+const suite = (
+  repository: string,
+  runner: Suite["runner"],
+  title = `The tests of ${repository}`,
+): Suite => ({
+  repository,
+  title,
+  about: `${runner} over ${repository}`,
+  workflow: "check.yml",
+  artifact: "unit-tests",
+  report: "junit.xml",
+  runner,
+});
+const RUNTIME = suite(`jayostis/${R}`, "node:test", "The runtime's tests");
+const VOCABULARY = suite(`jayostis/${V}`, "pytest", "The vocabulary's tests");
 
 /** What node:test's junit reporter writes: a file's cases at the top, a describe nested, `>` bare, `"` escaped twice. */
 const NODE = `<?xml version="1.0" encoding="utf-8"?>
@@ -50,27 +72,36 @@ const OTHER_RUN = {
   url: "https://github.com/jayostis/cascade-vocabulary/actions/runs/41",
 };
 
-async function pageWith(reports: TestReports) {
+/**
+ * The pages of the runtime's suite, the vocabulary's and any others given, each with its newest run where one is given,
+ * read as one text in that order.
+ */
+async function pageWith(
+  reports: { readonly runtime?: TestRun; readonly vocabulary?: TestRun },
+  others: readonly SuiteRun[] = [],
+) {
+  const runs: SuiteRun[] = [
+    { suite: RUNTIME, ...(reports.runtime ? { run: reports.runtime } : {}) },
+    {
+      suite: VOCABULARY,
+      ...(reports.vocabulary ? { run: reports.vocabulary } : {}),
+    },
+    ...others,
+  ];
   const { tree } = await buildTree({
     sections: [testsSection],
-    ctx: { tests: async () => reports },
+    ctx: { tests: async () => runs },
     front: (rows) => hubFiles(["Records"], rows),
   });
-  const bytes = tree.get(PATH);
-  assert.ok(bytes, `${PATH} is written`);
-  const markup = new TextDecoder().decode(bytes);
+  const markup = runs
+    .map(({ suite: { repository } }) => {
+      const path = pageOf(repository.split("/")[1] ?? "");
+      const bytes = tree.get(path);
+      assert.ok(bytes, `${path} is written`);
+      return new TextDecoder().decode(bytes);
+    })
+    .join("\n");
   return { markup, page: readPage(markup, PATH), tree };
-}
-
-/** The rows of the table after the heading, as the text of each cell. */
-function rowsOf(markup: string, heading: string): string[][] {
-  const part = markup.split(`id="${heading}"`)[1] ?? "";
-  const table = /<tbody>([\s\S]*?)<\/tbody>/.exec(part)?.[1] ?? "";
-  return [...table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map(([, row]) =>
-    [...(row ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell]) =>
-      text((cell ?? "").replace(/<pre[\s\S]*?<\/pre>/g, "")),
-    ),
-  );
 }
 
 function text(markup: string): string {
@@ -183,7 +214,7 @@ test("a run whose node report counts more failures than it lists says so beside 
     page.said,
     /node counts 1 failure but the report lists 0 failed cases/,
   );
-  const part = markup.split('id="runtime"')[1] ?? "";
+  const part = markup.split(`id="${R}"`)[1] ?? "";
   assert.ok(
     part.includes(`<a href="${RUN.url}">`),
     "the run is linked in the runtime's part",
@@ -192,9 +223,11 @@ test("a run whose node report counts more failures than it lists says so beside 
   assert.doesNotMatch(honest.page.said, /node counts/);
 });
 
-/** The part of the page under the heading, up to the next one. */
+/** The page of the suite whose part has that id, from the part to the page's end. */
 function partOf(markup: string, heading: string): string {
-  return (markup.split(`id="${heading}"`)[1] ?? "").split("<h2")[0] ?? "";
+  return (
+    (markup.split(`id="${heading}"`)[1] ?? "").split("<!DOCTYPE")[0] ?? ""
+  );
 }
 
 /** The levels (package, file, describe) after the heading, as the text of each summary, in the page's order. */
@@ -221,39 +254,45 @@ function casesOf(markup: string, heading: string): string[][] {
   );
 }
 
-test("each suite's newest run shows its cases with result and time, the runtime's as a tree of package, capability and situation, a failed case reading failed, and the run's commit, date and link", async () => {
+test("each suite's newest run shows its cases with result and time as a tree of package, capability and situation, a failed case reading failed, and the run's commit, date and link", async () => {
   const { markup, page } = await pageWith({
     runtime: { report: NODE, ...RUN },
     vocabulary: { report: PYTEST, ...OTHER_RUN },
   });
 
-  assert.deepEqual(levelsOf(markup, "runtime"), [
+  assert.deepEqual(levelsOf(markup, R), [
     // the failing package first; a case with no describe is a capability named for its file
     "links.test.ts 1 passed, 1 failed",
     "other.test.ts 0 passed, 1 skipped",
     "outer 1 passed",
     "inner 1 passed",
   ]);
-  assert.deepEqual(casesOf(markup, "runtime"), [
+  assert.deepEqual(casesOf(markup, R), [
     ['fails <a> "q" & so on', "failed", "1.50 s"],
     ["passes", "passed", "3 ms"],
     ["skipped", "skipped", "0 ms"],
     ["deep pass", "passed", "0 ms"],
   ]);
-  assert.doesNotMatch(partOf(markup, "runtime"), /<table/);
-  assert.equal(failureOf(markup, "runtime"), "1 == 2 and 3 > 2");
+  assert.doesNotMatch(partOf(markup, R), /<table/);
+  assert.equal(failureOf(markup, R), "1 == 2 and 3 > 2");
 
-  const vocabulary = rowsOf(markup, "vocabulary");
-  assert.deepEqual(
-    vocabulary.map(([suite, name, result]) => [suite, name, result]),
-    [
-      ["tests.test_queries", "test_gone", "failed"],
-      ["tests.test_naming", "test_a_name[record-from-server]", "passed"],
-      ["tests.test_queries", "test_later", "skipped"],
-    ],
+  // pytest's xunit2, as the vocabulary uploads it today: no file and no line, a module as each case's classname
+  assert.deepEqual(levelsOf(markup, V), [
+    "test_naming.py 1 passed",
+    "test_queries.py 0 passed, 1 failed, 1 skipped",
+  ]);
+  assert.deepEqual(casesOf(markup, V), [
+    ["test_a_name[record-from-server]", "passed", "12 ms"],
+    ["test_gone", "failed", "200 ms"],
+    ["test_later", "skipped", "0 ms"],
+  ]);
+  assert.ok(
+    page.hrefs.includes(
+      `https://github.com/jayostis/cascade-vocabulary/blob/${OTHER_RUN.commit}/tests/test_queries.py`,
+    ),
   );
   assert.equal(
-    failureOf(markup, "vocabulary"),
+    failureOf(markup, V),
     "assert 1 == 2 + where 1 = f()",
   );
 
@@ -279,7 +318,7 @@ test("a suite with no report, an unreadable one, a cut-short one and one with no
   const none = await pageWith({});
   assert.match(none.page.said, /runtime[\s\S]*not available/i);
   assert.match(none.page.said, /vocabulary[\s\S]*not available/i);
-  assert.equal(rowsOf(none.markup, "runtime").length, 0);
+  assert.equal(casesOf(none.markup, R).length, 0);
 
   const broken = await pageWith({
     runtime: { report: "not xml at all", ...RUN },
@@ -303,6 +342,213 @@ test("a suite with no report, an unreadable one, a cut-short one and one with no
   assert.match(empty.page.said, /vocabulary[\s\S]*not available/i);
 });
 
+/**
+ * pytest 9.1.1 with xdist 3.8.0, `-n 2 --dist loadgroup -o junit_family=xunit1`, over a nested class, a parametrised test
+ * in an xdist group and a module-level skip. Generated; the hostname, the folder, the object's address and the `\` of a
+ * Windows path were replaced, and the `describe:N:*` properties a conftest hook writes were added beside the `title` that
+ * `record_property` wrote.
+ */
+const level = (n: number, title: string, line?: number) =>
+  `<property name="describe:${n}:title" value="${title}" />${line === undefined ? "" : `<property name="describe:${n}:line" value="${line}" />`}`;
+const IMPORTING = `${level(1, "Importing a record", 4)}<property name="describe:1:description" value="What importing does." />${level(2, "when the record is unclaimed", 9)}`;
+const PYTEST_XUNIT1 = `<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="1" tests="4" time="1.875" timestamp="2026-11-10T02:49:55.771823-08:00" hostname="x"><testcase classname="tests.test_pod.TestImporting.TestWhenUnclaimed" name="test_keeps_it[a]@pods" file="tests/test_pod.py" line="11" time="0.011"><properties><property name="title" value="keeps it (a)" />${IMPORTING}</properties></testcase><testcase classname="tests.test_pod.TestImporting.TestWhenUnclaimed" name="test_refuses" file="tests/test_pod.py" line="17" time="0.003"><properties>${IMPORTING}</properties><failure message="assert 1 == 2">self = &lt;test_pod.TestImporting.TestWhenUnclaimed object at 0x1&gt;
+
+    def test_refuses(self):
+&gt;       assert 1 == 2
+E       assert 1 == 2
+
+tests/test_pod.py:19: AssertionError</failure></testcase><testcase classname="tests.test_pod.TestImporting.TestWhenUnclaimed" name="test_keeps_it[b]@pods" file="tests/test_pod.py" line="11" time="0.010"><properties><property name="title" value="keeps it (b)" />${IMPORTING}</properties></testcase><testcase classname="tests.test_pod" name="test_flat" file="tests/test_pod.py" line="21" time="0.005"><skipped type="pytest.skip" message="later">tests/test_pod.py:23: later</skipped></testcase></testsuite></testsuites>`;
+
+/**
+ * vitest 5.1.0 `--reporter=junit --includeTaskLocation`, which still writes no line: nested describes joined by ` > `, a
+ * skipped `it` beside a describe, and an `it` outside any. Generated; the hostname was replaced, and the `line` property the
+ * repository's reporter adds was added to one case.
+ */
+const VITEST = `<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="4" failures="1" errors="0" time="0.0194449">
+    <testsuite name="test/a.test.ts" timestamp="2026-11-10T10:49:46.507Z" hostname="x" tests="4" failures="1" errors="0" skipped="1" time="0.0194449">
+        <testcase classname="test/a.test.ts" name="Importing a record &gt; when the pod is empty &gt; keeps it" time="0.0044741">
+            <properties><property name="line" value="5"/></properties>
+        </testcase>
+        <testcase classname="test/a.test.ts" name="Importing a record &gt; when the pod is empty &gt; refuses a &lt;gap&gt; &amp; &quot;so&quot;" time="0.0100671">
+            <failure message="expected 1 to be 2 // Object.is equality" type="AssertionError">
+AssertionError: expected 1 to be 2 // Object.is equality
+ ❯ test/a.test.ts:9:17
+            </failure>
+        </testcase>
+        <testcase classname="test/a.test.ts" name="Importing a record &gt; later" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="test/a.test.ts" name="stands alone" time="0.0003891">
+        </testcase>
+    </testsuite>
+</testsuites>
+`;
+
+/**
+ * cargo-nextest's JUnit, written from its documented form (no Rust toolchain here to generate one): a testsuite per test
+ * binary, a case named by its module path, a `mod tests` inside it, and the `file`, `line`, `title` and `describe:N:*`
+ * properties a scan of the source adds before upload.
+ */
+const NAMING = `<property name="file" value="crates/bridge/src/naming.rs"/>${level(1, "Naming a record", 1)}${level(2, "when the selector has a pipe")}`;
+const NEXTEST = `<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nextest-run" tests="3" failures="1" errors="0" uuid="9b1d4c8e-0000-4000-8000-000000000000" timestamp="2026-11-10T10:00:00.000+00:00" time="0.050">
+    <testsuite name="cascade-bridge" tests="2" disabled="0" errors="0" failures="1">
+        <testcase name="naming::tests::when_the_selector_has_a_pipe::escapes_it" classname="cascade-bridge" timestamp="2026-11-10T10:00:00.001+00:00" time="0.002">
+            <properties>${NAMING}<property name="title" value="escapes it"/><property name="line" value="31"/></properties>
+        </testcase>
+        <testcase name="naming::tests::when_the_selector_has_a_pipe::keeps_the_base" classname="cascade-bridge" timestamp="2026-11-10T10:00:00.002+00:00" time="0.003">
+            <properties>${NAMING}<property name="line" value="40"/></properties>
+            <failure type="test failure with exit code 101">thread 'naming::tests::when_the_selector_has_a_pipe::keeps_the_base' panicked at crates/bridge/src/naming.rs:42:9:
+assertion failed: kept</failure>
+            <system-out></system-out>
+            <system-err>note: run with RUST_BACKTRACE=1</system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="cascade-bridge-cli::node_host" tests="1" disabled="0" errors="0" failures="0">
+        <testcase name="runs_the_host" classname="cascade-bridge-cli::node_host" timestamp="2026-11-10T10:00:00.010+00:00" time="0.040">
+        </testcase>
+    </testsuite>
+</testsuites>
+`;
+
+test("a pytest, vitest or nextest report reads as a tree of capability, situation and case, on its own page for a repository the hub did not know", async () => {
+  const at = (repository: string): TestRun => ({
+    ...RUN,
+    url: `https://github.com/${repository}/actions/runs/7`,
+  });
+  const cases = [
+    {
+      suite: suite("someone/py-thing", "pytest"),
+      report: PYTEST_XUNIT1,
+      spec: { capabilities: ["Importing a record"] },
+      levels: [
+        "Importing a record 2 passed, 1 failed",
+        "when the record is unclaimed 2 passed, 1 failed",
+        "test_pod.py 0 passed, 1 skipped",
+      ],
+      leaves: [
+        ["test_refuses", "failed", "3 ms"],
+        ["keeps it (a)", "passed", "11 ms"],
+        ["keeps it (b)", "passed", "10 ms"],
+        ["test_flat", "skipped", "5 ms"],
+      ],
+      links: ["tests/test_pod.py#L18", "tests/test_pod.py#L4"],
+      said: /What importing does\./,
+    },
+    {
+      suite: suite("someone/vi-thing", "vitest"),
+      report: VITEST,
+      levels: [
+        "Importing a record 1 passed, 1 failed, 1 skipped",
+        "when the pod is empty 1 passed, 1 failed",
+        "a.test.ts 1 passed",
+      ],
+      leaves: [
+        ['refuses a <gap> & "so"', "failed", "10 ms"],
+        ["keeps it", "passed", "4 ms"],
+        ["later", "skipped", "0 ms"],
+        ["stands alone", "passed", "0 ms"],
+      ],
+      links: ["test/a.test.ts#L5"],
+      said: /expected 1 to be 2/,
+    },
+    {
+      suite: suite("someone/rs-thing", "nextest"),
+      report: NEXTEST,
+      levels: [
+        "Naming a record 1 passed, 1 failed",
+        "when the selector has a pipe 1 passed, 1 failed",
+        "cascade-bridge-cli::node_host 1 passed",
+      ],
+      leaves: [
+        ["keeps_the_base", "failed", "3 ms"],
+        ["escapes it", "passed", "2 ms"],
+        ["runs_the_host", "passed", "40 ms"],
+      ],
+      links: [
+        "crates/bridge/src/naming.rs#L40",
+        "crates/bridge/src/naming.rs#L1",
+      ],
+      said: /assertion failed: kept/,
+    },
+  ];
+  const { markup, page, tree } = await pageWith(
+    {},
+    cases.map(({ suite: one, report, spec }) => ({
+      suite: one,
+      run: { report, ...at(one.repository), ...(spec ? { spec } : {}) },
+    })),
+  );
+  const front = new TextDecoder().decode(tree.get("index.html"));
+  for (const { suite: one, levels, leaves, links, said } of cases) {
+    const name = one.repository.split("/")[1] ?? "";
+    assert.deepEqual(levelsOf(markup, name), levels, name);
+    assert.deepEqual(casesOf(markup, name), leaves, name);
+    for (const link of links)
+      assert.ok(
+        page.hrefs.includes(
+          `https://github.com/${one.repository}/blob/${RUN.commit}/${link}`,
+        ),
+        `${name} links ${link}`,
+      );
+    assert.match(text(partOf(markup, name)), said);
+    assert.ok(tree.has(ctrfPath(name)), `${name} has its CTRF`);
+    assert.ok(
+      front.includes(`href="conformance/tests/${name}/"`),
+      `the front page links ${name}'s page`,
+    );
+  }
+  assert.ok(!tree.has("conformance/tests/index.html"), "there is no index");
+});
+
+test("a pytest case with no hook's properties sits under its classes, at its 1-based line, named as pytest names it", () => {
+  const bare = PYTEST_XUNIT1.replace(/<properties>.*?<\/properties>/g, "");
+  const [first] = readJunit(bare).cases;
+  assert.deepEqual(
+    {
+      suite: first?.suite,
+      describes: first?.describes,
+      name: first?.name,
+      line: first?.line,
+    },
+    {
+      suite: "tests/test_pod.py",
+      describes: ["TestImporting", "TestWhenUnclaimed"],
+      name: "test_keeps_it[a]",
+      line: 12,
+    },
+  );
+});
+
+test("the suite list names each repository's workflow, artifact, report and runner, and refuses an entry missing one", () => {
+  const listed = suitesOf(
+    JSON.parse(
+      readFileSync(new URL("../../test-suites.json", import.meta.url), "utf8"),
+    ),
+  );
+  assert.deepEqual(
+    listed.map(({ repository, workflow, runner }) => [
+      repository,
+      workflow,
+      runner,
+    ]),
+    [
+      ["jayostis/cascade-runtime-js", "check.yml", "node:test"],
+      ["jayostis/cascade-vocabulary", "check.yml", "pytest"],
+      ["jayostis/cascade-starter-kit", "check.yml", "node:test"],
+      ["jayostis/cascade-sandbox", "check.yml", "node:test"],
+      ["jayostis/cascade-reference-tables", "check.yml", "node:test"],
+      ["jayostis/cascade-health-assistant", "check.yml", "vitest"],
+      ["jayostis/cascade-bridge-rs", "test.yml", "nextest"],
+      ["jayostis/cascade-bridge-spec", "validate.yml", "pytest"],
+    ],
+  );
+  const { artifact: _, ...noArtifact } = VOCABULARY;
+  assert.throws(() => suitesOf([noArtifact]), /artifact/);
+  assert.throws(() => suitesOf([{ ...VOCABULARY, runner: "jest" }]), /jest/);
+});
+
 /** A describe holding a passing test written before a failing one, each with the line node's reporter was given for it. */
 const DESCRIBED = `<?xml version="1.0" encoding="utf-8"?>
 <testsuites>
@@ -323,7 +569,7 @@ test("a describe is one level of the page with its counts, its failing test befo
   const { markup, tree } = await pageWith({
     runtime: { report: DESCRIBED, ...RUN },
   });
-  const part = markup.split('id="runtime"')[1] ?? "";
+  const part = markup.split(`id="${R}"`)[1] ?? "";
   const said = text(part);
   assert.equal(
     (said.match(/a pod/g) ?? []).length,
@@ -344,15 +590,15 @@ test("a describe is one level of the page with its counts, its failing test befo
   const base = `https://github.com/jayostis/cascade-runtime-js/blob/${RUN.commit}/packages/cascade-runtime/test/pod.test.ts`;
   assert.ok(part.includes(`href="${base}#L20"`), "the failing leaf is linked");
   assert.ok(part.includes(`href="${base}#L10"`), "the passing leaf is linked");
-  assert.ok(tree.has("conformance/tests/index.html"));
+  assert.ok(tree.has(PATH));
 });
 
 test("the CTRF file written for a report holds every case with its full path of names, status and duration, and counts as the page does", async () => {
   const { page, tree } = await pageWith({
     runtime: { report: DESCRIBED, ...RUN },
   });
-  const bytes = tree.get("conformance/tests/runtime.ctrf.json");
-  assert.ok(bytes, "conformance/tests/runtime.ctrf.json is written");
+  const bytes = tree.get(ctrfPath(R));
+  assert.ok(bytes, `${ctrfPath(R)} is written`);
   const { results } = JSON.parse(new TextDecoder().decode(bytes)) as {
     results: {
       summary: Record<string, number>;
@@ -385,7 +631,7 @@ test("the CTRF file counts a failure node reported outside the cases as failed",
   const { tree } = await pageWith({
     runtime: { report: NODE_UNLISTED, ...RUN },
   });
-  const bytes = tree.get("conformance/tests/runtime.ctrf.json");
+  const bytes = tree.get(ctrfPath(R));
   assert.ok(bytes);
   const { results } = JSON.parse(new TextDecoder().decode(bytes)) as {
     results: { summary: Record<string, number> };
@@ -397,7 +643,7 @@ test("the CTRF file is linked once, in its part, and a file outside packages/<pk
   const { markup } = await pageWith({
     runtime: { report: NODE, ...RUN },
   });
-  assert.equal(markup.split('href="runtime.ctrf.json"').length - 1, 1);
+  assert.equal(markup.split(`href="${R}.ctrf.json"`).length - 1, 1);
   const outside = NODE.replace(
     /\/home\/runner\/work\/cascade-runtime-js\/cascade-runtime-js\/packages\/site\/dist\/test\/links\.test\.js/g,
     "/home/runner/work/cascade-runtime-js/cascade-runtime-js/scripts/x.test.js",
@@ -406,7 +652,7 @@ test("the CTRF file is linked once, in its part, and a file outside packages/<pk
     runtime: { report: outside, ...RUN },
   });
   assert.ok(
-    levelsOf(other, "runtime").some((l) => /^x\.test\.js|scripts\/x/.test(l)),
+    levelsOf(other, R).some((l) => /^x\.test\.js|scripts\/x/.test(l)),
   );
 });
 
@@ -508,7 +754,7 @@ const GROUPED = report(
 
 test("a package's cases are grouped by capability across files, in the order spec.json gives, the unlisted alphabetically, and build last in a collapsed section", async () => {
   const { markup } = await pageWith({ runtime: { report: GROUPED, ...RUN } });
-  assert.deepEqual(levelsOf(markup, "runtime"), [
+  assert.deepEqual(levelsOf(markup, R), [
     "Looking up a term 1 passed",
     "Importing a health export 2 passed",
     "when nobody has claimed the patient 1 passed",
@@ -517,7 +763,7 @@ test("a package's cases are grouped by capability across files, in the order spe
     "Build and packaging 1 passed",
     "Packing 1 passed",
   ]);
-  const part = partOf(markup, "runtime");
+  const part = partOf(markup, R);
   const build = part.indexOf("Build and packaging");
   assert.ok(build > part.indexOf("Zebra capability"));
   assert.doesNotMatch(
@@ -531,7 +777,7 @@ test("a capability shows its description and links the files it comes from at th
   const { markup, page } = await pageWith({
     runtime: { report: GROUPED, ...RUN },
   });
-  const said = text(partOf(markup, "runtime"));
+  const said = text(partOf(markup, R));
   assert.match(said, /Reads an export into the pod\./);
   assert.match(said, /The pod keeps it\./);
   assert.match(said, /Nothing is dropped\./);
@@ -554,7 +800,7 @@ test("a @rule tag is a link to its rule on the conformance page, and is not part
     page.hrefs.includes("spec/pod-import.html#r19"),
     page.hrefs.join("\n"),
   );
-  assert.doesNotMatch(text(partOf(markup, "runtime")), /@rule/);
+  assert.doesNotMatch(text(partOf(markup, R)), /@rule/);
   const kit = report(
     "",
     described(
@@ -589,7 +835,7 @@ test("the package line names the package, its version and the commit, and says u
 
 test("the CTRF entry of a case carries the description and rule links of every level above it, and the full path of names", async () => {
   const { tree } = await pageWith({ runtime: { report: GROUPED, ...RUN } });
-  const bytes = tree.get("conformance/tests/runtime.ctrf.json");
+  const bytes = tree.get(ctrfPath(R));
   assert.ok(bytes);
   const { results } = JSON.parse(new TextDecoder().decode(bytes)) as {
     results: {
@@ -616,7 +862,7 @@ test("the CTRF entry of a case carries the description and rule links of every l
         {
           feature: "pod-import",
           id: "R19",
-          href: "../../spec/pod-import.html#r19",
+          href: "../../../spec/pod-import.html#r19",
         },
       ],
     },
@@ -680,18 +926,23 @@ async function reportOfFixture(): Promise<string> {
   const run = spawnSync(
     process.execPath,
     ["--test", `--test-reporter=${reporter}`, join(dir, "x.test.js")],
-    { encoding: "utf8", env },
+    { encoding: "utf8", env, cwd: dir },
   );
   assert.equal(run.status, 0, run.stderr);
   return run.stdout;
 }
 
-test("the reporter writes each describe's and each test's doc comment as a description property and each @rule as a rule property, with the line it is declared on", async () => {
+test("the reporter writes each describe's and each test's doc comment as a description property and each @rule as a rule property, with the line it is declared on and its file from where the tests ran", async () => {
   const xml = await reportOfFixture();
   const { cases } = readJunit(xml);
   const byName = new Map(cases.map((one) => [one.name, one]));
   const keeps = byName.get("keeps them");
   assert.deepEqual(keeps?.describes, ["Importing", "when unclaimed"]);
+  assert.equal(
+    keeps?.suite,
+    "x.test.ts",
+    "the file is named from the directory the tests ran in, so another repository's links reach it",
+  );
   assert.equal(keeps?.description, "Nothing is dropped & <nothing> is lost.");
   assert.deepEqual(keeps?.described, [
     {
@@ -760,7 +1011,7 @@ test("a package's glossary is an open definition list under its about line, each
   const { markup } = await pageWith({
     runtime: { report: WITH_GLOSSARY, ...RUN },
   });
-  const part = partOf(markup, "runtime");
+  const part = partOf(markup, R);
   assert.ok(part.indexOf("The library an app calls.") < part.indexOf("<dl"));
   assert.match(part, /<details class="glossary" open>/);
   for (const anchor of ["claim", "pod", "export"])
@@ -769,7 +1020,7 @@ test("a package's glossary is an open definition list under its about line, each
       new RegExp(`<dt id="glossary-cascade-runtime-${anchor}"`),
     );
   assert.match(part, /claims, claimed/);
-  assert.ok(part.includes('href="../../terms/#cascade:Claim"'));
+  assert.ok(part.includes('href="../../../terms/#cascade:Claim"'));
   assert.ok(part.includes('href="https://example.org/vocab#Export"'));
 });
 
@@ -777,7 +1028,7 @@ test("the first use of a term or alias in each capability links to its entry, as
   const { markup } = await pageWith({
     runtime: { report: WITH_GLOSSARY, ...RUN },
   });
-  const part = partOf(markup, "runtime");
+  const part = partOf(markup, R);
   const importing = part.slice(
     part.indexOf(">Importing"),
     part.indexOf(">Asking<"),
@@ -811,7 +1062,7 @@ test("a level name and a leaf name link the first use, the leaf keeping its sour
       ...RUN,
     },
   });
-  const part = partOf(markup, "runtime");
+  const part = partOf(markup, R);
   assert.match(
     part,
     /<summary><span class="level-name">when the <a href="#glossary-cascade-runtime-pod">Pod<\/a> holds records/,
@@ -829,7 +1080,7 @@ test("the CTRF report carries the glossary in its extra, and a package without o
   const ctrfOf = (files: typeof tree) =>
     JSON.parse(
       new TextDecoder().decode(
-        files.get("conformance/tests/runtime.ctrf.json"),
+        files.get(ctrfPath(R)),
       ),
     ) as { extra?: { glossary?: Record<string, unknown[]> } };
   const glossary = ctrfOf(tree).extra?.glossary?.["cascade-runtime"];
@@ -886,11 +1137,11 @@ test("each suite's summary bar counts its results, names its package, version, c
     runtime: { report: NODE, ...RUN },
     vocabulary: { report: PYTEST, ...OTHER_RUN },
   });
-  const runtime = barOf(markup, "runtime");
+  const runtime = barOf(markup, R);
   assert.deepEqual(runtime.tallies, { passed: 2, failed: 1, skipped: 1 });
   assert.match(runtime.said, /0123456/);
 
-  const vocabulary = barOf(markup, "vocabulary");
+  const vocabulary = barOf(markup, V);
   assert.deepEqual(vocabulary.tallies, { passed: 1, failed: 1, skipped: 1 });
   assert.match(vocabulary.said, /fedcba9/);
   assert.match(
@@ -901,7 +1152,7 @@ test("each suite's summary bar counts its results, names its package, version, c
 
   const named = barOf(
     (await pageWith({ runtime: { report: GROUPED, ...RUN } })).markup,
-    "runtime",
+    R,
   );
   assert.match(named.said, /cascade-runtime 0\.0\.0 unreleased/);
   const released = report(
@@ -910,14 +1161,14 @@ test("each suite's summary bar counts its results, names its package, version, c
   );
   const { said } = barOf(
     (await pageWith({ runtime: { report: released, ...RUN } })).markup,
-    "runtime",
+    R,
   );
   assert.match(said, /cascade-runtime 1\.2\.0/);
   assert.doesNotMatch(said, /unreleased/);
 
   const timed = barOf(
     (await pageWith({ runtime: { report: NODE_UNLISTED, ...RUN } })).markup,
-    "runtime",
+    R,
   );
   assert.match(
     timed.said,
@@ -933,12 +1184,12 @@ test("a summary bar shows a failed pill only when a case failed, so a green run 
   );
   const { tallies } = barOf(
     (await pageWith({ runtime: { report: green, ...RUN } })).markup,
-    "runtime",
+    R,
   );
   assert.deepEqual(tallies, { passed: 1, skipped: 0 });
 });
 
-test("the controls are buttons that start hidden, one set in each part, over a part whose levels and cases carry what they act on", async () => {
+test("the controls are buttons that start hidden, one set on each page, over a tree whose levels and cases carry what they act on", async () => {
   const { markup } = await pageWith({
     runtime: { report: NODE, ...RUN },
     vocabulary: { report: PYTEST, ...OTHER_RUN },
@@ -949,31 +1200,23 @@ test("the controls are buttons that start hidden, one set in each part, over a p
         /<button type="button" data-action="([\w-]+)"/g,
       ),
     ].map(([, action]) => action ?? "");
-  assert.deepEqual(actions("runtime"), [
-    "expand-all",
-    "collapse-all",
-    "failures-only",
-  ]);
-  assert.deepEqual(
-    actions("vocabulary"),
-    ["failures-only"],
-    "a table has nothing to expand",
-  );
-  for (const heading of ["runtime", "vocabulary"])
+  for (const heading of [R, V]) {
+    assert.deepEqual(actions(heading), [
+      "expand-all",
+      "collapse-all",
+      "failures-only",
+    ]);
     assert.match(
       partOf(markup, heading),
       /<span class="controls" data-controls hidden>/,
     );
-  assert.match(
-    markup,
-    /<section data-part="runtime">[\s\S]*<section data-part="vocabulary">/,
-  );
-  const runtime = partOf(markup, "runtime");
+  }
+  const runtime = partOf(markup, R);
   assert.match(runtime, /<li class="case" data-result="failed">/);
   assert.match(runtime, /<li class="case" data-result="passed">/);
   assert.match(runtime, /<li class="capability" data-failed="1">/);
   assert.match(runtime, /<li class="capability" data-failed="0">/);
-  assert.match(partOf(markup, "vocabulary"), /<tr data-result="failed">/);
+  assert.match(partOf(markup, V), /<li class="case" data-result="failed">/);
   assert.match(markup, /<script>[\s\S]*data-action[\s\S]*<\/script>/);
   assert.doesNotMatch(
     runtime.replace(/<span class="controls"[\s\S]*?<\/span>/, ""),
@@ -982,14 +1225,14 @@ test("the controls are buttons that start hidden, one set in each part, over a p
   );
 });
 
-test("a case reads as an icon and its word, the word kept for a reader without the icon, in the tree and in the table", async () => {
+test("a case reads as an icon and its word, the word kept for a reader without the icon", async () => {
   const { markup } = await pageWith({
     runtime: { report: NODE, ...RUN },
     vocabulary: { report: PYTEST, ...OTHER_RUN },
   });
   const status = (result: string, icon: string) =>
     `<span class="result ${result}"><span class="icon" aria-hidden="true">${icon}</span> <span class="label">${result}</span></span>`;
-  for (const heading of ["runtime", "vocabulary"]) {
+  for (const heading of [R, V]) {
     const part = partOf(markup, heading);
     assert.ok(part.includes(status("passed", "✓")), `${heading} passed`);
     assert.ok(part.includes(status("failed", "✗")), `${heading} failed`);
@@ -1019,7 +1262,7 @@ test("a capability's API names after its dot are code, and a package's glossary 
 
   const glossary = partOf(
     (await pageWith({ runtime: { report: WITH_GLOSSARY, ...RUN } })).markup,
-    "runtime",
+    R,
   );
   assert.match(
     glossary,
