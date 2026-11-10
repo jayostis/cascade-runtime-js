@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import {
-  type Assertion,
   earl,
   MemoryFiles,
+  type Assertion,
   type TestedWith,
 } from "@cascade-runtime/runtime";
-import { hubFiles } from "../src/front-page.js";
-import { specSection } from "../src/hub/spec.js";
-import { buildTree } from "../src/sections.js";
 import {
   filesNamed,
   readSpecReport,
@@ -17,100 +14,22 @@ import {
   specPages,
   type SpecWarning,
 } from "../src/spec.js";
+import {
+  ASSERTIONS,
+  BLOB,
+  FEATURE,
+  hubWith,
+  kimVocabulary,
+  NAMING,
+  pagesOf as pagesFrom,
+  RAN_WITH,
+  text,
+  TREE,
+  treeText,
+} from "./kim-vocabulary.js";
 import { readPage } from "./page.js";
 
-const TREE = "https://github.com/jayostis/cascade-vocabulary/tree/abc/";
-const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/abc/";
-const NAMING = `${TREE}runtime/naming.feature#`;
-
-const NOTE = `# How things are named
-
-## Choice
-
-| thing | prior art | what we do | borrowed or diverged |
-|---|---|---|---|
-| version | git blob | a hash of its content (N1) | borrowed |
-| scheme | as N2 does | declared per pod (#193) | ours |
-| order | | revisions in order (N1 to N3, Check 2) | ours |
-| layout (R1) | | where files go, \`runtime/pod-layout.ttl\` | ours |
-| shape | | closed, \`runtime/shapes.ttl\` | ours |
-
-## Why
-
-**Why content names a version.** (row "version") Because \`content\` is what [a source](currency.md) says
-it holds, as [the rubric](#rubric) says, never [a script](javascript:void).
-
-**Why a scheme.** Pods differ.
-
-**Why a layout.** (row "layout (R1)") One place for each file.
-`;
-
-const FEATURE = `Feature: Naming
-  Rule: N1. A version is named by its content
-    decisions/naming.md, row "version". The name is a hash.
-
-    Example: one content is one version
-      Given a new pod for Kim on 2026-09-01 at 09:55
-
-    Example: a version the run did not reach
-      Given a new pod for Kim on 2026-09-01 at 09:55
-
-  Rule: N2. A revision is named by its own triples
-
-    Example: a revision's name
-      Given a new pod for Kim on 2026-09-01 at 09:55
-
-  Rule: N3. A pod declares its scheme once
-    decisions/naming.md, row “scheme”. Declared at creation.
-
-  Rule: N4. Files go where the layout says
-    decisions/naming.md, row "layout (R1)". In folders.
-`;
-
-const KIT = `Feature: Kim's pod
-  Kim's story.
-
-  Background: Kim's story
-    Given a new pod for Kim on 2026-09-01 at 09:55 (E1)
-
-  Rule: P1. One allergy
-
-    Example: one allergy record
-      Then the pod holds 1 allergy
-`;
-
-const THE_KIT = `Feature: The conformance kit
-  Rule: Check 1. Every example passes
-    No note rules this. Its tests are the examples.
-
-  Rule: Check 2. Each final view equals expected/
-`;
-
-const ASSERTIONS: readonly Assertion[] = [
-  { test: `${NAMING}one-content-is-one-version`, name: "", outcome: "passed" },
-  {
-    test: `${NAMING}a-revision-s-name`,
-    name: "",
-    outcome: "failed",
-    why: "N2: the revision has no name",
-  },
-  {
-    test: `${TREE}conformance/kim/kim.feature#one-allergy-record`,
-    name: "",
-    outcome: "passed",
-  },
-  {
-    test: `${TREE}conformance/kim/#check-2-each-final-view-equals-expected`,
-    name: "",
-    outcome: "failed",
-    why: "allergies.ttl differs",
-  },
-];
-const RAN_WITH: readonly TestedWith[] = [
-  { name: "cascade-vocabulary", iri: TREE, revision: "abc" },
-];
-
-const vocabulary = new MemoryFiles(TREE);
+let vocabulary: MemoryFiles;
 let built: SpecPages;
 const pageText = (path: string): string =>
   new TextDecoder().decode(built.files.get(path));
@@ -128,19 +47,10 @@ const results = (path: string): Map<string, string> =>
     ]),
   );
 
-async function pagesOf(
+const pagesOf = (
   assertions: readonly Assertion[],
   ranWith: readonly TestedWith[],
-): Promise<SpecPages> {
-  return specPages({
-    vocabulary,
-    report: await readSpecReport(
-      earl(assertions, "cascade-runtime-js", ranWith),
-    ),
-    builtFrom: [],
-    at: "2026-10-24T00:00:00Z",
-  });
-}
+): Promise<SpecPages> => pagesFrom(vocabulary, assertions, ranWith);
 
 const reported = ({ warnings }: SpecPages): string[] =>
   warnings
@@ -148,20 +58,7 @@ const reported = ({ warnings }: SpecPages): string[] =>
     .map(({ what }) => what);
 
 before(async () => {
-  const text = (value: string) => new TextEncoder().encode(value);
-  await vocabulary.write("decisions/README.md", text("# Notes\n"));
-  await vocabulary.write("decisions/naming.md", text(NOTE));
-  await vocabulary.write("runtime/naming.feature", text(FEATURE));
-  await vocabulary.write("runtime/the-kit.feature", text(THE_KIT));
-  await vocabulary.write("runtime/pod-layout.ttl", text(""));
-  await vocabulary.write("conformance/kim/kim.feature", text(KIT));
-  await vocabulary.write("conformance/kim/scripted-input/people.ttl", text(""));
-  for (const step of ["E1", "E2"])
-    await vocabulary.write(
-      `conformance/kim/scripted-input/kim/bridge/${step}/graph.ttl`,
-      text(""),
-    );
-  await vocabulary.write("conformance/kim/expected/allergies.ttl", text(""));
+  vocabulary = await kimVocabulary();
   built = await pagesOf(ASSERTIONS, RAN_WITH);
 });
 
@@ -345,7 +242,6 @@ test("the index links every feature's page and every kit's", () => {
 
 test("a Choice row names a rule only inside parentheses or beside a .feature pointer, never by a bare code another list uses", async () => {
   const files = new MemoryFiles(TREE);
-  const text = (value: string) => new TextEncoder().encode(value);
   await files.write("decisions/README.md", text("# Notes\n"));
   await files.write(
     "decisions/review.md",
@@ -403,48 +299,9 @@ test("a path a row names under a nested folder of the vocabulary is found, one t
   );
 });
 
-/** The tree the hub writes for the spec's section, given the report the context would read. */
-async function hubWith(
-  ran: readonly Assertion[],
-  files: { readonly earl?: Uint8Array; readonly table?: Uint8Array } = {},
-  from: MemoryFiles = vocabulary,
-): Promise<ReadonlyMap<string, Uint8Array>> {
-  const report = await readSpecReport(
-    earl(ran, "cascade-runtime-js", RAN_WITH),
-  );
-  const { tree } = await buildTree({
-    sections: [specSection],
-    ctx: {
-      vocabulary: async () => ({
-        files: from,
-        builtFrom: [],
-        at: "2026-10-24T00:00:00Z",
-      }),
-      report: async () => ({ report, ...files }),
-      tests: async () => [
-        {
-          suite: {
-            repository: "jayostis/cascade-runtime-js",
-            title: "The runtime's tests",
-            about: "npm test",
-            workflow: "check.yml",
-            artifact: "runtime-tests",
-            report: "junit.xml",
-            runner: "node:test" as const,
-          },
-        },
-      ],
-    },
-    front: (rows) => hubFiles(["Records"], rows),
-  });
-  return tree;
-}
-const treeText = (tree: ReadonlyMap<string, Uint8Array>, path: string) =>
-  new TextDecoder().decode(tree.get(path));
-
 test("the hub's spec section writes the spec's pages and the conformance table with one result per feature, both linked from the front page", async () => {
   const table = new TextEncoder().encode("| rule | result |\n");
-  const tree = await hubWith(ASSERTIONS, {
+  const tree = await hubWith(vocabulary, ASSERTIONS, {
     earl: new TextEncoder().encode("# earl\n"),
     table,
   });
@@ -510,7 +367,7 @@ test("the hub's spec section writes the spec's pages and the conformance table w
 });
 
 test("with no conformance report the section still writes both, every result is not run, and the report's files are not linked", async () => {
-  const tree = await hubWith([]);
+  const tree = await hubWith(vocabulary, []);
   assert.ok(tree.has("spec/index.html") && tree.has("conformance/index.html"));
   assert.ok(!tree.has("conformance/earl.ttl"));
   assert.ok(!tree.has("conformance/table.md"));
@@ -598,7 +455,6 @@ const CURRENCY_FEATURE = `Feature: Currency
 
 test("the hub writes each decision note as a page: a rule links the note's row, the row lists the rules that cite it and says when none does, and a note's links to other notes are pages", async () => {
   const files = new MemoryFiles(TREE);
-  const text = (value: string) => new TextEncoder().encode(value);
   await files.write(
     "decisions/README.md",
     text(
@@ -612,7 +468,7 @@ test("the hub writes each decision note as a page: a rule links the note's row, 
   );
   await files.write("runtime/currency.feature", text(CURRENCY_FEATURE));
   await files.write("queries/view.rq", text(""));
-  const tree = await hubWith([], {}, files);
+  const tree = await hubWith(files, []);
   for (const path of [
     "decisions/index.html",
     "decisions/currency.html",
@@ -724,12 +580,11 @@ const ODD_FEATURE = `Feature: Odd
 
 test("a note whose layout marked renders otherwise still builds: a Choice row with no table row is a warning and has no anchor, an escaped pipe in a code span and a heading named for a row change nothing, an earlier table is no Choice table, and a link to a note that is gone keeps its GitHub address", async () => {
   const files = new MemoryFiles(TREE);
-  const text = (value: string) => new TextEncoder().encode(value);
   await files.write("decisions/README.md", text("# Decision notes\n"));
   await files.write("decisions/odd.md", text(ODD_NOTE));
   await files.write("decisions/currency.md", text("# Currency\n"));
   await files.write("runtime/odd.feature", text(ODD_FEATURE));
-  const tree = await hubWith([], {}, files);
+  const tree = await hubWith(files, []);
 
   const spec = treeText(tree, "spec/index.html");
   const index = readPage(spec);
