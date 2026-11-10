@@ -1,5 +1,5 @@
-// The citation checker: whether a cited record says what the citation gives of it, and whether an absence that something
-// is lacking is backed by what was looked through. A citation names the field it is about (the record's value, status, code,
+// The citation checker: whether a cited record says what the citation gives of it, and whether an absence, what a reply
+// says the records lack, is backed by what was looked through. A citation names the field it is about (the record's value, status, code,
 // name, id, a clinical date of a kind, or words it quotes), and each is compared with that field of the cited record
 // only: never a reference range, an interpretation, an update time or a neighbouring record. No Node: the source of a
 // citation is a parameter, and the one that reads downloads from disk is `node/downloads.ts`.
