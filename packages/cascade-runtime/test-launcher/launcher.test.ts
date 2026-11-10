@@ -2,14 +2,17 @@
 // `npm run test:launcher`. Its data is shared and edited by anyone, so this asserts the protocol and the shape of what
 // came back, never which records: a type is expected only if the launcher itself counts records of it for PATIENT.
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import {
+  type Connection,
   connect,
   ConnectionFailure,
   DEMO_PLAN,
   type DirectoryRow,
   pull,
+  type Pull,
   type Registration,
+  type Search,
   type SignIn,
   TEST_DIRECTORY,
 } from "cascade-runtime";
@@ -78,14 +81,14 @@ function recorded(
   };
 }
 
-/** A sign-in with no browser: the launcher approves at once, so its answer to the authorize URL is the redirect. */
+/** A sign-in with no browser: the launcher approves at once, so its response to the authorize URL is the redirect. */
 function direct(fetcher: typeof fetch): SignIn {
   return async (authorize) => {
     const response = await fetcher(authorize, { redirect: "manual" });
     const location = response.headers.get("Location");
     assert.ok(
       location,
-      `the launcher answered the authorize URL ${response.status}, not a redirect`,
+      `the launcher responded to the authorize URL ${response.status}, not with a redirect`,
     );
     return new URL(location, authorize);
   };
@@ -95,7 +98,7 @@ function direct(fetcher: typeof fetch): SignIn {
 async function held(
   base: string,
   token: string,
-  { type, category }: { type: string; category?: string },
+  { type, category }: Search,
 ): Promise<number> {
   const url = new URL(`${base}/${type}`);
   url.searchParams.set("patient", PATIENT);
@@ -116,110 +119,223 @@ function referencedPatients(resource: Record<string, unknown>): string[] {
     .filter((reference): reference is string => reference !== undefined);
 }
 
-test("connect and pull sign in to the launcher's patient and pull every searched type, following its next links", async () => {
-  const started = Date.now();
-  const seen: Seen = { sent: [], tokens: [], nexts: [] };
-  const fetcher = recorded(seen);
-  const row = launcherRow();
-  const blamed = async (error: unknown): Promise<never> => {
-    throw await failureToReport(error, () => launcherAnswers(row.fhirBase));
-  };
-  const connection = await connect(row, REGISTRATION, {
-    signIn: direct(fetcher),
-    fetch: fetcher,
-  }).catch(blamed);
-  assert.equal(connection.patient, PATIENT);
-  const result = await pull(connection, DEMO_PLAN).catch(blamed);
-  assert.equal(result.fhirBase, row.fhirBase);
-  assert.equal(result.patient, PATIENT);
+/**
+ * What the network work of a `describe` came to, kept as a value. A `before` that throws is reported by node as "failed
+ * running before hook" with each leaf cancelled and the real error in a `cause` that the annotations do not print, so
+ * a night the launcher is down would never name it. Every leaf instead gives the failure itself, which is
+ * `LauncherUnavailable` when the launcher is down.
+ */
+type Attempt<Done> = { readonly done: Done } | { readonly failed: unknown };
 
-  const resources = result.bundle.entry.map(
-    ({ resource }) => resource as Record<string, unknown>,
-  );
-  assert.deepEqual(
-    resources
-      .filter(({ resourceType }) => resourceType === "Patient")
-      .map(({ id }) => id),
-    [PATIENT],
-  );
-  const [bearer] = seen.tokens;
-  assert.ok(bearer);
-  let expected = 0;
-  for (const search of DEMO_PLAN.searches) {
-    if ((await held(row.fhirBase, bearer, search)) === 0) continue;
-    expected += 1;
-    const { type, category } = search;
-    assert.ok(
-      resources.some(
-        (resource) =>
-          resource.resourceType === type &&
-          (category === undefined ||
-            JSON.stringify(resource.category).includes(`"${category}"`)),
-      ),
-      `no ${type}${category === undefined ? "" : ` of category ${category}`}`,
-    );
-  }
-  assert.ok(expected > 0, "the launcher holds nothing of any searched type");
-  for (const resource of resources)
-    for (const reference of referencedPatients(resource))
-      assert.equal(
-        reference,
-        `Patient/${PATIENT}`,
-        `${resource.resourceType}/${resource.id}`,
-      );
-  const fullUrls = result.bundle.entry.map(({ fullUrl }) => fullUrl);
-  assert.equal(new Set(fullUrls).size, fullUrls.length);
-  for (const { fullUrl, resource } of result.bundle.entry) {
-    const { resourceType, id } = resource as {
-      resourceType: string;
-      id: string;
+async function attempted<Done>(
+  row: DirectoryRow,
+  work: () => Promise<Done>,
+): Promise<Attempt<Done>> {
+  try {
+    return { done: await work() };
+  } catch (error) {
+    return {
+      failed: await failureToReport(error, () => launcherAnswers(row.fhirBase)),
     };
-    assert.equal(fullUrl, `${row.fhirBase}/${resourceType}/${id}`);
   }
+}
 
-  const { sent, nexts } = seen;
-  assert.ok(
-    sent.some(({ url }) => nexts.includes(url.href)),
-    "no search took more than one page",
-  );
-  assert.ok(sent.every(({ url }) => url.origin === LAUNCHER));
-  const token = sent.findIndex(({ url }) =>
-    url.pathname.endsWith("/auth/token"),
-  );
-  assert.ok(token > 0);
-  sent.forEach(({ url, authorized }, at) =>
-    assert.equal(authorized, at > token, url.href),
-  );
-  console.log(
-    `# ${sent.length} requests in ${Date.now() - started} ms, ${resources.length} resources`,
-  );
-});
+function resultOf<Done>(attempt: Attempt<Done>): Done {
+  if ("failed" in attempt) throw attempt.failed;
+  return attempt.done;
+}
 
-test("a token the launcher did not sign ends the pull as unauthorized, carrying no token", async () => {
-  const seen: Seen = { sent: [], tokens: [], nexts: [] };
-  const fetcher = recorded(seen, (request) => {
-    if (!request.headers.has("Authorization")) return request;
-    const headers = new Headers(request.headers);
-    headers.set("Authorization", "Bearer a-token-the-launcher-did-not-sign");
-    return new Request(request, { headers });
+interface Pulled {
+  readonly row: DirectoryRow;
+  readonly connection: Connection;
+  readonly result: Pull;
+  readonly seen: Seen;
+  /** What the launcher itself counts for each of the plan's searches. */
+  readonly held: readonly { readonly search: Search; readonly total: number }[];
+}
+
+/**
+ * The launcher is a public test hospital whose records anyone may change, so these checks hold `connect` and `pull` to
+ * the protocol and to the shape of what comes back, never to particular records. They need the network, run nightly as
+ * `npm run test:launcher`, and are not on the tests page.
+ */
+describe("Pulling from a hospital this project did not write · connect(), pull()", () => {
+  describe("given a patient of the launcher, signed in with no sign-in page", () => {
+    let attempt: Attempt<Pulled>;
+
+    before(async () => {
+      const started = Date.now();
+      const seen: Seen = { sent: [], tokens: [], nexts: [] };
+      const fetcher = recorded(seen);
+      const row = launcherRow();
+      attempt = await attempted(row, async () => {
+        const connection = await connect(row, REGISTRATION, {
+          signIn: direct(fetcher),
+          fetch: fetcher,
+        });
+        const result = await pull(connection, DEMO_PLAN);
+        const [bearer] = seen.tokens;
+        assert.ok(bearer);
+        const counts = [];
+        for (const search of DEMO_PLAN.searches)
+          counts.push({
+            search,
+            total: await held(row.fhirBase, bearer, search),
+          });
+        console.log(
+          `# ${seen.sent.length} requests in ${Date.now() - started} ms, ${result.bundle.entry.length} resources`,
+        );
+        return { row, connection, result, seen, held: counts };
+      });
+    });
+
+    const resourcesOf = (result: Pull) =>
+      result.bundle.entry.map(
+        ({ resource }) => resource as Record<string, unknown>,
+      );
+
+    it("returns a connection for the patient the row's settings name", () => {
+      const { connection } = resultOf(attempt);
+      assert.equal(connection.patient, PATIENT);
+    });
+
+    it("returns the launcher's FHIR base and that patient in the pull", () => {
+      const { row, result } = resultOf(attempt);
+      assert.equal(result.fhirBase, row.fhirBase);
+      assert.equal(result.patient, PATIENT);
+    });
+
+    it("returns one Patient, the one signed in", () => {
+      const { result } = resultOf(attempt);
+      assert.deepEqual(
+        resourcesOf(result)
+          .filter(({ resourceType }) => resourceType === "Patient")
+          .map(({ id }) => id),
+        [PATIENT],
+      );
+    });
+
+    it("returns a record of every kind the plan searches for and the launcher itself counts for the patient", () => {
+      const { result, held: counts } = resultOf(attempt);
+      const resources = resourcesOf(result);
+      let expected = 0;
+      for (const { search, total } of counts) {
+        if (total === 0) continue;
+        expected += 1;
+        const { type, category } = search;
+        assert.ok(
+          resources.some(
+            (resource) =>
+              resource.resourceType === type &&
+              (category === undefined ||
+                JSON.stringify(resource.category).includes(`"${category}"`)),
+          ),
+          `no ${type}${category === undefined ? "" : ` of category ${category}`}`,
+        );
+      }
+      assert.ok(
+        expected > 0,
+        "the launcher holds nothing of any searched type",
+      );
+    });
+
+    it("returns no record that names another patient", () => {
+      const { result } = resultOf(attempt);
+      for (const resource of resourcesOf(result))
+        for (const reference of referencedPatients(resource))
+          assert.equal(
+            reference,
+            `Patient/${PATIENT}`,
+            `${resource.resourceType}/${resource.id}`,
+          );
+    });
+
+    it("returns each record once, with `<fhirBase>/<type>/<id>` as its `fullUrl`", () => {
+      const { row, result } = resultOf(attempt);
+      const fullUrls = result.bundle.entry.map(({ fullUrl }) => fullUrl);
+      assert.equal(new Set(fullUrls).size, fullUrls.length);
+      for (const { fullUrl, resource } of result.bundle.entry) {
+        const { resourceType, id } = resource as {
+          resourceType: string;
+          id: string;
+        };
+        assert.equal(fullUrl, `${row.fhirBase}/${resourceType}/${id}`);
+      }
+    });
+
+    it("follows a `next` link the launcher gave", () => {
+      const { sent, nexts } = resultOf(attempt).seen;
+      assert.ok(
+        sent.some(({ url }) => nexts.includes(url.href)),
+        "no search took more than one page",
+      );
+    });
+
+    it("sends every request to the launcher's origin", () => {
+      const { sent } = resultOf(attempt).seen;
+      assert.ok(sent.every(({ url }) => url.origin === LAUNCHER));
+    });
+
+    it("sends the token with every request after the token exchange, and with none before", () => {
+      const { sent } = resultOf(attempt).seen;
+      const token = sent.findIndex(({ url }) =>
+        url.pathname.endsWith("/auth/token"),
+      );
+      assert.ok(token > 0);
+      sent.forEach(({ url, authorized }, at) =>
+        assert.equal(authorized, at > token, url.href),
+      );
+    });
   });
-  const row = launcherRow();
-  const blamed = async (error: unknown): Promise<never> => {
-    throw await failureToReport(error, () => launcherAnswers(row.fhirBase));
-  };
-  const connection = await connect(row, REGISTRATION, {
-    signIn: direct(fetcher),
-    fetch: fetcher,
-  }).catch(blamed);
-  const failure = await pull(connection, DEMO_PLAN).then(
-    () => assert.fail("the pull succeeded"),
-    (error: unknown) => error,
-  );
-  if (failure instanceof ConnectionFailure && failure.kind !== "unauthorized")
-    await blamed(failure);
-  assert.ok(failure instanceof ConnectionFailure);
-  assert.equal(failure.kind, "unauthorized");
-  assert.equal(seen.tokens.length, 1);
-  const said = `${failure.message} ${JSON.stringify(failure)}`;
-  assert.ok(!said.includes(seen.tokens[0]!), "the failure carries the token");
+
+  describe("given a token the launcher did not sign", () => {
+    let attempt: Attempt<{ failure: unknown; seen: Seen }>;
+
+    before(async () => {
+      const seen: Seen = { sent: [], tokens: [], nexts: [] };
+      const fetcher = recorded(seen, (request) => {
+        if (!request.headers.has("Authorization")) return request;
+        const headers = new Headers(request.headers);
+        headers.set(
+          "Authorization",
+          "Bearer a-token-the-launcher-did-not-sign",
+        );
+        return new Request(request, { headers });
+      });
+      const row = launcherRow();
+      attempt = await attempted(row, async () => {
+        const connection = await connect(row, REGISTRATION, {
+          signIn: direct(fetcher),
+          fetch: fetcher,
+        });
+        const failure = await pull(connection, DEMO_PLAN).then(
+          () => assert.fail("the pull succeeded"),
+          (error: unknown) => error,
+        );
+        if (
+          failure instanceof ConnectionFailure &&
+          failure.kind !== "unauthorized"
+        )
+          throw failure;
+        return { failure, seen };
+      });
+    });
+
+    it("throws `unauthorized`", () => {
+      const { failure } = resultOf(attempt);
+      assert.ok(failure instanceof ConnectionFailure);
+      assert.equal(failure.kind, "unauthorized");
+    });
+
+    it("keeps the token out of the failure's message and properties", () => {
+      const { failure, seen } = resultOf(attempt);
+      assert.ok(failure instanceof ConnectionFailure);
+      assert.equal(seen.tokens.length, 1);
+      const said = `${failure.message} ${JSON.stringify(failure)}`;
+      assert.ok(
+        !said.includes(seen.tokens[0]!),
+        "the failure carries the token",
+      );
+    });
+  });
 });

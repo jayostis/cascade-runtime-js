@@ -12,7 +12,14 @@
     "Opening a pod again · openPod()",
     "Encrypting a pod with six words · openPod(), sixWords(), typedWords()",
     "Sample pods and exports to build against · replayKit(), kitDownload()",
-    "Publishing a pod for a browser · answersToPublish(), samplesToPublish()"
+    "Publishing a pod for a browser · answersToPublish(), samplesToPublish()",
+    "Finding a hospital to connect to · directoryOf(), searchDirectory(), TEST_DIRECTORY",
+    "Signing a person in to a hospital · connect(), loopbackSignIn()",
+    "Reading what a hospital's server says of itself · serverReport(), connectFiles()",
+    "Pulling a patient's records from a hospital · pull(), DEMO_PLAN",
+    "Pulling the C-CDA documents a hospital holds · pull()",
+    "Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()",
+    "Telling why a connection failed · ConnectionFailure"
   ],
   "glossary": [
     {
@@ -286,10 +293,146 @@
     {
       "term": "Unopened",
       "definition": "the `Refusal` thrown when a pod does not open with the secret given, or with none; its `outcome` gives the reason, such as `incorrect secret`."
+    },
+    {
+      "term": "authorization code",
+      "definition": "the one-time code that arrives at the redirect URI from a sign-in, which `connect()` trades for the token.",
+      "aliases": ["authorization codes"]
+    },
+    {
+      "term": "Binary",
+      "definition": "FHIR's resource that wraps a file's bytes, base64-encoded."
+    },
+    {
+      "term": "brands bundle",
+      "definition": "the list of the hospitals that use a vendor's system, as the vendor publishes it in SMART's User-access Brands format: a FHIR Bundle of Organizations, each pointing to the endpoint its records are served from.",
+      "vocabulary": "https://hl7.org/fhir/smart-app-launch/brands.html",
+      "aliases": ["brands bundles"]
+    },
+    {
+      "term": "CapabilityStatement",
+      "definition": "FHIR's resource in which a server says what software it is and what it supports, served at `<FHIR base>/metadata`.",
+      "vocabulary": "https://hl7.org/fhir/R4/capabilitystatement.html"
+    },
+    {
+      "term": "connection",
+      "definition": "one sign-in of one person at one hospital's server. `connect()` returns it as a `Connection`, good for one pull; `pod.connect()` stores the pod's record of it.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ConnectToServer",
+      "aliases": ["connections"]
+    },
+    {
+      "term": "demo hospital",
+      "definition": "a pretend hospital with made-up patients, from the package cascade-sandbox, which an app or a test signs in to and pulls from with no account and no network; Cascade North and Cascade South are two.",
+      "aliases": ["demo hospitals"]
+    },
+    {
+      "term": "directory",
+      "definition": "the list of hospitals an app offers a person to connect to: one row for each hospital, with its name, the vendor of its system, its FHIR base and the places it serves.",
+      "aliases": ["directories"]
+    },
+    {
+      "term": "DocumentReference",
+      "definition": "FHIR's resource for a document a hospital holds about a patient, such as a clinical note or a C-CDA document: it points to the document by URL, or carries it inline.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ClinicalNoteOrDocument",
+      "aliases": ["DocumentReferences"]
+    },
+    {
+      "term": "FHIR",
+      "definition": "Fast Healthcare Interoperability Resources: HL7's standard for health records as JSON.",
+      "vocabulary": "https://hl7.org/fhir/R4/"
+    },
+    {
+      "term": "FHIR base",
+      "definition": "the URL of a hospital's FHIR server; each record there is at `<FHIR base>/<type>/<id>`.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#serverBaseUrl",
+      "aliases": ["FHIR bases"]
+    },
+    {
+      "term": "launcher",
+      "definition": "the SMART Health IT launcher, `launch.smarthealthit.org`: a public test hospital on the internet, kept by the SMART project, which this project did not write."
+    },
+    {
+      "term": "loopback",
+      "definition": "the machine's own network interface, `127.0.0.1`. An app with no server of its own gives a redirect URI there, and `loopbackSignIn()` listens on it for the hospital's redirect."
+    },
+    {
+      "term": "OperationOutcome",
+      "definition": "FHIR's resource for a server's warning or error message; it is no record of the patient."
+    },
+    {
+      "term": "Organization",
+      "definition": "FHIR's resource for a hospital, a clinic, a laboratory or another body that gives care.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Organization",
+      "aliases": ["Organizations"]
+    },
+    {
+      "term": "origin",
+      "definition": "the scheme, server name and port of a URL, such as `https://hospital.example`: what a browser treats as one site.",
+      "aliases": ["origins"]
+    },
+    {
+      "term": "PKCE",
+      "definition": "Proof Key for Code Exchange, RFC 7636: the part of a sign-in by which a public client shows, at the token exchange, that it is the app that began the sign-in. `connect()` always uses its S256 method.",
+      "vocabulary": "https://www.rfc-editor.org/rfc/rfc7636"
+    },
+    {
+      "term": "plan",
+      "definition": "what a pull asks a hospital for: a list of searches, each for one type of resource, and the types to read by id when a record names one that no search returned (`backfill`).",
+      "aliases": ["plans"]
+    },
+    {
+      "term": "public client",
+      "definition": "an app that can keep no password of its own, as one that runs in a browser or on a person's own machine cannot; every app this package signs in is one.",
+      "aliases": ["public clients"]
+    },
+    {
+      "term": "pull",
+      "definition": "the records one patient has at one hospital, as `pull()` fetched them in one go, with the FHIR base they came from and when; also the fetching itself.",
+      "aliases": ["pulls", "pulled", "pulling"]
+    },
+    {
+      "term": "redirect URI",
+      "definition": "the app's own URL to which a hospital sends the person's browser when the sign-in is over.",
+      "aliases": ["redirect URIs"]
+    },
+    {
+      "term": "registration",
+      "definition": "who the app is to a hospital's vendor: its client id, which is the name the vendor knows it by, its redirect URI, and the scopes it asks for, which say what it may read.",
+      "aliases": ["registrations"]
+    },
+    {
+      "term": "resource",
+      "definition": "one record in FHIR, named by its type and its id, such as `Observation/ldl-1`.",
+      "aliases": ["resources"]
+    },
+    {
+      "term": "SMART configuration",
+      "definition": "what a hospital's server publishes at `<FHIR base>/.well-known/smart-configuration`: where its sign-in page and its token exchange are, and what they support."
+    },
+    {
+      "term": "SMART on FHIR",
+      "definition": "the standard by which an app signs a person in to a hospital and is then let read that person's records: OAuth 2.0 as HL7's SMART App Launch profiles it for FHIR servers.",
+      "vocabulary": "https://hl7.org/fhir/smart-app-launch/"
+    },
+    {
+      "term": "token",
+      "definition": "the access token a hospital issues when a person signs in: the key the package sends with each request for that person's records. `connect()` keeps it where the app's code cannot read it.",
+      "aliases": ["tokens", "access token"]
+    },
+    {
+      "term": "token exchange",
+      "definition": "the request in which `connect()` trades the authorization code for the token."
     }
   ],
-  "shaped": ["pod.test.ts", "terms.test.ts"],
-  "build": [],
+  "shaped": [
+    "connect.test.ts",
+    "directory.test.ts",
+    "launcher-sandbox.test.ts",
+    "pod.test.ts",
+    "pull.test.ts",
+    "terms.test.ts"
+  ],
+  "build": ["The launcher check, when the launcher itself is down"],
   "randomOrder": [
     "browser-types.test.ts",
     "changes.test.ts",
