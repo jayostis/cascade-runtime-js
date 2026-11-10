@@ -781,7 +781,7 @@ describe("Pulling a patient's records from a hospital · pull(), DEMO_PLAN", () 
 /**
  * Beside its FHIR resources, a hospital can hold a patient's summary as a C-CDA document, which a DocumentReference
  * points to by URL or carries inline. `pull` reads each one from the FHIR base's origin and nowhere else, and where it
- * cannot read one it says why and carries on.
+ * cannot read one it says why and carries on. Each document read comes with `retrievedFrom`, the URL it was read from.
  */
 describe("Pulling the C-CDA documents a hospital holds · pull()", () => {
   const written = () => new URL(north.hospital.fhirBase);
@@ -1001,14 +1001,14 @@ describe("Pulling the C-CDA documents a hospital holds · pull()", () => {
       assert.ok(documentOf(M.pull, "ccd-2").bytes);
     });
 
-    it("percent-encodes in `retrievedFrom` a character a pod's identifiers may not hold, such as `|`", () => {
+    it("returns `retrievedFrom` with a character a URL may not hold, such as `|`, written as its percent escape, `%7C`", () => {
       assert.equal(
         documentOf(M.pull, "ccd-4").retrievedFrom,
         `${base}/Binary/a%7Cb`,
       );
     });
 
-    it("returns `retrievedFrom` in its canonical form, lower case and without the default port, for a FHIR base written otherwise", () => {
+    it("returns `retrievedFrom` with the host in lower case and without `:443`, for a FHIR base written in upper case with `:443`", () => {
       assert.equal(
         documentOf(U.pull, "inline").retrievedFrom,
         `https://${written().host}${written().pathname}/DocumentReference/inline`,
