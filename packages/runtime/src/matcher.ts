@@ -161,7 +161,7 @@ export async function matcherRules(
 }
 
 /** The origins whose rows join each ordered pair under the rule, each one of the origins it may cite: "" for a rule that reads no table (M5). */
-export function joined(
+export function originsJoining(
   rule: MatcherRule,
   rows: readonly Row[],
   origins: ReadonlySet<string>,
@@ -536,7 +536,7 @@ async function joins(
   for (const { rule, text } of found) {
     const rows = await rowsOf(text);
     const pairs = new Map<string, Set<string>>();
-    for (const [key, origins] of joined(
+    for (const [key, origins] of originsJoining(
       rule,
       rows,
       rule.kind === undefined

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { Graph } from "../src/graph.js";
 import {
   arrival,
-  joined,
+  originsJoining,
   type MatcherRule,
   matcherRules,
 } from "../src/matcher.js";
@@ -59,13 +59,13 @@ test("a rule list naming a query outside matcher/, by any path, giving one justi
       ...(origin === undefined ? [] : [["origin", iri(origin)] as const]),
     ]);
   assert.deepEqual(
-    [...joined(rule, [joins(version)], loaded).values()],
+    [...originsJoining(rule, [joins(version)], loaded).values()],
     [loaded],
   );
   const refusals: (() => Promise<unknown>)[] = [
-    async () => joined(rule, [joins()], loaded),
-    async () => joined(rule, [joins("urn:example:mappings-1")], loaded),
-    async () => joined(kindless, [joins(version)], new Set([""])),
+    async () => originsJoining(rule, [joins()], loaded),
+    async () => originsJoining(rule, [joins("urn:example:mappings-1")], loaded),
+    async () => originsJoining(kindless, [joins(version)], new Set([""])),
   ];
   for (const rows of [
     await row(
