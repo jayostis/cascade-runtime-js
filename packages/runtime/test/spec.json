@@ -520,6 +520,12 @@
       "aliases": ["versions"]
     },
     {
+      "term": "view",
+      "definition": "a pod's records of one kind, such as medications, as its judgments leave them: one line for each thing however many sources reported it. A named question such as `pod/My medication history` returns a view's rows.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#View",
+      "aliases": ["views"]
+    },
+    {
       "term": "view entry",
       "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
