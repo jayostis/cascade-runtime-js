@@ -190,7 +190,11 @@ export async function replayKitFrom(
     new FolderFiles(target, person.address),
     { ...through, tables: () => Promise.resolve(references) },
   );
-  await tables.opened(person.address, shipped(references), basename(target));
+  await tables.recordOpen(
+    person.address,
+    shipped(references),
+    basename(target),
+  );
   return steps.map(({ step, wrote, refused }) => ({
     step: step.name,
     kind: step.happened.kind,
