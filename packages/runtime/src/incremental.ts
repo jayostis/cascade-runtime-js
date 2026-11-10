@@ -1,6 +1,6 @@
 import type { PodState, VocabularyBuild } from "./build.js";
 import { addLayout, podFiles } from "./dataset.js";
-import { DERIVED, type DerivedStep, type Keep } from "./derive.js";
+import { DERIVED, type DerivedStep, type SamesStillJoined } from "./derive.js";
 import { ENTRY_PLACEHOLDER, unionFind } from "./entries.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
@@ -29,8 +29,8 @@ export interface Rebuilding {
   readonly newStore: StoreFactory;
   readonly build: VocabularyBuild;
   readonly lens: string;
-  /** What `Keep` derives over a union, the cache of one step aside: a scope holds only some records. */
-  readonly keep: Keep;
+  /** What `SamesStillJoined` derives over a union, the cache of one step aside: a scope holds only some records. */
+  readonly samesStillJoined: SamesStillJoined;
 }
 
 /** What a step changed: every file it wrote, those that arrived from another writer among them. */
@@ -287,14 +287,19 @@ export class KeptBuild {
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }> {
-    const { layout, address, newStore, build, lens, keep } = rebuilding;
+    const { layout, address, newStore, build, lens, samesStillJoined } =
+      rebuilding;
     const rebuilt = new Set(layout.rebuilt);
     const paths = (await rebuilding.pod.list("")).filter(
       (path) => layout.isRdf(path) && !rebuilt.has(path),
     );
     const union = new Union(newStore());
     await podFiles(rebuilding.pod, layout, address, union, paths);
-    const derived = await build.derivations.derive(union, lens, keep);
+    const derived = await build.derivations.derive(
+      union,
+      lens,
+      samesStillJoined,
+    );
     const { files, held } = await build.queried(union, address);
     const all = new Map(files);
     for (const [path, triples] of build.closing(pod, held)) {
@@ -782,7 +787,7 @@ export class KeptBuild {
     scope: Union,
     pod: PodState,
   ): Promise<ReadonlyMap<string, readonly Triple[]>> {
-    const { layout, address, build, lens, keep } = this.#rebuilding;
+    const { layout, address, build, lens, samesStillJoined } = this.#rebuilding;
     const union = this.union;
     const derivedGraph = this.#derived;
     const writtenGraphs = sharedPaths.map((path) => address + path);
@@ -850,16 +855,20 @@ export class KeptBuild {
         `CONSTRUCT { ?matcherJudgment <${MEMBERS_JOINED}> ?now } WHERE { GRAPH <${derivedGraph}> { ?matcherJudgment <${MEMBERS_JOINED}> ?now } }`,
       )
     ).filter(([matcherJudgment]) => !touchesStale.has(matcherJudgment.value));
-    const scopedKeep: Keep = async (held) =>
+    const scopedSamesStillJoined: SamesStillJoined = async (held) =>
       touchesStale.size === 0
         ? keptBefore
         : [
-            ...(await keep(held)).filter(([matcherJudgment]) =>
+            ...(await samesStillJoined(held)).filter(([matcherJudgment]) =>
               touchesStale.has(matcherJudgment.value),
             ),
             ...keptBefore,
           ];
-    const derived = await build.derivations.derive(scope, lens, scopedKeep);
+    const derived = await build.derivations.derive(
+      scope,
+      lens,
+      scopedSamesStillJoined,
+    );
     const held = await build.held(union, this.#held);
     const { files } = await build.queried(scope, address, held);
 

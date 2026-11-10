@@ -195,7 +195,7 @@ describe("Keeping an open pod's answers current · pod.ask()", () => {
         newStore: parts.newStore,
         build: parts.build,
         lens: parts.lens,
-        keep: () => Promise.resolve([]),
+        samesStillJoined: () => Promise.resolve([]),
       };
       const state = (at: string) => ({
         address: pod.address,

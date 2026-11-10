@@ -78,7 +78,7 @@ describe("Binding a comparison query to a run's records · boundToRecords(), bou
   });
 
   describe("given a group marked `# bound: ?record`", () => {
-    it("binds the marked group as well as the outermost", () => {
+    it("binds the marked group as well as the WHERE group", () => {
       const bound = boundToRecords(SIDES, ["urn:b", "urn:c"]);
       assert.match(
         bound,
@@ -127,7 +127,7 @@ describe("Binding a comparison query to a run's records · boundToRecords(), bou
       );
     });
 
-    it("binds the pairs in the outermost group and their records in a marked group", () => {
+    it("binds the pairs in the query's WHERE group and their records in a marked group", () => {
       assert.match(
         boundToPairs(SIDES, [
           ["urn:a", "urn:b"],

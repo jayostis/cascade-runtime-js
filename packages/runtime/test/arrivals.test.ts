@@ -637,7 +637,7 @@ describe("Refusing a step that cannot be filed · Performed.refused", () => {
       assert.match(sentence("no importer reads"), says("no importer reads"));
     });
 
-    it("returns `refused` for a document that is not well-formed, naming it", () => {
+    it("returns `refused` for a document that is not well-formed XML, naming it", () => {
       assert.match(sentence("not well-formed"), says("not well-formed"));
     });
 
