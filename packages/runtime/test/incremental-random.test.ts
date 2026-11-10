@@ -121,7 +121,7 @@ function judgment(
 /**
  * A story drawn from the seed: Cleo's export and Tamsin's pulls, entries of allergies sharing codes (some versions with
  * no name), the matcher, a person's Same, Different (some typing a member, as an app may), Before, Erroneous, About and ClockDiscounted, retractions of her judgments and of
- * the matcher's assertions, version 2 of the ingredient map, and a second writer whose files, claims made under the
+ * the matcher's assertions, version 2 of the ingredient map, and a second writer whose files, matcher judgments made under the
  * older map among them, each writer receives. Each judgment is written when its step is performed, from what the pod
  * then holds. The draws favour the unnamed pull before the named ones, then judgments over its records alone before
  * the lower-case pull names them: the order in which taking a judgment's label by least keeps a stale one.
@@ -434,7 +434,7 @@ async function story(seed: number) {
       written.set(file, async (pod) => {
         const assertions = await column(
           pod,
-          `SELECT ?found WHERE { ?found cascade:assertedClaim ?claim }`,
+          `SELECT ?found WHERE { ?found cascade:assertedJudgment ?matcherJudgment }`,
         );
         const mine = await column(
           pod,

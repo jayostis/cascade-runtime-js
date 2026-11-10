@@ -533,7 +533,7 @@ test("each template does what the guide says, read through the vocabulary's ques
   assert.ok(his.length > 0, "no record names the son's profile");
   for (const record of his)
     assert.ok(
-      hiddenFor(record, "PatientNotClaimed"),
+      hiddenFor(record, "PatientProfileNotClaimed"),
       `the son's ${record} is in a view`,
     );
   const claimedLater = abouts(await profileOf("J12"));

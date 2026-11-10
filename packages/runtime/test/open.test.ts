@@ -13,7 +13,8 @@ import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 
 const FEATURE = "runtime/opening.feature";
 const JUDGMENT = "https://ns.cascadeprotocol.org/cascade#Judgment";
-const ASSERTION = "https://ns.cascadeprotocol.org/cascade#ClaimAssertion";
+const ASSERTION =
+  "https://ns.cascadeprotocol.org/cascade#MatcherJudgmentAssertion";
 const MATCHER_RUN = "https://ns.cascadeprotocol.org/cascade#MatcherRun";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
@@ -120,11 +121,11 @@ test("an open whose tables list another version of the pod's rule list matches n
   assert.deepEqual(opened?.unheld, [`urn:uuid:${rules}`]);
 });
 
-test("an open on a clock that moves between judgments writes nothing for a claim its recheck and its new joins both reach, asserted with the query the adopted rule list runs (O1, M9)", async () => {
+test("an open on a clock that moves between judgments writes nothing for a matcher judgment its recheck and its new joins both reach, asserted with the query the adopted rule list runs (O1, M9)", async () => {
   const files = await vocabulary();
   const { story, folder } = await storyFrom(
     FEATURE,
-    "a rule list the pod names that M11 now refuses joins nothing, so the adopted rule list judges every pair, and finds each claim asserted with the query it runs",
+    "a rule list the pod names that M11 now refuses joins nothing, so the adopted rule list judges every pair, and finds each matcher judgment asserted with the query it runs",
   );
   const pod = new MemoryFiles(story.address);
   await replay({
@@ -405,7 +406,7 @@ test("two writers on one release write its retractions under one name with one c
   const runs = await Promise.all(
     [0, 1].map(() =>
       replayed(
-        "adopting a release that declares R4 wrong retracts the assertions of R4's two claims before the open's matcher runs, and neither claim counts nor lapses",
+        "adopting a release that declares R4 wrong retracts the assertions of R4's two matcher judgments before the open's matcher runs, and neither matcher judgment counts nor lapses",
         undefined,
         "runtime/naming.feature",
       ),
@@ -427,11 +428,11 @@ test("two writers on one release write its retractions under one name with one c
   assert.deepEqual(first, second);
 });
 
-test("two writers' first runs under a rule list version file its one finding of the claims it no longer reaches under one name with one content (M18)", async () => {
+test("two writers' first runs under a rule list version file its one finding of the matcher judgments it no longer reaches under one name with one content (M18)", async () => {
   const runs = await Promise.all(
     [0, 1].map(() =>
       replayed(
-        "opening a pod matched under version 6 with version 7 files one finding naming the claims of the rule version 7 changed that it did not file again",
+        "opening a pod matched under version 6 with version 7 files one finding naming the matcher judgments of the rule version 7 changed that it did not file again",
         undefined,
         "runtime/matcher.feature",
       ),

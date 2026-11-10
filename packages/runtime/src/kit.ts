@@ -7,18 +7,18 @@ import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
 import { MATCHER } from "./matcher.js";
 import {
-  assertionName,
+  matcherJudgmentAssertionName,
   canonical,
   contentName,
   documentName,
   earlierInUtc,
-  claimName,
+  matcherJudgmentName,
   enteredRecordName,
   serverName,
   actDescriptionName,
   fileDigest,
   fileStem,
-  retractionName,
+  releaseRetractionName,
   setHash,
   snapshotName,
   THIS_REVISION,
@@ -418,8 +418,8 @@ async function namesFollowTheirRules(
       failures.push(`N5: ${name}, stored at ${path}, is not described`);
   }
 
-  // N6: each matcher claim is named by the claim rule from its rule, what it judged and what it used, and each of its
-  // assertions by the assertion rule from the rule list version and the claim.
+  // N6: each matcher judgment is named by the matcher judgment naming rule from its rule, what it judged and what it used, and each of its
+  // assertions by the assertion naming rule from the rule list version and the matcher judgment.
   const judged = whole.subjects(`${PROV}wasAttributedTo`, iri(MATCHER));
   for (const judgment of judged) {
     const values = (predicate: string): string[] =>
@@ -433,7 +433,7 @@ async function namesFollowTheirRules(
       );
       continue;
     }
-    const name = await claimName({
+    const name = await matcherJudgmentName({
       maker: MATCHER,
       rule,
       justification,
@@ -447,20 +447,26 @@ async function namesFollowTheirRules(
   }
   for (const assertion of whole.subjects(
     TYPE,
-    iri(`${CASCADE}ClaimAssertion`),
+    iri(`${CASCADE}MatcherJudgmentAssertion`),
   )) {
-    const [claim] = whole.objects(assertion, `${CASCADE}assertedClaim`);
+    const [matcherJudgment] = whole.objects(
+      assertion,
+      `${CASCADE}assertedJudgment`,
+    );
     const [version] = whole.objects(
       assertion,
       `${CASCADE}assertedUnderRuleListVersion`,
     );
     if (
-      claim === undefined ||
+      matcherJudgment === undefined ||
       version === undefined ||
-      (await assertionName(version.value, claim.value)) !== assertion.value
+      (await matcherJudgmentAssertionName(
+        version.value,
+        matcherJudgment.value,
+      )) !== assertion.value
     )
       failures.push(
-        `N6: ${assertion.value} is not named from its rule list version and its claim`,
+        `N6: ${assertion.value} is not named from its rule list version and its matcher judgment`,
       );
   }
 
@@ -540,25 +546,30 @@ async function namesFollowTheirRules(
     }
   }
 
-  // N15: each release's retraction is named from the release, the assertion and the rule of the assertion's claim.
+  // N15: each release's retraction is named from the release, the assertion and the rule of the assertion's matcher judgment.
   for (const retraction of whole.subjects(`${PROV}invalidated`)) {
     const [release] = whole.objects(retraction, `${PROV}used`);
     if (release === undefined) continue;
     const [assertion] = whole.objects(retraction, `${PROV}invalidated`);
-    const [claim] =
+    const [matcherJudgment] =
       assertion === undefined
         ? []
-        : whole.objects(assertion, `${CASCADE}assertedClaim`);
+        : whole.objects(assertion, `${CASCADE}assertedJudgment`);
     const [rule] =
-      claim === undefined ? [] : whole.objects(claim, `${CASCADE}matcherRule`);
+      matcherJudgment === undefined
+        ? []
+        : whole.objects(matcherJudgment, `${CASCADE}matcherRule`);
     if (
       assertion === undefined ||
       rule === undefined ||
-      (await retractionName(release.value, assertion.value, rule.value)) !==
-        retraction.value
+      (await releaseRetractionName(
+        release.value,
+        assertion.value,
+        rule.value,
+      )) !== retraction.value
     )
       failures.push(
-        `N15: ${retraction.value} is not named from its release, its assertion and its claim's rule`,
+        `N15: ${retraction.value} is not named from its release, its assertion and its matcher judgment's rule`,
       );
   }
 

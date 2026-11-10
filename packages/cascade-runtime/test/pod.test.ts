@@ -1002,7 +1002,7 @@ describe("Recording the owner's judgment · pod.judge()", () => {
         [
           iri(subject),
           iri(`${OA}hasBody`),
-          iri(`${CASCADE}ClaimsNoLongerReached`),
+          iri(`${CASCADE}MatcherJudgmentsNoLongerReached`),
         ],
       ];
       finding = await findingName(content("urn:cascade:this-finding"));
@@ -1564,7 +1564,7 @@ describe("Sample pods and exports to build against · replayKit(), kitDownload()
         `SELECT DISTINCT ?version WHERE {
           ?judgment prov:wasAttributedTo <${MATCHER}> .
           { ?judgment prov:wasDerivedFrom ?version }
-          UNION { ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion ?version }
+          UNION { ?assertion cascade:assertedJudgment ?judgment ; cascade:assertedUnderRuleListVersion ?version }
           ?version prov:specializationOf/a cascade:ReferenceSeries }`,
       );
       const cited = used.map(({ version }) => version ?? "");

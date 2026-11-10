@@ -169,9 +169,9 @@ export const NAMING_RULES = Object.freeze({
   Snapshot: `${CASCADE}SnapshotNamingRule`,
   Server: `${CASCADE}ServerNamingRule`,
   Organization: `${CASCADE}OrganizationNamingRule`,
-  Claim: `${CASCADE}ClaimNamingRule`,
-  Assertion: `${CASCADE}AssertionNamingRule`,
-  Retraction: `${CASCADE}RetractionNamingRule`,
+  MatcherJudgment: `${CASCADE}MatcherJudgmentNamingRule`,
+  MatcherJudgmentAssertion: `${CASCADE}MatcherJudgmentAssertionNamingRule`,
+  ReleaseRetraction: `${CASCADE}ReleaseRetractionNamingRule`,
 });
 
 /** Orders strings by their Unicode code points, where `<` orders UTF-16 code units. */
@@ -489,38 +489,45 @@ export function organizationName(
   );
 }
 
-/** A machine judgment's claim: its maker, the matcher rule, the justification, its members, and the versions used. */
-export function claimName(claim: {
+/** A matcher judgment: its maker, the matcher rule, the justification, its members, and the versions used. */
+export function matcherJudgmentName(matcherJudgment: {
   readonly maker: string;
   readonly rule: string;
   readonly justification: string;
   readonly members: Iterable<string>;
   readonly used: Iterable<string>;
 }): Promise<string> {
-  return derivedName(NAMING_RULES.Claim, [
-    claim.maker,
-    claim.rule,
-    claim.justification,
-    ...counted(claim.members),
-    ...counted(claim.used),
+  return derivedName(NAMING_RULES.MatcherJudgment, [
+    matcherJudgment.maker,
+    matcherJudgment.rule,
+    matcherJudgment.justification,
+    ...counted(matcherJudgment.members),
+    ...counted(matcherJudgment.used),
   ]);
 }
 
-/** A claim's assertion under a rule list version. */
-export function assertionName(
+/** A matcher judgment's assertion under a rule list version. */
+export function matcherJudgmentAssertionName(
   ruleListVersion: string,
-  claim: string,
+  matcherJudgment: string,
 ): Promise<string> {
-  return derivedName(NAMING_RULES.Assertion, [ruleListVersion, claim]);
+  return derivedName(NAMING_RULES.MatcherJudgmentAssertion, [
+    ruleListVersion,
+    matcherJudgment,
+  ]);
 }
 
-/** A release's retraction of an assertion of a claim made by the matcher rule it declares wrong. */
-export function retractionName(
+/** A release's retraction of an assertion of a matcher judgment made by the matcher rule it declares wrong. */
+export function releaseRetractionName(
   release: string,
   assertion: string,
   rule: string,
 ): Promise<string> {
-  return derivedName(NAMING_RULES.Retraction, [release, assertion, rule]);
+  return derivedName(NAMING_RULES.ReleaseRetraction, [
+    release,
+    assertion,
+    rule,
+  ]);
 }
 
 /**

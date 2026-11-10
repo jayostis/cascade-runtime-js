@@ -539,7 +539,13 @@ export class KeptBuild {
     )
       return this.#closing(pod);
     const records = await this.#closed(reached.records);
-    return this.#rebuilt(records, reached.claims, sharedPaths, scope, pod);
+    return this.#rebuilt(
+      records,
+      reached.matcherJudgments,
+      sharedPaths,
+      scope,
+      pod,
+    );
   }
 
   /**
@@ -602,7 +608,7 @@ export class KeptBuild {
   /**
    * The records of the clinical kinds the step wrote files of, and those its judgments, retractions, assertions and
    * findings reach: their members, through what each retracts, replaces, asserts or targets; a revision's record; and
-   * each record an act a judgment names wrote a revision of; with the claims that used a reference version the step
+   * each record an act a judgment names wrote a revision of; with the matcher judgments that used a reference version the step
    * described, which reach their records the same way. Undefined when they reach a record of another kind.
    */
   async #reached(
@@ -610,7 +616,8 @@ export class KeptBuild {
     sharedPaths: readonly string[],
     described: readonly string[],
   ): Promise<
-    { readonly records: Set<string>; readonly claims: Set<string> } | undefined
+    | { readonly records: Set<string>; readonly matcherJudgments: Set<string> }
+    | undefined
   > {
     const { address } = this.#rebuilding;
     const union = this.union;
@@ -631,24 +638,24 @@ export class KeptBuild {
     const judging = sharedPaths.filter((path) =>
       judgingFolders.some((folder) => path.startsWith(folder)),
     );
-    const walk = `(prov:hadMember|prov:invalidated|dct:replaces|cascade:assertedClaim|oa:hasTarget)*`;
+    const walk = `(prov:hadMember|prov:invalidated|dct:replaces|cascade:assertedJudgment|oa:hasTarget)*`;
     const named = await boundValues(
       union,
       judging.map((path) => address + path),
       `GRAPH ?bound { ?start a ?type } ?start ${walk} ?found`,
     );
-    const claims = await boundValues(
+    const matcherJudgments = await boundValues(
       union,
       described.map((path) => address + path),
       `GRAPH ?bound { ?version prov:specializationOf ?series } ?found prov:wasDerivedFrom ?version`,
     );
     for (const reached of await boundValues(
       union,
-      claims,
+      matcherJudgments,
       `?bound ${walk} ?found`,
     ))
       named.add(reached);
-    if (named.size === 0) return { records: found, claims };
+    if (named.size === 0) return { records: found, matcherJudgments };
     const other = values(this.#unviewedKinds);
     const elsewhere = await boundValues(union, named, [
       `?bound a ?kind VALUES ?kind { ${other} } BIND (?bound AS ?found)`,
@@ -662,7 +669,7 @@ export class KeptBuild {
       `?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record`,
     ]))
       found.add(record);
-    return { records: found, claims };
+    return { records: found, matcherJudgments };
   }
 
   /**
@@ -708,7 +715,7 @@ export class KeptBuild {
         await boundValues(
           union,
           frontier,
-          `?claim prov:hadMember ?bound ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
+          `?matcherJudgment prov:hadMember ?bound ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
                   prov:wasDerivedFrom ?input ; prov:hadMember ?found .
            ?found a cascade:Record .
            ?input prov:specializationOf ?series .
@@ -770,7 +777,7 @@ export class KeptBuild {
 
   async #rebuilt(
     records: ReadonlySet<string>,
-    describedClaims: ReadonlySet<string>,
+    describedMatcherJudgments: ReadonlySet<string>,
     sharedPaths: readonly string[],
     scope: Union,
     pod: PodState,
@@ -793,7 +800,7 @@ export class KeptBuild {
       judgments.add(judgment);
     const retractions = await boundValues(union, judgments, [
       `?found prov:invalidated ?bound`,
-      `?found prov:invalidated ?assertion . ?assertion cascade:assertedClaim ?bound`,
+      `?found prov:invalidated ?assertion . ?assertion cascade:assertedJudgment ?bound`,
     ]);
     for (const retraction of await boundValues(
       union,
@@ -836,18 +843,19 @@ export class KeptBuild {
        ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?now .
        FILTER (?now != ?input)`,
     );
-    for (const claim of describedClaims) touchesStale.add(claim);
+    for (const matcherJudgment of describedMatcherJudgments)
+      touchesStale.add(matcherJudgment);
     const keptBefore = (
       await union.construct(
-        `CONSTRUCT { ?claim <${MEMBERS_JOINED}> ?now } WHERE { GRAPH <${derivedGraph}> { ?claim <${MEMBERS_JOINED}> ?now } }`,
+        `CONSTRUCT { ?matcherJudgment <${MEMBERS_JOINED}> ?now } WHERE { GRAPH <${derivedGraph}> { ?matcherJudgment <${MEMBERS_JOINED}> ?now } }`,
       )
-    ).filter(([claim]) => !touchesStale.has(claim.value));
+    ).filter(([matcherJudgment]) => !touchesStale.has(matcherJudgment.value));
     const scopedKeep: Keep = async (held) =>
       touchesStale.size === 0
         ? keptBefore
         : [
-            ...(await keep(held)).filter(([claim]) =>
-              touchesStale.has(claim.value),
+            ...(await keep(held)).filter(([matcherJudgment]) =>
+              touchesStale.has(matcherJudgment.value),
             ),
             ...keptBefore,
           ];

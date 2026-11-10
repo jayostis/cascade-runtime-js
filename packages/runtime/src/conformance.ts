@@ -9,7 +9,7 @@ import {
 import { type Files, folderOf } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Importer } from "./importer.js";
-import { keptClaims } from "./kept.js";
+import { keptMatcherJudgments } from "./kept.js";
 import { isKitStory, kitChecks, KIT_CHECKS, KIT_LENS } from "./kit.js";
 import { Layout } from "./layout.js";
 import { namedVersions } from "./matcher.js";
@@ -397,7 +397,7 @@ class Run {
                           added,
                           false,
                         );
-                        return keptClaims(held, {
+                        return keptMatcherJudgments(held, {
                           vocabulary,
                           newStore,
                           references: () => Promise.resolve(tables),

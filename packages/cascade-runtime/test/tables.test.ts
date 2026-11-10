@@ -584,7 +584,7 @@ ${records.join("\n")}`);
     const conversions = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
         ?judgment cascade:justification cascade:SameConvertedCode ; prov:wasDerivedFrom <${converted}> ; prov:hadMember ?record .
-        ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion <${shipped}> .
+        ?assertion cascade:assertedJudgment ?judgment ; cascade:assertedUnderRuleListVersion <${shipped}> .
         ?record pav:hasCurrentVersion/cascade:icd10Code ?code
       } GROUP BY ?judgment`,
     });
@@ -597,7 +597,7 @@ ${records.join("\n")}`);
     const episodes = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?onset); separator=" ") AS ?onsets) WHERE {
         ?judgment cascade:justification cascade:SameCodeAndPeriod ; prov:hadMember ?record .
-        ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion <${shipped}> .
+        ?assertion cascade:assertedJudgment ?judgment ; cascade:assertedUnderRuleListVersion <${shipped}> .
         ?record pav:hasCurrentVersion/cascade:onsetDate ?onset
       } GROUP BY ?judgment`,
     });
@@ -622,7 +622,7 @@ ${records.join("\n")}`);
     assert.deepEqual(
       await citedBy("allergenCode", `<${RXNORM}5640>`),
       [held],
-      "a brand join cites the version its claim used, which the adopted one still joins",
+      "a brand join cites the version its matcher judgment used, which the adopted one still joins",
     );
     assert.deepEqual(await citedBy("vaccineCode", `<${CVX}150>`), [
       groups.first,
