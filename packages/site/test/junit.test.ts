@@ -227,7 +227,7 @@ describe("Reading a report from each test runner · readJunit()", () => {
       built = await pageOfOther("someone/rs-thing", "nextest", NEXTEST);
     });
 
-    it("reads the levels its properties name, and a test with none under its binary", () => {
+    it("reads the modules below `tests` as the levels its properties name, and a test with none under its binary", () => {
       assert.deepEqual(levelsOf(built.markup, built.name), [
         "Naming a record 1 passed, 1 failed",
         "when the selector has a pipe 1 passed, 1 failed",

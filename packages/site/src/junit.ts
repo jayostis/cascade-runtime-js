@@ -169,10 +169,12 @@ function placedBy(
   }
   if (runner === "nextest") {
     const parts = name.split("::");
+    const modules = parts.slice(0, -1);
     return {
       file: classname,
-      // Rust's convention puts a module's tests in `mod tests`, which is no level a reader wants.
-      levels: parts.slice(0, -1).filter((part) => part !== "tests"),
+      // Rust's convention puts a source file's tests in `mod tests`, and the modules above it are the file's own path:
+      // no level a reader wants.
+      levels: modules.slice(modules.indexOf("tests") + 1),
       name: parts.at(-1) ?? "",
     };
   }
@@ -265,7 +267,8 @@ export interface JunitReport {
  * - pytest: in its `file`, or its module's, under each class its `classname` names after the module, at its 0-based `line`
  *   plus one;
  * - vitest: in its `file` or `classname`, under each describe its `name` joins with ` > `;
- * - nextest: in its test binary, under each module of its `name`'s `::` path but `tests`.
+ * - nextest: in its test binary, under each module of its `name`'s `::` path below the first named `tests` (all of them
+ *   when none is).
  * A case's properties then win: `title`, `file`, `line`, `description` and each `rule` are its own, and `describe:N:title`,
  * `:description`, `:rule` and `:line` are the Nth level's above it, counted from the outermost.
  * Throws when the text is no JUnit report or stops before its end.

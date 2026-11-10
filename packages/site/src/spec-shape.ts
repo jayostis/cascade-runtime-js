@@ -77,9 +77,9 @@ const FALSE_FRIENDS = new Set([
 /** Second words that show the first is a noun the leaf is about, not a verb: "rows are returned", "renewals of one drug". */
 const NOUN_PARTNERS = new Set(["are", "were", "have", "do", "of"]);
 
-const IDENTIFIER = String.raw`[A-Za-z_$][\w$]*(?:\.[\w$]+)*(?:\([^)]*\))?`;
+const IDENTIFIER = String.raw`[A-Za-z_$][\w$]*(?:(?:\.|::)[\w$]+)*(?:\([^)]*\))?`;
 const CODE_ITEM = String.raw`\`?${IDENTIFIER}\`?`;
-/** One or more function, method or constant names: `terms`, `pod.import()`, `openPod(), sixWords() and typedWords()`. */
+/** One or more function, method or constant names: `terms`, `pod.import()`, `Type::method()`, `openPod(), sixWords() and typedWords()`. */
 const CODE = new RegExp(
   String.raw`^${CODE_ITEM}(?:(?:,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+)${CODE_ITEM})*$`,
 );
@@ -165,7 +165,7 @@ function namesCodeOrSituation(
     .replace(/\([^)]*\)/g, "()")
     .split(/,|\s+and\s+|\s+or\s+/)
     .map((item) => item.trim())
-    .every((item) => /[().`]/.test(item) || names.has(item));
+    .every((item) => /[().:`]/.test(item) || names.has(item));
 }
 
 /**

@@ -60,7 +60,7 @@
     "repository": "jayostis/cascade-bridge-rs",
     "title": "The Rust Bridge's tests",
     "about": "cargo nextest over every crate",
-    "workflow": "test.yml",
+    "workflow": "ci.yml",
     "artifact": "unit-tests",
     "report": "junit.xml",
     "runner": "nextest"
