@@ -7,7 +7,7 @@ const pod = await openPod("alex-pod");
 const seen = await pod.look(exportFolder);
 stderr.write(`${JSON.stringify(seen)}\n`);
 
-const imported = await pod.import(exportFolder, { claim: true });
+const imported = await pod.import(exportFolder, { claimProfiles: true });
 if (imported.refused)
   throw new Error(`the import was refused: ${imported.refused}`);
 

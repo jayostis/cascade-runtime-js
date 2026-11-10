@@ -255,13 +255,13 @@ function alexPod(): Promise<Alex> {
     try {
       const told: ImportProgress[] = [];
       const e2 = await pod.import(exported("x-e2"), {
-        claim: true,
+        claimProfiles: true,
         onProgress: (progress) => {
           told.push(progress);
         },
       });
-      const e4 = await pod.import(exported("x-e4"), { claim: true });
-      const e6 = await pod.import(exported("x-e6"), { claim: true });
+      const e4 = await pod.import(exported("x-e4"), { claimProfiles: true });
+      const e6 = await pod.import(exported("x-e6"), { claimProfiles: true });
       return { folder, imported: { e2, e4, e6 }, told };
     } finally {
       await pod.close();
@@ -593,7 +593,7 @@ describe("Importing a health export · pod.import()", () => {
     });
   });
 
-  describe("with `claim: true`, which claims the export's patient for the owner", () => {
+  describe("with `claimProfiles: true`, which claims the export's patient for the owner", () => {
     it("records one claim for each unclaimed patient and returns it in `claimed`", async () => {
       const { e2, e4, e6 } = (await alexPod()).imported;
       for (const [name, done, expected] of [

@@ -85,7 +85,7 @@ export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
 
 export interface ImportOptions {
   /** Claims each profile of the import that no counting About ties to the subject, with an About for it, for the owner. */
-  readonly claim?: boolean;
+  readonly claimProfiles?: boolean;
   /** Runs the matcher on the import; on unless false. */
   readonly match?: boolean;
   /** Told as each part of the import begins, with what is done so far; the import goes on once what it returns settles. */
@@ -803,7 +803,7 @@ class OpenPod implements Pod {
       return { ...filed, claimed: [], unclaimed: [] };
     const matching = options.match !== false;
     const profiles =
-      options.claim === true ? await this.#unclaimed(activity) : [];
+      options.claimProfiles === true ? await this.#unclaimed(activity) : [];
     const of = profiles.length + (matching ? 1 : 0);
     if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
     const claimed: { profile: string; judgment: string }[] = [];

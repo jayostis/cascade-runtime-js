@@ -340,7 +340,7 @@ export async function prepare(
           });
           continue;
         }
-        const done = await pod.import(path, { claim: true });
+        const done = await pod.import(path, { claimProfiles: true });
         imports.push({
           download: name,
           records: sources.reduce(

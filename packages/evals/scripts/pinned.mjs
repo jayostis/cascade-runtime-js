@@ -59,7 +59,7 @@ if (command === "build") {
         imports.push({ path, records: 0, refused: error.message });
         continue;
       }
-      const done = await opened.import(path, { claim: true });
+      const done = await opened.import(path, { claimProfiles: true });
       imports.push({
         path,
         records: sources.reduce(
