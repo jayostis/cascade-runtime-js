@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { hubFiles } from "../src/front-page.js";
 import type { TestReports } from "../src/hub/context.js";
+import { readJunit } from "../src/junit.js";
 import { testsSection } from "../src/hub/tests.js";
 import { buildTree } from "../src/sections.js";
 import { readPage } from "./page.js";
@@ -407,4 +408,304 @@ test("the CTRF file is linked once, in its part, and a file outside packages/<pk
   assert.ok(
     levelsOf(other, "runtime").some((l) => /^x\.test\.js|scripts\/x/.test(l)),
   );
+});
+
+/** A property element, the way scripts/junit-reporter.mjs writes it. */
+const prop = (name: string, value: string): string =>
+  `<property name="${name}" value="${value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll("\n", "&#10;")}"/>`;
+
+const FILE = (pkg: string, name: string): string =>
+  `/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/${pkg}/dist/test/${name}.js`;
+
+interface Marked {
+  readonly description?: string;
+  readonly rules?: readonly string[];
+  readonly line?: number;
+}
+
+const marks = (m: Marked): string => {
+  const list = [
+    ...(m.description === undefined
+      ? []
+      : [prop("description", m.description)]),
+    ...(m.rules ?? []).map((rule) => prop("rule", rule)),
+    ...(m.line === undefined ? [] : [prop("line", String(m.line))]),
+  ];
+  return list.length === 0 ? "" : `<properties>${list.join("")}</properties>`;
+};
+
+const described = (name: string, m: Marked, inner: string): string =>
+  `<testsuite name="${name}" time="0.001" tests="1" failures="0">${marks(m)}${inner}</testsuite>`;
+
+const leafOf = (name: string, file: string, line: number, m: Marked = {}) =>
+  `<testcase name="${name}" time="0.001" classname="test" file="${file}" line="${line}">${marks(m)}</testcase>`;
+
+const packageProperty = (
+  dir: string,
+  name: string,
+  version: string,
+  spec: unknown,
+): string =>
+  `<properties>${prop(`package:${dir}`, JSON.stringify({ name, version, spec }))}</properties>`;
+
+const report = (packages: string, body: string): string =>
+  `<?xml version="1.0" encoding="utf-8"?>\n<testsuites>${packages}${body}</testsuites>\n`;
+
+const pod = FILE("cascade-runtime", "pod.test");
+const terms = FILE("cascade-runtime", "terms.test");
+const packaging = FILE("cascade-runtime", "pack.test");
+
+/** Capabilities in several files, listed in an order that is neither alphabetical nor the report's. */
+const GROUPED = report(
+  packageProperty("cascade-runtime", "cascade-runtime", "0.0.0", {
+    about: "The library an app calls.",
+    capabilities: ["Looking up a term", "Importing a health export"],
+    build: ["Packing"],
+  }),
+  [
+    described(
+      "Importing a health export",
+      {
+        description: "Reads an export into the pod.\n\nThe pod keeps it.",
+        rules: ["pod-import R19"],
+        line: 4,
+      },
+      described(
+        "when nobody has claimed the patient",
+        { description: "A patient nobody claimed.", line: 9 },
+        leafOf("keeps the records unclaimed", pod, 12, {
+          description: "Nothing is dropped.",
+        }),
+      ),
+    ),
+    described(
+      "Packing",
+      { description: "What npm ships.", line: 3 },
+      leafOf("lists the entry points", packaging, 5),
+    ),
+    described("Zebra capability", { line: 2 }, leafOf("stripes", terms, 4)),
+    described(
+      "Looking up a term",
+      { description: "Finds a term by its name.", line: 3 },
+      leafOf("finds one", terms, 6),
+    ),
+    described(
+      "Importing a health export",
+      { line: 30 },
+      leafOf(
+        "reads a second file",
+        FILE("cascade-runtime", "pod-more.test"),
+        33,
+      ),
+    ),
+    described(
+      "Apple capability",
+      { line: 2 },
+      leafOf("is alphabetical", terms, 20),
+    ),
+  ].join(""),
+);
+
+test("a package's cases are grouped by capability across files, in the order spec.json gives, the unlisted alphabetically, and build last in a collapsed section", async () => {
+  const { markup } = await pageWith({ runtime: { report: GROUPED, ...RUN } });
+  assert.deepEqual(levelsOf(markup, "runtime"), [
+    "Importing a health export 2 passed",
+    "when nobody has claimed the patient 1 passed",
+    "Looking up a term 1 passed",
+    "Apple capability 1 passed",
+    "Zebra capability 1 passed",
+    "Build and packaging 1 passed",
+    "Packing 1 passed",
+  ]);
+  const part = partOf(markup, "runtime");
+  const build = part.indexOf("Build and packaging");
+  assert.ok(build > part.indexOf("Zebra capability"));
+  assert.doesNotMatch(
+    part.slice(build - 40, build),
+    /open/,
+    "the build section is collapsed",
+  );
+});
+
+test("a capability shows its description and links the files it comes from at the line it starts on", async () => {
+  const { markup, page } = await pageWith({
+    runtime: { report: GROUPED, ...RUN },
+  });
+  const said = text(partOf(markup, "runtime"));
+  assert.match(said, /Reads an export into the pod\./);
+  assert.match(said, /The pod keeps it\./);
+  assert.match(said, /Nothing is dropped\./);
+  assert.match(said, /A patient nobody claimed\./);
+  assert.match(said, /The library an app calls\./);
+  const base = `https://github.com/jayostis/cascade-runtime-js/blob/${RUN.commit}/packages/cascade-runtime/test/`;
+  assert.ok(page.hrefs.includes(`${base}pod.test.ts#L4`));
+  assert.ok(page.hrefs.includes(`${base}pod-more.test.ts#L30`));
+  assert.ok(
+    page.hrefs.includes(`${base}pod.test.ts#L12`),
+    "a leaf links its line",
+  );
+});
+
+test("a @rule tag is a link to its rule on the conformance page, and is not part of the prose", async () => {
+  const { markup, page } = await pageWith({
+    runtime: { report: GROUPED, ...RUN },
+  });
+  assert.ok(
+    page.hrefs.includes("../../spec/pod-import.html#r19"),
+    page.hrefs.join("\n"),
+  );
+  assert.doesNotMatch(text(partOf(markup, "runtime")), /@rule/);
+  const kit = report(
+    "",
+    described(
+      "Kits",
+      { rules: ["conformance/some-kit/some-kit.feature Check 3"] },
+      leafOf("runs", pod, 3),
+    ),
+  );
+  const other = await pageWith({ runtime: { report: kit, ...RUN } });
+  assert.ok(other.page.hrefs.includes("../../spec/some-kit.html#check-3"));
+});
+
+test("the package line names the package, its version and the commit, and says unreleased for 0.0.0 and for a prerelease only", async () => {
+  const line = async (version: string) => {
+    const xml = report(
+      packageProperty("cascade-runtime", "cascade-runtime", version, {}),
+      described("A", {}, leafOf("b", pod, 2)),
+    );
+    return (await pageWith({ runtime: { report: xml, ...RUN } })).page.said;
+  };
+  const unreleased =
+    /unreleased: what main does today, not a compatibility promise/;
+  const zero = await line("0.0.0");
+  assert.match(zero, /cascade-runtime 0\.0\.0/);
+  assert.match(zero, /0123456/);
+  assert.match(zero, unreleased);
+  assert.match(await line("1.2.0-rc.1"), unreleased);
+  const released = await line("1.2.0");
+  assert.match(released, /cascade-runtime 1\.2\.0/);
+  assert.doesNotMatch(released, /unreleased/);
+});
+
+test("the CTRF entry of a case carries the description and rule links of every level above it, and the full path of names", async () => {
+  const { tree } = await pageWith({ runtime: { report: GROUPED, ...RUN } });
+  const bytes = tree.get("conformance/tests/runtime.ctrf.json");
+  assert.ok(bytes);
+  const { results } = JSON.parse(new TextDecoder().decode(bytes)) as {
+    results: {
+      tests: {
+        name: string;
+        suite?: string[];
+        extra?: { description?: string; levels: unknown[] };
+      }[];
+    };
+  };
+  const one = results.tests.find(
+    (t) => t.name === "keeps the records unclaimed",
+  );
+  assert.deepEqual(one?.suite, [
+    "Importing a health export",
+    "when nobody has claimed the patient",
+  ]);
+  assert.equal(one?.extra?.description, "Nothing is dropped.");
+  assert.deepEqual(one?.extra?.levels, [
+    {
+      name: "Importing a health export",
+      description: "Reads an export into the pod.\n\nThe pod keeps it.",
+      rules: [
+        {
+          feature: "pod-import",
+          id: "R19",
+          href: "../../spec/pod-import.html#r19",
+        },
+      ],
+    },
+    {
+      name: "when nobody has claimed the patient",
+      description: "A patient nobody claimed.",
+    },
+  ]);
+});
+
+/** A TypeScript test file with doc comments, transpiled with a source map as scripts/transpile.mjs does, then run by the reporter. */
+async function reportOfFixture(): Promise<string> {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { spawnSync } = await import("node:child_process");
+  const { pathToFileURL } = await import("node:url");
+  const { build } = await import("esbuild");
+  const dir = mkdtempSync(join(tmpdir(), "reporter-"));
+  const source = join(dir, "x.test.ts");
+  writeFileSync(
+    source,
+    [
+      'import { describe, it } from "node:test";',
+      "",
+      "/**",
+      " * Imports an export.",
+      " * It keeps the records.",
+      " *",
+      " * @rule pod-import R19",
+      " * @rule pod-import R20",
+      " */",
+      'describe("Importing", () => {',
+      "  /** When nobody claimed it. */",
+      '  describe("when unclaimed", () => {',
+      "    /** Nothing is dropped & <nothing> is lost. */",
+      '    it("keeps them", () => {});',
+      "  });",
+      '  it("bare", () => {});',
+      "});",
+      "",
+      "// not a doc comment",
+      'describe("Plain", () => {',
+      '  it("passes", () => {});',
+      "});",
+      "",
+    ].join("\n"),
+  );
+  await build({
+    entryPoints: [source],
+    outfile: join(dir, "x.test.js"),
+    sourcemap: "external",
+    format: "esm",
+    logLevel: "silent",
+  });
+  const reporter = pathToFileURL(
+    join(process.cwd(), "scripts", "junit-reporter.mjs"),
+  ).href;
+  const env = { ...process.env };
+  delete env["NODE_TEST_CONTEXT"];
+  const run = spawnSync(
+    process.execPath,
+    ["--test", `--test-reporter=${reporter}`, join(dir, "x.test.js")],
+    { encoding: "utf8", env },
+  );
+  assert.equal(run.status, 0, run.stderr);
+  return run.stdout;
+}
+
+test("the reporter writes each describe's and each test's doc comment as a description property and each @rule as a rule property, with the line it is declared on", async () => {
+  const xml = await reportOfFixture();
+  const { cases } = readJunit(xml);
+  const byName = new Map(cases.map((one) => [one.name, one]));
+  const keeps = byName.get("keeps them");
+  assert.deepEqual(keeps?.describes, ["Importing", "when unclaimed"]);
+  assert.equal(keeps?.description, "Nothing is dropped & <nothing> is lost.");
+  assert.deepEqual(keeps?.described, [
+    {
+      description: "Imports an export. It keeps the records.",
+      rules: ["pod-import R19", "pod-import R20"],
+      line: 10,
+    },
+    { description: "When nobody claimed it.", rules: [], line: 12 },
+  ]);
+  assert.equal(byName.get("bare")?.description, undefined);
+  assert.equal(
+    byName.get("passes")?.described?.[0]?.description,
+    undefined,
+    "a // comment is no description",
+  );
+  assert.doesNotMatch(xml, /⁣/, "no marker is left in the report");
 });
