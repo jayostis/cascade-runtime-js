@@ -17,9 +17,8 @@ const SH = "http://www.w3.org/ns/shacl#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 
 /**
- * The vocabulary (cascade-vocabulary) defines the terms a pod's records are written in, each an IRI: a web-style
- * identifier such as https://ns.cascadeprotocol.org/cascade#allergen. `terms` and `codeStems` are a hand-kept copy of
- * those IRIs inside the package, so an app never types one, and these checks hold the copy to the vocabulary.
+ * `terms` and `codeStems` are a hand-kept copy of the vocabulary's IRIs inside the package, so an app never types
+ * one. These checks hold the copy to the vocabulary.
  */
 describe("Names for vocabulary terms · terms, codeStems", () => {
   const declared = new Set<string>();

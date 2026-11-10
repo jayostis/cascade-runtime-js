@@ -341,8 +341,8 @@ function inOrder(part: readonly string[], whole: readonly string[]): boolean {
 }
 
 /**
- * A pod is one person's health records and their own judgments on them, kept in a folder on disk, or in memory when no
- * folder is given. Each pod has an address, an identifier made once when the pod is made.
+ * `openPod` makes a new pod in a folder, or in memory when no folder is given. Everything else an app does starts
+ * from the pod it returns.
  */
 describe("Opening a pod · openPod()", () => {
   let fresh: Pod;
@@ -397,10 +397,9 @@ describe("Opening a pod · openPod()", () => {
 });
 
 /**
- * An export is what a person downloads of their own records: an Apple Health export, which holds the records of every
- * hospital their phone is connected to, or a C-CDA document, a summary file from one patient portal. `look` lists the
- * export's sources, one for each hospital server or document, so an app can say whose records it holds before anything
- * is saved.
+ * `look` lists an export's sources and saves nothing, so an app can say whose records an export holds before it
+ * imports them. An Apple Health export holds the records of every hospital the person's phone is connected to; a
+ * C-CDA document is a summary file from one patient portal.
  */
 describe("Looking into an export before importing · pod.look()", () => {
   let alex: Pod;
@@ -488,7 +487,7 @@ describe("Looking into an export before importing · pod.look()", () => {
   });
 
   describe("given a C-CDA document", () => {
-    it("returns one source named for the document's custodian (the organisation that keeps it), with its sections by title, when it was received, and no server", () => {
+    it("returns one source named for the document's custodian, with its sections by title, when it was received, and no server", () => {
       const [source, ...others] = first;
       assert.deepEqual(others, []);
       assert.ok(source);
@@ -541,9 +540,8 @@ describe("Looking into an export before importing · pod.look()", () => {
 });
 
 /**
- * An export names the patient its records are about, as that hospital knows them. The pod stores everything it imports
- * but shows those records in answers only after the owner claims that patient as themselves; the matcher then joins
- * records of the same thing from different hospitals.
+ * `import` stores an export's records in the pod. They show in answers only once the owner has claimed the export's
+ * patient, and the matcher then joins records of the same thing from different hospitals.
  * @rule runtime/arrivals.feature A14
  * @rule conformance/alex-rivera/alex-rivera.feature P8
  * @rule conformance/alex-rivera/alex-rivera.feature P24
@@ -572,9 +570,12 @@ describe("Importing a health export · pod.import()", () => {
   });
 
   describe("when nobody has claimed the export's patient", () => {
-    it("stores the export and returns the patient in `unclaimedProfiles`", () => {
+    it("returns the import as `activity`, with the files it stored in `wrote`", () => {
       assert.ok(imported.activity);
       assert.ok(imported.wrote.length > 0);
+    });
+
+    it("returns the export's patient in `unclaimedProfiles` and nobody in `claimedProfiles`", () => {
       assert.deepEqual(imported.claimedProfiles, []);
       assert.deepEqual(imported.unclaimedProfiles, [profile]);
     });
@@ -594,7 +595,7 @@ describe("Importing a health export · pod.import()", () => {
   });
 
   describe("with `claimProfiles: true`, which claims the export's patient for the owner", () => {
-    it("records one claim for each unclaimed patient and returns it in `claimedProfiles`", async () => {
+    it("returns one claim in `claimedProfiles` for each patient not yet claimed, and an empty `unclaimedProfiles`", async () => {
       const { e2, e4, e6 } = (await alexPod()).imported;
       for (const [name, done, expected] of [
         ["x-e2", e2, [await profileOf("J1")]],
@@ -610,7 +611,7 @@ describe("Importing a health export · pod.import()", () => {
       }
     });
 
-    it("runs the matcher straight after the claims and returns what it wrote in `matched`", async () => {
+    it("returns the matcher's run in `matched`, with the files it wrote", async () => {
       const ran = (await alexPod()).imported.e4.matched;
       assert.ok(ran);
       assert.equal(ran.refused, undefined);
@@ -655,18 +656,19 @@ describe("Importing a health export · pod.import()", () => {
       );
     });
 
-    it("stops with the callback's own error when the callback throws, writing nothing", async () => {
+    it("throws the callback's own error when the callback throws at its first call, with no file added to the pod's folder", async () => {
       const at = join(pods, "stopped");
       const stopped = await openPodWith(kept, at);
       try {
         const held = await filesIn(at);
+        const thrown = new Error("not told");
         await assert.rejects(
           stopped.import(exported("x-e2"), {
             onProgress: async () => {
-              throw new Error("not told");
+              throw thrown;
             },
           }),
-          /not told/,
+          (error) => error === thrown,
         );
         assert.deepEqual(await filesIn(at), held);
       } finally {
@@ -706,10 +708,10 @@ describe("Importing a health export · pod.import()", () => {
         assert.match(done.refused ?? "", why, input);
         assert.deepEqual(done.wrote, [], input);
       }
-      assert.equal(loaded, 0, "the converter was loaded");
+      assert.equal(loaded, 0, "the adapter was loaded");
     }
 
-    it("returns `refused` before the converter loads, with nothing written", async () => {
+    it("returns `refused` before the adapter loads, with nothing written", async () => {
       await refusedFor([
         ["no file", new Map(), /^no importer of .* reads no file$/],
         [
@@ -785,7 +787,7 @@ describe("Recording a hospital connection · pod.connect()", () => {
     await hospital.close();
   });
 
-  it("stores the connection and returns it as `activity`", () => {
+  it("returns the stored connection as `activity`, with its files in `wrote`", () => {
     assert.ok(first.activity);
     assert.ok(first.wrote.length > 0);
   });
@@ -799,9 +801,8 @@ describe("Recording a hospital connection · pod.connect()", () => {
 });
 
 /**
- * The vocabulary carries named questions, such as "pod/My active allergies", and `ask` answers one, or the app's own
- * SPARQL SELECT query, as rows of plain strings. A lens is a named view of the pod: `everyday` is the default, and
- * `export` is the stricter one for sharing.
+ * `ask` answers a named question, or the app's own SELECT query in SPARQL (the W3C query language), as rows of plain
+ * strings. It answers under a lens, `everyday` unless the app names another.
  */
 describe("Asking a pod questions · pod.ask()", () => {
   let alex: Pod;
@@ -850,8 +851,9 @@ describe("Asking a pod questions · pod.ask()", () => {
 });
 
 /**
- * A person can add a record no hospital holds, such as an allergy they know they have. The app writes it in Turtle, a
- * text format for the vocabulary's terms, from the guide's template; because it is the owner's own, it needs no claim.
+ * A person can add a record no hospital holds, such as an allergy they know they have. The app writes the entry in
+ * Turtle from the template in `packages/cascade-runtime/guide/AGENTS.md`, and because it is the owner's own, it needs
+ * no claim.
  * @rule runtime/arrivals.feature A12
  * @rule runtime/arrivals.feature A14
  * @rule conformance/alex-rivera/alex-rivera.feature P16
@@ -892,7 +894,7 @@ describe("Entering a record by hand · pod.enter()", () => {
     await owned.close();
   });
 
-  it("stores the entry and runs the matcher at once, returning them as `activity` and `matched`", () => {
+  it("returns the entry's act as `activity` and the matcher's run on it as `matched`", () => {
     assert.equal(entered.refused, undefined);
     assert.ok(entered.activity);
     assert.ok(entered.matched);
@@ -911,9 +913,9 @@ describe("Entering a record by hand · pod.enter()", () => {
 });
 
 /**
- * A judgment is the owner's own statement about one or more records, its members: a claim that a hospital's patient is
- * them, that records are the Same thing or Different things, or that one is Erroneous. The app writes it in Turtle from
- * the guide's template, naming it `urn:cascade:this-judgment`, and `judge` files it.
+ * `judge` files a judgment the owner has made: a claim, a Same, a Different or an Erroneous. The app writes it in
+ * Turtle from the template in `packages/cascade-runtime/guide/AGENTS.md`, naming it `urn:cascade:this-judgment`, and
+ * `judge` returns the lasting name the pod gives it.
  * @rule conformance/alex-rivera/alex-rivera.feature P15
  * @rule runtime/matcher.feature M19
  */
@@ -986,7 +988,7 @@ describe("Recording the owner's judgment · pod.judge()", () => {
     });
   });
 
-  describe("given a finding, a note the matcher leaves for the owner to review", () => {
+  describe("given a finding", () => {
     let finding: string;
     let holder: Pod;
     let same: Done;
@@ -1042,9 +1044,8 @@ describe("Recording the owner's judgment · pod.judge()", () => {
 const NOT_BUILT = new Error("the pod was built");
 
 /**
- * So that a returning app is fast, each answer to a named question is kept beside the pod's folder and returned again
- * while nothing it was worked out from has changed. Each act in a pod (an import, an entry, a judgment) leaves a
- * snapshot that names the one before it, and `head` is the snapshot of this app's latest act.
+ * So that a returning app is fast, a pod opened again returns a kept answer while nothing the answer was worked out
+ * from has changed. `head` lets the app's next act carry on from its last one.
  * @rule runtime/naming.feature N14
  */
 describe("Opening a pod again · openPod()", () => {
@@ -1201,15 +1202,22 @@ describe("Opening a pod again · openPod()", () => {
       }
     });
 
-    it("is undefined in a new pod and set by its first act", () => {
+    it("is undefined in a new pod", () => {
       assert.equal(head0, undefined);
+    });
+
+    it("is set by the pod's first act, whose snapshot names none before it", () => {
       assert.ok(head1 !== undefined);
       assert.deepEqual(firstAct, { firstParent: [], merged: [] });
     });
 
-    it("survives a reopen, so the next act's snapshot names it as the one before and merges nothing", () => {
+    it("is the same after the pod is closed and opened again", () => {
       assert.ok(head1 !== undefined);
       assert.deepEqual(reopened, head1);
+    });
+
+    it("is the only snapshot the next act's snapshot names as the one before it, when the pod was reopened in between", () => {
+      assert.ok(head1 !== undefined);
       assert.deepEqual(secondAct, {
         firstParent: [head1.snapshot],
         merged: [],
@@ -1309,7 +1317,7 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
   });
 
   describe("when a sealed pod is opened", () => {
-    it("opens with the secret and answers as before", async () => {
+    it("answers a question, once opened with the secret, with the rows it gave when it was made", async () => {
       const { folder: at, rows } = await sealedPod();
       const reopened = await openFolderPod(
         { ...kept, derive: fastDerive() },
@@ -1424,7 +1432,7 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
         derive,
       );
 
-    it("leaves one header, so each opening reads what the other sealed", async () => {
+    it("lets one opening read what the other sealed", async () => {
       const derive = fastDerive();
       const at = join(pods, "raced");
       const [first, second] = await Promise.all([
@@ -1442,7 +1450,7 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
       assert.equal(new TextDecoder().decode(read), "a");
     });
 
-    it("opens for one secret and throws `incorrect secret` for the other when the two differ", async () => {
+    it("opens for exactly one of two different secrets, with `incorrect secret` for the other", async () => {
       const derive = fastDerive();
       const other = join(pods, "raced-apart");
       const outcomes = await Promise.all(
@@ -1460,9 +1468,9 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
 });
 
 /**
- * A kit is a scripted patient story that cascade-vocabulary carries for testing, such as `alex-rivera`: the exports the
- * patient downloaded and every step taken with them, in order. From `cascade-runtime/fixtures`, a developer gets a
- * realistic pod or export for a test without writing one.
+ * `replayKit` builds a kit's pod by performing its story, and `kitDownload` returns the path of one of its exports.
+ * Both come from `cascade-runtime/fixtures`, so a developer gets a realistic pod or export for a test without
+ * writing one.
  */
 describe("Sample pods and exports to build against · replayKit(), kitDownload()", () => {
   describe("kitDownload(kit, name)", () => {
@@ -1526,7 +1534,7 @@ describe("Sample pods and exports to build against · replayKit(), kitDownload()
       await settled(parent());
     });
 
-    it("performs the story's steps in order, from making the pod to the step named, and returns them", () => {
+    it("returns the steps it performed, in the story's order, from making the pod to the step named", () => {
       assert.deepEqual([steps[0]?.step, steps[0]?.kind], ["E1", "creation"]);
       assert.equal(steps.at(-1)?.step, "J10");
       // `replayKit` does not perform the story's `reference` and `open` steps, so its steps are some of the story's.
@@ -1550,8 +1558,7 @@ describe("Sample pods and exports to build against · replayKit(), kitDownload()
       );
     });
 
-    it("matches with the app's own reference tables (code lists such as RxNorm), so opening the pod afterwards changes nothing", async () => {
-      assert.equal(replayed.opened, undefined);
+    it("builds a pod whose matcher judgments cite only reference tables the app holds", async () => {
       const used = await select(
         replayed,
         `SELECT DISTINCT ?version WHERE {
@@ -1565,6 +1572,10 @@ describe("Sample pods and exports to build against · replayKit(), kitDownload()
       assert.ok(cited.length > 0, "the matcher cites no reference");
       for (const version of cited)
         assert.ok(held.includes(version), `${version} is not the app's`);
+    });
+
+    it("builds a pod that `openPod` opens without matching it again", () => {
+      assert.equal(replayed.opened, undefined);
     });
 
     it("throws for a folder that already holds files, a kit it doesn't carry, or a step the story doesn't have", async () => {
@@ -1589,8 +1600,8 @@ describe("Sample pods and exports to build against · replayKit(), kitDownload()
 });
 
 /**
- * A site can save a pod's answers as files, so a web page shows the pod without first downloading the query engine. A
- * sample is a kit's pod saved this way, and a lookup is what the reference tables say about one code.
+ * A site can save a pod's answers as files, so a web page shows the pod without first downloading the query engine.
+ * `samplesToPublish` saves kits' pods the same way, as samples a site can offer.
  */
 describe("Publishing a pod for a browser · answersToPublish(), samplesToPublish()", () => {
   const NOT_ASKED = new Error("the tables were asked");
@@ -1737,8 +1748,15 @@ describe("Publishing a pod for a browser · answersToPublish(), samplesToPublish
       });
     });
 
-    it("returns every kit's name and title, whichever kits were asked for", () => {
-      assert.ok(samples.kits.size > 1);
+    it("returns every kit's name and title, whichever kits were asked for", async () => {
+      const carried = (
+        await readdir(inKit("conformance"), { withFileTypes: true })
+      )
+        .filter((entry) => entry.isDirectory())
+        .map(({ name }) => name)
+        .sort();
+      assert.deepEqual([...samples.kits.keys()].sort(), carried);
+      for (const title of samples.kits.values()) assert.ok(title.length > 0);
       assert.match(samples.kits.get("alex-rivera") ?? "", /Alex/);
     });
 
