@@ -313,6 +313,7 @@
     "server-same.test.ts",
     "stories.test.ts",
     "story-pulls.test.ts",
+    "tables.test.ts",
     "terms.test.ts",
     "tools.test.ts",
     "transpile.test.ts",

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,6 @@ import {
   RDF,
   Refusal,
   tableTerms,
-  tablesSettings,
   type Term,
   type Triple,
   withTables,
@@ -32,7 +31,6 @@ import {
   configureTables,
   partsOf,
   type ResolvedParts,
-  resolved,
 } from "../src/node/resolved.js";
 import { tablesBeside } from "../src/index.js";
 import { Answers } from "../src/answers.js";
@@ -456,6 +454,130 @@ async function withVersions(
     served: { ...served, files, catalog: [...served.catalog, ...added] },
     versions,
   };
+}
+
+const OTHER_FEED = "https://tables.example/other.ttl";
+const APP_POD = "urn:uuid:5f0c2a64-8e1b-4d3a-9c7e-2b6a4f1d8e03";
+
+/** What an app started through the package's entry did, as `startedApp` keeps it. */
+interface StartedApp {
+  /** What the first `tablesBeside` threw, with an app file that names more than tables. */
+  readonly failedStart: unknown;
+  /** What `configureTables` threw straight after that start failed, if it threw. */
+  readonly afterFailedStart: unknown;
+  /** What `configureTables` threw for a setting the tables do not own. */
+  readonly unsettable: unknown;
+  /** What `configureTables` threw once the tables were made. */
+  readonly afterMade: unknown;
+  readonly tables: Tables;
+  /** What `current()` gave while the check on open waited for the feed. */
+  readonly currentWhileChecking: readonly string[];
+  /** Whether the feed's fetch had passed its gate when a pod's open was noted. */
+  readonly fetchedWhileNoting: boolean;
+  readonly openedWhileChecking: readonly string[] | undefined;
+  /** The addresses asked of the network by the time the pod's open was noted. */
+  readonly askedWhileChecking: readonly string[];
+  /** Every address asked of the network once the check had ended. */
+  readonly asked: readonly string[];
+  /** What a `check()` queued behind the check on open returned. */
+  readonly checked: readonly Checked[];
+  readonly currentAfter: readonly string[];
+  readonly openedAfter: readonly string[] | undefined;
+}
+
+let startedMade: Promise<StartedApp> | undefined;
+
+/**
+ * An app started through the package's entry, made once: the only code here that sets what the package keeps for the
+ * process. The app's file names `OTHER_FEED`, its code names the test feed and has a check on open wait at the feed's gate;
+ * a pod's open is noted while the check waits, and the check is let go.
+ */
+function startedApp(): Promise<StartedApp> {
+  startedMade ??= (async () => {
+    const thrown = async (work: () => unknown): Promise<unknown> => {
+      try {
+        await work();
+        return undefined;
+      } catch (error) {
+        return error;
+      }
+    };
+    const app = join(scratch, "app");
+    await mkdir(app);
+    const file = join(app, "cascade-runtime.json");
+    await writeFile(file, JSON.stringify({ lens: "everyday" }));
+    const asked: string[] = [];
+    let fetched = false;
+    let release = (): void => undefined;
+    const gate = new Promise<void>((open) => (release = open));
+    const served = fetchOf(feed);
+    const cwd = process.cwd();
+    try {
+      process.chdir(app);
+      const failedStart = await thrown(() => tablesBeside(join(app, "pods")));
+      const afterFailedStart = await thrown(() => configureTables({}));
+      // The type does not let code name `repository`; a script without types can.
+      const unsettable = await thrown(() =>
+        configureTables({ repository: OTHER_FEED } as Parameters<
+          typeof configureTables
+        >[0]),
+      );
+      await writeFile(
+        file,
+        JSON.stringify({ tables: { feeds: [OTHER_FEED], checkOnOpen: false } }),
+      );
+      configureTables({
+        feeds: [FEED],
+        checkOnOpen: true,
+        fetch: async (input, init) => {
+          asked.push(String(input));
+          // The check on open gives up when its signal aborts: a note of a pod's open that waits for it is made only after this passes.
+          await Promise.race([
+            gate,
+            new Promise<void>((aborted) =>
+              init?.signal?.aborted
+                ? aborted()
+                : init?.signal?.addEventListener("abort", () => aborted()),
+            ),
+          ]);
+          fetched = true;
+          return served(input, init);
+        },
+      });
+      const tables = await tablesBeside(join(app, "pods"));
+      process.chdir(cwd);
+      const currentWhileChecking = await tables.current();
+      await tables.recordOpen(APP_POD, [groups.first], "alex");
+      const fetchedWhileNoting = fetched;
+      const askedWhileChecking = [...asked];
+      const openedWhileChecking = await tables.openedWith(APP_POD);
+      release();
+      // A second check is queued behind the one on open, as every check is.
+      const checked = await tables.check();
+      const currentAfter = await tables.current();
+      const openedAfter = await tables.openedWith(APP_POD);
+      const afterMade = await thrown(() => configureTables({}));
+      return {
+        failedStart,
+        afterFailedStart,
+        unsettable,
+        afterMade,
+        tables,
+        currentWhileChecking,
+        fetchedWhileNoting,
+        openedWhileChecking,
+        askedWhileChecking,
+        asked: [...asked],
+        checked,
+        currentAfter,
+        openedAfter,
+      };
+    } finally {
+      process.chdir(cwd);
+      release();
+    }
+  })();
+  return startedMade;
 }
 
 test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files nothing again for a Same the replaced one joined that it joins too, a brand allergy and its ingredient's among them by the vocabulary's R3, and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing; and opened while a check has kept one version and not yet the next, its answers are kept under the versions of the references it computes with, which what is held names after each version kept", async () => {
@@ -2095,74 +2217,55 @@ ${allergies.join("\n")}`);
   }
 });
 
-test("an app's tables are the package's with each field of its own file, then of its code, in their place; and what an app cannot set is refused", async () => {
+test("an app's tables are the package's with each field of its own file, and the code's in place of the file's; and what an app cannot set is refused", async () => {
   const packaged = parts.local.config;
   const packageConfig = join(
     findRoot(dirname(fileURLToPath(import.meta.url))),
     "cascade-runtime.json",
   );
   const app = await mkdtemp(join(scratch, "app-"));
-  const other = "https://tables.example/other.ttl";
   const preference = { [`${CASCADE}CodeNames`]: [EXAMPLE_NAMES] };
-  const cases: [string, unknown, object, object | RegExp][] = [
+  const cases: [string, unknown, object | RegExp][] = [
     [
       "the file's feeds and order of preference, the package's check on open",
-      { tables: { feeds: [other], preference } },
-      {},
-      { feeds: [other], preference, checkOnOpen: packaged.tables.checkOnOpen },
+      { tables: { feeds: [OTHER_FEED], preference } },
+      {
+        feeds: [OTHER_FEED],
+        preference,
+        checkOnOpen: packaged.tables.checkOnOpen,
+      },
     ],
-    [
-      "the code's over the file's",
-      { tables: { feeds: [FEED] } },
-      { feeds: [other], checkOnOpen: false },
-      { feeds: [other], checkOnOpen: false },
-    ],
-    ["no feed", { tables: { feeds: [] } }, {}, { feeds: [] }],
+    ["no feed", { tables: { feeds: [] } }, { feeds: [] }],
     [
       "a builder by its name, and by its path from the file",
       { tables: { builders: ["cdc-cvx", "../mine"] } },
-      {},
       { builders: ["cdc-cvx", resolve(app, "..", "mine")] },
     ],
     [
       "two builders built into one folder",
       { tables: { builders: ["loinc", "./mine/loinc"] } },
-      {},
       /builders names more than one builder built into loinc/,
     ],
     [
       "a file naming more than tables",
       { tables: {}, lens: "everyday" },
-      {},
       /names lens, and names nothing but tables/,
     ],
     [
       "an order of preference not of IRIs",
       { tables: { preference: { [`${CASCADE}CodeNames`]: ["names"] } } },
-      {},
       /preference does not give/,
     ],
     [
       "a feed that is no URL",
       { tables: { feeds: ["feed.ttl"] } },
-      {},
       /feeds is not a list of URLs/,
     ],
-    [
-      "code setting what is not the tables'",
-      { tables: {} },
-      { repository: other },
-      /configureTables names repository, which it cannot set/,
-    ],
   ];
-  for (const [name, file, code, expected] of cases) {
+  for (const [name, file, expected] of cases) {
     await writeFile(join(app, "cascade-runtime.json"), JSON.stringify(file));
     const configured = async () =>
-      withTables(
-        packaged,
-        await appSettings(app, packageConfig),
-        tablesSettings(code, "configureTables"),
-      ).tables;
+      withTables(packaged, await appSettings(app, packageConfig)).tables;
     if (expected instanceof RegExp)
       await assert.rejects(configured(), expected, name);
     else
@@ -2177,73 +2280,50 @@ test("an app's tables are the package's with each field of its own file, then of
     {},
     "the package's own file",
   );
-  await writeFile(
-    join(app, "cascade-runtime.json"),
-    JSON.stringify({ lens: "everyday" }),
+  const started = await startedApp();
+  assert.match(
+    String(started.unsettable),
+    /configureTables names repository, which it cannot set/,
   );
-  const cwd = process.cwd();
-  process.chdir(app);
-  try {
-    await assert.rejects(resolved(), /names nothing but tables/);
-  } finally {
-    process.chdir(cwd);
-  }
-  assert.doesNotThrow(
-    () => configureTables({}),
+  assert.deepEqual(
+    [...new Set(started.checked.map(({ feed: checkedFeed }) => checkedFeed))],
+    [FEED],
+    "the code's feed is read, not the file's",
+  );
+  assert.ok(started.asked.includes(FEED));
+  assert.ok(!started.asked.includes(OTHER_FEED));
+  assert.match(String(started.failedStart), /names nothing but tables/);
+  assert.equal(
+    started.afterFailedStart,
+    undefined,
     "configureTables after a start that failed",
   );
 });
 
 test("an app's tables are answered with what they hold while the check on open is still running, a pod's open is recorded without waiting for it, and the check keeps its versions after without losing that record", async () => {
-  let release = (): void => undefined;
-  const gate = new Promise<void>((open) => (release = open));
-  let fetched = false;
-  const served = fetchOf(feed);
-  configureTables({
-    feeds: [FEED],
-    checkOnOpen: true,
-    fetch: async (input, init) => {
-      // The check on open gives up when its signal aborts: a record that waits for it is made only after this passes.
-      await Promise.race([
-        gate,
-        new Promise<void>((aborted) =>
-          init?.signal?.aborted
-            ? aborted()
-            : init?.signal?.addEventListener("abort", () => aborted()),
-        ),
-      ]);
-      fetched = true;
-      return served(input, init);
-    },
-  });
-  const pod = "urn:uuid:5f0c2a64-8e1b-4d3a-9c7e-2b6a4f1d8e03";
-  try {
-    const tables = await tablesBeside(join(scratch, "opened"));
-    assert.ok(!(await tables.current()).includes(groups.second));
-    await tables.recordOpen(pod, [groups.first], "alex");
-    assert.equal(
-      fetched,
-      false,
-      "the pod's open was recorded only once the check on open went on",
-    );
-    assert.deepEqual(await tables.openedWith(pod), [groups.first]);
-    release();
-    // A second check is queued behind the one on open, as every check is, and
-    // finds nothing left to keep because the one on open kept it.
-    assert.deepEqual(
-      (await tables.check()).flatMap(({ kept }) => kept),
-      [],
-      "the queued check kept a version the check on open had not",
-    );
-    assert.ok((await tables.current()).includes(groups.second));
-    assert.deepEqual(
-      await tables.openedWith(pod),
-      [groups.first],
-      "the check's record of what is held lost the pod's open",
-    );
-  } finally {
-    release();
-  }
+  const started = await startedApp();
+  assert.ok(!started.currentWhileChecking.includes(groups.second));
+  assert.equal(
+    started.fetchedWhileNoting,
+    false,
+    "the pod's open was recorded only once the check on open went on",
+  );
+  assert.deepEqual(started.openedWhileChecking, [groups.first]);
+  assert.deepEqual(
+    started.checked.flatMap(({ kept }) => kept),
+    [],
+    "the queued check kept a version the check on open had not",
+  );
+  assert.ok(started.currentAfter.includes(groups.second));
+  assert.deepEqual(
+    started.openedAfter,
+    [groups.first],
+    "the check's record of what is held lost the pod's open",
+  );
+  assert.match(
+    String(started.afterMade),
+    /configureTables comes before the first pod opens/,
+  );
 });
 
 const LOINC = spaceOf("LOINC");
@@ -2760,12 +2840,12 @@ test("a pod a browser copied before its versions were kept, saved as null, adopt
   const dir = await mkdtemp(join(tmpdir(), "cascade-runtime-held-"));
   try {
     const pod = "https://example.org/pod/";
-    const first = (await resolved()).tablesIn(dir);
+    const first = tablesOver(feed, new FolderFiles(dir));
     await first.recordOpen(pod, ["https://example.org/v1"]);
     const saved = JSON.parse(await readFile(join(dir, "tables.json"), "utf8"));
     saved.pods[pod] = null;
     await writeFile(join(dir, "tables.json"), JSON.stringify(saved));
-    const again = (await resolved()).tablesIn(dir);
+    const again = tablesOver(feed, new FolderFiles(dir));
     assert.equal(await again.openedWith(pod), undefined);
     assert.deepEqual(await again.uses(), {});
   } finally {
