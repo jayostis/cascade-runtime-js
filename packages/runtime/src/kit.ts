@@ -220,6 +220,26 @@ function activityKinds(terms: readonly Triple[]): Set<string> {
   return kinds;
 }
 
+/** The part of check 3 that no shape states: a subject of prov:used must be a prov:Activity, or of a subclass the terms declare. */
+export function usedByNoActivity(
+  terms: readonly Triple[],
+  triples: readonly Triple[],
+): string[] {
+  const kinds = activityKinds(terms);
+  const acts = new Set(
+    triples
+      .filter(([, p, o]) => p.value === TYPE && kinds.has(o.value))
+      .map(([s]) => s.value),
+  );
+  return [
+    ...new Set(
+      triples
+        .filter(([s, p]) => p.value === `${PROV}used` && !acts.has(s.value))
+        .map(([s]) => s.value),
+    ),
+  ].map((subject) => `<${subject}> has prov:used and is no prov:Activity`);
+}
+
 /** Check 3: every RDF file but those that name things only to label them, read together with the vocabulary's terms, and prov:used only on a prov:Activity or a subclass the vocabulary declares. */
 export async function shapeFaults(
   run: KitRun,
@@ -233,20 +253,10 @@ export async function shapeFaults(
   const triples = [...pod]
     .filter(([path]) => !labelled.has(path))
     .flatMap(([, held]) => held);
-  const kinds = activityKinds(run.shapes.terms);
-  const acts = new Set(
-    triples
-      .filter(([, p, o]) => p.value === TYPE && kinds.has(o.value))
-      .map(([s]) => s.value),
-  );
-  const usedByNoAct = [
-    ...new Set(
-      triples
-        .filter(([s, p]) => p.value === `${PROV}used` && !acts.has(s.value))
-        .map(([s]) => s.value),
-    ),
-  ].map((subject) => `<${subject}> has prov:used and is no prov:Activity`);
-  return [...(await run.shapes.resultLines(triples)), ...usedByNoAct];
+  return [
+    ...(await run.shapes.resultLines(triples)),
+    ...usedByNoActivity(run.shapes.terms, triples),
+  ];
 }
 
 /** A file's triples, with the thing named `name`, and every IRI under it, renamed to the placeholder. */
