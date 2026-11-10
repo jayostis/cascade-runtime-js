@@ -405,10 +405,10 @@ function pagesContext(
       log(
         `the sites are built from cascade-vocabulary at ${vocabulary.resolved.version}; the pods read the one the package carries, at ${staged}`,
       );
-      const { publishedSamples } = (await import(
+      const { samplesToPublish } = (await import(
         pathToFileURL(join(STAGE, "dist", "src", "node", "published.js")).href
       )) as typeof Published;
-      const samples = await publishedSamples();
+      const samples = await samplesToPublish();
       const examples: Example[] = [];
       for (const [name, title] of samples.kits) {
         const sample = new Map(

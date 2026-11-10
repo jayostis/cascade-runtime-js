@@ -85,7 +85,7 @@ only instruction.
   don't know about, and say yes or no to records it thinks are the same thing."
 
 Between them they use every call: reading, `openPod`, `ask`, `close`; writing,
-`openPod`, `look`, `import` with `aboutSubject: true` (only after a yes),
+`openPod`, `look`, `import` with `claimProfiles: true` (only after a yes),
 `enter`, `judge`, `ask`, `close`. `match` is covered by the default `import` and `enter` run; an explicit
 `match` with matching on is a wrong turn.
 
@@ -161,7 +161,7 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   `https://ehr.larkspur.example/fhir/R4`, 2, 2, 1, 1, both already claimed (J1,
   J2); Larkspur Valley Health at `https://fhir.larkspur.example/r4`, 2, 2, 1, 1,
   received 2027-03-18, not claimed. (`export.xml` of x-e12; `look`'s `name`,
-  `server`, `records`, `received`, `claimed`; the test "the look reads the
+  `server`, `records`, `received`, `holdsSubjectsRecords`; the test "the look reads the
   export's index and writes nothing" in
   `packages/cascade-runtime/test/pod.test.ts`.) Meridian's counts include Sam's
   allergy and two conditions, which the look cannot tell apart. The app calls
@@ -171,7 +171,7 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   allergies, two conditions, an immunization, a procedure (E12 in "each import
   and entry writes the scenario's numbers of records, versions, revisions,
   documents and activities"). The app shows what was claimed: that server's one
-  patient profile, as J12 claims it (`claimed` holds it, `unclaimed` is empty).
+  patient profile, as J12 claims it (`claimedProfiles` holds it, `unclaimedProfiles` is empty).
   Sam's three records are in x-e12 unchanged since x-e10: the import writes
   nothing of them and does not claim his profile, so they stay in no view
   (`cascade:PatientProfileNotClaimed` in `record/Why it is in no view`). The matcher joins

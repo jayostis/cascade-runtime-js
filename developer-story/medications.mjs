@@ -7,7 +7,7 @@ for (const download of argv.slice(2)) {
   const seen = await pod.look(download);
   stderr.write(`${JSON.stringify(seen)}\n`);
 
-  const imported = await pod.import(download, { aboutSubject: true });
+  const imported = await pod.import(download, { claimProfiles: true });
   if (imported.refused)
     throw new Error(`${download} was refused: ${imported.refused}`);
 }

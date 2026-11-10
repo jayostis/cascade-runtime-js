@@ -84,7 +84,12 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
   );
   const [looked] = await pod.look(pullFiles(north, "north"));
   assert.deepEqual(
-    [looked?.name, looked?.server, looked?.received, looked?.claimed],
+    [
+      looked?.name,
+      looked?.server,
+      looked?.received,
+      looked?.holdsSubjectsRecords,
+    ],
     [north.source, north.fhirBase, [north.retrievedAt], false],
   );
 
@@ -93,7 +98,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
     [south, "south"],
   ] as const) {
     const imported = await pod.import(pullFiles(pull, name), {
-      aboutSubject: true,
+      claimProfiles: true,
     });
     assert.equal(imported.refused, undefined, name);
   }
@@ -180,14 +185,16 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
       .sort(),
   );
 
-  const [claimed] = await pod.look(pullFiles(north, "north"));
-  assert.equal(claimed?.claimed, true);
+  const [northSource] = await pod.look(pullFiles(north, "north"));
+  assert.equal(northSource?.holdsSubjectsRecords, true);
 
   for (const [path, bytes] of pullFiles(north, "north")) {
     await mkdir(dirname(join(folder, path)), { recursive: true });
     await writeFile(join(folder, path), bytes);
   }
-  const again = await pod.import(join(folder, "north"), { aboutSubject: true });
+  const again = await pod.import(join(folder, "north"), {
+    claimProfiles: true,
+  });
   assert.equal(again.refused, undefined);
   assert.deepEqual(again.wrote, []);
 });

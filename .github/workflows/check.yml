@@ -81,6 +81,11 @@ jobs:
           if-no-files-found: warn
       - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run lint
+      # The test files packages/cascade-runtime/test/spec.json lists as randomOrder, run in a random order: one that needs another to
+      # run first fails here. The seed is in the log; rerun with --test-random-seed=N to repeat it.
+      - name: Tests in random order
+        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+        run: node scripts/transpile.mjs && node scripts/random-order.mjs cascade-runtime
       # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice.
       - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' && github.event_name != 'schedule' }}
         run: npm test
@@ -166,6 +171,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - run: npx playwright install --only-shell chromium
         if: ${{ !cancelled() }}
+      # The tests page's script, run in a browser: expand and collapse all, failures only, the glossary filter.
+      - name: Run the tests page's script
+        if: ${{ !cancelled() }}
+        run: npm run test:tests-page
       # A newcomer on the front page of this tree reaches each row of "Find your way" in one click, on a page of the expected title.
       - name: Walk the front page's rows
         if: ${{ !cancelled() }}
@@ -448,7 +457,7 @@ jobs:
 
   # The runtime's own tests on main, in a job the deploy does not wait for: `build-pages` shows the newest finished run's
   # report, as it shows the vocabulary's. A timeout stops a hang. The log stays the spec reporter's; the JUnit file is the
-  # test page's. The tests read the vocabulary beside this checkout, which the start action checks out and does not run. A
+  # test page's, node's own with each case's line in its TypeScript source added, for the page to link to. The tests read the vocabulary beside this checkout, which the start action checks out and does not run. A
   # failing case fails the job, and the report is still kept.
   # Nightly this is the one run of the suite: `tests and conformance` leaves it out then, and `compatibility` waits for this job.
   runtime-tests:
@@ -489,7 +498,7 @@ jobs:
           mkdir -p "$kept"
           printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$kept/run.json"
-          npm test -- --test-reporter=junit --test-reporter-destination="$kept/junit.xml" \
+          npm test -- --test-reporter=./scripts/junit-reporter.mjs --test-reporter-destination="$kept/junit.xml" \
             --test-reporter=spec --test-reporter-destination=stdout
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}

@@ -2755,3 +2755,20 @@ ${["2025-03-01", "2025-06-01"].map(result).join("\n")}`);
     await pod.close();
   }
 });
+
+test("a pod a browser copied before its versions were kept, saved as null, adopts like any pod", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cascade-runtime-held-"));
+  try {
+    const pod = "https://example.org/pod/";
+    const first = (await resolved()).tablesIn(dir);
+    await first.opened(pod, ["https://example.org/v1"]);
+    const saved = JSON.parse(await readFile(join(dir, "tables.json"), "utf8"));
+    saved.pods[pod] = null;
+    await writeFile(join(dir, "tables.json"), JSON.stringify(saved));
+    const again = (await resolved()).tablesIn(dir);
+    assert.equal(await again.openedWith(pod), undefined);
+    assert.deepEqual(await again.uses(), {});
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

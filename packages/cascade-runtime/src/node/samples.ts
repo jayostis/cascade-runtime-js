@@ -11,7 +11,7 @@ import { type Components, FolderFiles } from "@cascade-runtime/runtime/node";
 import type { Pod } from "../pod.js";
 import type { Tables } from "../tables.js";
 import { kitsIn, replayKitFrom, withKit } from "./kits.js";
-import { publishedAnswers } from "./published.js";
+import { answersToPublish } from "./published.js";
 import { partsOf } from "./resolved.js";
 
 /** The folder a sample's pod is copied from, beside its pack, its answers and its lookups. */
@@ -28,7 +28,7 @@ export interface SampleOptions {
   /** The kits to publish, by name; by default every kit. */
   readonly kits?: readonly string[];
   /** What the page that shows a pod asks the tables of it, kept as `lookups.json`. */
-  readonly look?: (pod: Pod, tables: Tables) => Promise<unknown>;
+  readonly lookups?: (pod: Pod, tables: Tables) => Promise<unknown>;
 }
 
 export interface Samples {
@@ -65,7 +65,7 @@ async function refusalsExpected(
  * its story says is refused writes nothing; a step refused that the story does not say so of is a plain error, since
  * the install is then broken, not the sample short; its pod's files are under `<kit>/pod/` with their list, `files.json`, and their pack
  * beside the folder, `<kit>/pod.pack.json`; what a copy reads without the engine is `<kit>/answers.json`,
- * `<kit>/pod.json` and, given `look`, `<kit>/lookups.json`. A kit the vocabulary does not carry is refused.
+ * `<kit>/pod.json` and, given `lookups`, `<kit>/lookups.json`. A kit the vocabulary does not carry is refused.
  */
 export async function samplesOf(
   source: SampleSource,
@@ -119,13 +119,11 @@ export async function samplesOf(
         `${kit}/${POD}.pack.json`,
         encoder.encode(JSON.stringify(packFolder(paths, pod))),
       );
-      for (const [path, bytes] of await publishedAnswers(
-        parts,
-        kit,
-        pod,
-        source.runtime,
-        options.look,
-      ))
+      for (const [path, bytes] of await answersToPublish(parts, pod, {
+        name: kit,
+        runtime: source.runtime,
+        lookups: options.lookups,
+      }))
         files.set(`${kit}/${path}`, bytes);
     }
   } finally {

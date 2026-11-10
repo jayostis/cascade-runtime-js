@@ -84,8 +84,8 @@ function sorted(counts: Map<string, number>): Record<string, number> {
 export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
 
 export interface ImportOptions {
-  /** Records an About for each profile of the import no counting About ties to the subject. */
-  readonly aboutSubject?: boolean;
+  /** Claims each profile of the import that no counting About ties to the subject, with an About for it, for the owner. */
+  readonly claimProfiles?: boolean;
   /** Runs the matcher on the import; on unless false. */
   readonly match?: boolean;
   /** Told as each part of the import begins, with what is done so far; the import goes on once what it returns settles. */
@@ -183,7 +183,7 @@ export interface ExportSource {
    * The pod holds the subject's records from that server or, for a source with none, from a document whose author is
    * the source.
    */
-  readonly claimed: boolean;
+  readonly holdsSubjectsRecords: boolean;
 }
 
 export interface Done {
@@ -205,12 +205,12 @@ export interface Opened extends Done {
 }
 
 export interface Imported extends Done {
-  readonly claimed: readonly {
+  readonly claimedProfiles: readonly {
     readonly profile: string;
     readonly judgment: string;
   }[];
   /** The import's profiles no counting About ties to the subject. */
-  readonly unclaimed: readonly string[];
+  readonly unclaimedProfiles: readonly string[];
 }
 
 export type Row = Readonly<Record<string, string>>;
@@ -724,13 +724,13 @@ class OpenPod implements Pod {
           ?document prov:wasAttributedTo/(<http://www.w3.org/2000/01/rdf-schema#label>|^prov:specializationOf/<http://xmlns.com/foaf/0.1/name>) ?author .
         }
       }`);
-    const claimedServers = new Set(
+    const serversHoldingSubjectsRecords = new Set(
       rows.flatMap((row) => {
         const server = row.get("server")?.value;
         return server === undefined ? [] : [normalised(server)];
       }),
     );
-    const claimedAuthors = new Set(
+    const authorsHoldingSubjectsRecords = new Set(
       rows.flatMap((row) => {
         const author = row.get("author")?.value;
         return author === undefined ? [] : [spaced(author)];
@@ -772,11 +772,11 @@ class OpenPod implements Pod {
         records: sorted(records),
         ...(sections.size === 0 ? {} : { sections: sorted(sections) }),
         received: [...received].sort(),
-        claimed:
+        holdsSubjectsRecords:
           source.server === undefined
             ? source.name !== undefined &&
-              claimedAuthors.has(spaced(source.name))
-            : claimedServers.has(source.server),
+              authorsHoldingSubjectsRecords.has(spaced(source.name))
+            : serversHoldingSubjectsRecords.has(source.server),
       }));
   }
 
@@ -788,8 +788,8 @@ class OpenPod implements Pod {
     if (typeof found === "string")
       return {
         ...(await this.#core.refuse(found)),
-        claimed: [],
-        unclaimed: [],
+        claimedProfiles: [],
+        unclaimedProfiles: [],
       };
     const { onProgress } = options;
     const filed = await this.#core.import(
@@ -800,26 +800,28 @@ class OpenPod implements Pod {
     );
     const activity = filed.activity;
     if (filed.refused !== undefined || activity === undefined)
-      return { ...filed, claimed: [], unclaimed: [] };
+      return { ...filed, claimedProfiles: [], unclaimedProfiles: [] };
     const matching = options.match !== false;
     const profiles =
-      options.aboutSubject === true ? await this.#unclaimed(activity) : [];
+      options.claimProfiles === true
+        ? await this.#unclaimedProfiles(activity)
+        : [];
     const of = profiles.length + (matching ? 1 : 0);
     if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
-    const claimed: { profile: string; judgment: string }[] = [];
+    const claimedProfiles: { profile: string; judgment: string }[] = [];
     for (const [index, profile] of profiles.entries()) {
       const { judgment } = await this.#judge(
         about(this.subject, profile, this.owner),
       );
-      if (judgment !== undefined) claimed.push({ profile, judgment });
+      if (judgment !== undefined) claimedProfiles.push({ profile, judgment });
       await onProgress?.({ part: "judging", done: index + 1, of });
     }
     const matched = matching ? await this.#core.match(activity) : undefined;
     return {
       ...filed,
       ...(matched === undefined ? {} : { matched }),
-      claimed,
-      unclaimed: await this.#unclaimed(activity),
+      claimedProfiles,
+      unclaimedProfiles: await this.#unclaimedProfiles(activity),
     };
   }
 
@@ -835,7 +837,7 @@ class OpenPod implements Pod {
   }
 
   /** The patient profiles the import's revisions' versions name that no counting About ties to the subject. */
-  async #unclaimed(activity: string): Promise<string[]> {
+  async #unclaimedProfiles(activity: string): Promise<string[]> {
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT DISTINCT ?profile WHERE {
         ?revision prov:wasGeneratedBy <${activity}> ; cascade:version ?version .

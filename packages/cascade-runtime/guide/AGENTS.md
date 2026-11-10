@@ -277,7 +277,7 @@ export default defineConfig({ plugins: [react(), cascadeRuntime()] });
 On each export or downloaded C-CDA file the person picks, `look` reads its index
 and writes nothing: one source per hospital server, or per document's custodian,
 with its `name`, a FHIR source's `server`, `records` by kind, a C-CDA's entries
-per `sections` title, the times `received`, and `claimed`. Ask the person
+per `sections` title, the times `received`, and `holdsSubjectsRecords`. Ask the person
 whether the export is theirs; `import` it only after a yes. On a no, call nothing: the pod keeps none of it.
 
 ```js
@@ -297,11 +297,11 @@ async function bringIn(folder, options = {}) {
   });
   if (sources === undefined) return undefined;
   if (!(await askPerson("Are these records yours?", sources))) return undefined;
-  const imported = await pod.import(folder, { aboutSubject: true, ...options });
+  const imported = await pod.import(folder, { claimProfiles: true, ...options });
   if (imported.refused) await showPerson(`Not brought in: ${imported.refused}`);
   const naming = await recordsBy("profile/Which records name it", "profile");
-  const claimed = imported.claimed.map(({ profile: p }) => [p, naming(p)]);
-  await showPerson({ claimed, unclaimed: imported.unclaimed });
+  const claimedProfiles = imported.claimedProfiles.map(({ profile: p }) => [p, naming(p)]);
+  await showPerson({ claimedProfiles, unclaimedProfiles: imported.unclaimedProfiles });
   return imported;
 }
 
@@ -309,7 +309,7 @@ await bringIn(pickExport());
 await bringIn(pickExport());
 ```
 
-The look names no patient: `claimed` means the pod holds the subject's records
+The look names no patient: `holdsSubjectsRecords` means the pod holds the subject's records
 from that server, or from a document that custodian wrote, not that this
 export's are theirs; a second server is a source of its own, and so is a
 hospital's custodian beside its server. `import` with the yes claims every profile not yet claimed, runs the
@@ -326,7 +326,7 @@ The same calls run in Node and in a browser:
   configuration the sign-in read, and the client id, as a version of the
   server's record: the pod's record of the connect;
 - `pull(connection, DEMO_PLAN)` fetches the record, and gives a `Pull`;
-- `pod.import(pullFiles(pull, name), { aboutSubject: true })` brings it in, as
+- `pod.import(pullFiles(pull, name), { claimProfiles: true })` brings it in, as
   `bringIn` does an export.
 
 A failure is a `ConnectionFailure`, whose `kind` says why: `cancelled` when the
@@ -408,7 +408,7 @@ const files = pullFiles(record, "cascade-north-1");
 if (
   await askPerson("Are these records yours?", await hospitalPod.look(files))
 ) {
-  const brought = await hospitalPod.import(files, { aboutSubject: true });
+  const brought = await hospitalPod.import(files, { claimProfiles: true });
   if (brought.refused) await showPerson(`Not brought in: ${brought.refused}`);
 }
 await hospitalPod.close();
@@ -754,7 +754,7 @@ changes nothing else, or the person judges the pairs one by one.
 ## When an export holds someone else's records
 
 An export can carry another person's records, a child's, under a hospital the
-look shows claimed, and `import` claims that profile too. Only `claimed`, shown
+look lists as holding the subject's records (`holdsSubjectsRecords`), and `import` claims that profile too. Only `claimedProfiles`, shown
 to the person, catches it: retract the About of any profile not theirs.
 
 ```js
@@ -762,7 +762,7 @@ const isMine = (profile, naming) =>
   askPerson("Are these your records?", { profile, records: naming(profile) });
 async function confirmClaims(imported) {
   const naming = await recordsBy("profile/Which records name it", "profile");
-  for (const { profile, judgment: claim } of imported?.claimed ?? [])
+  for (const { profile, judgment: claim } of imported?.claimedProfiles ?? [])
     if (!(await isMine(profile, naming)))
       await judged(retraction(pod, claim, "these are someone else's records"));
 }
@@ -773,18 +773,18 @@ await confirmClaims(await bringIn(pickExport()));
 ## The steps run separately
 
 After the yes, `import` with `{ match: false }` only files, and without
-`aboutSubject` claims nothing, so each profile is asked about alone: claim each
-`unclaimed` one with an About, then `match` the import's `activity`; `match()`
+`claimProfiles` it claims nothing, so each profile is asked about alone: claim each
+`unclaimedProfiles` one with an About, then `match` the import's `activity`; `match()`
 rechecks the pod. Then offer each counting join of the matcher's, a pair at a
 time, filing a Different over a pair the person says no to. `replayKit`, behind
 `npm run pod:load`, fills an empty folder with a kit's story on the tables of the
 folder it is in, for tests only.
 
 ```js
-const fileOnly = { aboutSubject: false, match: false };
+const fileOnly = { claimProfiles: false, match: false };
 const filed = await bringIn(pickExport(), fileOnly);
 const naming = await recordsBy("profile/Which records name it", "profile");
-for (const profile of filed?.unclaimed ?? [])
+for (const profile of filed?.unclaimedProfiles ?? [])
   if (await isMine(profile, naming)) await judged(about(pod, profile));
 if (filed?.activity) await pod.match(filed.activity);
 await pod.match();

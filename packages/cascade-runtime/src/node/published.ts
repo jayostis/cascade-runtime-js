@@ -34,13 +34,13 @@ export async function entryVersion(folder: string = PACKAGE): Promise<string> {
 }
 
 /**
- * The kits' published samples, made from what the installed package carries: its components, its starter copies of
+ * The kits' samples to publish, made from what the installed package carries: its components, its starter copies of
  * the feeds' series, and its browser entry's version, which every answer is kept under. Each sample's files are keyed
  * as a page beside the samples' root reads them: `<kit>/pod/…` with `<kit>/pod/files.json`, `<kit>/pod.pack.json`,
- * `<kit>/answers.json`, `<kit>/pod.json` and, given `look`, `<kit>/lookups.json`. A kit the package does not carry is
+ * `<kit>/answers.json`, `<kit>/pod.json` and, given `lookups`, `<kit>/lookups.json`. A kit the package does not carry is
  * refused.
  */
-export async function publishedSamples(
+export async function samplesToPublish(
   options: SampleOptions = {},
 ): Promise<Samples> {
   const components = join(PACKAGE, "components");
@@ -63,20 +63,24 @@ export async function publishedSamples(
 }
 
 /**
- * The answers a browser keeps for a published pod, `name`, whose files are given, so that a copy of it reads without
- * the engine: `answers.json`, every question under the parts' lens, and `pod.json`, computed with the parts under
- * `runtime`, the version of the browser entry that copies it; `pod.json` also says which `tables` it was computed with.
- * Given `look`, what it asks of the tables about the pod, as the page that shows it asks, is kept as `lookups.json`.
+ * The answers a browser keeps for a published pod, `options.name`, whose files are `podFiles`, so that a copy of it reads
+ * without the engine: `answers.json`, every question under the parts' lens, and `pod.json`, computed with the parts under
+ * `options.runtime`, the version of the browser entry that copies it; `pod.json` also says which `tables` it was computed
+ * with. Given `options.lookups`, what it asks of the tables about the pod, as the page that shows it asks, is kept as
+ * `lookups.json`.
  */
-export async function publishedAnswers(
+export async function answersToPublish(
   parts: Parts,
-  name: string,
-  pod: ReadonlyMap<string, Uint8Array>,
-  runtime: string,
-  look?: (pod: Pod, tables: Tables) => Promise<unknown>,
+  podFiles: ReadonlyMap<string, Uint8Array>,
+  options: {
+    readonly name: string;
+    readonly runtime: string;
+    readonly lookups?: (pod: Pod, tables: Tables) => Promise<unknown>;
+  },
 ): Promise<Map<string, Uint8Array>> {
+  const { name, runtime, lookups } = options;
   const files = new MemoryFiles("urn:cascade:published/");
-  for (const [path, bytes] of pod) await files.write(path, bytes);
+  for (const [path, bytes] of podFiles) await files.write(path, bytes);
   const kept = new MemoryFiles("urn:cascade:answers/");
   const opened = await openPodWith(
     {
@@ -96,9 +100,9 @@ export async function publishedAnswers(
       const rows = await opened.ask(question);
       if (question === REPORTS && rows.length > 0) await opened.agreement();
     }
-    if (look !== undefined) {
+    if (lookups !== undefined) {
       const recorder = recording(parts.tables);
-      await look(opened, recorder.tables);
+      await lookups(opened, recorder.tables);
       answers.set(
         LOOKUPS,
         new TextEncoder().encode(
