@@ -1,89 +1,172 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { after, test } from "node:test";
+import { before, describe, it } from "node:test";
+import { PRONOUNS } from "cascade-runtime";
+import {
+  caseIds,
+  loadCase,
+  loadKey,
+  reusesPreparedPod,
+  type Case,
+} from "../src/cases.js";
+import { countsOf, instancesOf } from "../src/instances.js";
+import { ARM_PARTS, versionOf } from "../src/prompts.js";
 import type { BeyondVerdict, ItemVerdict } from "../src/results.js";
-import { downloads, PULL } from "./recorded-downloads.js";
+import { sessionInputsHash, splitSession } from "../src/sessions.js";
 
-const folder = await mkdtemp(join(tmpdir(), "cascade-evals-sessions-"));
-process.env.CASCADE_EVALS_TRANSCRIPTS = join(folder, "transcripts");
-const { configureTables, openPod } = await import("cascade-runtime");
-configureTables({ checkOnOpen: false });
-const { caseIds, loadCase, loadKey } = await import("../src/cases.js");
-const { errorsOf } = await import("../src/schemas.js");
-const { PRONOUNS } = await import("cascade-runtime");
-const { sessionInputsHash, splitSession } = await import("../src/sessions.js");
-const { countsOf, instancesOf } = await import("../src/instances.js");
-const { reusesPreparedPod } = await import("../src/cases.js");
-const { ARM_PARTS, versionOf } = await import("../src/prompts.js");
-const { finish } = await import("../src/record.js");
-after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
+type Inputs = Parameters<typeof sessionInputsHash>[0];
 
-test("every case asks its questions in sessions, and its key holds an item for each question and none for another", async () => {
-  for (const id of await caseIds()) {
-    const found = await loadCase(id);
-    const { key } = await loadKey(id);
-    const asked = found.sessions.flatMap((it) => it.questions.map((q) => q.id));
-    assert.equal(new Set(asked).size, asked.length, `${id} asks each once`);
-    assert.ok(asked.includes("checkup"), `${id} asks the check-up question`);
-    for (const question of asked)
-      assert.ok(
-        key.items.some((it) => it.question === question),
-        `${id}: the key has an item for ${question}`,
-      );
-    for (const item of key.items)
-      assert.ok(asked.includes(item.question), `${id}: ${item.id}'s question`);
-  }
-  const tamsin = (await loadCase("tamsin-vale")).sessions.flatMap(
-    (it) => it.questions,
-  );
-  assert.ok(tamsin.length >= 4 && tamsin.length <= 6, "Tamsin asks 4 to 6");
-});
+/**
+ * A session is not run again when a recorded one had the same inputs, and its inputs hash is how the harness tells.
+ * What follows is what that hash and a prompt's version cover, since anything left out is a change that reruns nothing.
+ */
+describe("Reusing a session whose inputs are unchanged · sessionInputsHash(), versionOf(), reusesPreparedPod()", () => {
+  describe("sessionInputsHash({ found, session, … })", () => {
+    let hash: (over?: Partial<Inputs>) => string;
+    let hashesBefore: string[];
+    let hashesAfter: string[];
 
-test("a reworded question reruns only the sessions that ask it", async () => {
-  const found = await loadCase("tamsin-vale");
-  const hashes = (it: typeof found) =>
-    it.sessions.map((session) =>
-      sessionInputsHash({
-        found: it,
-        session,
-        downloads: "digest",
-        arm: "pod",
-        model: "claude-opus-5-5",
-        effort: undefined,
-        repeat: 1,
-        pod: {},
-        tools: ["Bash", "Write"],
-        runner: "1",
-      }),
-    );
-  const before = hashes(found);
-  const reworded = structuredClone(found) as typeof found;
-  (reworded.sessions[1]!.questions[0] as { asks: string }).asks += " Really?";
-  const now = hashes(reworded);
-  assert.equal(now[0], before[0]);
-  assert.notEqual(now[1], before[1]);
-});
-
-test("how a child was run is in the session hash: other tools or another runner, another hash", async () => {
-  const found = await loadCase("tamsin-vale");
-  const hash = (tools: string[], runner: string) =>
-    sessionInputsHash({
-      found,
-      session: found.sessions[0]!,
-      downloads: "d",
-      arm: "pod",
-      model: "m",
-      effort: undefined,
-      repeat: 1,
-      pod: {},
-      tools,
-      runner,
+    before(async () => {
+      const found = await loadCase("tamsin-vale");
+      hash = (over = {}) =>
+        sessionInputsHash({
+          found,
+          session: found.sessions[0]!,
+          downloads: "d",
+          arm: "pod",
+          model: "m",
+          effort: undefined,
+          repeat: 1,
+          pod: {},
+          tools: ["Bash"],
+          runner: "1",
+          ...over,
+        });
+      const hashes = (it: Case) =>
+        it.sessions.map((session) => hash({ found: it, session }));
+      hashesBefore = hashes(found);
+      const reworded = structuredClone(found);
+      (reworded.sessions[1]!.questions[0] as { asks: string }).asks +=
+        " Really?";
+      hashesAfter = hashes(reworded);
     });
-  assert.equal(hash(["Bash"], "1"), hash(["Bash"], "1"));
-  assert.notEqual(hash(["Bash"], "1"), hash(["Bash", "Write"], "1"));
-  assert.notEqual(hash(["Bash"], "1"), hash(["Bash"], "2"));
+
+    it("returns the same hash for the same inputs", () => {
+      assert.equal(hash(), hash());
+    });
+
+    it("changes for the session that asks a reworded question", () => {
+      assert.notEqual(hashesAfter[1], hashesBefore[1]);
+    });
+
+    it("keeps the hash of a session that does not ask it", () => {
+      assert.equal(hashesAfter[0], hashesBefore[0]);
+    });
+
+    it("changes with the tools a child is allowed", () => {
+      assert.notEqual(hash({ tools: ["Bash", "Write"] }), hash());
+    });
+
+    it("changes with the runner's version", () => {
+      assert.notEqual(hash({ runner: "2" }), hash());
+    });
+
+    it("changes with the downloads", () => {
+      assert.notEqual(hash({ downloads: "other" }), hash());
+    });
+
+    it("changes with the pod's commits on the pod arm", () => {
+      assert.notEqual(
+        hash({ pod: { packages: { runtime: "abc1234" } } }),
+        hash({ pod: {} }),
+      );
+    });
+
+    it("keeps a records-arm session's hash when the pod's commits change", () => {
+      assert.equal(
+        hash({ arm: "records", pod: { packages: { runtime: "abc1234" } } }),
+        hash({ arm: "records", pod: {} }),
+      );
+    });
+  });
+
+  describe("versionOf(arm, parts)", () => {
+    it("changes when the arm's example changes", () => {
+      assert.notEqual(
+        versionOf("pod", {
+          ...ARM_PARTS.pod,
+          example: ARM_PARTS.pod.example + " ",
+        }),
+        versionOf("pod"),
+      );
+    });
+
+    it("changes when the records arm's citing instructions change", () => {
+      assert.notEqual(
+        versionOf("records", { ...ARM_PARTS.records, cite: "changed" }),
+        versionOf("records"),
+      );
+    });
+
+    it("differs between the two arms", () => {
+      assert.notEqual(versionOf("pod"), versionOf("records"));
+    });
+
+    it("changes with the pronouns a prompt is written with", () => {
+      const first = versionOf("pod");
+      const kept = PRONOUNS.her!;
+      try {
+        PRONOUNS.her = ["she", "Hers"];
+        assert.notEqual(versionOf("pod"), first);
+      } finally {
+        PRONOUNS.her = kept;
+      }
+      assert.equal(versionOf("pod"), first, "the pronouns are put back");
+    });
+  });
+
+  describe("reusesPreparedPod(kept, downloadsSha256, components, tables)", () => {
+    const components = [{ repository: "r", commit: "c" }] as never;
+    const kept = {
+      downloadsSha256: "d",
+      components,
+      build: { seconds: 1, modelCalls: 0, tokens: 0, usd: 0 },
+      tables: { id: "t", versions: ["v"] },
+    } as never;
+
+    it("returns true for a prepared pod of the same downloads, components and reference tables", () => {
+      assert.equal(reusesPreparedPod(kept, "d", components, "t"), true);
+    });
+
+    it("returns false for a prepared pod with no build time recorded", () => {
+      assert.equal(
+        reusesPreparedPod(
+          { ...(kept as object), build: undefined } as never,
+          "d",
+          components,
+          "t",
+        ),
+        false,
+      );
+    });
+
+    it("returns false for other downloads", () => {
+      assert.equal(reusesPreparedPod(kept, "other", components, "t"), false);
+    });
+
+    it("returns false for other reference tables, or none recorded", () => {
+      assert.equal(reusesPreparedPod(kept, "d", components, "newer"), false);
+      // A pod built before it had tables is stale.
+      assert.equal(
+        reusesPreparedPod(
+          { ...(kept as object), tables: undefined } as never,
+          "d",
+          components,
+          "t",
+        ),
+        false,
+      );
+    });
+  });
 });
 
 const call = (
@@ -102,7 +185,12 @@ const call = (
   usd: 0.01,
 });
 
-test("a session's calls split at each hand-out: before the first is the session's own, then each question's, the records' context counted apart", () => {
+/**
+ * A session's model calls are split at each hand-out, so a question's tokens and time stand apart from what the
+ * session spent before its first question. On the records arm the files a session read before its first question are
+ * read again, as cache, by every later call, and `recordsTokens` says how much of a question's cost that is.
+ */
+describe("Charging each question its own cost · splitSession()", () => {
   const calls = [
     call("2026-10-31T10:00:00.000Z", 5_000, 0, 0),
     call("2026-10-31T10:00:10.000Z", 10, 20_000, 5_000),
@@ -114,758 +202,326 @@ test("a session's calls split at each hand-out: before the first is the session'
     { question: "a", at: "2026-10-31T10:00:20.000Z" },
     { question: "b", at: "2026-10-31T10:01:00.000Z" },
   ];
-  const split = splitSession(
-    calls,
-    asked,
-    "2026-10-31T10:01:20.000Z",
-    "records",
-  );
-  assert.deepEqual(Object.keys(split.questions), ["a", "b"]);
-  assert.equal(split.shared.calls, 2);
-  assert.equal(split.questions.a!.calls, 2);
-  assert.equal(split.questions.b!.calls, 1);
-  assert.equal(split.questions.a!.seconds, 40);
-  assert.equal(split.questions.b!.seconds, 20);
-  assert.equal(split.shared.recordsContext, 25_510 - 5_000);
-  assert.equal(split.questions.a!.recordsTokens, 2 * 20_510);
-  const total = (part: { tokens: { total: number } }) => part.tokens.total;
-  assert.equal(
-    total(split.shared) + total(split.questions.a!) + total(split.questions.b!),
-    calls.reduce(
-      (sum, it) => sum + it.input + it.cacheCreation + it.cacheRead + it.output,
-      0,
-    ),
-  );
-  const pod = splitSession(calls, asked, "2026-10-31T10:01:20.000Z", "pod");
-  assert.equal(pod.shared.recordsContext, undefined);
-});
+  const ended = "2026-10-31T10:01:20.000Z";
 
-test("an arm is counted from its judges: a verdict they share, else split; beyond the key by its verdict", () => {
-  const item = (
-    id: string,
-    kind: "fact" | "trap" | "gap" | "absence",
-    question: string,
-  ) => ({
-    id,
-    kind,
-    question,
-  });
-  const grade = (
-    judge: string,
-    question: string,
-    items: [string, ItemVerdict][],
-    beyond: BeyondVerdict[],
-  ) => ({
-    subject: "s",
-    question,
-    judge,
-    items: items.map(([id, verdict]) => ({
-      id,
-      verdict,
-      items: [1],
-      reason: "",
-    })),
-    beyond: beyond.map((verdict, at) => ({ item: at + 2, verdict, why: "" })),
-    chains: [],
-  });
-  const counts = countsOf(
-    [
-      item("F1", "fact", "a"),
-      item("T1", "trap", "a"),
-      item("G1", "gap", "b"),
-      item("A1", "absence", "c"),
-    ],
-    [
-      grade(
-        "j1",
-        "a",
-        [
-          ["F1", "found"],
-          ["T1", "avoided"],
-        ],
-        ["fair", "speculative"],
-      ),
-      grade(
-        "j2",
-        "a",
-        [
-          ["F1", "partly"],
-          ["T1", "avoided"],
-        ],
-        ["fair", "contradicted"],
-      ),
-      grade("j1", "b", [["G1", "found"]], []),
-      grade("j2", "b", [["G1", "found"]], []),
-    ],
-    ["a", "b", "c"],
-  );
-  assert.deepEqual(counts.expected, {
-    found: 1,
-    partly: 0,
-    missed: 0,
-    split: 1,
-    ungraded: 1,
-    unanswered: 0,
-    of: 3,
-  });
-  assert.deepEqual(counts.traps, {
-    avoided: 1,
-    raised: 0,
-    split: 0,
-    ungraded: 0,
-    unanswered: 0,
-    of: 1,
-  });
-  assert.deepEqual(counts.beyond, {
-    fair: 1,
-    trueNotPlanted: 0,
-    speculative: 0,
-    contradicted: 0,
-    split: 1,
-  });
-});
+  describe("splitSession(calls, asked, ended, arm)", () => {
+    const split = splitSession(calls, asked, ended, "records");
 
-/** A Claude Code transcript of one agent: its tagged prompt, then each call with its usage and the tools it used. */
-function transcript(
-  tag: string,
-  model: string,
-  calls: {
-    at: string;
-    usage: [number, number, number, number];
-    tools?: { name: string; input: object }[];
-  }[],
-): string {
-  return [
-    {
-      type: "user",
-      timestamp: calls[0]!.at,
-      message: {
-        role: "user",
-        content: `eval-tag: ${tag}\n\nRead the prompt.`,
-      },
-    },
-    ...calls.map(
-      ({ at, usage: [input, creation, read, output], tools = [] }, n) => ({
-        type: "assistant",
-        timestamp: at,
-        message: {
-          id: `${tag}-${n}`,
-          model,
-          content: tools.map((it) => ({ type: "tool_use", ...it })),
-          usage: {
-            input_tokens: input,
-            cache_creation_input_tokens: creation,
-            cache_read_input_tokens: read,
-            output_tokens: output,
-          },
-        },
-      }),
-    ),
-  ]
-    .map((line) => JSON.stringify(line))
-    .join("\n");
-}
-
-test("a recorded session run finishes into results that hold to their schema: each question's cost apart, every citation resolved, each instance counted, judging apart", async () => {
-  const run = join(folder, "recorded");
-  const id = "recorded";
-  const at = await downloads(join(folder, "recorded-downloads"));
-  const pods = join(folder, "recorded-pods");
-  await (
-    await openPod(join(pods, "tamsin-vale"), { title: "Tamsin Vale" })
-  ).close();
-  const POD = "tamsin-vale.worries.pod.opus-5-5.r1";
-  const REC = "tamsin-vale.worries.records.opus-5-5.r1";
-  const JUDGE = "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1";
-  const questions = ["blood-clot", "allergies"];
-  const subject = (job: string, arm: string) => ({
-    id: job,
-    role: "subject",
-    case: "tamsin-vale",
-    session: "worries",
-    questions,
-    arm,
-    model: "claude-opus-5-5",
-    alias: "opus",
-    repeat: 1,
-    tag: `${id}/${job}`,
-    status: "dispatched",
-    dispatched: true,
-    estimate: { tokens: 0, usd: 0 },
-    answers: `answers/${job}`,
-    prompt: `prompts/${job}.txt`,
-  });
-  const labels = {
-    A: { job: REC, question: "blood-clot" },
-    B: { job: POD, question: "blood-clot" },
-    C: { job: POD, question: "allergies" },
-    D: { job: REC, question: "allergies" },
-  };
-  const created = new Date().toISOString();
-  await mkdir(join(run, "judges"), { recursive: true });
-  await writeFile(
-    join(run, "plan.json"),
-    JSON.stringify({
-      run: id,
-      folder: run,
-      created,
-      config: {
-        tier: "custom",
-        cases: ["tamsin-vale"],
-        arms: ["pod", "records"],
-        subjects: ["claude-opus-5-5"],
-        repeats: 1,
-        judges: ["claude-haiku-5-5"],
-        cap: { usd: 5 },
-      },
-      configSha256: "",
-      harness: { commit: "0000000", uncommitted: 0 },
-      podCommits: { packages: {}, components: [] },
-      prompts: {},
-      cases: [
-        {
-          id: "tamsin-vale",
-          downloadsSha256: "",
-          keySha256: "",
-          prepared: {
-            case: "tamsin-vale",
-            downloads: at,
-            downloadsSha256: "",
-            pods,
-            pod: "tamsin-vale",
-            components: [],
-            imports: [],
-            documents: [],
-            build: { seconds: 3.1, modelCalls: 0, tokens: 0, usd: 0 },
-          },
-        },
-      ],
-      jobs: [
-        subject(POD, "pod"),
-        subject(REC, "records"),
-        {
-          id: JUDGE,
-          role: "judge",
-          case: "tamsin-vale",
-          instance: "tamsin-vale.opus-5-5.r1",
-          model: "claude-haiku-5-5",
-          alias: "haiku",
-          tag: `${id}/${JUDGE}`,
-          status: "dispatched",
-          dispatched: true,
-          estimate: { tokens: 0, usd: 0 },
-          verdict: `judges/${JUDGE}.json`,
-          prompt: `prompts/${JUDGE}.txt`,
-          labels,
-        },
-      ],
-      estimate: { tokens: 0, usd: 0 },
-      fitsCap: true,
-    }),
-  );
-  const t = (seconds: number) =>
-    new Date(Date.parse(created) + seconds * 1000).toISOString();
-  const ENTRY = "pod://p/clinical/conditions.ttl#pe";
-  const answers: Record<string, Record<string, unknown>> = {
-    [POD]: {
-      "blood-clot": {
-        answer:
-          "No. A clot in the lung was looked for on 8 July 2025 and ruled out.",
-        short: "No: suspected and ruled out on 2025-07-08.",
-        items: [
-          {
-            n: 1,
-            says: "No pulmonary embolism is among your conditions.",
-            why: "The one recorded was refuted.",
-            confidence: "high",
-            facts: [
-              {
-                says: "A pulmonary embolism, refuted.",
-                cite: { entry: ENTRY },
-                field: "status",
-              },
-            ],
-            absences: [
-              {
-                what: "An active pulmonary embolism",
-                match: { codes: ["59282003"], terms: ["pulmonary embolism"] },
-                coverage: "Every active condition from every source",
-                query: {
-                  tool: "ask",
-                  input: { question: "pod/My active conditions" },
-                  call: 1,
-                },
-              },
-            ],
-          },
-        ],
-      },
-      allergies: {
-        answer:
-          "No allergies are recorded, from the one hospital whose records you have.",
-        short: "None recorded.",
-        items: [
-          {
-            n: 1,
-            says: "No allergies are recorded.",
-            why: "The allergy list is empty.",
-            confidence: "high",
-            facts: [],
-            absences: [
-              {
-                what: "Any allergy",
-                match: { terms: ["allergy"] },
-                coverage: "Every allergy from every source, any date",
-                query: {
-                  tool: "ask",
-                  input: { question: "pod/My active allergies" },
-                },
-              },
-            ],
-          },
-        ],
-      },
-    },
-    [REC]: {
-      "blood-clot": {
-        answer:
-          "No. The CT angiogram of 8 July 2025 found no pulmonary embolism.",
-        short: "No: the CT found none.",
-        items: [
-          {
-            n: 1,
-            says: "The CT report says there was no pulmonary embolism.",
-            why: "Its conclusion says so.",
-            confidence: "high",
-            facts: [
-              {
-                says: "The CT angiogram found no pulmonary embolism.",
-                provider: "Cascade North",
-                cite: {
-                  file: "north-2026-10/bundle.json",
-                  resource: "DiagnosticReport/dr-1",
-                },
-                quote: "No pulmonary embolism",
-              },
-            ],
-            absences: [],
-            links: [],
-          },
-        ],
-      },
-      allergies: {
-        answer: "You have no allergies.",
-        short: "None.",
-        items: [
-          {
-            n: 1,
-            says: "You have no allergies.",
-            why: "None of the files lists one.",
-            confidence: "high",
-            facts: [],
-            absences: [
-              {
-                what: "Any allergy",
-                match: { terms: ["AllergyIntolerance"] },
-                coverage: "Every file",
-              },
-            ],
-          },
-        ],
-      },
-    },
-  };
-  for (const [job, byQuestion] of Object.entries(answers)) {
-    await mkdir(join(run, "answers", job), { recursive: true });
-    for (const [question, answer] of Object.entries(byQuestion))
-      await writeFile(
-        join(run, "answers", job, `${question}.json`),
-        JSON.stringify(answer),
-      );
-  }
-  await writeFile(
-    join(run, "asked.jsonl"),
-    [
-      {
-        job: POD,
-        question: "blood-clot",
-        at: t(10),
-        message: "Did I ever have a blood clot in my lung?",
-      },
-      {
-        job: POD,
-        question: "allergies",
-        at: t(40),
-        message: "Am I allergic to anything?",
-      },
-      {
-        job: REC,
-        question: "blood-clot",
-        at: t(30),
-        message: "Did I ever have a blood clot in my lung?",
-      },
-      {
-        job: REC,
-        question: "allergies",
-        at: t(60),
-        message: "Am I allergic to anything?",
-      },
-    ]
-      .map((it) => JSON.stringify(it))
-      .join("\n") + "\n",
-  );
-  await writeFile(
-    join(run, "tool-calls.jsonl"),
-    JSON.stringify({
-      job: POD,
-      call: 1,
-      at: t(15),
-      tool: "ask",
-      input: { question: "pod/My active conditions" },
-      ok: true,
-      rows: 1,
-      entries: [],
-      answer: JSON.stringify({
-        rows: [{ condition: "Type 2 diabetes mellitus" }],
-        total: 1,
-      }),
-      milliseconds: 12,
-    }) + "\n",
-  );
-  await writeFile(
-    join(run, "judges", `${JUDGE}.json`),
-    JSON.stringify({
-      outputs: [
-        {
-          label: "A",
-          items: [
-            { id: "TN1", verdict: "found", items: [1], reason: "" },
-            { id: "TT5", verdict: "avoided", items: [], reason: "" },
-          ],
-          beyond: [],
-          chains: [{ item: 1, complete: true, faithful: true, skipped: [] }],
-        },
-        {
-          label: "B",
-          items: [
-            { id: "TN1", verdict: "found", items: [1], reason: "" },
-            { id: "TT5", verdict: "avoided", items: [], reason: "" },
-          ],
-          beyond: [],
-          chains: [{ item: 1, complete: true, faithful: true, skipped: [] }],
-        },
-        {
-          label: "C",
-          items: [
-            { id: "TA1", verdict: "found", items: [1], reason: "" },
-            { id: "TT6", verdict: "avoided", items: [], reason: "" },
-          ],
-          beyond: [],
-          chains: [{ item: 1, complete: true, faithful: true, skipped: [] }],
-        },
-        {
-          label: "D",
-          items: [
-            { id: "TA1", verdict: "partly", items: [1], reason: "overstates" },
-            { id: "TT6", verdict: "avoided", items: [], reason: "" },
-          ],
-          beyond: [{ item: 1, verdict: "speculative", why: "" }],
-          chains: [{ item: 1, complete: true, faithful: false, skipped: [] }],
-        },
-      ],
-    }),
-  );
-  const transcripts = join(folder, "transcripts", "project");
-  await mkdir(transcripts, { recursive: true });
-  const write = (job: string, path: string) => ({
-    name: "Write",
-    input: { file_path: join(run, "answers", job, path), content: "{}" },
-  });
-  await writeFile(
-    join(transcripts, "agent-pod.jsonl"),
-    transcript(`${id}/${POD}`, "claude-opus-5-5", [
-      { at: t(1), usage: [3_000, 0, 0, 50] },
-      { at: t(12), usage: [10, 1_000, 3_000, 80] },
-      {
-        at: t(20),
-        usage: [10, 500, 4_000, 400],
-        tools: [write(POD, "blood-clot.json")],
-      },
-      {
-        at: t(45),
-        usage: [10, 500, 4_500, 300],
-        tools: [write(POD, "allergies.json")],
-      },
-    ]),
-  );
-  const read = (file: string) => ({
-    name: "Read",
-    input: { file_path: join(at, file) },
-  });
-  await writeFile(
-    join(transcripts, "agent-records.jsonl"),
-    transcript(`${id}/${REC}`, "claude-opus-5-5", [
-      {
-        at: t(1),
-        usage: [3_000, 0, 0, 50],
-        tools: (await loadCase("tamsin-vale")).reading.map(read),
-      },
-      { at: t(20), usage: [10, 20_000, 3_000, 50] },
-      {
-        at: t(35),
-        usage: [10, 500, 23_000, 400],
-        tools: [write(REC, "blood-clot.json")],
-      },
-      {
-        at: t(65),
-        usage: [10, 500, 23_500, 300],
-        tools: [write(REC, "allergies.json")],
-      },
-    ]),
-  );
-  await writeFile(
-    join(transcripts, "agent-judge.jsonl"),
-    transcript(`${id}/${JUDGE}`, "claude-haiku-5-5", [
-      { at: t(70), usage: [8_000, 0, 0, 2_000] },
-    ]),
-  );
-  await finish(run, () => undefined);
-  const results = JSON.parse(await readFile(join(run, "results.json"), "utf8"));
-  assert.deepEqual(errorsOf("results", results), []);
-  const job = (it: string) =>
-    results.jobs.find((j: { id: string }) => j.id === it);
-  assert.equal(job(POD).status, "done");
-  assert.deepEqual(Object.keys(job(REC).split.questions), questions);
-  assert.equal(job(REC).split.shared.calls, 2);
-  assert.ok(job(REC).split.questions["blood-clot"].recordsTokens > 0);
-  assert.deepEqual(
-    results.asked.map((it: { question: string }) => it.question),
-    ["blood-clot", "allergies", "blood-clot", "allergies"],
-  );
-  const cited = results.evidence.find(
-    (it: { job: string; question: string }) =>
-      it.job === REC && it.question === "blood-clot",
-  );
-  assert.equal(cited.passage.resource, "DiagnosticReport/dr-1");
-  assert.match(cited.passage.text, /No pulmonary embolism/);
-  assert.deepEqual(cited.passage.download, PULL);
-  const looked = results.evidence.find(
-    (it: { job: string; question: string; absence?: number }) =>
-      it.job === POD && it.question === "blood-clot" && it.absence === 0,
-  );
-  assert.deepEqual([looked.call.rows, looked.call.milliseconds], [1, 12]);
-  const [tamsin] = results.cases;
-  assert.equal(tamsin.build.seconds, 3.1);
-  assert.ok(tamsin.sessions.some((it: { id: string }) => it.id === "worries"));
-  assert.ok(
-    tamsin.key.some(
-      (it: { id: string; question: string }) =>
-        it.id === "TN1" && it.question === "blood-clot",
-    ),
-  );
-  assert.match(
-    tamsin.keyUrl,
-    /cascade-runtime-js\/blob\/0000000\/packages\/evals\/cases\/tamsin-vale\/key\.md$/,
-  );
-  const [instance] = results.instances;
-  assert.equal(instance.id, "tamsin-vale.opus-5-5.r1");
-  assert.deepEqual(instance.arms.pod.expected, {
-    found: 2,
-    partly: 0,
-    missed: 0,
-    split: 0,
-    ungraded: 0,
-    unanswered: 5,
-    of: 7,
-  });
-  assert.deepEqual(instance.arms.records.expected, {
-    found: 1,
-    partly: 1,
-    missed: 0,
-    split: 0,
-    ungraded: 0,
-    unanswered: 5,
-    of: 7,
-  });
-  assert.equal(instance.arms.records.beyond.speculative, 1);
-  assert.equal(instance.arms.records.citations.held, 1);
-  assert.equal(
-    instance.arms.records.citations.byField,
-    undefined,
-    "a copied fact names no field",
-  );
-  assert.deepEqual(instance.arms.pod.citations.byField, {
-    status: { held: 0, failed: 1 },
-  });
-  assert.equal(instance.judging.usd, job(JUDGE).stats.cost.usd);
-  assert.ok(instance.judging.usd > 0);
-  assert.ok(instance.arms.pod.usd > 0);
-  assert.equal(instance.arms.pod.usd, job(POD).stats.cost.usd);
-  const index = await readFile(join(run, "site", "index.html"), "utf8");
-  assert.match(index, /href="instances\/tamsin-vale\.opus-5-5\.r1\.html"/);
-  assert.match(index, /<b>4 of 13<\/b>/);
-  const page = await readFile(
-    join(run, "site", "instances", "tamsin-vale.opus-5-5.r1.html"),
-    "utf8",
-  );
-  for (const said of [
-    "Did I ever have a blood clot in my lung?",
-    "The CT angiogram of 8 July 2025 found no pulmonary embolism.",
-    "A clot in the lung was looked for on 8 July 2025 and ruled out.",
-    "haiku-5-5",
-  ])
-    assert.ok(page.includes(said), `the run page shows ${said}`);
-});
-
-test("a question an arm never answered stays in the total, counted unanswered, so both arms share it", () => {
-  const items = [
-    { id: "F1", kind: "fact" as const, question: "a" },
-    { id: "F2", kind: "fact" as const, question: "b" },
-    { id: "T1", kind: "trap" as const, question: "b" },
-  ];
-  const answeredA = countsOf(
-    items,
-    [
-      {
-        subject: "s",
-        question: "a",
-        items: [{ id: "F1", verdict: "found", items: [1], reason: "" }],
-        beyond: [],
-      },
-    ],
-    ["a"],
-  );
-  assert.deepEqual(answeredA.expected, {
-    found: 1,
-    partly: 0,
-    missed: 0,
-    split: 0,
-    ungraded: 0,
-    unanswered: 1,
-    of: 2,
-  });
-  assert.deepEqual(answeredA.traps, {
-    avoided: 0,
-    raised: 0,
-    split: 0,
-    ungraded: 0,
-    unanswered: 1,
-    of: 1,
-  });
-});
-
-test("an instance totals every key item for both arms, and its judging cost is null when a judge's is", () => {
-  const job = (id: string, extra: Record<string, unknown>) =>
-    ({
-      id,
-      case: "tamsin-vale",
-      model: "claude-opus-5-5",
-      repeat: 1,
-      status: "done",
-      estimate: { tokens: 0, usd: 0 },
-      ...extra,
-    }) as never;
-  const judge = (id: string, usd: number | null) =>
-    job(id, {
-      role: "judge",
-      instance: "tamsin-vale.opus-5-5.r1",
-      stats: { tokens: { total: 10 }, cost: { usd } },
+    it("returns a part for each question, in the order they were handed out", () => {
+      assert.deepEqual(Object.keys(split.questions), ["a", "b"]);
     });
-  const [instance] = instancesOf(
-    [
-      job("p", { role: "subject", arm: "pod" }),
-      job("r", { role: "subject", arm: "records" }),
-      judge("j1", 0.5),
-      judge("j2", null),
-    ],
-    [],
-    {},
-    { r: { a: {} } },
-    new Map([
+
+    it("charges the calls before the first hand-out to the session, not to a question", () => {
+      assert.equal(split.shared.calls, 2);
+    });
+
+    it("charges each later call to the question handed out last before it", () => {
+      assert.equal(split.questions.a!.calls, 2);
+      assert.equal(split.questions.b!.calls, 1);
+    });
+
+    it("times each question from its hand-out to the next, the last to the session's end", () => {
+      assert.equal(split.questions.a!.seconds, 40);
+      assert.equal(split.questions.b!.seconds, 20);
+    });
+
+    it("charges every token of the session once, across the session's part and the questions'", () => {
+      const total = (part: { tokens: { total: number } }) => part.tokens.total;
+      assert.equal(
+        total(split.shared) +
+          total(split.questions.a!) +
+          total(split.questions.b!),
+        calls.reduce(
+          (sum, it) =>
+            sum + it.input + it.cacheCreation + it.cacheRead + it.output,
+          0,
+        ),
+      );
+    });
+  });
+
+  describe('splitSession(…, "records")', () => {
+    const split = splitSession(calls, asked, ended, "records");
+
+    it("returns as the records' context what the first call after the first hand-out holds beyond the session's first call", () => {
+      assert.equal(split.shared.recordsContext, 25_510 - 5_000);
+    });
+
+    it("charges each question that context once for each of its calls", () => {
+      assert.equal(split.questions.a!.recordsTokens, 2 * 20_510);
+      assert.equal(split.questions.b!.recordsTokens, 20_510);
+    });
+  });
+
+  describe('splitSession(…, "pod")', () => {
+    it("returns no records' context", () => {
+      assert.equal(
+        splitSession(calls, asked, ended, "pod").shared.recordsContext,
+        undefined,
+      );
+    });
+  });
+});
+
+const item = (
+  id: string,
+  kind: "fact" | "trap" | "gap" | "absence",
+  question: string,
+) => ({ id, kind, question });
+const grade = (
+  judge: string,
+  question: string,
+  items: [string, ItemVerdict][],
+  beyond: BeyondVerdict[],
+) => ({
+  subject: "s",
+  question,
+  judge,
+  items: items.map(([id, verdict]) => ({
+    id,
+    verdict,
+    items: [1],
+    reason: "",
+  })),
+  beyond: beyond.map((verdict, at) => ({ item: at + 2, verdict, why: "" })),
+  chains: [],
+});
+
+/**
+ * An arm's count of a key item is the verdict its judges share; where they differ it is counted split, and a question
+ * the arm never answered is counted unanswered, so both arms are counted out of the same total.
+ */
+describe("Counting what each arm found · countsOf(), instancesOf()", () => {
+  describe("countsOf(items, grades, answered)", () => {
+    // Questions a and b are answered and graded by two judges; c is answered and graded by none.
+    const counts = countsOf(
       [
-        "tamsin-vale",
-        [
-          { id: "F1", kind: "fact", question: "a" },
-          { id: "F2", kind: "fact", question: "b" },
-        ],
+        item("F1", "fact", "a"),
+        item("T1", "trap", "a"),
+        item("G1", "gap", "b"),
+        item("A1", "absence", "c"),
       ],
-    ]) as never,
-  );
-  assert.equal(instance!.arms.pod!.expected.of, 2);
-  assert.equal(instance!.arms.records!.expected.of, 2);
-  assert.equal(instance!.arms.pod!.expected.unanswered, 2);
-  assert.equal(instance!.arms.records!.expected.unanswered, 1);
-  assert.equal(instance!.judging.usd, null);
+      [
+        grade(
+          "j1",
+          "a",
+          [
+            ["F1", "found"],
+            ["T1", "avoided"],
+          ],
+          ["fair", "speculative"],
+        ),
+        grade(
+          "j2",
+          "a",
+          [
+            ["F1", "partly"],
+            ["T1", "avoided"],
+          ],
+          ["fair", "contradicted"],
+        ),
+        grade("j1", "b", [["G1", "found"]], []),
+        grade("j2", "b", [["G1", "found"]], []),
+      ],
+      ["a", "b", "c"],
+    );
+
+    it("counts a key item by the verdict its judges share", () => {
+      assert.deepEqual(counts.expected, {
+        found: 1,
+        partly: 0,
+        missed: 0,
+        split: 1,
+        ungraded: 1,
+        unanswered: 0,
+        of: 3,
+      });
+    });
+
+    it("counts a key item its judges grade differently as split", () => {
+      assert.equal(counts.expected.split, 1);
+    });
+
+    it("counts the key items of an answered question no judge graded as ungraded", () => {
+      assert.equal(counts.expected.ungraded, 1);
+    });
+
+    it("counts a key item that is a trap apart, out of the traps' own total", () => {
+      assert.deepEqual(counts.traps, {
+        avoided: 1,
+        raised: 0,
+        split: 0,
+        ungraded: 0,
+        unanswered: 0,
+        of: 1,
+      });
+    });
+
+    it("counts a point beyond the key by the verdict its judges share", () => {
+      assert.equal(counts.beyond.fair, 1);
+    });
+
+    it("counts a point beyond the key its judges grade differently as split", () => {
+      assert.deepEqual(counts.beyond, {
+        fair: 1,
+        trueNotPlanted: 0,
+        speculative: 0,
+        contradicted: 0,
+        split: 1,
+      });
+    });
+  });
+
+  describe("given a question the arm never answered", () => {
+    const answeredA = countsOf(
+      [
+        item("F1", "fact", "a"),
+        item("F2", "fact", "b"),
+        item("T1", "trap", "b"),
+      ],
+      [
+        {
+          subject: "s",
+          question: "a",
+          items: [{ id: "F1", verdict: "found", items: [1], reason: "" }],
+          beyond: [],
+        },
+      ],
+      ["a"],
+    );
+
+    it("counts that question's key items as unanswered, a trap among them too", () => {
+      assert.equal(answeredA.expected.unanswered, 1);
+      assert.equal(answeredA.traps.unanswered, 1);
+    });
+
+    it("keeps them in the total", () => {
+      assert.deepEqual(answeredA.expected, {
+        found: 1,
+        partly: 0,
+        missed: 0,
+        split: 0,
+        ungraded: 0,
+        unanswered: 1,
+        of: 2,
+      });
+      assert.deepEqual(answeredA.traps, {
+        avoided: 0,
+        raised: 0,
+        split: 0,
+        ungraded: 0,
+        unanswered: 1,
+        of: 1,
+      });
+    });
+  });
+
+  describe("instancesOf(jobs, grades, checks, answers, keys)", () => {
+    const job = (id: string, extra: Record<string, unknown>) =>
+      ({
+        id,
+        case: "tamsin-vale",
+        model: "claude-opus-5-5",
+        repeat: 1,
+        status: "done",
+        estimate: { tokens: 0, usd: 0 },
+        ...extra,
+      }) as never;
+    const judge = (id: string, usd: number | null) =>
+      job(id, {
+        role: "judge",
+        instance: "tamsin-vale.opus-5-5.r1",
+        stats: { tokens: { total: 10 }, cost: { usd } },
+      });
+    // The pod arm has no answers; the records arm answered question a only.
+    const [instance] = instancesOf(
+      [
+        job("p", { role: "subject", arm: "pod" }),
+        job("r", { role: "subject", arm: "records" }),
+        judge("j1", 0.5),
+        judge("j2", null),
+      ],
+      [],
+      {},
+      { r: { a: {} } },
+      new Map([
+        [
+          "tamsin-vale",
+          [
+            { id: "F1", kind: "fact", question: "a" },
+            { id: "F2", kind: "fact", question: "b" },
+          ],
+        ],
+      ]) as never,
+    );
+
+    it("totals every key item of the case for each arm, whatever the arm answered", () => {
+      assert.equal(instance!.arms.pod!.expected.of, 2);
+      assert.equal(instance!.arms.records!.expected.of, 2);
+    });
+
+    it("counts as unanswered each key item of a question an arm has no answer to", () => {
+      assert.equal(instance!.arms.pod!.expected.unanswered, 2);
+      assert.equal(instance!.arms.records!.expected.unanswered, 1);
+    });
+
+    it("returns a judging cost of null where any judge's cost is null", () => {
+      assert.equal(instance!.judging.usd, null);
+    });
+  });
 });
 
-test("a prepared pod is reused only with its build time and the reference tables it was built with", () => {
-  const components = [{ repository: "r", commit: "c" }];
-  const kept = {
-    downloadsSha256: "d",
-    components,
-    build: { seconds: 1, modelCalls: 0, tokens: 0, usd: 0 },
-    tables: { id: "t", versions: ["v"] },
-  } as never;
-  assert.equal(reusesPreparedPod(kept, "d", components as never, "t"), true);
-  assert.equal(
-    reusesPreparedPod(
-      { ...(kept as object), build: undefined } as never,
-      "d",
-      components as never,
-      "t",
-    ),
-    false,
-  );
-  assert.equal(
-    reusesPreparedPod(kept, "other", components as never, "t"),
-    false,
-  );
-  assert.equal(
-    reusesPreparedPod(kept, "d", components as never, "newer"),
-    false,
-  );
-  assert.equal(
-    reusesPreparedPod(
-      { ...(kept as object), tables: undefined } as never,
-      "d",
-      components as never,
-      "t",
-    ),
-    false,
-    "a pod built before it had tables is stale",
-  );
-});
+describe("The cases in `cases/`, as checked in", () => {
+  const cases = new Map<string, { asked: string[]; keyed: string[] }>();
 
-test("an arm's prompt version covers everything that reaches its prompt: changing its example changes its version alone", () => {
-  assert.notEqual(
-    versionOf("pod", {
-      ...ARM_PARTS.pod,
-      example: ARM_PARTS.pod.example + " ",
-    }),
-    versionOf("pod"),
-  );
-  assert.notEqual(
-    versionOf("records", { ...ARM_PARTS.records, cite: "changed" }),
-    versionOf("records"),
-  );
-  assert.notEqual(versionOf("pod"), versionOf("records"));
-  assert.equal(
-    versionOf("records", {
-      ...ARM_PARTS.pod,
-      example: "x",
-    }) === versionOf("records"),
-    false,
-  );
-});
+  before(async () => {
+    for (const id of await caseIds()) {
+      const found = await loadCase(id);
+      const { key } = await loadKey(id);
+      cases.set(id, {
+        asked: found.sessions.flatMap((it) => it.questions.map((q) => q.id)),
+        keyed: key.items.map((it) => it.question),
+      });
+    }
+  });
 
-test("an arm's prompt version covers the pronouns a prompt is written with", async () => {
-  const before = versionOf("pod");
-  const kept = PRONOUNS.her!;
-  try {
-    PRONOUNS.her = ["she", "Hers"];
-    assert.notEqual(versionOf("pod"), before);
-  } finally {
-    PRONOUNS.her = kept;
-  }
-  assert.equal(versionOf("pod"), before);
+  describe("given every case", () => {
+    it("asks each question once across its sessions", () => {
+      for (const [id, { asked }] of cases)
+        assert.equal(new Set(asked).size, asked.length, `${id} asks each once`);
+    });
+
+    it("asks the check-up question", () => {
+      for (const [id, { asked }] of cases)
+        assert.ok(
+          asked.includes("checkup"),
+          `${id} asks the check-up question`,
+        );
+    });
+
+    it("holds a key item for every question it asks", () => {
+      for (const [id, { asked, keyed }] of cases)
+        for (const question of asked)
+          assert.ok(
+            keyed.includes(question),
+            `${id}: the key has an item for ${question}`,
+          );
+    });
+
+    it("holds no key item for a question it does not ask", () => {
+      for (const [id, { asked, keyed }] of cases)
+        for (const question of keyed)
+          assert.ok(
+            asked.includes(question),
+            `${id}: a key item is for ${question}, which it does not ask`,
+          );
+    });
+  });
+
+  describe("given `tamsin-vale`", () => {
+    it("asks four to six questions", () => {
+      const { asked } = cases.get("tamsin-vale")!;
+      assert.ok(asked.length >= 4 && asked.length <= 6, `${asked.length}`);
+    });
+  });
 });
