@@ -28,7 +28,7 @@ export interface SampleOptions {
   /** The kits to publish, by name; by default every kit. */
   readonly kits?: readonly string[];
   /** What the page that shows a pod asks the tables of it, kept as `lookups.json`. */
-  readonly look?: (pod: Pod, tables: Tables) => Promise<unknown>;
+  readonly lookups?: (pod: Pod, tables: Tables) => Promise<unknown>;
 }
 
 export interface Samples {
@@ -65,7 +65,7 @@ async function refusalsExpected(
  * its story says is refused writes nothing; a step refused that the story does not say so of is a plain error, since
  * the install is then broken, not the sample short; its pod's files are under `<kit>/pod/` with their list, `files.json`, and their pack
  * beside the folder, `<kit>/pod.pack.json`; what a copy reads without the engine is `<kit>/answers.json`,
- * `<kit>/pod.json` and, given `look`, `<kit>/lookups.json`. A kit the vocabulary does not carry is refused.
+ * `<kit>/pod.json` and, given `lookups`, `<kit>/lookups.json`. A kit the vocabulary does not carry is refused.
  */
 export async function samplesOf(
   source: SampleSource,
@@ -122,7 +122,7 @@ export async function samplesOf(
       for (const [path, bytes] of await answersToPublish(parts, pod, {
         name: kit,
         runtime: source.runtime,
-        look: options.look,
+        lookups: options.lookups,
       }))
         files.set(`${kit}/${path}`, bytes);
     }

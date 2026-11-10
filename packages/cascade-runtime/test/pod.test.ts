@@ -991,7 +991,7 @@ test("a kit's published sample is its pod, listed and packed beside it, with its
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   const { kits, files } = await samplesOf(
     { components: await checkouts(root), runtime: "copying" },
-    { kits: ["alex-rivera"], look: async () => undefined },
+    { kits: ["alex-rivera"], lookups: async () => undefined },
   );
   assert.ok(kits.size > 1);
   assert.match(kits.get("alex-rivera") ?? "", /Alex/);
@@ -1050,7 +1050,7 @@ test("a published pod's answers, as the site computes them, are read back withou
   for (const [path, bytes] of await answersToPublish(publishing, published, {
     name: "pod",
     runtime: "published",
-    look: (_pod, tables) => tables.about(codes),
+    lookups: (_pod, tables) => tables.about(codes),
   }))
     await answers.write(path, bytes);
   assert.ok(codes.length > 0);
