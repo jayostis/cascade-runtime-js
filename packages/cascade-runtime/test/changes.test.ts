@@ -202,7 +202,7 @@ describe("Finding lab changes after a medication starts or stops · findChanges(
       assert.deepEqual(keysOf(found), ["start:111:BIG"]);
     });
 
-    it("ranks changes by `score`, highest first, and puts the pairs without enough results after them", () => {
+    it("orders changes by `score`, highest first, the pairs without enough results last", () => {
       const found = changesIn(
         [medicine("111", "2024-03-04")],
         [
