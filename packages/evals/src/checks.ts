@@ -374,7 +374,11 @@ export async function checkAnswer(options: {
           ran,
           tie,
           backing: (absence, tied) =>
-            checkRecordsAbsence(absence, read, text, couldHold, tied),
+            checkRecordsAbsence(
+              absence,
+              { files: couldHold, read, text },
+              tied,
+            ),
         });
   if (checked.reply === undefined)
     return {

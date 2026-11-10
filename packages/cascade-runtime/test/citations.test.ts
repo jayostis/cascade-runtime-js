@@ -834,7 +834,7 @@ test("a records absence is backed only by the sources it names, each read whole,
     ],
   ] as const)
     assert.deepEqual(
-      await checkRecordsAbsence(claim, files, text, read),
+      await checkRecordsAbsence(claim, { files: read, read: files, text }),
       backing,
       what,
     );
@@ -906,17 +906,20 @@ test("an absence is held to what it is of: a pod question of its kind, every fil
   assert.deepEqual(
     await checkRecordsAbsence(
       { ...fit, sources: ["summary.xml"] },
-      all,
-      text,
-      all,
+      { files: all, read: all, text },
     ),
     { backed: false, reason: "sources leave out: bundle.json" },
   );
-  assert.deepEqual(await checkRecordsAbsence(fit, all, text, all), {
-    backed: true,
-  });
   assert.deepEqual(
-    await checkRecordsAbsence(fit, all, text, all, { codes: ["29771-3"] }),
+    await checkRecordsAbsence(fit, { files: all, read: all, text }),
+    { backed: true },
+  );
+  assert.deepEqual(
+    await checkRecordsAbsence(
+      fit,
+      { files: all, read: all, text },
+      { codes: ["29771-3"] },
+    ),
     { backed: false, reason: "records hold it: bundle.json" },
   );
 });
@@ -1453,12 +1456,11 @@ test("a refuted or entered-in-error record is no presence, in both arms", async 
       ],
     });
   const records = async (verification: string) =>
-    checkRecordsAbsence(
-      absence,
-      ["b.json"],
-      async () => condition(verification),
-      ["b.json"],
-    );
+    checkRecordsAbsence(absence, {
+      files: ["b.json"],
+      read: ["b.json"],
+      text: async () => condition(verification),
+    });
   assert.deepEqual(await records("refuted"), { backed: true });
   assert.deepEqual(await records("entered-in-error"), { backed: true });
   assert.deepEqual(await records("confirmed"), {
@@ -1596,9 +1598,7 @@ const inRecords = (
       coverage: "every record",
       match: { codes, terms, ...(after === undefined ? {} : { after }) },
     },
-    ["b"],
-    async () => doc,
-    ["b"],
+    { files: ["b"], read: ["b"], text: async () => doc },
   );
 const observation = (fields: Record<string, unknown>) => ({
   resourceType: "Observation",

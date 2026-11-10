@@ -758,15 +758,21 @@ export function checkAbsence(
 
 /**
  * Whether a records absence is backed: it says what it looks for and what it covered, names its sources, each was
- * read (`read`), and none of them holds what it says is absent.
+ * read (`downloads.read`), and none of them holds what it says is absent.
  */
 export async function checkRecordsAbsence(
   absence: Absence,
-  read: readonly string[],
-  text: (file: string) => Promise<string>,
-  all: readonly string[],
+  downloads: {
+    /** Every file that could hold what is absent. */
+    readonly files: readonly string[];
+    /** The files that were read. */
+    readonly read: readonly string[];
+    /** A file's text. */
+    readonly text: (file: string) => Promise<string>;
+  },
   tied?: Tie,
 ): Promise<Backing> {
+  const { files: all, read, text } = downloads;
   const match = heldTo(absence, tied);
   if (!lookedFor(absence))
     return { backed: false, reason: "nothing to look for" };
