@@ -6,6 +6,10 @@ import { NODE, PYTEST } from "./runner-reports.js";
 import { readPage } from "./page.js";
 import {
   casesOf,
+  CTRF_NAME,
+  CTRF_REPORT,
+  CTRF_SUITE,
+  levelsOf,
   OTHER_RUN,
   PATH,
   pageOf,
@@ -144,6 +148,29 @@ describe("A page of test results for each repository · testsSection", () => {
     });
   });
 
+  describe("with a suite whose report is CTRF", () => {
+    it("shows its cases under the levels the report names", async () => {
+      const { markup } = await pageWith({}, [
+        { suite: CTRF_SUITE, run: { ...RUN, report: CTRF_REPORT } },
+      ]);
+      const levels = levelsOf(markup, CTRF_NAME).join("\n");
+      assert.match(levels, /synthetic adapter fixture cases/);
+      assert.match(levels, /with engine on native/);
+      assert.deepEqual(
+        casesOf(markup, CTRF_NAME).map(([name, result]) => [name, result]),
+        [
+          ["example-0001", "failed"],
+          ["example-0003", "passed"],
+        ],
+      );
+      assert.ok(
+        readPage(partOf(markup, CTRF_NAME), PATH).hrefs.includes(
+          `https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/blob/${RUN.commit}/fixtures/manifest.ttl#L42`,
+        ),
+      );
+    });
+  });
+
   describe("with a report that holds no cases", () => {
     it('says "0 cases"', async () => {
       const { markup } = await pageWith({
@@ -187,10 +214,17 @@ describe("Listing the repositories whose tests are shown · suitesOf(), test-sui
       );
     });
 
+    it("reads a suite whose runner is `ctrf`", () => {
+      assert.equal(
+        suitesOf([{ ...VOCABULARY, runner: "ctrf" }])[0]?.runner,
+        "ctrf",
+      );
+    });
+
     it("throws for a runner it cannot read", () => {
       assert.throws(
         () => suitesOf([{ ...VOCABULARY, runner: "jest" }]),
-        /names the runner jest, which is not one of node:test, pytest, vitest, nextest/,
+        /names the runner jest, which is not one of node:test, pytest, vitest, nextest, ctrf/,
       );
     });
 

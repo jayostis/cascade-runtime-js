@@ -26,6 +26,7 @@
     "A package's glossary on its page · glossaryOf(), Links",
     "The summary bar and its controls · testsSection",
     "Reading a report from each test runner · readJunit()",
+    "Reading a report already in CTRF · readCtrf()",
     "Writing doc comments into a report · scripts/junit-reporter.mjs",
     "Failures node:test leaves out of its report · declaredFailures()",
     "Test results for an agent · <repository>.ctrf.json",
@@ -91,7 +92,7 @@
     },
     {
       "term": "CTRF",
-      "definition": "Common Test Report Format, an open JSON format for test results (ctrf.io); the site writes each suite's results in it beside the page, for an agent."
+      "definition": "Common Test Report Format, an open JSON format for test results (ctrf.io); the site writes each suite's results in it beside the page, for an agent, and reads it from a suite no test runner runs."
     },
     {
       "term": "decision note",
@@ -222,7 +223,7 @@
     },
     {
       "term": "report",
-      "definition": "the JUnit file one run of a repository's tests wrote; the site reads the newest from `main`."
+      "definition": "the file one run of a repository's tests wrote, in JUnit or, for a suite no test runner runs, in CTRF; the site reads the newest from `main`."
     },
     {
       "term": "resource",
@@ -241,7 +242,7 @@
     },
     {
       "term": "runner",
-      "definition": "the program that runs a repository's tests and writes the report: node:test, pytest, vitest or nextest.",
+      "definition": "the program that runs a repository's tests and writes the report: node:test, pytest, vitest or nextest; `ctrf` for a suite no runner runs, whose report is already in CTRF.",
       "aliases": ["runners", "test runner"]
     },
     {
