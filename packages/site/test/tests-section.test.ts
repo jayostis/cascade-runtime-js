@@ -219,18 +219,16 @@ function casesOf(markup: string, heading: string): string[][] {
   );
 }
 
-test("each suite's newest run shows its cases with result and time, the runtime's as a tree of package, file and describe, a failed case reading failed, and the run's commit, date and link", async () => {
+test("each suite's newest run shows its cases with result and time, the runtime's as a tree of package, capability and situation, a failed case reading failed, and the run's commit, date and link", async () => {
   const { markup, page } = await pageWith({
     runtime: { report: NODE, ...RUN },
     vocabulary: { report: PYTEST, ...OTHER_RUN },
   });
 
   assert.deepEqual(levelsOf(markup, "runtime"), [
-    // failures first, then packages and files by name, describes and cases as written
-    "site 1 passed, 1 failed",
+    // the failing package first; a case with no describe is a capability named for its file
     "links.test.ts 1 passed, 1 failed",
-    "runtime 1 passed, 1 skipped",
-    "other.test.ts 1 passed, 1 skipped",
+    "other.test.ts 0 passed, 1 skipped",
     "outer 1 passed",
     "inner 1 passed",
   ]);
@@ -509,9 +507,9 @@ const GROUPED = report(
 test("a package's cases are grouped by capability across files, in the order spec.json gives, the unlisted alphabetically, and build last in a collapsed section", async () => {
   const { markup } = await pageWith({ runtime: { report: GROUPED, ...RUN } });
   assert.deepEqual(levelsOf(markup, "runtime"), [
+    "Looking up a term 1 passed",
     "Importing a health export 2 passed",
     "when nobody has claimed the patient 1 passed",
-    "Looking up a term 1 passed",
     "Apple capability 1 passed",
     "Zebra capability 1 passed",
     "Build and packaging 1 passed",
@@ -551,7 +549,7 @@ test("a @rule tag is a link to its rule on the conformance page, and is not part
     runtime: { report: GROUPED, ...RUN },
   });
   assert.ok(
-    page.hrefs.includes("../../spec/pod-import.html#r19"),
+    page.hrefs.includes("spec/pod-import.html#r19"),
     page.hrefs.join("\n"),
   );
   assert.doesNotMatch(text(partOf(markup, "runtime")), /@rule/);
@@ -564,7 +562,7 @@ test("a @rule tag is a link to its rule on the conformance page, and is not part
     ),
   );
   const other = await pageWith({ runtime: { report: kit, ...RUN } });
-  assert.ok(other.page.hrefs.includes("../../spec/some-kit.html#check-3"));
+  assert.ok(other.page.hrefs.includes("spec/some-kit.html#check-3"));
 });
 
 test("the package line names the package, its version and the commit, and says unreleased for 0.0.0 and for a prerelease only", async () => {

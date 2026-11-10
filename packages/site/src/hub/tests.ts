@@ -1,15 +1,18 @@
 import { Html, markup } from "../html.js";
-import { frontPageLink } from "../links.js";
+import { frontPageLink, pageNameOf, ruleHref } from "../links.js";
 import {
   declaredDuration,
   declaredFailures,
   readJunit,
+  type Described,
+  type PackageInfo,
   type Result,
   type TestCase,
 } from "../junit.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
 import type { PagesContext, TestRun } from "./context.js";
+import { SPEC_FOLDER } from "./spec.js";
 
 export const TESTS_FOLDER = "conformance/tests/";
 export const TESTS_PAGE = `${TESTS_FOLDER}index.html`;
@@ -74,6 +77,13 @@ ul.tree li { margin: .15rem 0; }
 ul.tree summary { cursor: pointer; }
 .counts { color: var(--quiet); font-size: .85rem; margin-left: .4rem; }
 .counts .failed { color: #a3201f; font-weight: 600; }
+h3.package { margin: 1.4rem 0 .2rem; }
+.package-line { color: var(--quiet); margin: .1rem 0; }
+.what { margin: .3rem 0; max-width: 70ch; }
+.source, .said { color: var(--quiet); font-size: .85rem; margin: .2rem 0; }
+.said .what { color: inherit; }
+details.build { margin-top: 1.4rem; }
+details.build > summary { font-weight: 600; }
 .case .time { color: var(--quiet); font-size: .8rem; margin-left: .4rem; white-space: nowrap; }
 `;
 
@@ -119,16 +129,39 @@ ${ordered(cases).map(({ suite, name, result, seconds: time, message }) => markup
 </table>`;
 }
 
-/** A level of the tree: a package, a file or a describe, holding levels and cases in the order the report gave them. */
+/** The `spec.json` of a package's tests: what its page says first, the order of its capabilities, and what is build. */
+interface Spec {
+  readonly about?: string;
+  readonly capabilities: readonly string[];
+  readonly build: readonly string[];
+}
+
+function specOf(raw: unknown): Spec {
+  const given = (typeof raw === "object" && raw !== null ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  const names = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((one): one is string => typeof one === "string")
+      : [];
+  return {
+    ...(typeof given["about"] === "string" ? { about: given["about"] } : {}),
+    capabilities: names(given["capabilities"]),
+    build: names(given["build"]),
+  };
+}
+
+/** A describe or a capability, holding levels and cases in the order the report gave them. */
 interface Level {
   readonly name: string;
-  readonly depth: number;
+  info?: Described;
   readonly levels: Map<string, Level>;
   readonly entries: (Level | TestCase)[];
   readonly cases: TestCase[];
-  /** Whether a case under it failed, and the first line any case under it is written on; kept as cases are added. */
+  /** Whether a case under it failed, and the position of the first case written under it; kept as cases are added. */
   failing: boolean;
-  firstLine: number;
+  first: string;
 }
 
 const isLevel = (entry: Level | TestCase): entry is Level => "levels" in entry;
@@ -139,33 +172,55 @@ function placeOf(file: string): string[] {
   return found === null ? ["", file] : [found[1] ?? "", found[2] ?? ""];
 }
 
-function levelOf(name: string, depth: number): Level {
+/** Where a case is written, as a string that sorts in the order of a file and then its lines. */
+const positionOf = (one: TestCase): string =>
+  `${one.suite}\0${one.line === undefined ? "~" : String(one.line).padStart(8, "0")}`;
+
+function merged(
+  a: Described | undefined,
+  b: Described | undefined,
+): Described | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  const description = a.description ?? b.description;
+  const line = a.line ?? b.line;
+  return {
+    ...(description === undefined ? {} : { description }),
+    rules: [...new Set([...a.rules, ...b.rules])],
+    ...(line === undefined ? {} : { line }),
+  };
+}
+
+function levelOf(name: string): Level {
   return {
     name,
-    depth,
     levels: new Map(),
     entries: [],
     cases: [],
     failing: false,
-    firstLine: Infinity,
+    first: "￿",
   };
 }
 
-function grow(cases: readonly TestCase[]): Level {
-  const root = levelOf("", 0);
+/** The describes of `cases` from the `skip`th down, as levels; a case with none further down sits directly in the root. */
+function levelsFrom(cases: readonly TestCase[], skip: number): Level {
+  const root = levelOf("");
   for (const one of cases) {
     let at = root;
-    at.cases.push(one);
-    for (const name of [...placeOf(one.suite), ...one.describes]) {
+    const position = positionOf(one);
+    for (const [index, name] of one.describes.entries()) {
+      if (index < skip) continue;
       let next = at.levels.get(name);
       if (next === undefined) {
-        next = levelOf(name, at.depth + 1);
+        next = levelOf(name);
         at.levels.set(name, next);
         at.entries.push(next);
       }
+      const info = merged(next.info, one.described[index]);
+      if (info !== undefined) next.info = info;
       next.cases.push(one);
       next.failing ||= one.result === "failed";
-      next.firstLine = Math.min(next.firstLine, one.line ?? Infinity);
+      if (position < next.first) next.first = position;
       at = next;
     }
     at.entries.push(one);
@@ -176,23 +231,17 @@ function grow(cases: readonly TestCase[]): Level {
 const failing = (entry: Level | TestCase): boolean =>
   isLevel(entry) ? entry.failing : entry.result === "failed";
 
-const firstLine = (entry: Level | TestCase): number =>
-  isLevel(entry) ? entry.firstLine : (entry.line ?? Infinity);
+const firstOf = (entry: Level | TestCase): string =>
+  isLevel(entry) ? entry.first : positionOf(entry);
 
-/**
- * A level's entries, failures first. Packages and files then go by name; describes and cases by the line they are written
- * on, so a file reads in the order its author wrote it, and in the report's order where no line is given.
- */
+/** A level's entries, failures first, then in the order they are written. */
 function inOrder(level: Level): (Level | TestCase)[] {
-  const byName = level.depth < 2;
   return level.entries
     .map((entry, index) => ({ entry, index }))
     .sort(
       (a, b) =>
         Number(failing(b.entry)) - Number(failing(a.entry)) ||
-        (byName && isLevel(a.entry) && isLevel(b.entry)
-          ? before(a.entry.name, b.entry.name)
-          : firstLine(a.entry) - firstLine(b.entry) || 0) ||
+        before(firstOf(a.entry), firstOf(b.entry)) ||
         a.index - b.index,
     )
     .map(({ entry }) => entry);
@@ -204,22 +253,204 @@ function counts(cases: readonly TestCase[]): Html {
   return markup`<span class="counts">${count(cases, "passed")} passed${failed === 0 ? "" : markup`, <span class="failed">${failed} failed</span>`}${skipped === 0 ? "" : `, ${skipped} skipped`}</span>`;
 }
 
-function leaf(one: TestCase, suite: Suite, run: TestRun): Html {
-  const source = `${suite.repository}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
-  return markup`<li class="case"><span class="result ${one.result}">${one.result}</span> <a href="${source}">${one.name}</a><span class="time">${seconds(one.seconds)}</span>${one.message === undefined ? "" : markup`<pre class="failure">${shown(one.message)}</pre>`}</li>\n`;
+/** A rule tag, `<feature> <id>`, as the rule on the conformance pages it names. */
+function ruleOf(tag: string): { feature: string; id: string; href: string } {
+  const [feature = "", ...rest] = tag.split(" ");
+  const id = rest.join(" ");
+  const path = feature.includes("/")
+    ? feature
+    : `runtime/${feature.replace(/\.feature$/, "")}.feature`;
+  const base = `../../${SPEC_FOLDER}`;
+  return {
+    feature,
+    id,
+    href: id === "" ? `${base}${pageNameOf(path)}` : ruleHref(path, id, base),
+  };
 }
 
+function prose(description: string | undefined): Html {
+  const paragraphs = (description ?? "")
+    .split("\n\n")
+    .filter((one) => one !== "");
+  return markup`${paragraphs.map((one) => markup`<p class="what">${one}</p>\n`)}`;
+}
+
+function rulesOf(tags: readonly string[]): Html {
+  const rules = tags.map(ruleOf);
+  return rules.length === 0
+    ? markup``
+    : markup`<span class="rules">Rule${rules.length === 1 ? "" : "s"}: ${rules.map(({ feature, id, href }, at) => markup`${at === 0 ? "" : ", "}<a href="${href}">${feature} ${id}</a>`)}.</span> `;
+}
+
+function leaf(one: TestCase, suite: Suite, run: TestRun): Html {
+  const source = `${suite.repository}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
+  const said =
+    one.description === undefined && one.rules.length === 0
+      ? ""
+      : markup`<div class="said">${prose(one.description)}${rulesOf(one.rules)}</div>`;
+  return markup`<li class="case"><span class="result ${one.result}">${one.result}</span> <a href="${source}">${one.name}</a><span class="time">${seconds(one.seconds)}</span>${said}${one.message === undefined ? "" : markup`<pre class="failure">${shown(one.message)}</pre>`}</li>\n`;
+}
+
+/** A situation, or a level under one: its description, its rules and what it holds. */
 function branch(level: Level, suite: Suite, run: TestRun): Html {
   const children = inOrder(level).map((entry) =>
     isLevel(entry) ? branch(entry, suite, run) : leaf(entry, suite, run),
   );
-  if (level.depth === 0) return markup`<ul class="tree top">\n${children}</ul>`;
-  const name =
-    level.depth <= 2 ? markup`<code>${level.name}</code>` : level.name;
-  const open = level.depth === 1 || failing(level) ? " open" : "";
-  return markup`<li><details${new Html(open)}><summary>${name} ${counts(level.cases)}</summary>
+  return markup`<li><details${new Html(failing(level) ? " open" : "")}><summary>${level.name} ${counts(level.cases)}</summary>
+${prose(level.info?.description)}${rulesOf(level.info?.rules ?? [])}<ul class="tree">
+${children}</ul></details></li>\n`;
+}
+
+/** What a package's tests do for the app developer: a top-level describe, gathered across the files that hold one. */
+interface Capability {
+  readonly name: string;
+  readonly level: Level;
+  readonly info?: Described;
+  /** Each file it comes from, with the line its describe starts on there. */
+  readonly files: Map<string, number | undefined>;
+  readonly cases: TestCase[];
+}
+
+function capabilitiesOf(cases: readonly TestCase[]): Capability[] {
+  const groups = new Map<string, TestCase[]>();
+  for (const one of cases) {
+    const name = one.describes[0] ?? placeOf(one.suite)[1] ?? one.suite;
+    groups.set(name, [...(groups.get(name) ?? []), one]);
+  }
+  return [...groups].map(([name, held]) => {
+    const files = new Map<string, number | undefined>();
+    let info: Described | undefined;
+    for (const one of held) {
+      const line = one.described[0]?.line;
+      const known = files.get(one.suite);
+      files.set(
+        one.suite,
+        known === undefined || (line !== undefined && line < known)
+          ? line
+          : known,
+      );
+      info = merged(info, one.described[0]);
+    }
+    return {
+      name,
+      level: levelsFrom(held, 1),
+      ...(info === undefined ? {} : { info }),
+      files,
+      cases: held,
+    };
+  });
+}
+
+function capability(one: Capability, suite: Suite, run: TestRun): Html {
+  const children = inOrder(one.level).map((entry) =>
+    isLevel(entry) ? branch(entry, suite, run) : leaf(entry, suite, run),
+  );
+  const files = [...one.files].map(([file, line]) => {
+    const href = `${suite.repository}/blob/${run.commit}/${file}${line === undefined ? "" : `#L${line}`}`;
+    return markup`<a href="${href}">${placeOf(file)[1] ?? file}</a>`;
+  });
+  return markup`<li class="capability"><details open><summary>${one.name} ${counts(one.cases)}</summary>
+${prose(one.info?.description)}<p class="source">${rulesOf(one.info?.rules ?? [])}From ${files.map((link, at) => markup`${at === 0 ? "" : ", "}${link}`)}.</p>
 <ul class="tree">
 ${children}</ul></details></li>\n`;
+}
+
+const unreleased = (version: string): boolean =>
+  version === "0.0.0" || version.includes("-");
+
+const rankIn = (order: readonly string[], name: string): number => {
+  const at = order.indexOf(name);
+  return at === -1 ? Infinity : at;
+};
+
+/** Capabilities in the order a spec lists them, the unlisted after them by name. */
+const arranged = (
+  list: readonly Capability[],
+  order: readonly string[],
+): Capability[] =>
+  [...list].sort((a, b) => {
+    const [x, y] = [rankIn(order, a.name), rankIn(order, b.name)];
+    return x === y ? before(a.name, b.name) : x < y ? -1 : 1;
+  });
+
+function packageSection(
+  folder: string,
+  cases: readonly TestCase[],
+  info: PackageInfo | undefined,
+  suite: Suite,
+  run: TestRun,
+): Html {
+  const spec = specOf(info?.spec);
+  const all = capabilitiesOf(cases);
+  const inBuild = (one: Capability): boolean =>
+    spec.build.includes(one.name) ||
+    [...one.files.keys()].every((file) =>
+      spec.build.includes(placeOf(file)[1] ?? file),
+    );
+  const main = arranged(
+    all.filter((one) => !inBuild(one)),
+    spec.capabilities,
+  );
+  const build = arranged(all.filter(inBuild), spec.build);
+  const buildCases = build.flatMap((one) => one.cases);
+  const line =
+    info === undefined
+      ? ""
+      : markup`<p class="package-line"><code>${info.name}</code> ${info.version} · commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>${unreleased(info.version) ? " · unreleased: what main does today, not a compatibility promise" : ""}</p>\n`;
+  return markup`<h3 class="package"><code>${folder}</code> ${counts(cases)}</h3>
+${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}<ul class="tree top">
+${main.map((one) => capability(one, suite, run))}</ul>
+${
+  build.length === 0
+    ? ""
+    : markup`<details class="build"${new Html(count(buildCases, "failed") > 0 ? " open" : "")}><summary>Build and packaging ${counts(buildCases)}</summary>
+<ul class="tree top">
+${build.map((one) => capability(one, suite, run))}</ul></details>
+`
+}`;
+}
+
+/** The runtime's cases as the page reads them: each package, with its capabilities in the order its spec gives. */
+function tree(
+  cases: readonly TestCase[],
+  packages: ReadonlyMap<string, PackageInfo>,
+  suite: Suite,
+  run: TestRun,
+): Html {
+  const byPackage = new Map<string, TestCase[]>();
+  for (const one of cases) {
+    const folder = placeOf(one.suite)[0] ?? "";
+    byPackage.set(folder, [...(byPackage.get(folder) ?? []), one]);
+  }
+  const order = [...byPackage].sort(
+    ([a, held], [b, other]) =>
+      Number(other.some((c) => c.result === "failed")) -
+        Number(held.some((c) => c.result === "failed")) || before(a, b),
+  );
+  return markup`${order.map(([folder, held]) => packageSection(folder, held, packages.get(folder), suite, run))}`;
+}
+
+/** What each level above a case, and the case, say of themselves, with their rules as links, for an agent reading CTRF. */
+function extraOf(one: TestCase): { extra?: unknown } {
+  const levels = one.describes.map((name, at) => {
+    const info = one.described[at];
+    return {
+      name,
+      ...(info?.description === undefined
+        ? {}
+        : { description: info.description }),
+      ...(info === undefined || info.rules.length === 0
+        ? {}
+        : { rules: info.rules.map(ruleOf) }),
+    };
+  });
+  const rules = one.rules.map(ruleOf);
+  const extra = {
+    ...(levels.length === 0 ? {} : { levels }),
+    ...(one.description === undefined ? {} : { description: one.description }),
+    ...(rules.length === 0 ? {} : { rules }),
+  };
+  return Object.keys(extra).length === 0 ? {} : { extra };
 }
 
 /** A suite's results as CTRF (https://ctrf.io), each case with the describes it sits in as its suite. */
@@ -258,6 +489,7 @@ function ctrf(
           status: one.result,
           duration: Math.round((one.seconds ?? 0) * 1000),
           ...(names.length === 0 ? {} : { suite: [...names] }),
+          ...(suite.tree ? extraOf(one) : {}),
           ...(suite.tree ? { filePath: one.suite } : {}),
           ...(one.line === undefined ? {} : { line: one.line }),
           ...(one.message === undefined ? {} : { message: one.message }),
@@ -289,8 +521,9 @@ function part(suite: Suite, run: TestRun | undefined): Part {
     };
   let cases: TestCase[];
   let failingSuites: number;
+  let packages: ReadonlyMap<string, PackageInfo>;
   try {
-    ({ cases, failingSuites } = readJunit(run.report));
+    ({ cases, failingSuites, packages } = readJunit(run.report));
   } catch (error) {
     return {
       html: markup`${heading}
@@ -312,7 +545,7 @@ function part(suite: Suite, run: TestRun | undefined): Part {
     cases.length === 0
       ? ""
       : suite.tree
-        ? branch(grow(cases), suite, run)
+        ? tree(cases, packages, suite, run)
         : table(cases);
   return {
     html: markup`${heading}
@@ -330,7 +563,7 @@ ${unlisted}${shownCases}`,
 
 /**
  * The newest run on `main` of the runtime's tests and the vocabulary's pytest, case by case, under `conformance/tests/`:
- * the runtime's as a tree of package, file and describe, each case linked to its line at the commit run; the vocabulary's
+ * the runtime's as a tree of package, capability and situation, each case linked to its line at the commit run; the vocabulary's
  * as one table. Each suite's results are also written as CTRF beside the page, for an agent.
  * A suite whose report was not fetched, or cannot be read, says so and the page is written all the same.
  */
@@ -369,8 +602,8 @@ ${frontPageLink(2)}
 <main>
 <h1>Cascade unit test reports</h1>
 <p class="prose">The newest run on <code>main</code> of the runtime's tests and of the vocabulary's. The runtime's read as
-a tree of package, file and describe, each case linked to its source; the vocabulary's as one table. Failures come first,
-and the levels that hold one are open.</p>
+a tree of package, capability and situation, each with what it is for and each case linked to its source; the vocabulary's as one table.
+Failures come first within a capability, and the levels that hold one are open.</p>
 ${parts.map(({ html }) => html)}</main>
 </body>
 </html>

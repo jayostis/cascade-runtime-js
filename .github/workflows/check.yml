@@ -81,6 +81,11 @@ jobs:
           if-no-files-found: warn
       - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run lint
+      # The test files packages/cascade-runtime/test/spec.json lists as randomOrder, run in a random order: one that needs another to
+      # run first fails here. The seed is in the log; rerun with --test-random-seed=N to repeat it.
+      - name: Tests in random order
+        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+        run: node scripts/transpile.mjs && node scripts/random-order.mjs cascade-runtime
       # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice.
       - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' && github.event_name != 'schedule' }}
         run: npm test
