@@ -52,7 +52,7 @@ jobs:
         run: |
           cp -R developer-story/. "$CASCADE_RUNTIME_APP/"
           node --test packages/runtime/dist/test/developer-story.test.js
-      - name: cascade-mcp, started with npx in the folder, over a pod on stdio
+      - name: cascade-mcp, the installed bin started with node, over a pod on stdio
         env:
           CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
         run: node --import ./packages/cascade-runtime/dist/test/offline.js --test packages/mcp/dist/test/mcp.test.js

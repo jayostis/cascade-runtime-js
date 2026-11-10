@@ -1245,7 +1245,7 @@ export async function fileEntry(
       `${entry.name}'s session's start: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const unfit = await shapes.violations(graph.triples);
+  const unfit = await shapes.resultLines(graph.triples);
   if (unfit.length > 0)
     throw new Refusal(
       `${entry.name} does not conform to the vocabulary's shapes: ${unfit.join("; ")}`,

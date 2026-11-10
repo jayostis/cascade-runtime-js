@@ -705,6 +705,16 @@ describe("Reading a whole pod in pages · ask tool", () => {
         assert.ok(answer.leftOut?.includes(subset), subset);
       }
     });
+
+    it("throws `Refusal`, listing the questions the tool offers, for a question it does not offer", async () => {
+      await assert.rejects(
+        async () =>
+          ask.run(reads, { pod, question: "pod/What everything is called" }),
+        refusal(
+          /input\.question must be one of pod\/My active allergies, .*entry\/What needs review$/,
+        ),
+      );
+    });
   });
 
   describe("given a pod of 400 lab results, too long for one page", () => {

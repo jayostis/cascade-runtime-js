@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { featureStory } from "../src/conformance.js";
 import { featuresOf, readFeature } from "../src/features.js";
 import { MemoryFiles } from "../src/files.js";
@@ -13,16 +13,19 @@ import { layout, ROOT, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const newStore = () => new OxigraphStore();
 
-/** What the step wrote, by path, but the run's act file, which its random name (N7) makes differ; and any refusal. */
+/** What one run wrote, by path, but the run's act file, which its random name (N7) makes differ; and any refusal. */
+interface Wrote {
+  readonly files: [string, string][];
+  readonly acts: number;
+  readonly refused?: string;
+}
+
+/** What the step wrote, by path, reading only what a run needs or every record. */
 async function performed(
   replay: Replay,
   step: Step,
   every: boolean,
-): Promise<{
-  readonly files: [string, string][];
-  readonly acts: number;
-  readonly refused?: string;
-}> {
+): Promise<Wrote> {
   const laidOut = await layout();
   const fork = await replay.fork();
   readEveryRecord(every);
@@ -45,7 +48,18 @@ async function performed(
   };
 }
 
-test("a run that takes records writes what it writes reading every record: each such run of the feature files' stories", async () => {
+/** A run of a story, as the matcher read the records it took and as it read every record. */
+interface Compared {
+  readonly name: string;
+  readonly scoped: unknown;
+  readonly every: unknown;
+}
+
+/**
+ * Every run that takes records in the stories of the feature files, each performed twice on a fork of the replay as it
+ * stood: reading what its joins reach, and reading every record.
+ */
+async function storyRuns(): Promise<Compared[]> {
   const files = await vocabulary();
   const laidOut = await layout();
   const config = await readConfig(ROOT);
@@ -102,21 +116,16 @@ test("a run that takes records writes what it writes reading every record: each 
       }
     }
   }
-  let compared = 0;
+  const compared: Compared[] = [];
   const walk = async (replay: Replay, node: Node): Promise<void> => {
     const { step } = node;
     if (step !== undefined) {
-      if (
-        step.happened.kind === "matcher" &&
-        step.happened.takes !== undefined
-      ) {
-        assert.deepEqual(
-          await performed(replay, step, false),
-          await performed(replay, step, true),
-          step.name,
-        );
-        compared++;
-      }
+      if (step.happened.kind === "matcher" && step.happened.takes !== undefined)
+        compared.push({
+          name: step.name,
+          scoped: await performed(replay, step, false),
+          every: await performed(replay, step, true),
+        });
       await replay.perform(step);
     }
     const children = [...node.children.values()];
@@ -128,5 +137,28 @@ test("a run that takes records writes what it writes reading every record: each 
   };
   for (const { options, root } of roots.values())
     await walk(new Replay(options), root);
-  assert.ok(compared > 0);
+  return compared;
+}
+
+/**
+ * A matcher run after a step compares only the records that step brought, and reads from the pod only the records
+ * their joins reach. It must write what a run reading every record writes, which no example can show, so the runtime
+ * tests it here.
+ * @rule runtime/matcher.feature M1
+ * @rule runtime/matcher.feature M4
+ */
+describe("Running the matcher on a step's records alone · CorePod.match(), readEveryRecord()", () => {
+  describe("given each matcher run that takes records in the stories of the vocabulary's feature files", () => {
+    let runs: Compared[];
+
+    before(async () => {
+      runs = await storyRuns();
+      assert.ok(runs.length > 0, "no story has a run that takes records");
+    });
+
+    it("writes what the same run writes when it reads every record", () => {
+      for (const { name, scoped, every } of runs)
+        assert.deepEqual(scoped, every, name);
+    });
+  });
 });

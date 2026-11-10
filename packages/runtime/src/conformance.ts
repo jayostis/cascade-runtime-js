@@ -563,7 +563,7 @@ class Run {
 
 /**
  * Runs every example of the vocabulary's feature files, replaying each run of steps the examples share once, and each
- * kit's checks 2 to 5 over one replay of its story: one assertion per example and per check.
+ * kit's checks 2 to 6 over one replay of its story: one assertion per example and per check.
  */
 export async function runConformance(
   options: ConformanceOptions,

@@ -1,6 +1,9 @@
 {
   "about": "The core every Cascade package is built on: it files what arrives in a person's pod, names it, runs the matcher and builds the views. Apps call cascade-runtime, which wraps it; this page is for whoever builds on the core itself.",
   "capabilities": [
+    "Loading an adapter into the Bridge · loadAdapter(), ofMediaType()",
+    "Converting a document with the WebAssembly Bridge · WasmBridge, inWorker(), inThread()",
+    "Converting from a kit's saved output · SavedOutputBridge.of()",
     "Turning an adapter's arrivals into revisions · CorePod.import(), reachedIn()",
     "Refusing a step that cannot be filed · Performed.refused",
     "Writing a step's files · CorePod.import(), CorePod.open(), CorePod.judge()",
@@ -9,14 +12,33 @@
     "Opening a pod with tables other than the ones it was matched with · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()",
     "Refusing a rule list a run cannot trust · matcherRules(), originsJoining()",
     "Binding a comparison query to a run's records · boundToRecords(), boundToPairs()",
+    "Running the matcher on a step's records alone · CorePod.match(), readEveryRecord()",
     "Reading entries as of a record's arrival · arrivalOrder(), ArrivedEntries",
     "Reading reference tables from a folder · References.of(), References.rows(), tableTerms(), linesAbout()",
     "Reading only the rows a pod's codes find · References.rows(), rowsByCode()",
+    "Replaying a story into a pod · replay(), PERFORMERS",
+    "Running a feature's examples and a kit's checks on a runtime · runConformance()",
+    "Checking a replayed kit · kitChecks(), shapeFaults(), snapshotFaults(), podAddressesIn()",
+    "Checking a graph against the vocabulary's shapes · Shapes.read(), Shapes.results()",
+    "Reporting a conformance run · npm run conformance -- --report <file>",
+    "Writing a kit's saved output again · npm run kit:bridge",
     "Keeping one build of a pod across steps · CorePodOptions.build, CorePod.select()",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
     "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"
   ],
   "glossary": [
+    {
+      "term": "accept",
+      "definition": "of an adapter, to take a document it can read and convert it. The saved-output Bridge declines a document its step marks `unaccepted.txt`, and accepts one it saved nothing for.",
+      "aliases": [
+        "accepts",
+        "accepted",
+        "unaccepted",
+        "decline",
+        "declines",
+        "declined"
+      ]
+    },
     {
       "term": "act",
       "definition": "one thing done to a pod that writes files to it: an import, an entry session, a connection to a hospital's server, or a run of the matcher.",
@@ -27,6 +49,11 @@
       "term": "adapter",
       "definition": "the program that converts an export into records; `import` loads it on first use.",
       "aliases": ["adapters"]
+    },
+    {
+      "term": "adapter's description",
+      "definition": "what the Bridge reads from an adapter before loading it: the media type it converts, and the files of the adapter and of the vocabulary it needs to load.",
+      "aliases": ["description"]
     },
     {
       "term": "adopt",
@@ -50,6 +77,11 @@
     {
       "term": "C-CDA",
       "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
+    },
+    {
+      "term": "check",
+      "definition": "one of the five things `runtime/the-kit.feature` requires of a replay of a kit's story, numbered 2 to 6, such as check 3, \"every file conforms to the shapes\". Check 1 is that every example passes.",
+      "aliases": ["checks", "kit check"]
     },
     {
       "term": "checkout",
@@ -79,6 +111,10 @@
     {
       "term": "content-addressed file",
       "definition": "a file named by a hash of what it holds: a document or a version."
+    },
+    {
+      "term": "conversion findings",
+      "definition": "what an adapter reports about a document beside its graph, saved as `findings.ttl`: what it left out or could not read. Not a finding for review, which is the pod's."
     },
     {
       "term": "current version",
@@ -121,6 +157,10 @@
       "aliases": ["documents"]
     },
     {
+      "term": "EARL",
+      "definition": "the W3C's Evaluation and Report Language: a report as RDF, one assertion for each test with its outcome."
+    },
+    {
       "term": "entry session",
       "definition": "one call of `pod.enter()`: the act that files what the owner typed, as one owner-entered record or several, under a `urn:uuid:` name the app makes once.",
       "aliases": ["entry sessions"]
@@ -131,10 +171,20 @@
       "aliases": ["exports", "exported"]
     },
     {
+      "term": "fault",
+      "definition": "one sentence a kit check returns, saying one thing wrong with the pod; a check passes when it returns none.",
+      "aliases": ["faults"]
+    },
+    {
       "term": "finding",
       "definition": "something the matcher noticed about a pod's records and filed for the owner to answer with a judgment.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#FindingForReview",
       "aliases": ["findings"]
+    },
+    {
+      "term": "focus node",
+      "definition": "in SHACL, a node a shape is checking.",
+      "aliases": ["focus nodes"]
     },
     {
       "term": "graph",
@@ -160,6 +210,10 @@
       "term": "IRI",
       "definition": "the name of one thing, written as an address, such as `urn:uuid:3b9e2d47-8c15-4f6a-a0d2-7e5c1b9f4a63` or `https://ns.cascadeprotocol.org/cascade#allergen`; it need not be one a browser can open.",
       "aliases": ["IRIs"]
+    },
+    {
+      "term": "isomorphic",
+      "definition": "of two graphs: the same statements once their blank nodes are matched up."
     },
     {
       "term": "judgment",
@@ -215,6 +269,11 @@
       "definition": "a pod as the matcher reads it: its files but those the build writes, with the everyday lens's derived state."
     },
     {
+      "term": "media type",
+      "definition": "the kind of a document as the web names it, such as `application/fhir+json`.",
+      "aliases": ["media types"]
+    },
+    {
       "term": "member",
       "definition": "a record a judgment is about.",
       "vocabulary": "http://www.w3.org/ns/prov#hadMember",
@@ -225,14 +284,31 @@
       "definition": "a W3C text format that writes one statement a line."
     },
     {
+      "term": "outline",
+      "definition": "a Gherkin Scenario Outline: one example written once and run for each row of its table."
+    },
+    {
       "term": "owner",
       "definition": "the person who keeps a pod and decides what its records mean; in every pod on this page, the subject acting for themselves.",
       "aliases": ["owners"]
     },
     {
+      "term": "performer",
+      "definition": "the function a replay calls to perform steps of one kind, such as an import or an entry session."
+    },
+    {
+      "term": "phrase",
+      "definition": "one wording of a step that `runtime/steps.md` defines, such as \"the pod holds no revision\".",
+      "aliases": ["phrases"]
+    },
+    {
       "term": "pod",
       "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
       "aliases": ["pods"]
+    },
+    {
+      "term": "pyshacl",
+      "definition": "the SHACL engine the vocabulary's own tests run; the results this package gives are held to its."
     },
     {
       "term": "quad",
@@ -311,6 +387,10 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Same"
     },
     {
+      "term": "saved output",
+      "definition": "the graph and conversion findings a kit keeps for each document its story imports, as the Bridge made them."
+    },
+    {
       "term": "seeded",
       "definition": "drawn by a random generator started from a stated number, so a failing case can be drawn again."
     },
@@ -325,9 +405,14 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
     },
     {
+      "term": "SHACL",
+      "definition": "the W3C's Shapes Constraint Language, in which the vocabulary's shapes are written."
+    },
+    {
       "term": "shapes",
       "definition": "the vocabulary's requirements on what a record, a judgment or a file of a pod must state, written in SHACL, the W3C language for checking data.",
-      "vocabulary": "https://www.w3.org/TR/shacl/"
+      "vocabulary": "https://www.w3.org/TR/shacl/",
+      "aliases": ["shape"]
     },
     {
       "term": "source",
@@ -338,6 +423,11 @@
       "term": "SPARQL",
       "definition": "the W3C query language for data written as statements, as Turtle writes them; `pod.ask()` runs an app's own SPARQL SELECT.",
       "vocabulary": "https://www.w3.org/TR/sparql11-query/"
+    },
+    {
+      "term": "SPARQL constraint",
+      "definition": "a constraint of a shape written as a SPARQL query, each row of which is one thing wrong with the focus node `$this`.",
+      "aliases": ["SPARQL constraints"]
     },
     {
       "term": "step",
@@ -365,6 +455,11 @@
       "definition": "what a reference table's rows say, such as product ingredients or vaccine groups; the vocabulary declares each kind.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#TableKind",
       "aliases": ["table kinds"]
+    },
+    {
+      "term": "target",
+      "definition": "what a shape names to say which nodes it checks: a class, the subjects or objects of a property, or one node.",
+      "aliases": ["targets"]
     },
     {
       "term": "term",
@@ -421,6 +516,14 @@
       "aliases": ["vocabularies"]
     },
     {
+      "term": "WebAssembly",
+      "definition": "the portable compiled form the Bridge is built in, which runs in a browser and in Node."
+    },
+    {
+      "term": "worker",
+      "definition": "a thread a web page or Node starts to run code apart from the main one."
+    },
+    {
       "term": "writer",
       "definition": "one app or device that writes to a pod; two writers hold copies of it and exchange files.",
       "aliases": ["writers"]
@@ -430,29 +533,51 @@
     "arrivals.test.ts",
     "arrived-entries.test.ts",
     "bound-records.test.ts",
+    "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
+    "developer-story.test.ts",
     "entries.test.ts",
     "kept-build.test.ts",
+    "kit-bridge.test.ts",
+    "kit.test.ts",
+    "load-adapter.test.ts",
     "matcher.test.ts",
     "open.test.ts",
     "references.test.ts",
+    "replay.test.ts",
     "resolver.test.ts",
-    "store.test.ts"
+    "saved-output-bridge.test.ts",
+    "scoped-runs.test.ts",
+    "shapes.test.ts",
+    "store.test.ts",
+    "wasm-bridge.test.ts"
   ],
-  "build": [],
+  "build": [
+    "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs"
+  ],
   "randomOrder": [
     "arrivals.test.ts",
     "arrived-entries.test.ts",
     "bound-records.test.ts",
+    "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
+    "developer-story.test.ts",
     "entries.test.ts",
     "kept-build.test.ts",
+    "kit-bridge.test.ts",
+    "kit.test.ts",
+    "load-adapter.test.ts",
     "matcher.test.ts",
     "open.test.ts",
     "references.test.ts",
+    "replay.test.ts",
     "resolver.test.ts",
-    "store.test.ts"
+    "saved-output-bridge.test.ts",
+    "scoped-runs.test.ts",
+    "shapes.test.ts",
+    "store.test.ts",
+    "wasm-bridge.test.ts"
   ]
 }

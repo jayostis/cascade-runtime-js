@@ -1,0 +1,71 @@
+{
+  "about": "A loader that copies a pod into a GraphDB server, so that a developer can explore the pod's records with GraphDB's own tools. npm run graphdb -- <name> <GraphDB's base URL> runs it; no app needs it.",
+  "capabilities": [
+    "Loading a pod into GraphDB · load(), GraphDB",
+    "Asking a GraphDB repository a question · GraphDB.ask()"
+  ],
+  "glossary": [
+    {
+      "term": "derivation",
+      "definition": "a query a lens carries that works out statements from a pod's files which the files do not hold themselves; what the derivations of a lens work out is the pod's derived state under it.",
+      "aliases": ["derivations"]
+    },
+    {
+      "term": "derived state",
+      "definition": "what a lens works out from a pod's files and keeps beside them: statements the files do not hold themselves. It is kept in a graph of its own, named for the lens (`urn:cascade:derived:<lens>`), apart from the files."
+    },
+    {
+      "term": "GraphDB",
+      "definition": "Ontotext's database for data written as statements, with a web workbench for browsing and querying it."
+    },
+    {
+      "term": "lens",
+      "definition": "a choice of which judgments count when a question is answered: `everyday` is the default, and `export` is stricter, for records sent elsewhere.",
+      "aliases": ["lenses"]
+    },
+    {
+      "term": "named graph",
+      "definition": "a set of statements kept under a name, an IRI, inside one store; a query can ask which graph a statement is in.",
+      "aliases": ["named graphs"]
+    },
+    {
+      "term": "named question",
+      "definition": "a query the vocabulary carries under a name, such as `pod/My active allergies`.",
+      "aliases": ["named questions"]
+    },
+    {
+      "term": "pod",
+      "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
+      "aliases": ["pods"]
+    },
+    {
+      "term": "record",
+      "definition": "one thing said about a person's health, such as an allergy, a medication or a lab result.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Record",
+      "aliases": ["records"]
+    },
+    {
+      "term": "repository",
+      "definition": "one database on a GraphDB server, with an ID and a title.",
+      "aliases": ["repositories"]
+    },
+    {
+      "term": "row",
+      "definition": "one line of a table: of a view, what one view entry holds, a cell per column; of a reference table, what it says of one code or variant.",
+      "aliases": ["rows"]
+    },
+    {
+      "term": "saved query",
+      "definition": "a SPARQL query that GraphDB keeps under a name, for anyone using the server to run.",
+      "aliases": ["saved queries"]
+    },
+    {
+      "term": "SPARQL",
+      "definition": "the W3C query language for data written as statements, as Turtle writes them; `pod.ask()` runs an app's own SPARQL SELECT.",
+      "vocabulary": "https://www.w3.org/TR/sparql11-query/"
+    }
+  ],
+  "shaped": ["graphdb.test.ts"],
+  "build": [],
+  "randomOrder": ["graphdb.test.ts"]
+}
