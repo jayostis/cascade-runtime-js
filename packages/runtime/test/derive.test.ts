@@ -59,7 +59,7 @@ async function derivedBy(
 
 /**
  * What a pod shows is derived from its files by the vocabulary's CONSTRUCT queries, the derivations, run in a fixed order
- * and ending with a lens. `derive` returns what each one added, and gets one of them, `entries.rq`, by a faster route
+ * and ending with the query of the lens asked for, which makes its choice of judgments. `derive` returns what each one added, and gets one of them, `entries.rq`, by a faster route
  * that returns the same triples.
  */
 describe("Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()", () => {
