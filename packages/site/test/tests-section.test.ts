@@ -276,3 +276,81 @@ test("a suite with no report, an unreadable one, a cut-short one and one with no
   assert.match(empty.page.said, /0 cases/);
   assert.match(empty.page.said, /vocabulary[\s\S]*not available/i);
 });
+
+/** A describe holding a passing test written before a failing one, each with the line node's reporter was given for it. */
+const DESCRIBED = `<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testsuite name="a pod" time="0.004" disabled="0" errors="0" tests="2" failures="1" skipped="0" hostname="x">
+		<testcase name="accepts a record" time="0.002000" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/cascade-runtime/dist/test/pod.test.js" line="10"/>
+		<testcase name="rejects a gap" time="0.500000" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/cascade-runtime/dist/test/pod.test.js" line="20" failure="boom">
+			<failure type="testCodeFailure" message="boom">
+Error [ERR_TEST_FAILURE]: boom
+			</failure>
+		</testcase>
+	</testsuite>
+	<!-- tests 2 -->
+	<!-- fail 1 -->
+</testsuites>
+`;
+
+test("a describe is one level of the page with its counts, its failing test before its passing one, each leaf linked to its line at the commit", async () => {
+  const { markup, tree } = await pageWith({
+    runtime: { report: DESCRIBED, ...RUN },
+  });
+  const part = markup.split('id="runtime"')[1] ?? "";
+  const said = text(part);
+  assert.equal(
+    (said.match(/a pod/g) ?? []).length,
+    1,
+    "the describe's name is said once, not on each case",
+  );
+  const group = said.slice(said.indexOf("a pod"));
+  assert.match(group, /^a pod\b.{0,40}1 passed.{0,20}1 failed/);
+  assert.ok(
+    said.indexOf("rejects a gap") < said.indexOf("accepts a record"),
+    "the failing test comes first",
+  );
+  assert.doesNotMatch(
+    part,
+    /pod\.test\.ts<\/code><\/td>/,
+    "the file path is not repeated on a row",
+  );
+  const base = `https://github.com/jayostis/cascade-runtime-js/blob/${RUN.commit}/packages/cascade-runtime/test/pod.test.ts`;
+  assert.ok(part.includes(`href="${base}#L20"`), "the failing leaf is linked");
+  assert.ok(part.includes(`href="${base}#L10"`), "the passing leaf is linked");
+  assert.ok(tree.has("conformance/tests/index.html"));
+});
+
+test("the CTRF file written for a report holds every case with its full path of names, status and duration, and counts as the page does", async () => {
+  const { page, tree } = await pageWith({
+    runtime: { report: DESCRIBED, ...RUN },
+  });
+  const bytes = tree.get("conformance/tests/runtime.ctrf.json");
+  assert.ok(bytes, "conformance/tests/runtime.ctrf.json is written");
+  const { results } = JSON.parse(new TextDecoder().decode(bytes)) as {
+    results: {
+      summary: Record<string, number>;
+      tests: {
+        name: string;
+        suite?: string[];
+        status: string;
+        duration: number;
+      }[];
+    };
+  };
+  assert.deepEqual(
+    results.tests.map(({ suite = [], name, status, duration }) => [
+      [...suite, name],
+      status,
+      duration,
+    ]),
+    [
+      [["a pod", "accepts a record"], "passed", 2],
+      [["a pod", "rejects a gap"], "failed", 500],
+    ],
+  );
+  assert.equal(results.summary.tests, 2);
+  assert.equal(results.summary.passed, 1);
+  assert.equal(results.summary.failed, 1);
+  assert.match(page.said, /2 cases: 1 passed, 1 failed, 0 skipped/);
+});
