@@ -31,14 +31,14 @@ import { readPage } from "./page.js";
 
 let vocabulary: MemoryFiles;
 let built: SpecPages;
-const pageText = (path: string): string =>
-  new TextDecoder().decode(built.files.get(path));
+const pageText = (pages: SpecPages, path: string): string =>
+  new TextDecoder().decode(pages.files.get(path));
 
 /** Each example's result on a page, by its name. */
-const results = (path: string): Map<string, string> =>
+const results = (pages: SpecPages, path: string): Map<string, string> =>
   new Map(
     [
-      ...pageText(path).matchAll(
+      ...pageText(pages, path).matchAll(
         /<details class="example ([\w-]+)">\n<summary><span[^>]*>[^<]*<\/span>([^<]*)<\/summary>/g,
       ),
     ].map(([, outcome, name]) => [
@@ -96,7 +96,7 @@ test("a rule that says no note rules it, and a row that names the issue that wil
       what: 'row "scheme" waits on #193',
     },
   ]);
-  const html = pageText("the-kit.html");
+  const html = pageText(built, "the-kit.html");
   assert.match(
     readPage(
       html.slice(html.indexOf('id="check-1"'), html.indexOf('id="check-2"')),
@@ -104,13 +104,13 @@ test("a rule that says no note rules it, and a row that names the issue that wil
     /No decision note rules this[^]*Its tests are the examples\./,
   );
   assert.match(
-    readPage(pageText("index.html")).said,
+    readPage(pageText(built, "index.html")).said,
     /1 rule says no note rules it, and 1 Choice row waits on the issue that will write its rule/,
   );
 });
 
 test("a Why paragraph names a row whose name holds parentheses", () => {
-  const html = pageText("naming.html");
+  const html = pageText(built, "naming.html");
   assert.match(
     readPage(html.slice(html.indexOf('id="n4"'))).said,
     /Why a layout\. One place for each file\./,
@@ -118,7 +118,7 @@ test("a Why paragraph names a row whose name holds parentheses", () => {
 });
 
 test("a rule names the note and row that ruled it, with the Why paragraph that names the row, and only http links in it", () => {
-  const page = readPage(pageText("naming.html"));
+  const page = readPage(pageText(built, "naming.html"));
   assert.ok(page.ids.has("n1") && page.ids.has("n2"));
   assert.match(page.said, /Ruled by How things are named , row version/);
   assert.match(
@@ -133,7 +133,7 @@ test("a rule names the note and row that ruled it, with the Why paragraph that n
 });
 
 test("a rule whose row no Why paragraph names shows the note's Why as a link alone", () => {
-  const html = pageText("naming.html");
+  const html = pageText(built, "naming.html");
   const n3 = html.slice(html.indexOf('id="n3"'), html.indexOf('id="n4"'));
   assert.match(readPage(n3).said, /Ruled by How things are named , row scheme/);
   assert.ok(readPage(n3).hrefs.includes(`${BLOB}decisions/naming.md#why`));
@@ -142,7 +142,7 @@ test("a rule whose row no Why paragraph names shows the note's Why as a link alo
 
 test("each example shows its latest result: pass, fail with why, or not run", () => {
   assert.deepEqual(
-    results("naming.html"),
+    results(built, "naming.html"),
     new Map([
       ["one content is one version", "passed"],
       ["a version the run did not reach", "not-run"],
@@ -150,7 +150,7 @@ test("each example shows its latest result: pass, fail with why, or not run", ()
     ]),
   );
   assert.match(
-    readPage(pageText("naming.html")).said,
+    readPage(pageText(built, "naming.html")).said,
     /N2: the revision has no name/,
   );
 });
@@ -165,16 +165,14 @@ test("of two results for one test a fail is shown, whatever their order, and the
       order.map((outcome) => ({ test, name: "", outcome })),
       RAN_WITH,
     );
-    built = pages;
     assert.equal(
-      results("naming.html").get("one content is one version"),
+      results(pages, "naming.html").get("one content is one version"),
       "failed",
     );
     assert.deepEqual(reported(pages), [
       "the report holds more than one result for this test; the worst is shown",
     ]);
   }
-  built = await pagesOf(ASSERTIONS, RAN_WITH);
 });
 
 test("a report naming its vocabulary without a trailing slash joins, one of another commit joins by path with a warning, and one of none is a warning", async () => {
@@ -190,12 +188,10 @@ test("a report naming its vocabulary without a trailing slash joins, one of anot
   assert.deepEqual(reported(moved), [
     `the report was run with ${other}, the pages are built from ${TREE}`,
   ]);
-  built = moved;
   assert.equal(
-    results("naming.html").get("one content is one version"),
+    results(moved, "naming.html").get("one content is one version"),
     "passed",
   );
-  built = await pagesOf(ASSERTIONS, RAN_WITH);
   assert.deepEqual(
     reported(
       await pagesOf(
@@ -211,7 +207,7 @@ test("a report naming its vocabulary without a trailing slash joins, one of anot
 });
 
 test("a kit's page holds its story, its scripted input, its expected views and its checks' results", () => {
-  const page = readPage(pageText("kim.html"));
+  const page = readPage(pageText(built, "kim.html"));
   assert.equal(page.h1, "Kim's pod");
   assert.match(page.said, /Background: Kim's story/);
   assert.ok(
@@ -229,13 +225,13 @@ test("a kit's page holds its story, its scripted input, its expected views and i
     /Check 2\. Each final view equals expected\/ fail why allergies\.ttl differs/,
   );
   assert.deepEqual(
-    results("kim.html"),
+    results(built, "kim.html"),
     new Map([["one allergy record", "passed"]]),
   );
 });
 
 test("the index links every feature's page and every kit's", () => {
-  const { hrefs } = readPage(pageText("index.html"));
+  const { hrefs } = readPage(pageText(built, "index.html"));
   for (const page of ["naming.html", "the-kit.html", "kim.html"])
     assert.ok(hrefs.includes(page), page);
 });
