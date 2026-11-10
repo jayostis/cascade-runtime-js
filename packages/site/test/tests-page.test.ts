@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { before, describe, it } from "node:test";
 import { suitesOf } from "../src/hub/tests.js";
 import { NODE, PYTEST } from "./runner-reports.js";
@@ -226,6 +226,13 @@ describe("Listing the repositories whose tests are shown · suitesOf(), test-sui
   });
 });
 
+const checkedIn = (): ReturnType<typeof suitesOf> =>
+  suitesOf(
+    JSON.parse(
+      readFileSync(new URL("../../test-suites.json", import.meta.url), "utf8"),
+    ),
+  );
+
 /**
  * The list as it is in the repository, which the deploy reads to find each repository's newest report: a refusal here
  * would stop the site from building.
@@ -233,17 +240,22 @@ describe("Listing the repositories whose tests are shown · suitesOf(), test-sui
 describe("The suite list as checked in · test-suites.json", () => {
   describe("suitesOf(list)", () => {
     it("reads the checked-in list without a refusal, the runtime's suite in it", () => {
-      const listed = suitesOf(
-        JSON.parse(
-          readFileSync(
-            new URL("../../test-suites.json", import.meta.url),
-            "utf8",
-          ),
-        ),
-      );
+      const listed = checkedIn();
       assert.ok(
         listed.some((one) => one.repository === "jayostis/cascade-runtime-js"),
       );
+    });
+
+    it("lists for the runtime's suite exactly the folders of `packages/`", () => {
+      const runtime = checkedIn().find(
+        (one) => one.repository === "jayostis/cascade-runtime-js",
+      );
+      const folders = readdirSync(new URL("../../../", import.meta.url), {
+        withFileTypes: true,
+      })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+      assert.deepEqual([...(runtime?.packages ?? [])].sort(), folders.sort());
     });
   });
 });
