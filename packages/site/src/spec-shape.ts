@@ -157,7 +157,8 @@ function namesCodeOrSituation(
  *
  * A checked case sits under a listed capability, at most three levels deep with its leaf, with a second level that names
  * code or begins "when", "given" or "with", and a leaf beginning with a singular present-tense verb. A case of a file listed
- * under `build`, or under a capability `build` names, is held to the leaf's grammar only. `allow` lists first words a leaf may begin with that the rule rejects.
+ * under `build`, or under a capability `build` names, is held to the grammar only: no listed capability, and no bare word as
+ * its second level, but a call, a dotted name, code in backticks or a situation as before. `allow` lists first words a leaf may begin with that the rule rejects.
  * A `shaped` file with no case in the report, and a glossary term defined twice, are problems too.
  */
 export function checkShape(
@@ -228,9 +229,8 @@ export function checkShape(
         `the case sits ${levels} levels deep; at most ${MOST_LEVELS}, the leaf counted`,
       );
     if (
-      !isBuild &&
       second !== undefined &&
-      !namesCodeOrSituation(second, namesOf(capability))
+      !namesCodeOrSituation(second, namesOf(isBuild ? undefined : capability))
     )
       found(
         "level-2",

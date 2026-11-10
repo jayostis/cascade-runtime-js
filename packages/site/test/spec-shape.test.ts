@@ -258,11 +258,21 @@ describe("checkShape(cases, spec, specPath)", () => {
   describe("with a file listed under build", () => {
     const report = check([
       ["launch.test.ts", "Anything at all", "should be left alone"],
-      ["launch.test.ts", "Anything at all", "x".repeat(3), "returns rows"],
+      ["launch.test.ts", "Anything at all", "when it builds", "returns rows"],
+      ["launch.test.ts", "Anything at all", "bundle()", "returns rows"],
+      ["launch.test.ts", "Anything at all", "the bundle", "returns rows"],
+      ["launch.test.ts", "Anything at all", "terms", "returns rows"],
     ]);
 
     it("does not require a capability", () => {
       assert.deepEqual(reported(report.problems, "capability"), []);
+    });
+
+    it("still reads the second level's grammar, with no capability to name a bare word", () => {
+      assert.deepEqual(reported(report.problems, "level-2"), [
+        "Anything at all › the bundle › returns rows",
+        "Anything at all › terms › returns rows",
+      ]);
     });
 
     it("still reads the leaf's grammar", () => {
