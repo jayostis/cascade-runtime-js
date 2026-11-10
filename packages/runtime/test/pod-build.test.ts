@@ -213,7 +213,7 @@ async function writtenAsBuiltWhole(
  */
 describe("Building a pod's views, labels and type index · CorePodOptions.build, vocabularyDerive(), podDataset()", () => {
   describe("given a story replayed with a build after every step", () => {
-    it("reads no file of the pod back", () => {
+    it("reads no file of the pod while it builds", () => {
       assert.deepEqual([...counted.found.keys()], []);
     });
 
@@ -225,17 +225,19 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
       const begun = replayed.steps.map(({ wrote }) =>
         wrote.length === 0 ? -1 : counted.log.indexOf(wrote[0] ?? ""),
       );
-      const builtAt = (path: string): number => {
-        const first = counted.log.indexOf(path);
-        return begun.findLastIndex((at) => at >= 0 && at < first);
-      };
+      const stepOf = (at: number): number =>
+        begun.findLastIndex((began) => began >= 0 && began < at);
+      const stepsWriting = (path: string): number[] =>
+        counted.log.flatMap((written, at) =>
+          written === path ? [stepOf(at)] : [],
+        );
       const appeared = layout.views.flatMap(({ file }) =>
-        counted.log.includes(file ?? "") ? [builtAt(file ?? "")] : [],
+        file === undefined ? [] : stepsWriting(file).slice(0, 1),
       );
       assert.ok(appeared.length > 0);
-      assert.equal(
-        counted.writes.get(layout.typeIndex),
-        new Set([builtAt(layout.typeIndex), ...appeared]).size,
+      assert.deepEqual(
+        stepsWriting(layout.typeIndex),
+        [...new Set(appeared)].sort((a, b) => a - b),
       );
     });
 
@@ -291,17 +293,20 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
         store,
         `SELECT ?target WHERE { GRAPH <${index}> { [] a solid:TypeRegistration ; solid:instance ?target } }`,
       );
-      assert.ok(
-        targets.some((file) => file.endsWith("clinical/allergies.ttl")),
-      );
-      assert.ok(
-        !targets.some((file) => file.endsWith("clinical/procedures.ttl")),
-      );
+      assert.ok(targets.length > 0);
+      for (const { file } of layout.views) {
+        if (file === undefined) continue;
+        assert.equal(
+          targets.includes(address + file),
+          counted.log.includes(file),
+          file,
+        );
+      }
     });
   });
 
   describe("given the labels file a build wrote", () => {
-    it("labels each entry of a view under the name its view gives it", async () => {
+    it("labels each entry of a view by the IRI its view gives it", async () => {
       const labels = await placed(
         `[] cascade:writtenByQueryPath "labels.rq" ; solid:instance ?file`,
       );
@@ -601,13 +606,13 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       );
     });
 
-    it("loads the records the pod held into one store for its first entry", () => {
+    it("loads the records the pod held into one store for its first entry session", () => {
       assert.equal(refused, undefined);
       assert.ok(records.length > 0);
       assert.equal(loadedAll, 1);
     });
 
-    it("writes for its first entry the files a build of the whole pod writes", async () => {
+    it("writes for its first entry session the files a build of the whole pod writes", async () => {
       await writtenAsBuiltWhole(entered, (path) =>
         Promise.resolve([...(wholeFiles.get(path) ?? [])]),
       );
@@ -617,7 +622,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
 
 /**
  * Nothing stops two files of a pod from stating the same thing: a pod may hold files another app wrote. A matcher run
- * reads a statement once however many files make it, and is not refused for it.
+ * is not refused for it.
  */
 describe("Matching a pod whose files repeat a statement · CorePod.match()", () => {
   describe("given a pod in which a second file states again one record's first revision", () => {
@@ -659,7 +664,7 @@ describe("Matching a pod whose files repeat a statement · CorePod.match()", () 
       });
     });
 
-    it("returns no refusal from `match()`", async () => {
+    it("does not refuse `match()`", async () => {
       assert.equal((await restated.match()).refused, undefined);
     });
   });
