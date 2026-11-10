@@ -1147,7 +1147,7 @@ function coreOver(
     ...(writer?.head === undefined ? {} : { head: writer.head }),
     ...(writer === undefined
       ? {}
-      : { keepHead: (kept: Head) => parts.tables.keptHead(address, kept) }),
+      : { keepHead: (kept: Head) => parts.tables.keepHead(address, kept) }),
     references: () => Promise.resolve(references),
     build: {
       lens: parts.lens,
@@ -1257,7 +1257,7 @@ export async function openPodWith(
       throw new Error(`the pod's creation was refused: ${created.refused}`);
     await answers?.describe({ address, subject, title });
     if (folder !== undefined)
-      await parts.tables.opened(address, shipped(references), disk?.name);
+      await parts.tables.recordOpen(address, shipped(references), disk?.name);
     return new OpenPod(
       parts,
       core,
@@ -1322,11 +1322,11 @@ async function openedWithTables(
     before.length === current.length &&
     before.every((version, index) => version === current[index])
   ) {
-    await tables.named(address, name);
+    await tables.recordName(address, name);
     return undefined;
   }
   const performed = await core.open(references);
   if (performed.refused === undefined)
-    await tables.opened(address, current, name);
+    await tables.recordOpen(address, current, name);
   return { ...performed, unheld: performed.unheld ?? [] };
 }

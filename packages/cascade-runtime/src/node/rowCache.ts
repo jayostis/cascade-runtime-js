@@ -41,7 +41,7 @@ const report = (folder: string): void => {
  * `CASCADE_ROWS_CACHE` names when it is there and its bytes still hash to its name, and kept in it when it is not.
  * Anything else is fetched live.
  */
-export function keptRows(
+export function withKeptRows(
   fetching: typeof fetch,
   folder: string | undefined = process.env[ROWS_CACHE],
 ): typeof fetch {
@@ -82,7 +82,7 @@ const UNREAD_FOR = 30 * 24 * HOUR;
 const KEPT_NAME = /^[0-9a-f]{64}\.nq\.gz(\.[^.]+\.tmp)?$/;
 
 /** Drops the folder's row files no read has touched for 30 days, and half-written files an hour old, which no run is still writing. */
-export async function prunedRows(
+export async function pruneRows(
   folder: string,
   now = Date.now(),
 ): Promise<void> {
