@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { FRONT_PAGE, hubFiles, STARTER_TRY } from "../src/front-page.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { SECTIONS } from "../src/node/hub/index.js";
-import { addressOf, buildTree, pageOf } from "../src/sections.js";
+import { addressOf, buildTree, pageOf, type Row } from "../src/sections.js";
 import { readPage } from "./page.js";
 
 const OWNER = "https://github.com/jayostis";
@@ -62,117 +62,165 @@ function rowsOf(html: string): Map<string, string[]> {
   );
 }
 
-test("the front page has a Find your way table with a row for each thing a reader came for, each linking its page, and links no address twice", async () => {
-  const html = await frontPage();
-  const rows = rowsOf(html);
-  assert.deepEqual(
-    [...rows].map(([id, links]) => [id, [...links].sort()]),
-    [
-      ["want-see", ["examples.html", STARTER_TRY]],
-      ["want-build", ["api/", "start.html"]],
-      ["want-model", ["terms/"]],
-      ["want-why", ["decisions/"]],
-      ["want-rules", ["spec/"]],
-      [
-        "want-conformance",
-        [
-          "conformance/",
-          "conformance/tests/cascade-runtime-js/",
-          "conformance/tests/cascade-vocabulary/",
-        ],
-      ],
-      ["want-adapters", ["adapters/"]],
-      [
-        "want-pods",
-        KITS.flatMap((kit) => [`${kit}/index.html`, `${kit}/pod/manifest.ttl`]),
-      ],
-      ["want-evals", ["evals/"]],
-      ["want-agent", ["AGENTS.md", "index.json", "llms.txt"]],
-      ["want-contribute", ["#repositories", "decisions/#the-bar"]],
-    ].map(([id, links]) => [id, [...(links as string[])].sort()]),
-  );
-  const all = readPage(html).hrefs.map(addressOf);
-  assert.deepEqual(
-    all.filter((href, at) => all.indexOf(href) !== at),
-    [],
-    "an address is linked twice",
-  );
-});
+/** The front page of `rows` under the `build` want alone; throws when it links one address twice. */
+const frontOf = (rows: Row[]) => hubFiles([], new Map([["build", rows]]));
 
-test("the front page lists the nine repositories, each beside its purpose, the reference tables with their own site, and not the archived or private ones", async () => {
-  const html = await frontPage();
-  const list = /<table id="repository-list">([\s\S]*?)<\/table>/.exec(html);
-  assert.ok(list, "the front page lists the repositories");
-  const rows = [
-    ...(list[1] ?? "").matchAll(/<tr id="([^"]+)">([\s\S]*?)<\/tr>/g),
-  ];
-  const names = [
-    "cascade-vocabulary",
-    "cascade-runtime-js",
-    "cascade-bridge-spec",
-    "cascade-bridge-rs",
-    "cascade-bridge-adapter-fhir-r4",
-    "cascade-bridge-adapter-ccda",
-    "cascade-starter-kit",
-    "cascade-reference-tables",
-    "cascade-sandbox",
-  ];
-  assert.deepEqual(
-    rows.map(([, id]) => id),
-    names.map((name) => `repository-${name}`),
-  );
-  for (const [, id = "", row = ""] of rows) {
-    const name = id.replace("repository-", "");
-    const { hrefs, said } = readPage(row);
-    assert.equal(hrefs[0], `${OWNER}/${name}`);
-    assert.ok(said.trim().length > name.length + 20, `${name} says what it is`);
-  }
-  assert.deepEqual(readPage(rows[7]?.[2] ?? "").hrefs, [
-    `${OWNER}/cascade-reference-tables`,
-    "https://jayostis.github.io/cascade-reference-tables/",
-  ]);
-  assert.doesNotMatch(html, /cascade-bridge-js|clinvar|health-assistant/);
-});
+/**
+ * The front page is where a reader starts: a "Find your way" table with a row for each thing a reader came for, and a
+ * list of the project's repositories. `hubFiles()` writes it from the links every section lists, and refuses to link
+ * one address twice, so that each page has one place a reader finds it.
+ */
+describe("The front page · hubFiles()", () => {
+  describe("given the site's own sections", () => {
+    let html: string;
 
-test("the front page is refused when an address is linked twice, whether by two rows, a row's second link, or a row and a repository, and a want with no row is not written", () => {
-  const front = (rows: Parameters<typeof hubFiles>[1]) => hubFiles([], rows);
-  for (const [rows, twice] of [
-    [
-      [
-        { href: "a.html", label: "A" },
-        { href: "a.html", label: "B" },
-      ],
-      "a.html",
-    ],
-    [
-      [
-        {
-          href: "a.html",
-          label: "A",
-          also: { href: "a.html", label: "again" },
-        },
-      ],
-      "a.html",
-    ],
-    [
-      [
-        { href: "spec/", label: "A" },
-        { href: "spec/index.html", label: "B" },
-      ],
-      "spec/index.html",
-    ],
-    [
-      [{ href: `${OWNER}/cascade-sandbox`, label: "S" }],
-      `${OWNER}/cascade-sandbox`,
-    ],
-  ] as const)
-    assert.throws(() => front(new Map([["build", rows]])), {
-      message: `the front page links ${twice} twice`,
+    before(async () => {
+      html = await frontPage();
     });
-  const page = new TextDecoder().decode(
-    front(new Map([["build", [{ href: "a.html", label: "A" }]]])).get(
-      FRONT_PAGE,
-    ),
-  );
-  assert.deepEqual([...rowsOf(page).keys()], ["want-build", "want-contribute"]);
+
+    const repositoryRows = () => {
+      const list = /<table id="repository-list">([\s\S]*?)<\/table>/.exec(html);
+      assert.ok(list, "the front page lists the repositories");
+      return [
+        ...(list[1] ?? "").matchAll(/<tr id="([^"]+)">([\s\S]*?)<\/tr>/g),
+      ];
+    };
+
+    it("lists a row for each thing a reader came for, in the table's order, each with its links", () => {
+      assert.deepEqual(
+        [...rowsOf(html)].map(([id, links]) => [id, [...links].sort()]),
+        [
+          ["want-see", ["examples.html", STARTER_TRY]],
+          ["want-build", ["api/", "start.html"]],
+          ["want-model", ["terms/"]],
+          ["want-why", ["decisions/"]],
+          ["want-rules", ["spec/"]],
+          [
+            "want-conformance",
+            [
+              "conformance/",
+              "conformance/tests/cascade-runtime-js/",
+              "conformance/tests/cascade-vocabulary/",
+            ],
+          ],
+          ["want-adapters", ["adapters/"]],
+          [
+            "want-pods",
+            KITS.flatMap((kit) => [
+              `${kit}/index.html`,
+              `${kit}/pod/manifest.ttl`,
+            ]),
+          ],
+          ["want-evals", ["evals/"]],
+          ["want-agent", ["AGENTS.md", "index.json", "llms.txt"]],
+          ["want-contribute", ["#repositories", "decisions/#the-bar"]],
+        ].map(([id, links]) => [id, [...(links as string[])].sort()]),
+      );
+    });
+
+    it("links no address twice", () => {
+      const all = readPage(html).hrefs.map(addressOf);
+      assert.deepEqual(
+        all.filter((href, at) => all.indexOf(href) !== at),
+        [],
+        "an address is linked twice",
+      );
+    });
+
+    it("lists each live repository in order, linked, beside what it is for", () => {
+      const rows = repositoryRows();
+      const names = [
+        "cascade-vocabulary",
+        "cascade-runtime-js",
+        "cascade-bridge-spec",
+        "cascade-bridge-rs",
+        "cascade-bridge-adapter-fhir-r4",
+        "cascade-bridge-adapter-ccda",
+        "cascade-starter-kit",
+        "cascade-reference-tables",
+        "cascade-sandbox",
+      ];
+      assert.deepEqual(
+        rows.map(([, id]) => id),
+        names.map((name) => `repository-${name}`),
+      );
+      for (const [, id = "", row = ""] of rows) {
+        const name = id.replace("repository-", "");
+        const { hrefs, said } = readPage(row);
+        assert.equal(hrefs[0], `${OWNER}/${name}`);
+        assert.ok(
+          said.trim().length > name.length + 20,
+          `${name} says what it is`,
+        );
+      }
+    });
+
+    it("links the reference tables' own site beside their repository", () => {
+      assert.deepEqual(readPage(repositoryRows()[7]?.[2] ?? "").hrefs, [
+        `${OWNER}/cascade-reference-tables`,
+        "https://jayostis.github.io/cascade-reference-tables/",
+      ]);
+    });
+
+    it("leaves out the archived and the private repositories", () => {
+      assert.doesNotMatch(html, /cascade-bridge-js|clinvar|health-assistant/);
+    });
+  });
+
+  describe("given links that reach one address twice", () => {
+    it("refuses two links of one address, naming it", () => {
+      assert.throws(
+        () =>
+          frontOf([
+            { href: "a.html", label: "A" },
+            { href: "a.html", label: "B" },
+          ]),
+        { message: "the front page links a.html twice" },
+      );
+    });
+
+    it("refuses a second link that repeats its first", () => {
+      assert.throws(
+        () =>
+          frontOf([
+            {
+              href: "a.html",
+              label: "A",
+              also: { href: "a.html", label: "again" },
+            },
+          ]),
+        { message: "the front page links a.html twice" },
+      );
+    });
+
+    it("refuses a folder and its index page as one address", () => {
+      assert.throws(
+        () =>
+          frontOf([
+            { href: "spec/", label: "A" },
+            { href: "spec/index.html", label: "B" },
+          ]),
+        { message: "the front page links spec/index.html twice" },
+      );
+    });
+
+    it("refuses a link to a repository the list already links", () => {
+      assert.throws(
+        () => frontOf([{ href: `${OWNER}/cascade-sandbox`, label: "S" }]),
+        { message: `the front page links ${OWNER}/cascade-sandbox twice` },
+      );
+    });
+  });
+
+  describe("given links for one row only", () => {
+    it("writes that row and the contribute row, and no other", () => {
+      const page = new TextDecoder().decode(
+        frontOf([{ href: "a.html", label: "A" }]).get(FRONT_PAGE),
+      );
+      assert.deepEqual(
+        [...rowsOf(page).keys()],
+        ["want-build", "want-contribute"],
+      );
+    });
+  });
 });
