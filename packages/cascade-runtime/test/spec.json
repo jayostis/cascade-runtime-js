@@ -10,20 +10,25 @@
     "Entering a record by hand · pod.enter()",
     "Recording the owner's judgment · pod.judge()",
     "Opening a pod again · openPod()",
+    "Keeping an open pod's answers current · pod.ask()",
     "Encrypting a pod with six words · openPod(), sixWords(), typedWords()",
     "Sample pods and exports to build against · replayKit(), kitDownload()",
     "Publishing a pod for a browser · answersToPublish(), samplesToPublish()",
+    "Importing the package in a web page · browserBuildVersion()",
     "Keeping reference tables up to date · tablesBeside(), tables.check()",
+    "Finding lab changes after a medication starts or stops · findChanges(), changesIn()",
     "Tools a model reads a pod with · TOOLS",
     "Reading a folder of pods for the tools · podReads()",
     "Reading a whole pod in pages · ask tool",
     "Checking a pod against the reference tables · reference_table_checks tool",
     "Offering tools to a model in a web page · toolRegistry()",
+    "Checking a tool's input against its schema · checkInput()",
     "Checking a model's reply against a person's records · checkReply(), replyErrors(), replySchema",
     "Checking what a reply says a pod lacks · checkAbsence()",
     "Checking a citation of a download · checkCitation(), downloadsSource(), isoDate()",
     "Checking a citation of a view entry · checkCitation(), podRowsSource()",
-    "Checking what a reply says downloads lack · checkRecordsAbsence()"
+    "Checking what a reply says downloads lack · checkRecordsAbsence()",
+    "Building an app from the guide · guide/AGENTS.md"
   ],
   "glossary": [
     {
@@ -67,6 +72,11 @@
       "aliases": ["backs"]
     },
     {
+      "term": "bundler",
+      "definition": "a program, such as Vite or esbuild, that joins an app's modules into the files a web page loads.",
+      "aliases": ["bundlers"]
+    },
+    {
       "term": "C-CDA",
       "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
     },
@@ -107,6 +117,11 @@
       "aliases": ["compact reads"]
     },
     {
+      "term": "criticality",
+      "definition": "how dangerous a reaction to an allergen could be, as a source states it: `low`, `high` or `unable-to-assess`.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#allergyCriticality"
+    },
+    {
       "term": "custodian",
       "definition": "the organisation that keeps a document and answers for its true copy.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#CustodianRole",
@@ -121,6 +136,11 @@
       "term": "download",
       "definition": "a file of a person's records as a hospital's server or portal gave it, before any import: FHIR resources in JSON, or a C-CDA document.",
       "aliases": ["downloads"]
+    },
+    {
+      "term": "entry point",
+      "definition": "a name an app imports the package by: `cascade-runtime`, or one with a path after it, such as `cascade-runtime/check`. The browser entry point is the build of `cascade-runtime` that a bundler gives a web page in place of Node's.",
+      "aliases": ["entry points"]
     },
     {
       "term": "entry session",
@@ -162,6 +182,10 @@
       "definition": "something the matcher noticed about a pod's records and filed for the owner to answer with a judgment.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#FindingForReview",
       "aliases": ["findings"]
+    },
+    {
+      "term": "guide",
+      "definition": "`guide/AGENTS.md`, the document the package ships for a developer, or a coding agent, who is building an app on a pod."
     },
     {
       "term": "handle",
@@ -213,6 +237,11 @@
       "term": "kit",
       "definition": "a story and the exports it uses, which the vocabulary carries for testing, such as `alex-rivera`.",
       "aliases": ["kits"]
+    },
+    {
+      "term": "lab change",
+      "definition": "a difference between one lab test's results before and after the day a medication started or stopped, as `findChanges()` reports it; it says what moved and never why.",
+      "aliases": ["lab changes"]
     },
     {
       "term": "lens",
@@ -278,6 +307,11 @@
       "term": "pack",
       "aliases": ["packs"],
       "definition": "one file holding all of a sample's files, so a page fetches them at once."
+    },
+    {
+      "term": "packed package",
+      "definition": "the package as `npm run build:package` makes it for publishing: its compiled code, its browser build and the vocabulary and adapters it carries. A source checkout is not packed.",
+      "aliases": ["packed"]
     },
     {
       "term": "panel",
@@ -357,6 +391,12 @@
       "aliases": ["resources"]
     },
     {
+      "term": "retraction",
+      "definition": "the owner taking back a judgment they filed: the judgment stays in the pod and no longer counts.",
+      "vocabulary": "http://www.w3.org/ns/prov#invalidated",
+      "aliases": ["retractions", "retract", "retracts", "retracted"]
+    },
+    {
       "term": "rule",
       "definition": "a numbered requirement in the vocabulary that every runtime must meet, such as A14 in `runtime/arrivals.feature`; a heading on this page links the rules its API reaches.",
       "aliases": ["rules"]
@@ -377,6 +417,17 @@
       "aliases": ["samples"]
     },
     {
+      "term": "sandbox story",
+      "definition": "a made-up patient at a demo hospital whose records were written to show one outcome, such as a lab result that falls after a medication starts, with that outcome written down beside them.",
+      "aliases": ["sandbox stories"]
+    },
+    {
+      "term": "schema",
+      "definition": "a description, in JSON Schema, of what a tool's input may hold: its properties, the type of each, and which are required.",
+      "vocabulary": "https://json-schema.org/",
+      "aliases": ["schemas"]
+    },
+    {
       "term": "sealed",
       "aliases": ["seal", "seals"],
       "definition": "of a pod or a file, encrypted on disk so that only the secret opens it."
@@ -390,6 +441,11 @@
       "term": "series",
       "definition": "one of the reference tables across its versions, such as RxNorm's product ingredients.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
+    },
+    {
+      "term": "shapes",
+      "definition": "the vocabulary's requirements on what a record, a judgment or a file of a pod must state, written in SHACL, the W3C language for checking data.",
+      "vocabulary": "https://www.w3.org/TR/shacl/"
     },
     {
       "term": "snapshot",
@@ -431,6 +487,11 @@
       "definition": "the person a pod is about.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Subject",
       "aliases": ["subjects"]
+    },
+    {
+      "term": "template",
+      "definition": "Turtle with blanks, given in the guide, which an app fills in with what a person typed or decided and passes to `pod.enter()` or `pod.judge()`.",
+      "aliases": ["templates"]
     },
     {
       "term": "term",
@@ -497,15 +558,34 @@
     }
   ],
   "shaped": [
+    "browser-types.test.ts",
+    "changes.test.ts",
+    "check.test.ts",
     "citations.test.ts",
+    "entry.test.ts",
+    "failure-annotations.test.ts",
+    "guide.test.ts",
     "outcomes.test.ts",
+    "pack-dependencies.test.ts",
+    "people-copies.test.ts",
     "pod-tools.test.ts",
     "pod.test.ts",
     "reply.test.ts",
+    "server-same.test.ts",
+    "stories.test.ts",
+    "story-pulls.test.ts",
     "terms.test.ts",
-    "tools.test.ts"
+    "tools.test.ts",
+    "transpile.test.ts",
+    "vite.test.ts"
   ],
-  "build": ["cascade-runtime/tools in a browser bundle"],
+  "build": [
+    "cascade-runtime/tools in a browser bundle",
+    "Transpiling before the tests · scripts/transpile.mjs",
+    "Dependencies of the packed package · mergedDependencies(), undeclaredImports(), vendored()",
+    "Annotating a red run's failures · failure-annotations.ts",
+    "Tripwire: copies of the kits' data kept in other repositories"
+  ],
   "randomOrder": [
     "browser-types.test.ts",
     "changes.test.ts",
@@ -514,6 +594,7 @@
     "connect.test.ts",
     "directory.test.ts",
     "entry.test.ts",
+    "failure-annotations.test.ts",
     "guide.test.ts",
     "kinds-read.test.ts",
     "launcher-sandbox.test.ts",
