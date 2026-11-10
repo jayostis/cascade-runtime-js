@@ -226,11 +226,6 @@
       "aliases": ["drug classes", "class", "classes", "classed"]
     },
     {
-      "term": "entry",
-      "definition": "a record the owner typed in themselves, which no source holds.",
-      "aliases": ["entries"]
-    },
-    {
       "term": "entry point",
       "definition": "a name an app imports the package by: `cascade-runtime`, or one with a path after it, such as `cascade-runtime/check`. The browser entry point is the build of `cascade-runtime` that a bundler gives a web page in place of Node's.",
       "aliases": ["entry points"]
@@ -817,7 +812,7 @@
       "term": "view entry",
       "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
-      "aliases": ["view entries"]
+      "aliases": ["view entries", "entry", "entries"]
     },
     {
       "term": "vocabulary",
