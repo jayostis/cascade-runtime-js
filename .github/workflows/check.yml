@@ -171,6 +171,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - run: npx playwright install --only-shell chromium
         if: ${{ !cancelled() }}
+      # The tests page's script, run in a browser: expand and collapse all, failures only, the glossary filter.
+      - name: Run the tests page's script
+        if: ${{ !cancelled() }}
+        run: npm run test:tests-page
       # A newcomer on the front page of this tree reaches each row of "Find your way" in one click, on a page of the expected title.
       - name: Walk the front page's rows
         if: ${{ !cancelled() }}
