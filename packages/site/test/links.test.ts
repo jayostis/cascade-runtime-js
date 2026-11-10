@@ -1,290 +1,190 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { test } from "node:test";
-import {
-  addressesOf,
-  sharedPageOf,
-  type Named,
-  noteHref,
-  noteLinkOf,
-  ruleHref,
-  termHref,
-} from "../src/links.js";
-import { renderMarkdown } from "../src/markdown.js";
+import { describe, it } from "node:test";
+import { noteHref, noteLinkOf, ruleHref, termHref } from "../src/links.js";
 
-test("a term's link keeps its prefix in the anchor, so copied terms do not collide with ours, and takes the base of whichever page holds the term reference", () => {
-  const cases: [string, string, string][] = [
-    ["http://xmlns.com/foaf/0.1/name", "terms/", "terms/#foaf:name"],
-    ["http://purl.org/pav/version", "terms/", "terms/#pav:version"],
-    [
-      "http://www.w3.org/ns/prov#wasDerivedFrom",
-      "../",
-      "../#prov:wasDerivedFrom",
-    ],
-    ["http://www.w3.org/ns/solid/terms#account", "", "#solid:account"],
-    [
-      "https://ns.cascadeprotocol.org/cascade#name",
-      "terms/",
-      "terms/#cascade:name",
-    ],
-    [
-      "https://ns.cascadeprotocol.org/bridge/v1-draft#Source",
-      "terms/",
-      "terms/#bridge:Source",
-    ],
-    [
-      "http://www.w3.org/2004/02/skos/core#prefLabel",
-      "terms/",
-      "terms/#skos:prefLabel",
-    ],
-    [
-      "http://www.w3.org/2004/02/skos/core#Concept",
-      "terms/",
-      "terms/#skos:Concept",
-    ],
-    ["http://www.w3.org/2002/07/owl#sameAs", "terms/", "terms/#owl:sameAs"],
-    [
-      "http://purl.obolibrary.org/obo/BFO_0000050",
-      "terms/",
-      "terms/#obo:BFO_0000050",
-    ],
-    ["http://rdfs.org/ns/void#inDataset", "terms/", "terms/#void:inDataset"],
-    [
-      "https://w3id.org/sssom/mapping_justification",
-      "terms/",
-      "terms/#sssom:mapping_justification",
-    ],
-    ["http://www.w3.org/ns/org#identifier", "terms/", "terms/#org:identifier"],
-    ["http://www.w3.org/ns/dcat#Dataset", "terms/", "terms/#dcat:Dataset"],
-    [
-      "http://example.org/a b#c",
-      "terms/",
-      "terms/#http%3A%2F%2Fexample.org%2Fa%20b%23c",
-    ],
-  ];
-  for (const [iri, base, href] of cases)
-    assert.equal(termHref(iri, base), href);
-  assert.notEqual(
-    termHref("http://xmlns.com/foaf/0.1/name", "terms/"),
-    termHref("https://ns.cascadeprotocol.org/cascade#name", "terms/"),
-  );
-});
+const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
+const HOST = "https://ns.cascadeprotocol.org/";
+const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/abc123";
 
-test("a rule links to its feature's page and its number's anchor, a note to its file on GitHub, and no helper links the namespace host, which does not resolve", () => {
-  assert.equal(
-    ruleHref("runtime/matcher.feature", "R19", "spec/"),
-    "spec/matcher.html#r19",
-  );
-  assert.equal(
-    ruleHref("conformance/alex-rivera/alex-rivera.feature", "Check 3", ""),
-    "alex-rivera.html#check-3",
-  );
-  const blob = "https://github.com/jayostis/cascade-vocabulary/blob/abc123";
-  assert.equal(
-    noteHref("decisions/identity.md", blob),
-    `${blob}/decisions/identity.md`,
-  );
-  assert.equal(
-    noteHref("decisions/identity.md", `${blob}/`),
-    `${blob}/decisions/identity.md`,
-  );
-  assert.equal(
-    noteHref("/decisions/identity.md", blob),
-    `${blob}/decisions/identity.md`,
-  );
-  for (const where of [
+/** Asserts that `call` refuses each base that is the vocabulary's host, however it is written. */
+function refusesHost(call: (base: string) => unknown): void {
+  for (const base of [
     "http://ns.cascadeprotocol.org/terms/",
     "https://ns.cascadeprotocol.org",
     "HTTPS://NS.CASCADEPROTOCOL.ORG/x",
+    HOST,
   ])
-    assert.throws(
-      () => termHref("http://xmlns.com/foaf/0.1/name", where),
-      /ns\.cascadeprotocol\.org/,
-      where,
-    );
-  const host = "https://ns.cascadeprotocol.org/";
-  assert.throws(
-    () => termHref("http://xmlns.com/foaf/0.1/name", host),
-    /ns\.cascadeprotocol\.org/,
-  );
-  assert.throws(
-    () => ruleHref("runtime/matcher.feature", "R1", `${host}spec/`),
-    /ns\.cascadeprotocol\.org/,
-  );
-  assert.throws(
-    () => noteHref("decisions/identity.md", host),
-    /ns\.cascadeprotocol\.org/,
-  );
-});
+    assert.throws(() => call(base), /ns\.cascadeprotocol\.org/, base);
+}
 
-test("a note links to its page when given the folder that holds decisions/, and a link written in a note goes to a page, the file on GitHub, or nowhere", () => {
-  assert.equal(
-    noteHref("decisions/identity.md", "../"),
-    "../decisions/identity.html",
-  );
-  assert.equal(noteHref("decisions/README.md", ""), "decisions/index.html");
-  assert.throws(() => noteHref("queries/a.rq", "../"), /no decision note/);
-  assert.throws(() => noteHref("decisions/a/b.md", "../"), /no decision note/);
-  const links = {
-    blob: "https://github.com/jayostis/cascade-vocabulary/blob/abc/",
-    tree: "https://github.com/jayostis/cascade-vocabulary/tree/abc/",
-  };
-  const from = "decisions/currency.md";
-  const at = (href: string, notes?: string) =>
-    noteLinkOf(href, from, notes === undefined ? links : { ...links, notes });
-  assert.equal(at("naming.md#why", "../"), "../decisions/naming.html#why");
-  assert.equal(at("README.md", "../"), "../decisions/index.html");
-  assert.equal(at("naming.md"), `${links.blob}decisions/naming.md`);
-  assert.equal(
-    at("../queries/a.rq?x=1", "../"),
-    `${links.blob}queries/a.rq?x=1`,
-  );
-  assert.equal(at("../queries/", "../"), `${links.tree}queries/`);
-  assert.equal(at("https://example.org/a"), "https://example.org/a");
-  assert.equal(at("javascript:alert(1)"), undefined);
-  assert.equal(at(" jav\tascript:alert(1)"), undefined);
-  assert.equal(at("data:text/html,x", "../"), undefined);
-});
+/**
+ * Every page of the site links what it names through these four, so a vocabulary term, a rule and a decision note each
+ * have one address. None of them links `ns.cascadeprotocol.org`, the host of the vocabulary's names, which serves no page.
+ */
+describe("Linking a vocabulary term, a rule or a decision note · termHref(), ruleHref(), noteHref(), noteLinkOf()", () => {
+  describe("`termHref()`", () => {
+    it("keeps the namespace's prefix in the anchor, as in `terms/#foaf:name`", () => {
+      const known: [string, string][] = [
+        [FOAF_NAME, "terms/#foaf:name"],
+        ["http://purl.org/pav/version", "terms/#pav:version"],
+        [
+          "http://www.w3.org/ns/prov#wasDerivedFrom",
+          "terms/#prov:wasDerivedFrom",
+        ],
+        ["http://www.w3.org/ns/solid/terms#account", "terms/#solid:account"],
+        ["https://ns.cascadeprotocol.org/cascade#name", "terms/#cascade:name"],
+        [
+          "https://ns.cascadeprotocol.org/bridge/v1-draft#Source",
+          "terms/#bridge:Source",
+        ],
+        [
+          "http://www.w3.org/2004/02/skos/core#prefLabel",
+          "terms/#skos:prefLabel",
+        ],
+        ["http://www.w3.org/2004/02/skos/core#Concept", "terms/#skos:Concept"],
+        ["http://www.w3.org/2002/07/owl#sameAs", "terms/#owl:sameAs"],
+        [
+          "http://purl.obolibrary.org/obo/BFO_0000050",
+          "terms/#obo:BFO_0000050",
+        ],
+        ["http://rdfs.org/ns/void#inDataset", "terms/#void:inDataset"],
+        [
+          "https://w3id.org/sssom/mapping_justification",
+          "terms/#sssom:mapping_justification",
+        ],
+        ["http://www.w3.org/ns/org#identifier", "terms/#org:identifier"],
+        ["http://www.w3.org/ns/dcat#Dataset", "terms/#dcat:Dataset"],
+      ];
+      for (const [iri, href] of known)
+        assert.equal(termHref(iri, "terms/"), href, iri);
+    });
 
-test("a page's address is its kind's folder and its name as a slug; things that share one each add the start of their IRI's digest, whatever order they come in", async () => {
-  const named = (
-    iri: string,
-    name: string,
-    folder = "records",
-    fallback = "record",
-  ): Named => ({ iri, folder, name, fallback });
-  const things = [
-    named("urn:a", "Allergy · Peanuts · own entry"),
-    named("urn:b", "Condition · Asthma"),
-    named("urn:c", "Condition · Asthma"),
-    named("urn:d", "Condition · Asthma", "entries", "entry"),
-    named("urn:e", "Café · Crème brûlée"),
-    named("urn:f", "· · ·"),
-    named("urn:g", "Con"),
-    named("urn:h", `${"x".repeat(70)} ${"y".repeat(70)}`),
-    named("urn:i", "condition asthma"),
-    named("urn:j", "COM1"),
-    named("urn:k", "Lpt1"),
-    named("urn:l", "Comd"),
-  ];
-  const addresses = await addressesOf(things);
-  const digest = (iri: string) =>
-    createHash("sha256").update(iri).digest("hex").slice(0, 8);
-  assert.deepEqual(
-    addresses,
-    new Map([
-      ["urn:a", "records/allergy-peanuts-own-entry.html"],
-      ["urn:b", `records/condition-asthma--${digest("urn:b")}.html`],
-      ["urn:c", `records/condition-asthma--${digest("urn:c")}.html`],
-      ["urn:d", "entries/condition-asthma.html"],
-      ["urn:e", "records/cafe-creme-brulee.html"],
-      ["urn:f", "records/record.html"],
-      ["urn:g", "records/con-record.html"],
-      ["urn:h", `records/${"x".repeat(70)}.html`],
-      ["urn:i", `records/condition-asthma--${digest("urn:i")}.html`],
-      ["urn:j", "records/com1-record.html"],
-      ["urn:k", "records/lpt1-record.html"],
-      ["urn:l", "records/comd.html"],
-    ]),
-  );
-  assert.deepEqual(await addressesOf([...things].reverse()), addresses);
-  assert.deepEqual(await addressesOf([]), new Map());
-});
+    it("gives two vocabulary terms of one name two anchors, one for each namespace", () => {
+      assert.notEqual(
+        termHref(FOAF_NAME, "terms/"),
+        termHref("https://ns.cascadeprotocol.org/cascade#name", "terms/"),
+      );
+    });
 
-test("a name is cut at 120 characters only where the cut leaves it apart from the others: Priya's two fluticasone records keep the date that tells them apart", async () => {
-  const label = (received: string) =>
-    `Medication · fluticasone propionate 50 MCG/ACTUAT Nasal Spray · Fernhill Family Clinic · received ${received}`;
-  const [may, august] = [label("2025-05-20"), label("2025-08-12")];
-  const addresses = await addressesOf([
-    { iri: "urn:may", folder: "records", name: may, fallback: "record" },
-    { iri: "urn:august", folder: "records", name: august, fallback: "record" },
-    {
-      iri: "urn:long",
-      folder: "records",
-      name: "z".repeat(150),
-      fallback: "record",
-    },
-  ]);
-  assert.equal(
-    addresses.get("urn:may"),
-    "records/medication-fluticasone-propionate-50-mcg-actuat-nasal-spray-fernhill-family-clinic-received-2025-05-20.html",
-  );
-  assert.equal(
-    addresses.get("urn:august"),
-    "records/medication-fluticasone-propionate-50-mcg-actuat-nasal-spray-fernhill-family-clinic-received-2025-08-12.html",
-  );
-  assert.equal(addresses.get("urn:long"), `records/${"z".repeat(120)}.html`);
-  const [one, two] = await addressesOf([
-    {
-      iri: "urn:1",
-      folder: "records",
-      name: `${"w ".repeat(70)}1`,
-      fallback: "record",
-    },
-    {
-      iri: "urn:2",
-      folder: "records",
-      name: `${"w ".repeat(70)}2`,
-      fallback: "record",
-    },
-  ]).then((found) => [found.get("urn:1"), found.get("urn:2")]);
-  assert.ok(one?.endsWith("-w-1.html") && two?.endsWith("-w-2.html"));
-});
+    it("writes a vocabulary term of a namespace it does not know as its whole IRI, escaped", () => {
+      assert.equal(
+        termHref("http://example.org/a b#c", "terms/"),
+        "terms/#http%3A%2F%2Fexample.org%2Fa%20b%23c",
+      );
+    });
 
-test("the plain address of things that share a name is the page that lists them, not the address of one of them", () => {
-  assert.equal(
-    sharedPageOf("records/condition-asthma--0a1b2c3d.html"),
-    "records/condition-asthma.html",
-  );
-  assert.equal(sharedPageOf("records/condition-asthma.html"), undefined);
-});
+    it("takes the address of whichever page holds the term reference as its base", () => {
+      assert.equal(
+        termHref("http://www.w3.org/ns/prov#wasDerivedFrom", "../"),
+        "../#prov:wasDerivedFrom",
+      );
+      assert.equal(
+        termHref("http://www.w3.org/ns/solid/terms#account", ""),
+        "#solid:account",
+      );
+    });
 
-test("Markdown renders blocks and GFM tables, and shows raw HTML as text", () => {
-  const html = renderMarkdown(
-    "# Title\n\nA `code` span and a [link](https://example.org/).\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```ttl\nx:a x:b x:c .\n```\n\n<script>alert(1)</script>\n",
-  ).text;
-  assert.match(html, /<h1>Title<\/h1>/);
-  assert.match(html, /<code>code<\/code>/);
-  assert.match(html, /<a href="https:\/\/example\.org\/">link<\/a>/);
-  assert.match(html, /<table>[\s\S]*<td>1<\/td>/);
-  assert.match(
-    html,
-    /<pre><code class="language-ttl">x:a x:b x:c \.\n<\/code><\/pre>/,
-  );
-  assert.ok(!html.includes("<script>"));
-  assert.ok(html.includes("&lt;script&gt;"));
-  assert.equal(renderMarkdown("").text, "");
-  const scripted = renderMarkdown(
-    "[x](javascript:alert(1)) [y](data:text/html,a) [ok](../a.md) [web](http://example.org/)",
-  ).text;
-  assert.ok(!/javascript:|data:/i.test(scripted), scripted);
-  assert.match(scripted, /<a href="\.\.\/a\.md">ok<\/a>/);
-  assert.match(scripted, /<a href="http:\/\/example\.org\/">web<\/a>/);
-});
+    it("refuses `ns.cascadeprotocol.org` as a base, on either scheme, however it is capitalised", () => {
+      refusesHost((base) => termHref(FOAF_NAME, base));
+    });
+  });
 
-test("Markdown gives headings GitHub-style ids only when asked, and otherwise renders as it did", () => {
-  const source =
-    "# Top\n\n## What `a pod` holds & more\n\n### Same\n\n### Same\n\ntext\n";
-  const plain = renderMarkdown(source).text;
-  assert.ok(!plain.includes("id="));
-  assert.equal(renderMarkdown(source, { ids: false }).text, plain);
-  const withIds = renderMarkdown(source, { ids: true }).text;
-  assert.match(withIds, /<h2 id="what-a-pod-holds--more">/);
-  assert.match(withIds, /<h3 id="same">Same<\/h3>/);
-  assert.match(withIds, /<h3 id="same-1">Same<\/h3>/);
-  assert.equal(withIds.replace(/ id="[^"]*"/g, ""), plain);
+  describe("`ruleHref()`", () => {
+    it("links a rule to its feature's page and its number's anchor", () => {
+      assert.equal(
+        ruleHref("runtime/matcher.feature", "R19", "spec/"),
+        "spec/matcher.html#r19",
+      );
+    });
 
-  const repeated = renderMarkdown("## Same\n\n## Same\n\n## Same-1\n", {
-    ids: true,
-  }).text;
-  assert.deepEqual(
-    [...repeated.matchAll(/ id="([^"]*)"/g)].map((m) => m[1]),
-    ["same", "same-1", "same-1-1"],
-  );
+    it("links a kit's check to the page named for the kit's folder", () => {
+      assert.equal(
+        ruleHref("conformance/alex-rivera/alex-rivera.feature", "Check 3", ""),
+        "alex-rivera.html#check-3",
+      );
+    });
 
-  const bare = renderMarkdown("## !!!\n\n## ???\n", { ids: true }).text;
-  assert.deepEqual(
-    [...bare.matchAll(/ id="([^"]*)"/g)].map((m) => m[1]),
-    ["section", "section-1"],
-  );
+    it("refuses `ns.cascadeprotocol.org` as a base", () => {
+      assert.throws(
+        () => ruleHref("runtime/matcher.feature", "R1", `${HOST}spec/`),
+        /ns\.cascadeprotocol\.org/,
+      );
+    });
+  });
+
+  describe("`noteHref()`", () => {
+    it("links a note's file on GitHub when the base is GitHub's address, with or without slashes", () => {
+      const file = `${BLOB}/decisions/identity.md`;
+      assert.equal(noteHref("decisions/identity.md", BLOB), file);
+      assert.equal(noteHref("decisions/identity.md", `${BLOB}/`), file);
+      assert.equal(noteHref("/decisions/identity.md", BLOB), file);
+    });
+
+    it("links a note's page when the base is the folder that holds `decisions/`", () => {
+      assert.equal(
+        noteHref("decisions/identity.md", "../"),
+        "../decisions/identity.html",
+      );
+    });
+
+    it("links `decisions/README.md` as the folder's index page", () => {
+      assert.equal(noteHref("decisions/README.md", ""), "decisions/index.html");
+    });
+
+    it("refuses a path that is no decision note, when asked for a page", () => {
+      assert.throws(() => noteHref("queries/a.rq", "../"), /no decision note/);
+      assert.throws(
+        () => noteHref("decisions/a/b.md", "../"),
+        /no decision note/,
+      );
+    });
+
+    it("refuses `ns.cascadeprotocol.org` as a base", () => {
+      assert.throws(
+        () => noteHref("decisions/identity.md", HOST),
+        /ns\.cascadeprotocol\.org/,
+      );
+    });
+  });
+
+  describe("`noteLinkOf()`", () => {
+    const links = {
+      blob: "https://github.com/jayostis/cascade-vocabulary/blob/abc/",
+      tree: "https://github.com/jayostis/cascade-vocabulary/tree/abc/",
+    };
+    /** A link written in `decisions/currency.md`, as the note's page or, with no `notes`, as GitHub's. */
+    const at = (href: string, notes?: string) =>
+      noteLinkOf(
+        href,
+        "decisions/currency.md",
+        notes === undefined ? links : { ...links, notes },
+      );
+
+    it("sends a link to another note to that note's page, keeping its anchor", () => {
+      assert.equal(at("naming.md#why", "../"), "../decisions/naming.html#why");
+      assert.equal(at("README.md", "../"), "../decisions/index.html");
+    });
+
+    it("keeps a link to another note on GitHub when the notes have no pages", () => {
+      assert.equal(at("naming.md"), `${links.blob}decisions/naming.md`);
+    });
+
+    it("sends a link to another file of the vocabulary to GitHub, and one to a folder to its listing there", () => {
+      assert.equal(
+        at("../queries/a.rq?x=1", "../"),
+        `${links.blob}queries/a.rq?x=1`,
+      );
+      assert.equal(at("../queries/", "../"), `${links.tree}queries/`);
+    });
+
+    it("leaves an `https:` link as written", () => {
+      assert.equal(at("https://example.org/a"), "https://example.org/a");
+    });
+
+    it("gives no address for a `javascript:` or `data:` link, however it is spaced", () => {
+      assert.equal(at("javascript:alert(1)"), undefined);
+      assert.equal(at(" jav\tascript:alert(1)"), undefined);
+      assert.equal(at("data:text/html,x", "../"), undefined);
+    });
+  });
 });

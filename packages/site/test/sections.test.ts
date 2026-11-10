@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import { dirname } from "node:path";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { evalsSection } from "../src/node/hub/evals.js";
-import { buildTree, type Want, type Section } from "../src/sections.js";
+import {
+  buildTree,
+  type Section,
+  type Walk,
+  type Want,
+} from "../src/sections.js";
 import { STYLESHEET_FILE } from "../src/site.js";
 import { readPage } from "./page.js";
 
@@ -34,188 +39,217 @@ function inMemory(
 const front = (rows: Parameters<typeof hubFiles>[1]) =>
   hubFiles(["Records"], rows);
 
-test("two in-memory sections are both built, and the front page lists both rows under their kinds, whatever the order of the list", async () => {
-  const { tree, sections } = await buildTree({
-    sections: [inMemory("later", "agent"), inMemory("first", "build")],
-    ctx: {},
-    front,
-  });
-  assert.deepEqual(
-    [...tree.keys()].sort(),
-    ["first.html", "later.html", "index.html", STYLESHEET_FILE].sort(),
-  );
-  const page = readPage(read(tree, FRONT_PAGE));
-  assert.ok(page.hrefs.includes("first.html"));
-  assert.ok(page.hrefs.includes("later.html"));
-  assert.ok(
-    page.said.indexOf("Row of first") < page.said.indexOf("Row of later"),
-  );
-  assert.deepEqual(
-    sections.map(({ section }) => section.title),
-    ["The later", "The first"],
-  );
+const buildOf = (
+  sections: Section<object>[],
+  more: Partial<Parameters<typeof buildTree<object>>[0]> = {},
+) => buildTree({ sections, ctx: {}, front, ...more });
 
-  const skipped = await buildTree({
-    sections: [
-      inMemory("a", "build"),
-      inMemory("b", "build", { needsKits: true }),
-    ],
-    ctx: {},
-    front,
-    skip: ({ needsKits }) => needsKits === true,
-  });
-  assert.ok(!skipped.tree.has("b.html"));
-  assert.ok(!read(skipped.tree, FRONT_PAGE).includes("Row of b"));
-});
+/**
+ * A section is one part of the site: the files it writes and the links it lists for the front page. `buildTree()` builds
+ * each section, then the front page from their links, then the finishers, and refuses a site in which a file is written
+ * twice or a listed link reaches nothing.
+ */
+describe("Building a site from sections · buildTree()", () => {
+  describe("with two sections", () => {
+    let walk: Walk<object>;
 
-test("a section list is refused when two sections write one file, a section leaves its path unwritten, a row links a file the tree does not hold, or a section writes outside the tree", async () => {
-  const refused: [string, Section<object>[], RegExp][] = [
-    [
-      "two sections write one file",
-      [
-        inMemory("a", "build"),
-        inMemory("b", "build", {
-          build: async () =>
-            new Map([
-              ["b.html", text("b")],
-              ["a.html", text("b")],
-            ]),
-        }),
-      ],
-      /a\.html/,
-    ],
-    [
-      "a section does not write its path",
-      [inMemory("a", "build", { build: async () => new Map() })],
-      /a\.html/,
-    ],
-    [
-      "a row links a file nothing wrote",
-      [
-        inMemory("a", "build", {
-          rows: async () => [{ href: "gone.html", label: "Gone" }],
-        }),
-      ],
-      /gone\.html/,
-    ],
-    [
-      "a row's second link names a file nothing wrote",
-      [
-        inMemory("a", "build", {
-          rows: async () => [
-            {
-              href: "a.html",
-              label: "A",
-              also: { href: "gone/pod.ttl", label: "Gone" },
-            },
-          ],
-        }),
-      ],
-      /gone\/pod\.ttl/,
-    ],
-    [
-      "a section writes outside the tree",
-      [
-        inMemory("a", "build", {
-          build: async () =>
-            new Map([
-              ["a.html", text("a")],
-              ["../a.html", text("a")],
-            ]),
-        }),
-      ],
-      /\.\.\/a\.html/,
-    ],
-    [
-      "a section writes a path with a dot part",
-      [
-        inMemory("a", "build", {
-          build: async () =>
-            new Map([
-              ["a.html", text("a")],
-              ["a/./b.html", text("a")],
-            ]),
-        }),
-      ],
-      /a\/\.\/b\.html/,
-    ],
-    [
-      "a section writes a drive path",
-      [
-        inMemory("a", "build", {
-          build: async () =>
-            new Map([
-              ["a.html", text("a")],
-              ["C:/x", text("a")],
-            ]),
-        }),
-      ],
-      /C:\/x/,
-    ],
-  ];
-  for (const [what, sections, why] of refused)
-    await assert.rejects(buildTree({ sections, ctx: {}, front }), why, what);
-});
+    before(async () => {
+      walk = await buildOf([
+        inMemory("later", "agent"),
+        inMemory("first", "build"),
+      ]);
+    });
 
-test("a finisher is handed the tree as written, every section's paths and rows, and what it returns joins the tree, but not over a file already there", async () => {
-  const seen: string[] = [];
-  const { tree } = await buildTree({
-    sections: [inMemory("a", "build"), inMemory("b", "agent")],
-    ctx: {},
-    front,
-    finishers: [
-      async ({ tree: written, sections }) => {
-        seen.push(...written.keys());
-        return new Map([
-          [
-            "index.json",
-            text(
-              JSON.stringify(
-                sections.map(({ section, paths, rows }) => [
-                  section.path,
-                  paths,
-                  rows.length,
-                ]),
-              ),
-            ),
-          ],
-        ]);
-      },
-    ],
+    it("writes each section's files, the front page and the stylesheet", () => {
+      assert.deepEqual(
+        [...walk.tree.keys()].sort(),
+        ["first.html", "later.html", "index.html", STYLESHEET_FILE].sort(),
+      );
+    });
+
+    it("lists each section's link in the front page's order of rows, whatever the order of the sections", () => {
+      const page = readPage(read(walk.tree, FRONT_PAGE));
+      assert.ok(page.hrefs.includes("first.html"));
+      assert.ok(page.hrefs.includes("later.html"));
+      assert.ok(
+        page.said.indexOf("Row of first") < page.said.indexOf("Row of later"),
+      );
+    });
+
+    it("returns the sections in the order given", () => {
+      assert.deepEqual(
+        walk.sections.map(({ section }) => section.title),
+        ["The later", "The first"],
+      );
+    });
   });
-  assert.ok(seen.includes(FRONT_PAGE));
-  assert.deepEqual(JSON.parse(read(tree, "index.json")), [
-    ["a.html", ["a.html"], 1],
-    ["b.html", ["b.html"], 1],
-  ]);
-  await assert.rejects(
-    buildTree({
-      sections: [inMemory("a", "build")],
-      ctx: {},
-      front,
-      finishers: [async () => new Map([["a.html", text("again")]])],
-    }),
-    /a\.html/,
-  );
-  const linked = await buildTree({
-    sections: [
+
+  describe("with a section the `skip` option names", () => {
+    it("leaves out its files and its link", async () => {
+      const { tree } = await buildOf(
+        [inMemory("a", "build"), inMemory("b", "build", { needsKits: true })],
+        { skip: ({ needsKits }) => needsKits === true },
+      );
+      assert.ok(tree.has("a.html"));
+      assert.ok(!tree.has("b.html"));
+      assert.ok(!read(tree, FRONT_PAGE).includes("Row of b"));
+    });
+  });
+
+  describe("with sections that cannot make one site", () => {
+    /** One section listing `a.html` and writing `files` besides it. */
+    const writing = (...files: string[]) =>
       inMemory("a", "build", {
-        rows: async () => [{ href: "llms.txt", label: "For models" }],
-      }),
-    ],
-    ctx: {},
-    front,
-    finishers: [async () => new Map([["llms.txt", text("x")]])],
+        build: async () =>
+          new Map(["a.html", ...files].map((one) => [one, text("a")])),
+      });
+
+    it("refuses two sections that write one file, naming the file", async () => {
+      await assert.rejects(
+        buildOf([
+          inMemory("a", "build"),
+          inMemory("b", "build", {
+            build: async () =>
+              new Map([
+                ["b.html", text("b")],
+                ["a.html", text("b")],
+              ]),
+          }),
+        ]),
+        /the section The b writes a\.html, which is already in the tree/,
+      );
+    });
+
+    it("refuses a section that does not write its own entry page", async () => {
+      await assert.rejects(
+        buildOf([inMemory("a", "build", { build: async () => new Map() })]),
+        /the section The a does not write a\.html/,
+      );
+    });
+
+    it("refuses a link to a file nothing writes", async () => {
+      await assert.rejects(
+        buildOf([
+          inMemory("a", "build", {
+            rows: async () => [{ href: "gone.html", label: "Gone" }],
+          }),
+        ]),
+        /has a row that links gone\.html, which nothing writes/,
+      );
+    });
+
+    it("refuses a second link to a file nothing writes", async () => {
+      await assert.rejects(
+        buildOf([
+          inMemory("a", "build", {
+            rows: async () => [
+              {
+                href: "a.html",
+                label: "A",
+                also: { href: "gone/pod.ttl", label: "Gone" },
+              },
+            ],
+          }),
+        ]),
+        /has a row that links gone\/pod\.ttl, which nothing writes/,
+      );
+    });
+
+    it("refuses a file outside the site: a `..` part, a `.` part or a drive path", async () => {
+      for (const path of ["../a.html", "a/./b.html", "C:/x"])
+        await assert.rejects(
+          buildOf([writing(path)]),
+          new RegExp(
+            `writes ${path.replaceAll(".", "\\.")}, which is not inside the tree`,
+          ),
+          path,
+        );
+    });
   });
-  assert.ok(linked.tree.has("llms.txt"));
+
+  describe("with a finisher", () => {
+    let walk: Walk<object>;
+    let seen: string[];
+    let handed: unknown;
+
+    before(async () => {
+      seen = [];
+      walk = await buildOf([inMemory("a", "build"), inMemory("b", "agent")], {
+        finishers: [
+          async ({ tree: written, sections }) => {
+            seen.push(...written.keys());
+            handed = sections.map(({ section, paths, rows }) => [
+              section.path,
+              paths,
+              rows.length,
+            ]);
+            return new Map([["index.json", text("{}")]]);
+          },
+        ],
+      });
+    });
+
+    it("hands it the site as written, the front page included", () => {
+      assert.ok(seen.includes(FRONT_PAGE));
+      assert.ok(seen.includes("a.html"));
+    });
+
+    it("hands it each section's entry page, the files it wrote and its links", () => {
+      assert.deepEqual(handed, [
+        ["a.html", ["a.html"], 1],
+        ["b.html", ["b.html"], 1],
+      ]);
+    });
+
+    it("adds the files it returns to the site", () => {
+      assert.ok(walk.tree.has("index.json"));
+    });
+
+    it("refuses a file it returns that a section already wrote", async () => {
+      await assert.rejects(
+        buildOf([inMemory("a", "build")], {
+          finishers: [async () => new Map([["a.html", text("again")]])],
+        }),
+        /a finisher writes a\.html, which is already in the tree/,
+      );
+    });
+
+    it("accepts a section's link to a file only a finisher writes", async () => {
+      const { tree } = await buildOf(
+        [
+          inMemory("a", "build", {
+            rows: async () => [{ href: "llms.txt", label: "For models" }],
+          }),
+        ],
+        { finishers: [async () => new Map([["llms.txt", text("x")]])] },
+      );
+      assert.ok(tree.has("llms.txt"));
+    });
+  });
 });
 
-test("the evals report is a section whose files all sit under evals/, and whose entry page is evals/index.html, the same in the build a pull request makes and the one that deploys", async () => {
-  const files = await evalsSection.build({ root: ROOT } as PagesContext);
-  assert.equal(evalsSection.path, "evals/index.html");
-  assert.ok(files.has("evals/index.html"));
-  assert.deepEqual(
-    [...files.keys()].filter((path) => !path.startsWith("evals/")),
-    [],
-  );
+/**
+ * The evals package writes its own pages; the site imports its compiled module by path and places them. This checks
+ * the wiring: a build that moved them would break the front page's link.
+ */
+describe("The evals pages as a section of the site · evalsSection", () => {
+  describe("`evalsSection.build()`", () => {
+    let files: ReadonlyMap<string, Uint8Array>;
+
+    before(async () => {
+      files = await evalsSection.build({ root: ROOT } as PagesContext);
+    });
+
+    it("writes `evals/index.html` as its entry page", () => {
+      assert.equal(evalsSection.path, "evals/index.html");
+      assert.ok(files.has("evals/index.html"));
+    });
+
+    it("writes every file under `evals/`", () => {
+      assert.deepEqual(
+        [...files.keys()].filter((path) => !path.startsWith("evals/")),
+        [],
+      );
+    });
+  });
 });
