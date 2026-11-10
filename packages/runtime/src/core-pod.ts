@@ -20,7 +20,7 @@ import {
   MATCHER_LENS,
   matcherView,
   migrateRuleListVersions,
-  openPod,
+  openWithTables,
   podCodes,
   releaseRetractions,
   runMatcher,
@@ -118,7 +118,7 @@ export interface Head {
 export interface Performed {
   /** The files new to the pod that it wrote, in the order it wrote them. */
   readonly wrote: readonly string[];
-  /** Why the rules refused it; it then wrote nothing. */
+  /** Why the rules refused it; it then wrote no file of the person's. */
   readonly refused?: string;
   /** The import or entry session it made. */
   readonly activity?: string;
@@ -405,7 +405,7 @@ async function copied(pod: Files): Promise<Files> {
 
 /**
  * A pod over the four interfaces, performing each step of the rules with its inputs: a step writes all it writes or,
- * refused, nothing, and with a build the views and the other files the build writes are rebuilt after it.
+ * refused, no file of the person's, and with a build the views and the other files the build writes are rebuilt after it.
  */
 export class CorePod {
   readonly #options: CorePodOptions;
@@ -615,7 +615,7 @@ export class CorePod {
     const migrated = await this.#migrated(tables, true);
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
-      const opened = await openPod(context, tables);
+      const opened = await openWithTables(context, tables);
       unheld = opened.unheld;
       this.#references = Promise.resolve(tables);
       return opened.activity;

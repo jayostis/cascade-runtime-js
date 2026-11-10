@@ -1,141 +1,23 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
-import { reachedIn, Revisions } from "../src/arrivals.js";
+import { reachedIn } from "../src/arrivals.js";
 import { BridgeError, type LoadedAdapter } from "../src/bridge.js";
-import { vocabularyDerive } from "../src/build.js";
-import { dataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { StoryTime } from "../src/ids.js";
 import { Graph, parseGraph } from "../src/graph.js";
-import { enteredRecordName } from "../src/names.js";
 import { iri, written } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { type Replayed, replay } from "../src/replay.js";
 import type { Step, Story } from "../src/story.js";
-import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
+import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const newStore = (): OxigraphStore => new OxigraphStore();
-
-async function replayed(feature: string, example: string) {
-  const files = await vocabulary();
-  const { story, folder } = await storyFrom(feature, example);
-  return replay({
-    runtime: RUNTIME,
-    story,
-    source: files,
-    vocabulary: files,
-    folder,
-    title: "",
-    pod: new MemoryFiles(story.address),
-    newStore,
-    layout: await layout(),
-    importers: [appleHealthExport],
-  });
-}
-
-test("an import writes its content-addressed files first, then its revisions, and its own description last", async () => {
-  const { pod, steps } = await replayed(
-    "runtime/arrivals.feature",
-    "each record's first arrival is its first version and a revision that follows none",
-  );
-  const wrote = steps[1]?.wrote ?? [];
-  const ranks: number[] = [];
-  for (const path of wrote) {
-    if (!(await layout()).isRdf(path)) {
-      ranks.push(0);
-      continue;
-    }
-    const { triples } = await parseGraph(
-      (await pod.read(path)) ?? new Uint8Array(),
-      pod.iri + path,
-      newStore,
-    );
-    const said = (iri: string): boolean =>
-      triples.some(([, p, o]) => p.value === iri || o.value === iri);
-    ranks.push(
-      said("http://www.w3.org/ns/prov#used")
-        ? 2
-        : said("https://ns.cascadeprotocol.org/cascade#Revision")
-          ? 1
-          : 0,
-    );
-  }
-  assert.deepEqual(
-    ranks,
-    [...ranks].sort((a, b) => a - b),
-  );
-  assert.deepEqual(new Set(ranks), new Set([0, 1, 2]));
-  assert.equal(ranks.filter((rank) => rank === 2).length, 1);
-});
-
-test("an act's revisions read from the dataset the pod keeps are those read from the records' files", async () => {
-  const files = await vocabulary();
-  const replay = await replayed(
-    "runtime/arrivals.feature",
-    "the peanut allergy changes and changes back, and its third revision sets its first version again",
-  );
-  const { pod, layout: laidOut, story, steps } = replay;
-  const kept = await dataset(
-    replay,
-    steps.at(-1)?.step.name ?? "",
-    "everyday",
-    newStore(),
-    await vocabularyDerive(files, laidOut),
-  );
-  const context = {
-    pod,
-    newStore,
-    layout: laidOut,
-    vocabulary: files,
-    address: story.address,
-  };
-  const [fromFiles, fromKept] = await Promise.all([
-    Revisions.of({ ...context, keptDataset: async () => undefined }),
-    Revisions.of({ ...context, keptDataset: async () => kept }),
-  ]);
-  const records = (
-    await kept.select(
-      "SELECT DISTINCT ?record WHERE { ?revision <https://ns.cascadeprotocol.org/cascade#revisionOf> ?record }",
-    )
-  ).rows.flatMap((row) => row.get("record")?.value ?? []);
-  assert.ok(records.some((record) => fromFiles.held(record).files.length > 3));
-  for (const record of records)
-    assert.deepEqual(fromKept.held(record), fromFiles.held(record), record);
-});
-
-test("a refused step says which rule refused it", async () => {
-  const refused = new Map<string, string | undefined>();
-  for (const example of [
-    "a Bridge graph holding a statement about nothing the pod files",
-    "a record of a type the pod files nowhere",
-    "one import's documents disagreeing on the import's description, so not even the agreeing one is written",
-    "an entry holding two activities",
-  ]) {
-    const { steps } = await replayed("runtime/arrivals.feature", example);
-    for (const { step, refused: why } of steps) refused.set(step.name, why);
-  }
-  assert.match(
-    refused.get("stray-statement") ?? "",
-    /holds a statement about no record, version, arrival, document or import/,
-  );
-  assert.match(
-    refused.get("type-filed-nowhere") ?? "",
-    /is of no type the pod files: .*NoSuchRecord/,
-  );
-  assert.match(
-    refused.get("import-disagreement") ?? "",
-    /documents disagree on the import's label, start or association/,
-  );
-  assert.match(
-    refused.get("entry-of-two-activities") ?? "",
-    /holds 2 activities, not one/,
-  );
-});
-
+const FEATURE = "runtime/arrivals.feature";
 const OA = "http://www.w3.org/ns/oa#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 
 /**
  * Finn's stray-statement import, the stray line dropped, the arrival's selector node blank as saved, named `<urn:example:selector>`,
@@ -239,16 +121,16 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
   });
 }
 
-/** What the step wrote, as one graph. */
-async function wroteBy(replayed: Replayed, index: number): Promise<Graph> {
+/** The files the step wrote that are RDF, as one graph. */
+async function wroteBy(done: Replayed, index: number): Promise<Graph> {
   const triples = [];
-  for (const path of replayed.steps[index]?.wrote ?? [])
+  for (const path of done.steps[index]?.wrote ?? [])
     if ((await layout()).isRdf(path))
       triples.push(
         ...(
           await parseGraph(
-            (await replayed.pod.read(path)) ?? new Uint8Array(),
-            replayed.pod.iri + path,
+            (await done.pod.read(path)) ?? new Uint8Array(),
+            done.pod.iri + path,
             newStore,
           )
         ).triples,
@@ -256,28 +138,42 @@ async function wroteBy(replayed: Replayed, index: number): Promise<Graph> {
   return new Graph(triples);
 }
 
-test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
-  const { steps } = await strayReplay("blank");
-  assert.match(
-    steps[1]?.refused ?? "",
-    /^the revision of urn:uuid:.*holds a blank node/,
-  );
-  assert.match(steps[2]?.refused ?? "", /^blank\.ttl: .*holds a blank node/);
-  for (const step of steps.slice(1, 3)) assert.deepEqual(step.wrote, []);
-  assert.equal(steps[3]?.refused, undefined);
-  assert.notDeepEqual(steps[3]?.wrote, []);
-});
+/**
+ * The versions the revisions the step wrote name: a revision is a subject of `cascade:version` that also states when it
+ * was last updated.
+ */
+async function versionsRevised(
+  done: Replayed,
+  index: number,
+): Promise<string[]> {
+  const versions: string[] = [];
+  for (const path of done.steps[index]?.wrote ?? []) {
+    if (!(await layout()).isRdf(path)) continue;
+    const { triples } = await parseGraph(
+      (await done.pod.read(path)) ?? new Uint8Array(),
+      done.pod.iri + path,
+      newStore,
+    );
+    for (const [s, p, o] of triples)
+      if (
+        p.value === `${CASCADE}version` &&
+        triples.some(
+          ([t, q, k]) =>
+            t.value === s.value &&
+            q.value === "http://purl.org/pav/lastUpdateOn" &&
+            k.value !== "",
+        )
+      )
+        versions.push(o.value);
+  }
+  return versions;
+}
 
-let selected: ReturnType<typeof strayReplay> | undefined;
-const withSelectorNode = () => (selected ??= strayReplay());
-
-/** The revision the import wrote carries the arrival's selector as its #selector, with the selector's statements and its source. */
-async function carriesSelector(replayed: Replayed): Promise<void> {
-  assert.equal(replayed.steps[1]?.refused, undefined);
-  const wrote = await wroteBy(replayed, 1);
-  const [revision] = wrote.subjects(
-    "https://ns.cascadeprotocol.org/cascade#revisionOf",
-  );
+/** The revision the import wrote carries the arrival's selector as its #selector, with the selector's statements. */
+async function carriesSelector(done: Replayed): Promise<void> {
+  assert.equal(done.steps[1]?.refused, undefined);
+  const wrote = await wroteBy(done, 1);
+  const [revision] = wrote.subjects(`${CASCADE}revisionOf`);
   assert.ok(revision);
   const selector = iri(`${revision.value}#selector`);
   assert.deepEqual(wrote.objects(revision, `${OA}hasSelector`).map(written), [
@@ -294,208 +190,10 @@ async function carriesSelector(replayed: Replayed): Promise<void> {
       `http://www.w3.org/1999/02/22-rdf-syntax-ns#value ""`,
     ],
   );
-  assert.deepEqual(
-    wrote.objects(revision, `${OA}hasSource`).map((o) => o.value),
-    ["ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww"],
-  );
 }
 
-test("an arrival's selector, a node of its own, blank or named, is carried into the revision as the revision's #selector, with the arrival's source", async () => {
-  await carriesSelector(await withSelectorNode());
-  await carriesSelector(await strayReplay("named"));
-});
-
-test("an entered record is named from its entry session's IRI and the draft's position", async () => {
-  const replayed = await withSelectorNode();
-  const wrote = await wroteBy(replayed, 3);
-  const [session] = wrote.subjects("http://www.w3.org/ns/prov#startedAtTime");
-  const records = wrote
-    .match(undefined, "https://ns.cascadeprotocol.org/cascade#revisionOf")
-    .map(([, , record]) => record.value);
-  assert.ok(session);
-  assert.deepEqual(records, [await enteredRecordName(session.value, 0)]);
-});
-
-test("a step given bad input by its story is refused, and the replay goes on", async () => {
-  const source = new MemoryFiles("https://story.example/");
-  await source.write(
-    "s/apple_health_export/export.xml",
-    new TextEncoder().encode(
-      '<HealthData><ClinicalRecord sourceName="Example Hospital" fhirVersion="4.0.1" receivedDate="2026-01-02 10:00:00 +0000" resourceFilePath="/clinical-records/AllergyIntolerance-peanut.json"/></HealthData>',
-    ),
-  );
-  await source.write(
-    "s/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
-    new TextEncoder().encode('{"resourceType": "AllergyIntolerance"}'),
-  );
-  await source.write(
-    "s/broken.xml",
-    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"><id>'),
-  );
-  await source.write(
-    "s/not-a-ccda.xml",
-    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"/>'),
-  );
-  await source.write("s/bridge/not-a-ccda/unaccepted.txt", new Uint8Array());
-  await source.write("s/no-judgment.ttl", new Uint8Array());
-  await source.write("s/no-turtle.ttl", new TextEncoder().encode("<a> <b>"));
-  await source.write("s/references/references.ttl", new Uint8Array());
-  for (const [file, allergen, criticality] of [
-    ["blank-allergen.ttl", "", "high"],
-    ["made-up-criticality.ttl", "Peanuts", "extreme"],
-  ])
-    await source.write(
-      `s/${file}`,
-      new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
-<urn:uuid:7d4a1c9e-3b6f-4e28-8a15-c0f2e9b7d364> a prov:Activity .
-<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
-<urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
-  <https://ns.cascadeprotocol.org/cascade#allergen> "${allergen}" ;
-  <https://ns.cascadeprotocol.org/cascade#allergyCriticality> "${criticality}" .`),
-    );
-  await source.write(
-    "s/this-entry.ttl",
-    new TextEncoder().encode(
-      "<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .",
-    ),
-  );
-  const refusals: readonly [Step["happened"], RegExp][] = [
-    [
-      { kind: "import", export: "apple_health_export", converted: "bridge" },
-      /AllergyIntolerance-peanut.json: .*has no sourceURL/,
-    ],
-    [
-      { kind: "import", export: "nothing", converted: "bridge" },
-      /^no importer of .* reads s\/nothing$/,
-    ],
-    [
-      { kind: "import", export: "broken.xml", converted: "bridge" },
-      /^s\/broken\.xml: /,
-    ],
-    [
-      { kind: "import", export: "not-a-ccda.xml", converted: "bridge" },
-      /^s\/not-a-ccda\.xml: no adapter of application\/cda\+xml accepts it$/,
-    ],
-    [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
-    [
-      { kind: "entry", file: "this-entry.ttl" },
-      /^this-entry\.ttl names its session urn:cascade:this-entry: an app mints a urn:uuid: for each entry session once, and keeps it$/,
-    ],
-    [
-      { kind: "entry", file: "blank-allergen.ttl" },
-      /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*cascade#allergen: /,
-    ],
-    [
-      { kind: "entry", file: "made-up-criticality.ttl" },
-      /^made-up-criticality\.ttl does not conform to the vocabulary's shapes: .*cascade#allergyCriticality: /,
-    ],
-    [
-      { kind: "judgment", file: "no-judgment.ttl" },
-      /^no-judgment\.ttl holds 0 judgments and 0 retractions, not one of either$/,
-    ],
-    [
-      { kind: "judgment", file: "no-turtle.ttl" },
-      /^no-turtle\.ttl is no Turtle: /,
-    ],
-    [
-      { kind: "reference", name: "urn:example:unlisted" },
-      /urn:example:unlisted, a version references\.ttl does not list$/,
-    ],
-    [
-      { kind: "open", tables: "tables/missing/" },
-      /s\/tables\/missing\/references\.ttl does not exist$/,
-    ],
-  ];
-  const story: Story = {
-    address: "https://pod.example/",
-    subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
-    steps: [
-      ...refusals.map(([happened], index) => ({
-        name: `refused-${index}`,
-        when: `2026-06-${String(index + 1).padStart(2, "0")}T09:00:00Z`,
-        happened,
-      })),
-      {
-        name: "create",
-        when: "2026-06-29T09:00:00Z",
-        happened: { kind: "creation" },
-      },
-    ],
-  };
-  const { steps, stopped } = await replay({
-    runtime: RUNTIME,
-    story,
-    source,
-    vocabulary: await vocabulary(),
-    folder: "s",
-    title: "",
-    pod: new MemoryFiles(story.address),
-    newStore,
-    layout: await layout(),
-    importers: [appleHealthExport, ccdaDownload],
-  });
-  assert.equal(stopped, undefined);
-  refusals.forEach(([happened, why], index) => {
-    assert.match(steps[index]?.refused ?? "", why, happened.kind);
-    assert.deepEqual(steps[index]?.wrote, []);
-  });
-  assert.notDeepEqual(steps.at(-1)?.wrote, []);
-});
-
-test("a document the Bridge fails on is refused with the Bridge's reason, and any other failure stops the step", async () => {
-  const download = new MemoryFiles("https://download.example/");
-  await download.write(
-    "summary.xml",
-    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"/>'),
-  );
-  const failing = (
-    on: "accepts" | "convert",
-    kind: "document" | "bridge",
-  ): LoadedAdapter => {
-    const fail = () => Promise.reject(new BridgeError(kind, "it fails"));
-    return {
-      accepts: on === "accepts" ? fail : () => Promise.resolve(true),
-      convert:
-        on === "convert" ? fail : () => Promise.reject(new Error("unreached")),
-      free: () => Promise.resolve(),
-    };
-  };
-  const pod = async (): Promise<CorePod> => {
-    const time = new StoryTime();
-    time.begin("2026-06-01T09:00:00Z");
-    return new CorePod({
-      runtime: RUNTIME,
-      pod: new MemoryFiles("https://pod.example/"),
-      address: "https://pod.example/",
-      subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
-      title: "",
-      vocabulary: await vocabulary(),
-      layout: await layout(),
-      newStore,
-      time,
-      importers: [ccdaDownload],
-      references: () => Promise.reject(new Error("an import reads no table")),
-    });
-  };
-  for (const on of ["accepts", "convert"] as const) {
-    const performed = await (
-      await pod()
-    ).import(download, "summary.xml", async () => () => [
-      failing(on, "document"),
-    ]);
-    assert.equal(performed.refused, "summary.xml: it fails", on);
-    assert.deepEqual(performed.wrote, [], on);
-    await assert.rejects(
-      (await pod()).import(download, "summary.xml", async () => () => [
-        failing(on, "bridge"),
-      ]),
-      /it fails/,
-      on,
-    );
-  }
-});
-
-test("an export holding the current version restamped, a new version, then the current version restamped again writes the last two", async () => {
+/** Ada's first export, then one that holds the current version restamped, a new version, and the first again. */
+async function threeStatesOfOneRecord(): Promise<Replayed> {
   const files = await vocabulary();
   const ada = "runtime/scripted-input/ada/";
   const bytes = async (path: string): Promise<Uint8Array> =>
@@ -573,7 +271,7 @@ test("an export holding the current version restamped, a new version, then the c
       })),
     ],
   };
-  const { pod, steps, stopped } = await replay({
+  return replay({
     runtime: RUNTIME,
     story,
     source,
@@ -585,92 +283,479 @@ test("an export holding the current version restamped, a new version, then the c
     layout: await layout(),
     importers: [appleHealthExport],
   });
-  assert.equal(stopped, undefined);
-  assert.deepEqual(
-    steps.map(({ refused }) => refused),
-    [undefined, undefined, undefined],
-  );
-  const revisions: string[] = [];
-  for (const path of steps[2]?.wrote ?? []) {
-    if (!(await layout()).isRdf(path)) continue;
-    const { triples } = await parseGraph(
-      (await pod.read(path)) ?? new Uint8Array(),
-      pod.iri + path,
-      newStore,
-    );
-    for (const [s, p, o] of triples)
-      if (
-        p.value === "https://ns.cascadeprotocol.org/cascade#version" &&
-        triples.some(
-          ([t, q, k]) =>
-            t.value === s.value &&
-            q.value === "http://purl.org/pav/lastUpdateOn" &&
-            k.value !== "",
-        )
-      )
-        revisions.push(o.value);
-  }
-  assert.deepEqual(revisions.sort(), [
-    "ni:///sha-256;E64aGZVmGmEPgF7RM5roCn_8WdUdfQAgE1LC9RS2V4E",
-    "ni:///sha-256;EQDq-zpj8rTyF7HguJmKgu7Uqsz_dofpTOgIORGnaRM",
-  ]);
-});
+}
 
-test("a document's transmitter is the one IRI an association of its generating act names with the transmitter's role, whatever the number of acts", async () => {
-  const doc = "ni:///sha-256;doc";
-  const transmitter = (act: string, agent: string): string =>
-    `${act} prov:qualifiedAssociation [ prov:agent ${agent} ; prov:hadRole cascade:TransmitterRole ] .`;
-  const reached = async (statements: string) =>
-    reachedIn(
-      await parseGraph(
-        new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
+/**
+ * An adapter converts each document of an export into arrivals: one arrival is one state of one record, as its source
+ * reported it. `CorePod.import()` files each arrival as a revision of its record, and writes nothing for a state the
+ * record is already at.
+ * @rule runtime/arrivals.feature A4
+ * @rule runtime/arrivals.feature A5
+ * @rule runtime/arrivals.feature A7
+ * @rule runtime/arrivals.feature A21
+ * @rule runtime/naming.feature N4
+ */
+describe("Turning an adapter's arrivals into revisions · CorePod.import(), reachedIn()", () => {
+  describe("given an arrival whose selector is a node of its own", () => {
+    let saved: Replayed;
+    let named: Replayed;
+
+    before(async () => {
+      [saved, named] = await Promise.all([
+        strayReplay("saved"),
+        strayReplay("named"),
+      ]);
+    });
+
+    it("carries a blank selector into the revision as `<revision>#selector`, with its three statements", async () => {
+      await carriesSelector(saved);
+    });
+
+    it("carries a selector named by an IRI the same way", async () => {
+      await carriesSelector(named);
+    });
+  });
+
+  describe("given one export that holds three states of one record: the state it is at, a new one, then the first again", () => {
+    let first: string[];
+    let second: string[];
+    let stopped: unknown;
+    let refused: (string | undefined)[];
+
+    before(async () => {
+      const done = await threeStatesOfOneRecord();
+      stopped = done.stopped;
+      refused = done.steps.map((step) => step.refused);
+      first = await versionsRevised(done, 1);
+      second = await versionsRevised(done, 2);
+    });
+
+    it("writes two revisions, of the new state and of the first again", () => {
+      assert.equal(stopped, undefined);
+      assert.deepEqual(refused, [undefined, undefined, undefined]);
+      assert.equal(first.length, 1);
+      const [version] = first;
+      assert.equal(second.length, 2);
+      assert.equal(second.filter((one) => one === version).length, 1);
+      assert.equal(second.filter((one) => one !== version).length, 1);
+    });
+  });
+
+  describe("reachedIn(graph, document)", () => {
+    const doc = "ni:///sha-256;doc";
+    const transmitter = (act: string, agent: string): string =>
+      `${act} prov:qualifiedAssociation [ prov:agent ${agent} ; prov:hadRole cascade:TransmitterRole ] .`;
+    const reached = async (statements: string) =>
+      reachedIn(
+        await parseGraph(
+          new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix pav: <http://purl.org/pav/> .
 <${doc}> pav:retrievedOn "2026-01-01T00:00:00Z" .
 ${statements}`),
-        doc,
-        newStore,
-      ),
-      iri(doc),
-    );
-  const author = `<${doc}> prov:wasAttributedTo <urn:x:author> ; prov:wasGeneratedBy _:writing .
+          doc,
+          newStore,
+        ),
+        iri(doc),
+      );
+    const author = `<${doc}> prov:wasAttributedTo <urn:x:author> ; prov:wasGeneratedBy _:writing .
 _:writing prov:qualifiedAssociation [ prov:agent <urn:x:author> ; prov:hadRole cascade:AuthorRole ] .`;
-  assert.equal(
-    (await reached(author)).transmitter,
-    "",
-    "an author is no transmitter",
-  );
-  assert.equal(
-    (
-      await reached(`${author}
+
+    it('returns `""` as the transmitter of a document that names only its author', async () => {
+      assert.equal((await reached(author)).transmitter, "");
+    });
+
+    it("returns, as the document's transmitter, the IRI of the agent an act that generated it names with the transmitter's role", async () => {
+      assert.equal(
+        (
+          await reached(`${author}
 ${transmitter("_:writing", "<urn:x:fetcher>")}`)
-    ).transmitter,
-    "urn:x:fetcher",
-  );
-  assert.equal(
-    (
-      await reached(`<${doc}> prov:wasGeneratedBy _:a , _:b .
+        ).transmitter,
+        "urn:x:fetcher",
+      );
+    });
+
+    it("returns that one IRI when two acts that produced the document both name it", async () => {
+      assert.equal(
+        (
+          await reached(`<${doc}> prov:wasGeneratedBy _:a , _:b .
 ${transmitter("_:a", "<urn:x:fetcher>")}
 ${transmitter("_:b", "<urn:x:fetcher>")}`)
-    ).transmitter,
-    "urn:x:fetcher",
-    "two acts naming the one IRI name one transmitter",
-  );
-  assert.equal(
-    (
-      await reached(`<${doc}> prov:wasGeneratedBy _:a , _:b .
+        ).transmitter,
+        "urn:x:fetcher",
+      );
+    });
+
+    it("returns `undefined` when two such acts name two transmitters", async () => {
+      assert.equal(
+        (
+          await reached(`<${doc}> prov:wasGeneratedBy _:a , _:b .
 ${transmitter("_:a", "<urn:x:fetcher>")}
 ${transmitter("_:b", "<urn:x:another>")}`)
-    ).transmitter,
-    undefined,
-    "two IRIs are no one source",
-  );
-  assert.equal(
-    (
-      await reached(`<${doc}> prov:wasGeneratedBy _:a .
+        ).transmitter,
+        undefined,
+      );
+    });
+
+    it("returns `undefined` for a transmitter that no IRI names", async () => {
+      assert.equal(
+        (
+          await reached(`<${doc}> prov:wasGeneratedBy _:a .
 ${transmitter("_:a", '[ <http://www.w3.org/2000/01/rdf-schema#label> "Apple Health" ]')}`)
-    ).transmitter,
-    undefined,
-    "a transmitter no IRI names is no one source",
+        ).transmitter,
+        undefined,
+      );
+    });
+  });
+});
+
+/** The bad inputs a story can give a step, each with the sentence `refused` is to say. */
+const BAD_INPUT = {
+  "no sourceURL": [
+    { kind: "import", export: "apple_health_export", converted: "bridge" },
+    /AllergyIntolerance-peanut.json: .*has no sourceURL/,
+  ],
+  "no importer reads": [
+    { kind: "import", export: "nothing", converted: "bridge" },
+    /^no importer of .* reads s\/nothing$/,
+  ],
+  "not well-formed": [
+    { kind: "import", export: "broken.xml", converted: "bridge" },
+    /^s\/broken\.xml: /,
+  ],
+  "no adapter accepts": [
+    { kind: "import", export: "not-a-ccda.xml", converted: "bridge" },
+    /^s\/not-a-ccda\.xml: no adapter of application\/cda\+xml accepts it$/,
+  ],
+  "missing file": [
+    { kind: "entry", file: "missing.ttl" },
+    /s\/missing\.ttl does not exist$/,
+  ],
+  "session not a urn:uuid:": [
+    { kind: "entry", file: "this-entry.ttl" },
+    /^this-entry\.ttl names its session urn:cascade:this-entry: an app mints a urn:uuid: for each entry session once, and keeps it$/,
+  ],
+  "blank allergen": [
+    { kind: "entry", file: "blank-allergen.ttl" },
+    /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*cascade#allergen: /,
+  ],
+  "made-up criticality": [
+    { kind: "entry", file: "made-up-criticality.ttl" },
+    /^made-up-criticality\.ttl does not conform to the vocabulary's shapes: .*cascade#allergyCriticality: /,
+  ],
+  "no judgment": [
+    { kind: "judgment", file: "no-judgment.ttl" },
+    /^no-judgment\.ttl holds 0 judgments and 0 retractions, not one of either$/,
+  ],
+  "not Turtle": [
+    { kind: "judgment", file: "no-turtle.ttl" },
+    /^no-turtle\.ttl is no Turtle: /,
+  ],
+  "version not listed": [
+    { kind: "reference", name: "urn:example:unlisted" },
+    /urn:example:unlisted, a version references\.ttl does not list$/,
+  ],
+  "tables with no list": [
+    { kind: "open", tables: "tables/missing/" },
+    /s\/tables\/missing\/references\.ttl does not exist$/,
+  ],
+} as const satisfies Record<string, readonly [Step["happened"], RegExp]>;
+
+/** A story whose steps are each given bad input by the story's own files, then a creation that is not. */
+async function badInputReplay(): Promise<Replayed> {
+  const source = new MemoryFiles("https://story.example/");
+  await source.write(
+    "s/apple_health_export/export.xml",
+    new TextEncoder().encode(
+      '<HealthData><ClinicalRecord sourceName="Example Hospital" fhirVersion="4.0.1" receivedDate="2026-01-02 10:00:00 +0000" resourceFilePath="/clinical-records/AllergyIntolerance-peanut.json"/></HealthData>',
+    ),
   );
+  await source.write(
+    "s/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
+    new TextEncoder().encode('{"resourceType": "AllergyIntolerance"}'),
+  );
+  await source.write(
+    "s/broken.xml",
+    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"><id>'),
+  );
+  await source.write(
+    "s/not-a-ccda.xml",
+    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"/>'),
+  );
+  await source.write("s/bridge/not-a-ccda/unaccepted.txt", new Uint8Array());
+  await source.write("s/no-judgment.ttl", new Uint8Array());
+  await source.write("s/no-turtle.ttl", new TextEncoder().encode("<a> <b>"));
+  await source.write("s/references/references.ttl", new Uint8Array());
+  for (const [file, allergen, criticality] of [
+    ["blank-allergen.ttl", "", "high"],
+    ["made-up-criticality.ttl", "Peanuts", "extreme"],
+  ])
+    await source.write(
+      `s/${file}`,
+      new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
+<urn:uuid:7d4a1c9e-3b6f-4e28-8a15-c0f2e9b7d364> a prov:Activity .
+<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
+<urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
+  <https://ns.cascadeprotocol.org/cascade#allergen> "${allergen}" ;
+  <https://ns.cascadeprotocol.org/cascade#allergyCriticality> "${criticality}" .`),
+    );
+  await source.write(
+    "s/this-entry.ttl",
+    new TextEncoder().encode(
+      "<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .",
+    ),
+  );
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
+    steps: [
+      ...Object.entries(BAD_INPUT).map(([name, [happened]], index) => ({
+        name,
+        when: `2026-06-${String(index + 1).padStart(2, "0")}T09:00:00Z`,
+        happened: happened as Step["happened"],
+      })),
+      {
+        name: "create",
+        when: "2026-06-29T09:00:00Z",
+        happened: { kind: "creation" },
+      },
+    ],
+  };
+  return replay({
+    runtime: RUNTIME,
+    story,
+    source,
+    vocabulary: await vocabulary(),
+    folder: "s",
+    title: "",
+    pod: new MemoryFiles(story.address),
+    newStore,
+    layout: await layout(),
+    importers: [appleHealthExport, ccdaDownload],
+  });
+}
+
+/** A pod whose import of one C-CDA document is given `adapter`. */
+async function importWith(adapter: LoadedAdapter) {
+  const download = new MemoryFiles("https://download.example/");
+  await download.write(
+    "summary.xml",
+    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"/>'),
+  );
+  const time = new StoryTime();
+  time.begin("2026-06-01T09:00:00Z");
+  const pod = new CorePod({
+    runtime: RUNTIME,
+    pod: new MemoryFiles("https://pod.example/"),
+    address: "https://pod.example/",
+    subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
+    title: "",
+    vocabulary: await vocabulary(),
+    layout: await layout(),
+    newStore,
+    time,
+    importers: [ccdaDownload],
+    references: () => Promise.reject(new Error("an import reads no table")),
+  });
+  return pod.import(download, "summary.xml", async () => () => [adapter]);
+}
+
+/** An adapter that fails with `kind` when asked to `on`, and is otherwise as a real one does. */
+function failing(
+  on: "accepts" | "convert",
+  kind: "document" | "bridge",
+): LoadedAdapter {
+  const fail = () => Promise.reject(new BridgeError(kind, "it fails"));
+  return {
+    accepts: on === "accepts" ? fail : () => Promise.resolve(true),
+    convert:
+      on === "convert" ? fail : () => Promise.reject(new Error("unreached")),
+    free: () => Promise.resolve(),
+  };
+}
+
+/**
+ * A step whose input breaks a rule is refused: the call returns `refused`, a sentence saying which rule, and writes no
+ * file. A failure that is not the input's fault is thrown instead.
+ * @rule runtime/arrivals.feature A14
+ */
+describe("Refusing a step that cannot be filed · Performed.refused", () => {
+  let examples: ReadonlyMap<string, string | undefined>;
+  let stoppedAt: unknown[];
+  let blank: Replayed;
+  let bad: Replayed;
+  const sentence = (name: keyof typeof BAD_INPUT): string =>
+    bad.steps.find(({ step }) => step.name === name)?.refused ?? "";
+  const says = (name: keyof typeof BAD_INPUT): RegExp => BAD_INPUT[name][1];
+
+  before(async () => {
+    const replays = await Promise.all(
+      [
+        "a Bridge graph holding a statement about nothing the pod files",
+        "a record of a type the pod files nowhere",
+        "one import's documents disagreeing on the import's description, so not even the agreeing one is written",
+        "an entry holding two activities",
+      ].map((example) =>
+        replayed(FEATURE, example, { importers: [appleHealthExport] }),
+      ),
+    );
+    const refused = new Map<string, string | undefined>();
+    for (const { steps } of replays)
+      for (const { step, refused: why } of steps) refused.set(step.name, why);
+    examples = refused;
+    stoppedAt = replays.map(({ stopped }) => stopped);
+    [blank, bad] = await Promise.all([strayReplay("blank"), badInputReplay()]);
+  });
+
+  describe("given an import", () => {
+    it("returns `refused` for a graph holding a statement about nothing the pod files", () => {
+      assert.match(
+        examples.get("stray-statement") ?? "",
+        /holds a statement about no record, version, arrival, document or import/,
+      );
+    });
+
+    it("returns `refused` for a record of a type the pod files nowhere, naming the type", () => {
+      assert.match(
+        examples.get("type-filed-nowhere") ?? "",
+        /is of no type the pod files: .*NoSuchRecord/,
+      );
+    });
+
+    it("returns `refused` when the import's documents disagree on its description", () => {
+      assert.match(
+        examples.get("import-disagreement") ?? "",
+        /documents disagree on the import's label, start or association/,
+      );
+    });
+
+    it("returns `refused` for a clinical record its export gives no `sourceURL`, naming the file", () => {
+      assert.match(sentence("no sourceURL"), says("no sourceURL"));
+    });
+
+    it("returns `refused` for a path no importer reads", () => {
+      assert.match(sentence("no importer reads"), says("no importer reads"));
+    });
+
+    it("returns `refused` for a document that is not well-formed, naming it", () => {
+      assert.match(sentence("not well-formed"), says("not well-formed"));
+    });
+
+    it("returns `refused` for a CDA document no adapter accepts", () => {
+      assert.match(sentence("no adapter accepts"), says("no adapter accepts"));
+    });
+
+    it("returns `refused` for a revision whose content holds a blank node", () => {
+      assert.match(
+        blank.steps[1]?.refused ?? "",
+        /^the revision of urn:uuid:.*holds a blank node/,
+      );
+    });
+  });
+
+  describe("given records entered by the owner", () => {
+    it("returns `refused` for a file that does not exist", () => {
+      assert.match(sentence("missing file"), says("missing file"));
+    });
+
+    it("returns `refused` for an entry session not named by a `urn:uuid:`", () => {
+      assert.match(
+        sentence("session not a urn:uuid:"),
+        says("session not a urn:uuid:"),
+      );
+    });
+
+    it("returns `refused` for a version that breaks the vocabulary's shapes, naming the property", () => {
+      assert.match(sentence("blank allergen"), says("blank allergen"));
+      assert.match(
+        sentence("made-up criticality"),
+        says("made-up criticality"),
+      );
+    });
+
+    it("returns `refused` for a file that describes two acts", () => {
+      assert.match(
+        examples.get("entry-of-two-activities") ?? "",
+        /holds 2 activities, not one/,
+      );
+    });
+
+    it("returns `refused` for a version whose content holds a blank node", () => {
+      assert.match(
+        blank.steps[2]?.refused ?? "",
+        /^blank\.ttl: .*holds a blank node/,
+      );
+    });
+  });
+
+  describe("given a judgment", () => {
+    it("returns `refused` for a file holding no judgment and no retraction", () => {
+      assert.match(sentence("no judgment"), says("no judgment"));
+    });
+
+    it("returns `refused` for a file that is not Turtle", () => {
+      assert.match(sentence("not Turtle"), says("not Turtle"));
+    });
+  });
+
+  describe("given a table version, or tables, that are not there", () => {
+    it("returns `refused` for a version `references.ttl` does not list", () => {
+      assert.match(sentence("version not listed"), says("version not listed"));
+    });
+
+    it("returns `refused` for an open with a folder that has no `references.ttl`", () => {
+      assert.match(
+        sentence("tables with no list"),
+        says("tables with no list"),
+      );
+    });
+  });
+
+  describe("given a refused step", () => {
+    it("writes no file", () => {
+      for (const name of Object.keys(BAD_INPUT))
+        assert.deepEqual(
+          bad.steps.find(({ step }) => step.name === name)?.wrote,
+          [],
+          name,
+        );
+      for (const step of blank.steps.slice(1, 3))
+        assert.deepEqual(step.wrote, [], step.step.name);
+    });
+
+    it("does not stop `replay()`, which performs the step after it", () => {
+      assert.equal(bad.stopped, undefined);
+      assert.notDeepEqual(bad.steps.at(-1)?.wrote, []);
+      assert.equal(blank.steps[3]?.refused, undefined);
+      assert.notDeepEqual(blank.steps[3]?.wrote, []);
+      assert.deepEqual(stoppedAt, [undefined, undefined, undefined, undefined]);
+    });
+  });
+
+  describe("given an adapter that fails", () => {
+    it("returns `refused`, with the Bridge's reason, for a `BridgeError` of kind `document`", async () => {
+      for (const on of ["accepts", "convert"] as const)
+        assert.equal(
+          (await importWith(failing(on, "document"))).refused,
+          "summary.xml: it fails",
+          on,
+        );
+    });
+
+    it("writes no file for it", async () => {
+      for (const on of ["accepts", "convert"] as const)
+        assert.deepEqual(
+          (await importWith(failing(on, "document"))).wrote,
+          [],
+          on,
+        );
+    });
+  });
+
+  describe("given an adapter that breaks, which throws rather than refuses", () => {
+    it("rejects with the error for a `BridgeError` of kind `bridge`", async () => {
+      for (const on of ["accepts", "convert"] as const)
+        await assert.rejects(importWith(failing(on, "bridge")), /it fails/, on);
+    });
+  });
 });
