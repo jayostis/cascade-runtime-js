@@ -20,7 +20,7 @@ import {
   MATCHER_LENS,
   matcherView,
   migrateRuleListVersions,
-  openPod,
+  openWithTables,
   podCodes,
   releaseRetractions,
   runMatcher,
@@ -615,7 +615,7 @@ export class CorePod {
     const migrated = await this.#migrated(tables, true);
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
-      const opened = await openPod(context, tables);
+      const opened = await openWithTables(context, tables);
       unheld = opened.unheld;
       this.#references = Promise.resolve(tables);
       return opened.activity;

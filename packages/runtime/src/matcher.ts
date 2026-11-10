@@ -1949,7 +1949,7 @@ export function migrateRuleListVersions(
  * what that and any rule or series new to the pod join (O1); a version the tables do not hold is left out (O2). Gives
  * the versions the pod names that the tables do not hold, and the run's act, if it wrote one.
  */
-export async function openPod(
+export async function openWithTables(
   context: StepContext,
   references: References,
 ): Promise<{ readonly unheld: string[]; readonly activity?: string }> {
