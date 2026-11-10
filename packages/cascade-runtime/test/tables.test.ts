@@ -692,8 +692,7 @@ const CLASSES_BY_RELATION: Mapping = {
  * ingredient of ketoconazole, each classed differently. Its product ingredients version states precise ingredients.
  */
 let planted:
-  | Promise<{ tables: Tables; classes: string; served: Served }>
-  | undefined;
+  Promise<{ tables: Tables; classes: string; served: Served }> | undefined;
 
 function plantedTables(): Promise<{
   tables: Tables;
@@ -791,7 +790,10 @@ function plantedTables(): Promise<{
 }
 
 /** Tables of their own, checked over the planted feed, for a test that writes to its store. */
-async function ownPlantedTables(): Promise<{ tables: Tables; classes: string }> {
+async function ownPlantedTables(): Promise<{
+  tables: Tables;
+  classes: string;
+}> {
   const { served, classes } = await plantedTables();
   const tables = tablesOver(served);
   await tables.check();
@@ -1593,7 +1595,6 @@ describe("Keeping reference tables up to date · tablesBeside(), tables.check()"
         assert.ok(!unkept?.kept.includes(groups.first), kind);
       }
     });
-
   });
 
   describe("kindsRead(), given a vocabulary whose rule list and page marks name a kind it no longer declares", () => {
@@ -2752,7 +2753,6 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
           `${lists.length} lists`,
         );
     });
-
   });
 
   describe("listing(text, spaces), which makes a version's search list", () => {
@@ -2771,7 +2771,6 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
         [`${space}141`, outside].sort(),
       );
     });
-
   });
 
   describe("given a search list kept beside a version that cannot be used", () => {
