@@ -128,7 +128,7 @@ describe("Deriving a pod's state with the vocabulary's queries · Derivations.de
       }
     });
 
-    it("returns the one entry `entries.rq` gives a chain of 300 records", async () => {
+    it("returns the one entry `entries.rq` gives 300 records each Same as the next", async () => {
       const chain: Triple[] = [];
       const member = (at: number) => iri(`urn:uuid:chain-${(at * 7919) % 300}`);
       for (let at = 0; at < 300; at++) {
