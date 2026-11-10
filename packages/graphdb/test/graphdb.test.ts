@@ -132,9 +132,10 @@ describe("Loading a pod into GraphDB · load(), GraphDB", () => {
       );
     });
 
-    it("rejects with `GraphDBRefusal`, giving the server's status and its words", () => {
+    it("rejects with `GraphDBRefusal`, giving the server's status and its words, after the server took one graph", () => {
       assert.ok(error instanceof GraphDBRefusal);
       assert.match(error.message, /answered 500: refused/);
+      assert.equal(fake.graphs.size, 1);
     });
 
     it("removes the repository it created", () => {
