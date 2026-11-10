@@ -106,6 +106,11 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#VariantClassifications"
     },
     {
+      "term": "ClinVar ID",
+      "definition": "the number ClinVar gives one variant, which a pod holds as `clinvarVariationId`.",
+      "aliases": ["ClinVar IDs"]
+    },
+    {
       "term": "code system",
       "aliases": ["code systems"],
       "definition": "a published list of codes for one kind of thing, such as RxNorm for medicines, LOINC for lab tests and SNOMED CT for clinical findings."
@@ -261,6 +266,11 @@
       "aliases": ["lookups"]
     },
     {
+      "term": "map",
+      "definition": "of a table row, to give for one code the code it stands for in another series.",
+      "aliases": ["maps", "mapped"]
+    },
+    {
       "term": "matched",
       "definition": "on a call's result, the result of the matcher's run that followed it."
     },
@@ -368,7 +378,7 @@
     },
     {
       "term": "recorded date",
-      "definition": "when a record was written down, as against when the thing it records happened: a C-CDA record's author time, a report's issue time.",
+      "definition": "when a record was written down, as against when the thing it records happened: a C-CDA record's author time, a diagnostic report's issue time.",
       "aliases": ["recorded dates"]
     },
     {
@@ -400,6 +410,11 @@
       "term": "reply contract",
       "definition": "the form a reply must take: an `answer`, a `short` form of it, and `items`. `replySchema` is its JSON Schema, and `replyErrors()` lists where a reply departs from it.",
       "aliases": ["contract", "contracts"]
+    },
+    {
+      "term": "report",
+      "definition": "one laboratory's classification of one of a person's variants, as a pod holds it; `pod.agreement()` compares each with ClinVar.",
+      "aliases": ["reports"]
     },
     {
       "term": "resource",
@@ -441,6 +456,11 @@
       "term": "sealed",
       "aliases": ["seal", "seals"],
       "definition": "of a pod or a file, encrypted on disk so that only the secret opens it."
+    },
+    {
+      "term": "search",
+      "definition": "to find the codes of a series whose name holds the text asked, as `tables.search()` does, reading the series' search lists, a page of codes at a time.",
+      "aliases": ["searches", "searched"]
     },
     {
       "term": "search list",
@@ -551,6 +571,10 @@
       "definition": "a difference in one of a person's genes from the reference sequence, as a genetic test reports it.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#GeneticVariantFinding",
       "aliases": ["variants"]
+    },
+    {
+      "term": "verdict",
+      "definition": "the column of `pod.agreement()`'s rows saying how a report stands to ClinVar: `agrees` when its classification is among the row's, `differs` when the row holds another, and none when ClinVar cannot say."
     },
     {
       "term": "verify",
