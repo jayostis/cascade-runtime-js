@@ -1,0 +1,415 @@
+{
+  "about": "The core every Cascade package is built on: it files what arrives in a person's pod, names it, runs the matcher and builds the views. Apps call cascade-runtime, which wraps it; this page is for whoever builds on the core itself.",
+  "capabilities": [
+    "Turning an adapter's arrivals into revisions · CorePod.import(), reachedIn()",
+    "Refusing a step that cannot be filed · Performed.refused",
+    "Writing a step's files · CorePod.import(), CorePod.open(), CorePod.judge()",
+    "Reading a pod between steps · CorePod.dataset(), CorePod.revision(), CorePod.close()",
+    "Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()",
+    "Opening a pod with tables it was not made on · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()",
+    "Refusing a rule list a run cannot trust · matcherRules(), originsJoining()",
+    "Binding a comparison query to a run's records · boundToRecords(), boundToPairs()",
+    "Reading entries as of a record's arrival · arrivalOrder(), ArrivedEntries",
+    "Reading reference tables from a folder · References.of(), References.rows(), tableTerms(), linesAbout()",
+    "Reading only the rows a pod's codes find · References.rows(), rowsByCode()",
+    "Keeping one build of a pod across steps · CorePodOptions.build, CorePod.select()",
+    "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
+    "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"
+  ],
+  "glossary": [
+    {
+      "term": "act",
+      "definition": "one thing done to a pod that writes files to it: an import, an entry, a connection to a hospital's server, or a run of the matcher.",
+      "vocabulary": "http://www.w3.org/ns/prov#Activity",
+      "aliases": ["acts"]
+    },
+    {
+      "term": "adapter",
+      "definition": "the program that converts an export into records; `import` loads it on first use.",
+      "aliases": ["adapters"]
+    },
+    {
+      "term": "arrival",
+      "definition": "one state of one record as a source reported it, as an adapter hands it to the runtime, before it is filed.",
+      "aliases": ["arrivals"]
+    },
+    {
+      "term": "blank node",
+      "definition": "a thing a statement mentions without an IRI, which has no name outside its file.",
+      "aliases": ["blank nodes"]
+    },
+    {
+      "term": "Bridge",
+      "definition": "the program that runs an adapter on a document and returns what it converted, or the reason it failed."
+    },
+    {
+      "term": "C-CDA",
+      "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
+    },
+    {
+      "term": "checkout",
+      "definition": "a folder holding a repository at one commit; a sibling checkout is one in the folder beside the runtime's own.",
+      "aliases": ["checkouts", "sibling checkout"]
+    },
+    {
+      "term": "code system",
+      "aliases": ["code systems"],
+      "definition": "a published list of codes for one kind of thing, such as RxNorm for medicines, LOINC for lab tests and SNOMED CT for clinical findings."
+    },
+    {
+      "term": "comparison",
+      "definition": "a query the vocabulary ships under `queries/matcher/` that returns the pairs of records one rule holds to be one thing.",
+      "aliases": ["comparisons"]
+    },
+    {
+      "term": "component",
+      "definition": "a repository the runtime reads when it runs: the vocabulary, an adapter, the reference tables.",
+      "aliases": ["components"]
+    },
+    {
+      "term": "content-addressed file",
+      "definition": "a file named by a hash of what it holds: a document or a version."
+    },
+    {
+      "term": "current version",
+      "definition": "of a series, the version a pod opened now is given: the newest one the app has kept.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#defaultTableVersion",
+      "aliases": ["current versions"]
+    },
+    {
+      "term": "dataset",
+      "definition": "a pod as a query reads it: a default graph and named graphs.",
+      "aliases": ["datasets"]
+    },
+    {
+      "term": "default graph",
+      "definition": "the statements a query reads outside any `GRAPH` block."
+    },
+    {
+      "term": "derivation",
+      "definition": "a query of the vocabulary that adds to a pod's dataset what follows from its files, such as which revision of a record is current.",
+      "aliases": ["derivations", "derived"]
+    },
+    {
+      "term": "Different",
+      "definition": "a judgment that its members are separate things; it overrules a Same of the two.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Different"
+    },
+    {
+      "term": "document",
+      "definition": "one file of an export, which the pod keeps under the hash of its bytes.",
+      "aliases": ["documents"]
+    },
+    {
+      "term": "entry session",
+      "definition": "one call of `pod.enter()`: the act that files what the owner typed, as one owner-entered record or several, under a `urn:uuid:` name the app makes once.",
+      "aliases": ["entry sessions"]
+    },
+    {
+      "term": "export",
+      "definition": "what a person downloads of their own records: an Apple Health export, or a C-CDA document from a patient portal.",
+      "aliases": ["exports", "exported"]
+    },
+    {
+      "term": "finding",
+      "definition": "something the matcher noticed about a pod's records and filed for the owner to answer with a judgment.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#FindingForReview",
+      "aliases": ["findings"]
+    },
+    {
+      "term": "graph",
+      "definition": "a set of statements held under a name; each file of a pod is read as the graph named by its address.",
+      "aliases": ["graphs", "named graph"]
+    },
+    {
+      "term": "import",
+      "definition": "the act of bringing an export's documents into a pod; its own file lists the documents it kept.",
+      "aliases": ["imports"]
+    },
+    {
+      "term": "index",
+      "definition": "a file kept beside a version of a reference table that says which rows each code finds, so that the rows need not all be read.",
+      "aliases": ["indexes", "index by code"]
+    },
+    {
+      "term": "judgment",
+      "definition": "a conclusion about records, made by a person or by a machine.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Judgment",
+      "aliases": ["judgments", "judge", "judges", "judged"]
+    },
+    {
+      "term": "justification",
+      "definition": "the reason a rule gives for a Same, such as \"same code\"."
+    },
+    {
+      "term": "kept dataset",
+      "definition": "a pod's dataset held in memory from one step to the next, in place of a new read of every file.",
+      "aliases": ["kept build"]
+    },
+    {
+      "term": "layout",
+      "definition": "the vocabulary's file that says in which folder of a pod each kind of thing is filed."
+    },
+    {
+      "term": "lends",
+      "definition": "of the kept dataset: changes it in place into the matcher's view for the length of a run, and puts it back after.",
+      "aliases": ["lent", "lend"]
+    },
+    {
+      "term": "lens",
+      "definition": "a choice of which judgments count when a question is answered: `everyday` is the default, and `export` is stricter, for records sent elsewhere.",
+      "aliases": ["lenses"]
+    },
+    {
+      "term": "linked worktree",
+      "definition": "a second working folder of one checkout, as `git worktree add` makes.",
+      "aliases": ["worktree", "worktrees"]
+    },
+    {
+      "term": "manifest",
+      "definition": "the file the build writes last, which lists the pod's views and says when they were built."
+    },
+    {
+      "term": "matcher",
+      "definition": "the part of a runtime that compares a pod's records and writes a Same for those its rules find to be one thing, such as one allergy reported by two sources.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#CascadeMatcher",
+      "aliases": ["matchers"]
+    },
+    {
+      "term": "matcher judgment",
+      "definition": "a Same the matcher wrote for records its rules found to be one thing; it names the version of each reference table it used.",
+      "aliases": ["matcher judgments"]
+    },
+    {
+      "term": "matcher's view",
+      "definition": "a pod as the matcher reads it: its files but those the build writes, with the everyday lens's derived state."
+    },
+    {
+      "term": "member",
+      "definition": "a record a judgment is about.",
+      "vocabulary": "http://www.w3.org/ns/prov#hadMember",
+      "aliases": ["members"]
+    },
+    {
+      "term": "N-Triples",
+      "definition": "a W3C text format that writes one statement a line."
+    },
+    {
+      "term": "owner",
+      "definition": "the person who keeps a pod and decides what its records mean; in every pod on this page, the subject acting for themselves.",
+      "aliases": ["owners"]
+    },
+    {
+      "term": "pod",
+      "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
+      "aliases": ["pods"]
+    },
+    {
+      "term": "quad",
+      "definition": "one statement together with the graph that holds it.",
+      "aliases": ["quads"]
+    },
+    {
+      "term": "record",
+      "definition": "one thing said about a person's health, such as an allergy, a medication or a lab result.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Record",
+      "aliases": ["records"]
+    },
+    {
+      "term": "reference tables",
+      "definition": "public code lists, such as RxNorm for medicines, that tell a runtime when two codes mean one thing.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries",
+      "aliases": ["reference table"]
+    },
+    {
+      "term": "Refusal",
+      "definition": "the error thrown when the package declines a request it understood, such as a name it does not have; it has written nothing."
+    },
+    {
+      "term": "refused",
+      "definition": "on a call's result, why a rule turned the call down; a refused call wrote nothing."
+    },
+    {
+      "term": "release",
+      "definition": "a version of the rule list as shipped; a release may declare an earlier rule wrong.",
+      "aliases": ["releases"]
+    },
+    {
+      "term": "replay",
+      "definition": "performing a story's steps, in order, on a new pod.",
+      "aliases": ["replays", "replayed"]
+    },
+    {
+      "term": "retraction",
+      "definition": "the owner taking back a judgment they filed: the judgment stays in the pod and no longer counts.",
+      "vocabulary": "http://www.w3.org/ns/prov#invalidated",
+      "aliases": ["retractions", "retract", "retracts", "retracted"]
+    },
+    {
+      "term": "revision",
+      "definition": "the pod's note that a record took a version at one arrival: which version, when, and from which document. (Of a pod, `revision()` is another thing: a name for the state its files are in.)",
+      "aliases": ["revisions"]
+    },
+    {
+      "term": "rule",
+      "definition": "a numbered requirement in the vocabulary that every runtime must meet, such as A14 in `runtime/arrivals.feature`; a heading on this page links the rules its API reaches.",
+      "aliases": ["rules"]
+    },
+    {
+      "term": "rule list",
+      "definition": "the vocabulary's list of what the matcher compares, each line naming a query and the table kind it reads; it has versions, as a reference table has.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#RuleListRow",
+      "aliases": ["rule lists"]
+    },
+    {
+      "term": "runtime",
+      "definition": "software that reads and writes pods as the vocabulary requires; this package is one.",
+      "aliases": ["runtimes"]
+    },
+    {
+      "term": "Same",
+      "definition": "a judgment that its members are one thing, so answers show them once.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Same"
+    },
+    {
+      "term": "seeded",
+      "definition": "drawn by a random generator started from a stated number, so a failing case can be drawn again."
+    },
+    {
+      "term": "selector",
+      "definition": "the place in a document an arrival was read from.",
+      "aliases": ["selectors"]
+    },
+    {
+      "term": "series",
+      "definition": "one of the reference tables across its versions, such as RxNorm's product ingredients.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
+    },
+    {
+      "term": "shapes",
+      "definition": "the vocabulary's requirements on what a record, a judgment or a file of a pod must state, written in SHACL, the W3C language for checking data.",
+      "vocabulary": "https://www.w3.org/TR/shacl/"
+    },
+    {
+      "term": "source",
+      "definition": "one hospital server, or one document, whose records an export holds.",
+      "aliases": ["sources"]
+    },
+    {
+      "term": "SPARQL",
+      "definition": "the W3C query language for data written as statements, as Turtle writes them; `pod.ask()` runs an app's own SPARQL SELECT.",
+      "vocabulary": "https://www.w3.org/TR/sparql11-query/"
+    },
+    {
+      "term": "step",
+      "definition": "one scripted action on a pod, such as making it, an import, an entry or a judgment, named by a letter and a number such as `J10`.",
+      "aliases": ["steps"]
+    },
+    {
+      "term": "store",
+      "definition": "what holds graphs and runs SPARQL over them; here Oxigraph.",
+      "aliases": ["stores"]
+    },
+    {
+      "term": "story",
+      "definition": "the steps taken with one made-up patient's exports, in order.",
+      "aliases": ["stories"]
+    },
+    {
+      "term": "subject",
+      "definition": "the person a pod is about.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Subject",
+      "aliases": ["subjects"]
+    },
+    {
+      "term": "table kind",
+      "definition": "what a reference table's rows say, such as product ingredients or vaccine groups; the vocabulary declares each kind.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#TableKind",
+      "aliases": ["table kinds"]
+    },
+    {
+      "term": "term",
+      "definition": "one word the vocabulary defines, named by an IRI, a web-style identifier such as `https://ns.cascadeprotocol.org/cascade#allergen`.",
+      "aliases": ["terms"]
+    },
+    {
+      "term": "the build",
+      "definition": "the files a pod works out from its records after every step: its views and its manifest.",
+      "aliases": ["the build's"]
+    },
+    {
+      "term": "transmitter",
+      "definition": "the party that passed a document on without writing it, as Apple Health does a hospital's record."
+    },
+    {
+      "term": "Turtle",
+      "definition": "a W3C text format for writing statements in the vocabulary's terms; `pod.enter()` and `pod.judge()` take it.",
+      "vocabulary": "https://www.w3.org/TR/turtle/"
+    },
+    {
+      "term": "unheld",
+      "definition": "of a table version a pod names: not among the tables the pod is opened with."
+    },
+    {
+      "term": "union",
+      "definition": "a store read with some of its graphs as the default graph.",
+      "aliases": ["unions"]
+    },
+    {
+      "term": "URI space",
+      "definition": "the beginning that every IRI of one code system's codes shares."
+    },
+    {
+      "term": "version",
+      "definition": "what a record says at one time; when a source changes a record, the pod keeps the old version and adds a new one. (Of a reference table or the runtime, \"version\" has its everyday meaning.)",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#version",
+      "aliases": ["versions"]
+    },
+    {
+      "term": "view entry",
+      "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
+      "aliases": ["view entries", "entry", "entries"]
+    },
+    {
+      "term": "vocabulary",
+      "definition": "cascade-vocabulary, the project that defines the words health data is written in, the requirements every pod meets, and a set of ready-made questions.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#",
+      "aliases": ["vocabularies"]
+    },
+    {
+      "term": "writer",
+      "definition": "one app or device that writes to a pod; two writers hold copies of it and exchange files.",
+      "aliases": ["writers"]
+    }
+  ],
+  "shaped": [
+    "arrivals.test.ts",
+    "arrived-entries.test.ts",
+    "bound-records.test.ts",
+    "core-pod.test.ts",
+    "derive.test.ts",
+    "entries.test.ts",
+    "kept-build.test.ts",
+    "matcher.test.ts",
+    "open.test.ts",
+    "references.test.ts",
+    "resolver.test.ts",
+    "store.test.ts"
+  ],
+  "build": [],
+  "randomOrder": [
+    "arrivals.test.ts",
+    "arrived-entries.test.ts",
+    "bound-records.test.ts",
+    "core-pod.test.ts",
+    "derive.test.ts",
+    "entries.test.ts",
+    "kept-build.test.ts",
+    "matcher.test.ts",
+    "open.test.ts",
+    "references.test.ts",
+    "resolver.test.ts",
+    "store.test.ts"
+  ]
+}
