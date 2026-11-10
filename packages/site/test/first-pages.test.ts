@@ -115,7 +115,7 @@ before(async () => {
  * lists each kit's pod, and `try/`, which moved to the starter kit, sends its old visitors on.
  */
 describe("A newcomer's first pages · startSection, examplesSection, trySection", () => {
-  describe("`start.html`", () => {
+  describe("with `start.html`", () => {
     let quick: ReturnType<typeof readPage>;
 
     before(() => {
@@ -143,7 +143,7 @@ describe("A newcomer's first pages · startSection, examplesSection, trySection"
     });
   });
 
-  describe("`examples.html`", () => {
+  describe("with `examples.html`", () => {
     let text: string;
     let examples: ReturnType<typeof readPage>;
 
@@ -202,7 +202,7 @@ describe("A newcomer's first pages · startSection, examplesSection, trySection"
     });
   });
 
-  describe("`try/index.html`", () => {
+  describe("with `try/index.html`", () => {
     let text: string;
     const here = "https://jayostis.github.io/cascade-runtime-js/try/";
     const sentFrom = async (

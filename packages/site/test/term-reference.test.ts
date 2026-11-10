@@ -169,7 +169,7 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.ok(!readPage(page).ids.has(CASCADE));
     });
 
-    it('shows a vocabulary term\'s label, its type, its domain as a link, and "none stated" for a range it lacks', () => {
+    it('shows a vocabulary term\'s name, its type, its domain as a link, and "none stated" for a range it lacks', () => {
       const shown = readPage(entry(page, termId(VACCINE_CODE)));
       assert.match(shown.said, /Vaccine Code/);
       assert.match(shown.said, /owl:ObjectProperty/);

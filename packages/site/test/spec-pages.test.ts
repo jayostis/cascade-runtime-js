@@ -45,7 +45,7 @@ const warned = (built: SpecPages, kind: string): string[] =>
   built.warnings.filter((one) => one.kind === kind).map(({ what }) => what);
 
 /**
- * The specification is the vocabulary's feature files. `specPages()` writes a page for each feature and each kit: every
+ * The specification is the vocabulary's features. `specPages()` writes a page for each feature and each kit: every
  * rule with the decision note that ruled it, and every example with its latest conformance result.
  */
 describe("The specification's pages · specPages()", () => {
@@ -182,7 +182,7 @@ describe("The specification's pages · specPages()", () => {
       assert.match(page.said, /Background: Kim's story/);
     });
 
-    it("links its scripted input and its expected views on GitHub", () => {
+    it("links the input its story runs on and its expected views on GitHub", () => {
       for (const link of [
         `${BLOB}conformance/kim/scripted-input/people.ttl`,
         `${TREE}conformance/kim/scripted-input/kim/bridge/`,
@@ -229,7 +229,7 @@ describe("Warnings about rules and decision notes · specPages().warnings, rules
       built = await pagesOf(await kimVocabulary(), ASSERTIONS, RAN_WITH);
     });
 
-    it("warns of a rule that names no note", () => {
+    it("warns about a rule that names no note", () => {
       assert.deepEqual(
         built.warnings
           .filter(({ kind }) => kind === "rule names no note")
@@ -241,19 +241,19 @@ describe("Warnings about rules and decision notes · specPages().warnings, rules
       );
     });
 
-    it("warns of a Choice row a rule names that no Why paragraph names", () => {
+    it("warns about a Choice row a rule names that no Why paragraph names", () => {
       assert.deepEqual(warned(built, "no Why paragraph names the row"), [
         'no paragraph of its Why names row "scheme", which N3 names',
       ]);
     });
 
-    it("warns of a Choice row that names a file the vocabulary lacks", () => {
+    it("warns about a Choice row that names a file the vocabulary lacks", () => {
       assert.deepEqual(warned(built, "pointer names nothing"), [
         'row "shape" names runtime/shapes.ttl, which is no file',
       ]);
     });
 
-    it("warns of a Choice row that names no rule, run of rules, file or issue", () => {
+    it("warns about a Choice row that names no rule, run of rules, file or issue", () => {
       // The note's other four rows each name one: (N1), (#193), (N1 to N3, Check 2) and `runtime/pod-layout.ttl`.
       assert.deepEqual(warned(built, "row names no rule"), [
         'row "shape" names no rule',
@@ -326,7 +326,7 @@ describe("Warnings about rules and decision notes · specPages().warnings, rules
       ]);
     });
 
-    it("warns of a Choice row the rendered table lacks", async () => {
+    it("warns about a Choice row the rendered table lacks", async () => {
       const tree = await hubWith(await oddVocabulary(), []);
       const { said } = readPage(treeText(tree, "spec/index.html"));
       assert.match(said, /row "y" has no row in the table the page renders/);

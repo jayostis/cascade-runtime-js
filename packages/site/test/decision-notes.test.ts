@@ -184,7 +184,7 @@ describe("Decision notes as pages · specSection", () => {
     });
   });
 
-  describe("`decisions/index.html`", () => {
+  describe("with `decisions/index.html`", () => {
     let indexHtml: string;
     let index: ReturnType<typeof readPage>;
 

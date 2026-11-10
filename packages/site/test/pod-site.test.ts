@@ -102,7 +102,7 @@ const blockOf = (on: Page, title: string) => {
  * so each page is what the runtime reads, not a drawing of it.
  */
 describe("The pages of a pod · Site.build(), Site.files()", () => {
-  describe("given a pod in which the matcher joined two records", () => {
+  describe("given a pod in which the matcher found two records to be one thing", () => {
     it("shows every named question of the vocabulary with its query's text", async () => {
       const shown = new Map(
         [...pages.values()].flatMap(({ blocks }) =>
@@ -114,7 +114,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
     });
   });
 
-  describe("`index.html`", () => {
+  describe("with `index.html`", () => {
     it("shows each folder of the pod that holds a record", () => {
       const folders = blockOf(
         page("index.html"),
@@ -178,7 +178,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
   });
 
   describe("with a view entry's page", () => {
-    it("links the page of each record the view entry joins", () => {
+    it("links the page of each record the view entry is made of", () => {
       const joined = [...site.pod.built.values()]
         .flat()
         .filter(([, predicate]) => predicate.value === MERGED_FROM);
@@ -209,7 +209,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
     });
   });
 
-  describe("`pipeline.html`", () => {
+  describe("with `pipeline.html`", () => {
     let pipeline: Page;
     const queryOf = ({ path }: { path: string }) =>
       path.slice(path.lastIndexOf("/") + 1, -3);
@@ -270,7 +270,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
     });
   });
 
-  describe("`not-shown.html`", () => {
+  describe("with `not-shown.html`", () => {
     let hidden: ReturnType<typeof blockOf>;
 
     before(() => {

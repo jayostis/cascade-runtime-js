@@ -267,7 +267,7 @@ describe("The adapters page and an adapter's crosswalk · adaptersSection", () =
     index = read(INDEX);
   });
 
-  describe("`adapters/index.html`", () => {
+  describe("with `adapters/index.html`", () => {
     it("gives each adapter a line: its name, the commit it was built from and a link to its crosswalk", () => {
       const rows = rowsAfter(index, "adapters");
       assert.equal(rows.length, 2);
@@ -277,7 +277,7 @@ describe("The adapters page and an adapter's crosswalk · adaptersSection", () =
       assert.ok(first?.hrefs.includes("fhir-r4/index.html"));
     });
 
-    it("says of an adapter that could not be fetched that it is not available, and why, with no link", () => {
+    it("says an adapter that could not be fetched is not available, and why, with no link", () => {
       const [, missing] = rowsAfter(index, "adapters");
       assert.ok(
         missing?.cells.join(" ").includes("cascade-bridge-adapter-ccda"),
@@ -382,7 +382,7 @@ describe("The adapters page and an adapter's crosswalk · adaptersSection", () =
       );
     });
 
-    it("says of a Bundle entry's own member that it is one, not that it is in one form only", () => {
+    it("says a Bundle entry's own member is one, and is not in one form only", () => {
       assert.notEqual(line(fhir, "/fullUrl"), "");
       assert.doesNotMatch(plain(line(fhir, "/fullUrl")), /only as/);
       assert.match(plain(line(fhir, "/fullUrl")), /Bundle entry/);
@@ -390,7 +390,7 @@ describe("The adapters page and an adapter's crosswalk · adaptersSection", () =
   });
 
   describe("with what an adapter does not carry", () => {
-    it("lists a source path that has no home once, with its gap's label", () => {
+    it("lists a source path that has no home once, with its gap's text", () => {
       // The accounting writes the path twice, as /recordedDate and as /contained/recordedDate.
       assert.deepEqual(
         rowsAfter(fhir, "noHome").map(({ cells }) => cells.slice(0, 2)),

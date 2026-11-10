@@ -67,7 +67,7 @@ describe("The API page · apiSection", () => {
     }
   };
 
-  describe("`api/index.html`", () => {
+  describe("with `api/index.html`", () => {
     let api: ReturnType<typeof readPage>;
 
     before(() => {
@@ -109,7 +109,7 @@ describe("The API page · apiSection", () => {
     });
   });
 
-  describe("`api/package.html`", () => {
+  describe("with `api/package.html`", () => {
     it("shows the package's README, without its install marker or any comment", () => {
       const readme = read(tree, "api/package.html");
       assert.ok(!readme.includes("INSTALL"), "the marker is not shown as text");

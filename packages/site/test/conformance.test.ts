@@ -69,14 +69,14 @@ describe("Conformance results on the specification · readSpecReport(), specSect
       ]);
     });
 
-    it("joins results whose vocabulary address lacks its last slash", async () => {
+    it("matches results whose vocabulary address lacks its last slash", async () => {
       const slashless = await pagesOf(vocabulary, ASSERTIONS, [
         { name: "cascade-vocabulary", iri: TREE.slice(0, -1), revision: "abc" },
       ]);
       assert.deepEqual(reported(slashless), []);
     });
 
-    it("joins results of another commit of the vocabulary by path, with a warning", async () => {
+    it("matches results of another commit of the vocabulary by path, with a warning", async () => {
       const moved = await pagesOf(
         vocabulary,
         ASSERTIONS.map((one) => ({
@@ -91,7 +91,7 @@ describe("Conformance results on the specification · readSpecReport(), specSect
       assert.equal(resultOfOne(moved), "passed");
     });
 
-    it("warns when the results name no vocabulary, and when none joins an example", async () => {
+    it("warns when the results name no vocabulary, and when none matches an example", async () => {
       const none = await pagesOf(
         vocabulary,
         ASSERTIONS.map((one) => ({

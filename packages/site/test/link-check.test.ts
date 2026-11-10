@@ -175,8 +175,8 @@ const askedOf = (path: string): string[] =>
   asked.filter((line) => line.endsWith(` ${path}`));
 
 /**
- * `node scripts/link-check.mjs` follows every link of a built or deployed site: to a file, an anchor, another site, or a
- * file of a repository on GitHub. It exits 1 naming each dead link and the page that holds it, so that a pull request
+ * `node scripts/link-check.mjs` follows every link of a built or published site: to a file, an anchor, another site, or a
+ * file of a repository on GitHub. It exits 1 naming each dead link and the page that holds it, so that a change
  * cannot publish one. Each level runs the script once, over its own site, and its tests read what it said.
  */
 describe("Checking a site's links · scripts/link-check.mjs", () => {
@@ -223,7 +223,7 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       assert.ok(!result.said.includes("/flaky"), result.said);
     });
 
-    it("warns of a host that stays down, and does not fail", () => {
+    it("warns about a host that stays down, and does not fail", () => {
       assert.ok(result.said.includes("WARN"), result.said);
       assert.ok(result.said.includes(`${origin}/down`), result.said);
     });
@@ -503,7 +503,7 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       assert.ok(result.said.includes("README e: no README"), result.said);
     });
 
-    it("warns of a README its host fails to serve, and does not fail for it", () => {
+    it("warns about a README its host fails to serve, and does not fail for it", () => {
       assert.ok(result.said.includes("WARN README f: "), result.said);
       assert.ok(!result.said.includes("FAIL README f"), result.said);
     });
@@ -552,7 +552,7 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
     });
   });
 
-  describe("with `--crawl`, over a deployed site", () => {
+  describe("with `--crawl`, over a published site", () => {
     const site = () => `${origin}/site/`;
     let followed: { code: number; said: string };
     let external: { code: number; said: string };
@@ -606,7 +606,7 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       assert.ok(gone.said.includes("gone.html"), gone.said);
     });
 
-    it("warns of another site's address that answers 503, and does not fail", () => {
+    it("warns about another site's address that answers 503, and does not fail", () => {
       assert.equal(external.code, 0, external.said);
       assert.ok(external.said.includes("WARN"), external.said);
     });

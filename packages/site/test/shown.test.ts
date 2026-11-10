@@ -64,7 +64,7 @@ describe("Text, times and codes as a page shows them · markup, shown(), code(),
   });
 
   describe("`code()`", () => {
-    it("shows a code as its code system's label and the code, for each code system the vocabulary registers", () => {
+    it("shows a code as its code system's name and the code, for each code system the vocabulary registers", () => {
       assert.ok(codeSystems.length > 0);
       for (const { label, uriSpace } of codeSystems)
         assert.deepEqual(

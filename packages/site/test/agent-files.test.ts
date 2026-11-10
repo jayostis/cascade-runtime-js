@@ -212,7 +212,7 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
       assert.ok(lines.some((line) => /^## \S/.test(line)));
     });
 
-    it("writes each link as `- [label](address)`, then a colon and a line about it where it has one", () => {
+    it("writes each link as `- [text](address)`, then a colon and a line about it where it has one", () => {
       const items = llms.split("\n").filter((line) => line.startsWith("- "));
       assert.ok(items.length > 0);
       for (const line of items)
@@ -245,7 +245,7 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
       assert.ok(!llms.includes("Section C"));
     });
 
-    it("escapes brackets in a label, and spaces and parentheses in an address", () => {
+    it("escapes brackets in a link's text, and spaces and parentheses in an address", () => {
       assert.ok(llms.includes("- [Odd \\[name\\]](a/one%20%28two%29.html)"));
     });
 
