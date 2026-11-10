@@ -86,11 +86,20 @@ jobs:
       - name: Tests in random order
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: node scripts/transpile.mjs && node scripts/random-order.mjs cascade-runtime
-      # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice.
-      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' && github.event_name != 'schedule' }}
-        run: npm test
+      # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice. Its JUnit report is
+      # read for the test page's shape below, as the `runtime-tests` job reads its own.
+      - id: suite
+        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' && github.event_name != 'schedule' }}
+        run: |
+          npm test -- --test-reporter=./scripts/junit-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/junit.xml" \
+            --test-reporter=spec --test-reporter-destination=stdout
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # A case outside a listed capability, nested too deep, or with a leaf that is no verb fails here, named. The files
+      # packages/cascade-runtime/test/spec.json lists as `shaped` are held to it; a package that lists no `capabilities` is skipped.
+      - name: The test results read as a specification
+        if: ${{ !cancelled() && steps.suite.conclusion != 'skipped' }}
+        run: node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/cascade-runtime/test/spec.json
 
   # The docs site as Pages would serve it: `build-pages` runs the same command, and this job keeps the tree it wrote.
   browser:
@@ -500,6 +509,18 @@ jobs:
             "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$kept/run.json"
           npm test -- --test-reporter=./scripts/junit-reporter.mjs --test-reporter-destination="$kept/junit.xml" \
             --test-reporter=spec --test-reporter-destination=stdout
+      # The test page's shape, over the report just written: see the `tests and conformance` job.
+      - name: The test results read as a specification
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          kept="$RUNNER_TEMP/runtime-tests"
+          if [ ! -f "$kept/junit.xml" ]; then
+            echo "::warning::the runtime's tests wrote no JUnit report, so there is nothing to check"
+            exit 0
+          fi
+          node scripts/spec-shape.mjs "$kept/junit.xml" packages/cascade-runtime/test/spec.json
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
