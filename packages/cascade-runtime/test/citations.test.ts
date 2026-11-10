@@ -1027,7 +1027,7 @@ describe("Checking a citation of a download · checkCitation(), downloadsSource(
       ]);
     });
 
-    it("takes a date that follows `reported`, `recorded` or `documented` in a narrative line as its recorded date", async () => {
+    it('takes a date that follows "reported", "recorded" or "documented" in a narrative line as its recorded date', async () => {
       await assertHolds(
         downloads,
         (
@@ -1044,7 +1044,7 @@ describe("Checking a citation of a download · checkCitation(), downloadsSource(
       );
     });
 
-    it("takes no recorded date from a date that follows `started`, a negated word, or a longer word that ends in one of them", async () => {
+    it('takes no recorded date from a date that follows "started", a negated word, or a longer word that ends in one of them', async () => {
       await assertHolds(
         downloads,
         (

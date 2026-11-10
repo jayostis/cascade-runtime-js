@@ -376,11 +376,6 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
     },
     {
-      "term": "short name",
-      "definition": "a compact read's name for a source: `S1`, `S2` and so on, each listed with who wrote it.",
-      "aliases": ["short names"]
-    },
-    {
       "term": "snapshot",
       "definition": "the set of files a pod held as one act left it, which names the snapshot before it as a git commit names its parent.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Snapshot",
@@ -390,6 +385,11 @@
       "term": "source",
       "definition": "one hospital server, or one document, whose records an export holds.",
       "aliases": ["sources"]
+    },
+    {
+      "term": "source's short name",
+      "definition": "a compact read's name for a source: `S1`, `S2` and so on, each listed with who wrote it.",
+      "aliases": ["sources' short names", "source's short names"]
     },
     {
       "term": "SPARQL",

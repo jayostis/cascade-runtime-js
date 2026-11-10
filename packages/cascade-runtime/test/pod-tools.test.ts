@@ -1140,7 +1140,7 @@ describe("Checking a pod against the reference tables · reference_table_checks 
       ]);
     });
 
-    it("returns each pair of active medications in two view entries whose codes share an ingredient", () => {
+    it("returns each pair of active medications in two view entries whose codes share an ingredient, with both view entries, their codes and the ingredient", () => {
       const ingredient = {
         code: `${RXNORM}9001`,
         label: "ingredient a",
