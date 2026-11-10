@@ -552,20 +552,26 @@ ${children}</ul></details></li>\n`;
 const unreleased = (version: string): boolean =>
   version === "0.0.0" || version.includes("-");
 
-const rankIn = (order: readonly string[], name: string): number => {
-  const at = order.indexOf(name);
-  return at === -1 ? Infinity : at;
-};
+/** Names in the order a list gives them, the unlisted after them by name. */
+const byRank =
+  (order: readonly string[]) =>
+  (a: string, b: string): number => {
+    const rank = (name: string): number => {
+      const at = order.indexOf(name);
+      return at === -1 ? Infinity : at;
+    };
+    const [x, y] = [rank(a), rank(b)];
+    return x === y ? before(a, b) : x < y ? -1 : 1;
+  };
 
 /** Capabilities in the order a spec lists them, the unlisted after them by name. */
 const arranged = (
   list: readonly Capability[],
   order: readonly string[],
-): Capability[] =>
-  [...list].sort((a, b) => {
-    const [x, y] = [rankIn(order, a.name), rankIn(order, b.name)];
-    return x === y ? before(a.name, b.name) : x < y ? -1 : 1;
-  });
+): Capability[] => {
+  const ranked = byRank(order);
+  return [...list].sort((a, b) => ranked(a.name, b.name));
+};
 
 /** The spec of a package's tests: the one its report carries, or for the repository's own, its artifact's `spec.json`. */
 function specFor(
@@ -673,16 +679,11 @@ function packageSections(
   suite: Suite,
   run: TestRun,
 ): Html {
-  const listed = suite.packages ?? [];
+  const listed = byRank(suite.packages ?? []);
   const order = [...byPackage(cases, suite)].sort(
     ([a, held], [b, other]) =>
       Number(other.some((c) => c.result === "failed")) -
-        Number(held.some((c) => c.result === "failed")) ||
-      (rankIn(listed, a) === rankIn(listed, b)
-        ? before(a, b)
-        : rankIn(listed, a) < rankIn(listed, b)
-          ? -1
-          : 1),
+        Number(held.some((c) => c.result === "failed")) || listed(a, b),
   );
   return markup`${order.map(([folder, held]) => packageSection(folder, held, packages.get(folder), specFor(folder, packages, suite, run), suite, run))}`;
 }
