@@ -691,9 +691,15 @@ const CLASSES_BY_RELATION: Mapping = {
  * ingredient fluoroestradiol F-18 maps to it too, classed differently; and a tablet of levoketoconazole, a precise
  * ingredient of ketoconazole, each classed differently. Its product ingredients version states precise ingredients.
  */
-let planted: Promise<{ tables: Tables; classes: string }> | undefined;
+let planted:
+  | Promise<{ tables: Tables; classes: string; served: Served }>
+  | undefined;
 
-function plantedTables(): Promise<{ tables: Tables; classes: string }> {
+function plantedTables(): Promise<{
+  tables: Tables;
+  classes: string;
+  served: Served;
+}> {
   planted ??= (async () => {
     const place: Record<string, [number, string | undefined]> = {
       "2951-2": [2, "R"],
@@ -779,9 +785,17 @@ function plantedTables(): Promise<{ tables: Tables; classes: string }> {
     );
     const tables = tablesOver(medrt.served);
     await tables.check();
-    return { tables, classes: classes.versions[0]! };
+    return { tables, classes: classes.versions[0]!, served: medrt.served };
   })();
   return planted;
+}
+
+/** Tables of their own, checked over the planted feed, for a test that writes to its store. */
+async function ownPlantedTables(): Promise<{ tables: Tables; classes: string }> {
+  const { served, classes } = await plantedTables();
+  const tables = tablesOver(served);
+  await tables.check();
+  return { tables, classes };
 }
 
 /** What a code's page says of its classes, a line each: a class with the code it is through, or a relation withheld. */
@@ -3228,7 +3242,7 @@ describe("Asking a pod what the reference tables say of its records · pod.medic
     let classes: string;
 
     before(async () => {
-      const planted = await plantedTables();
+      const planted = await ownPlantedTables();
       classes = planted.classes;
       pod = await openPodWith(
         { ...parts, tables: planted.tables },
