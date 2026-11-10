@@ -32,7 +32,7 @@ const MOST_LEVELS = 3;
 const SEPARATOR = " › ";
 
 /** Singular present-tense verbs the `-s` rule would read wrongly, or not at all. */
-const VERBS = new Set(["is", "has", "does", "goes"]);
+const VERBS = new Set(["is", "has", "does", "goes", "can"]);
 
 /** Words ending in `s` that are no verb: what a leaf beginning with one is not saying. */
 const FALSE_FRIENDS = new Set([
@@ -105,6 +105,23 @@ function specFolder(specPath: string): string {
 
 function firstWord(title: string): string {
   return /^[^\s,;:]*/.exec(title)?.[0] ?? "";
+}
+
+/** Adverbs a leaf may begin with before its verb: "never writes", "only returns". */
+const ADVERBS = new Set(["never", "only", "still", "always", "also", "then"]);
+
+/** The verb a leaf begins with, and the word after it: past a leading adverb, before the apostrophe of "n't", clear of closing punctuation. */
+function leafVerb(name: string): { word: string; next: string } {
+  const words = name.trim().split(/\s+/);
+  let at = 0;
+  while (at < words.length - 1 && ADVERBS.has(words[at] ?? "")) at += 1;
+  const word = firstWord(words[at] ?? "")
+    .replace(/[.…!?]+$/, "")
+    .replace(/n't$/, "");
+  return {
+    word: word === "ca" ? "can" : word,
+    next: words[at + 1] ?? "",
+  };
 }
 
 /** Whether a leaf's first word is a singular present-tense verb: a listed one, or a lower-case word ending in `s`. */
@@ -236,8 +253,7 @@ export function checkShape(
         "level-2",
         `"${second}" names neither code nor a situation beginning "when", "given" or "with"`,
       );
-    const word = firstWord(one.name);
-    const next = one.name.trim().split(/\s+/)[1] ?? "";
+    const { word, next } = leafVerb(one.name);
     if (!isVerb(word, next, allowed))
       found(
         "verb",

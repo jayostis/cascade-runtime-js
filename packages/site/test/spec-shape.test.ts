@@ -245,6 +245,32 @@ describe("checkShape(cases, spec, specPath)", () => {
         assert.deepEqual(leaf(title), [], title);
     });
 
+    it("accepts an adverb before the verb, a contraction, and punctuation after the verb", () => {
+      for (const title of [
+        "never writes",
+        "only returns rows",
+        "still opens the pod",
+        "always returns an address",
+        "also keeps rows",
+        "then reads the folder",
+        "doesn't write",
+        "can't open",
+        "isn't kept",
+        "returns…",
+        "writes.",
+      ])
+        assert.deepEqual(leaf(title), [], title);
+    });
+
+    it("still reports a noun, a gerund or a past tense after an adverb", () => {
+      for (const title of [
+        "never rows are kept",
+        "only returned rows",
+        "always",
+      ])
+        assert.equal(leaf(title).length, 1, title);
+    });
+
     it("accepts a first word the spec's allow list names", () => {
       const spec = { ...SPEC, allow: ["status"] };
       const report = check(
