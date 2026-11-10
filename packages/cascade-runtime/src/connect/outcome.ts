@@ -11,7 +11,7 @@ export type FailureKind =
 export interface FailureDetails {
   readonly origin?: string;
   readonly status?: number;
-  readonly resourceType?: string;
+  readonly askedFor?: string;
 }
 
 /**
@@ -24,7 +24,8 @@ export class ConnectionFailure extends Error {
   readonly kind: FailureKind;
   readonly origin: string | undefined;
   readonly status: number | undefined;
-  readonly resourceType: string | undefined;
+  /** What the hospital was asked for when this happened: a FHIR type such as `Condition`, or `discovery`, `token` or `metadata`. */
+  readonly askedFor: string | undefined;
 
   constructor(
     kind: FailureKind,
@@ -35,6 +36,6 @@ export class ConnectionFailure extends Error {
     this.kind = kind;
     this.origin = details.origin;
     this.status = details.status;
-    this.resourceType = details.resourceType;
+    this.askedFor = details.askedFor;
   }
 }
