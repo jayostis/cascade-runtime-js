@@ -12,7 +12,16 @@
     "Opening a pod again · openPod()",
     "Encrypting a pod with six words · openPod(), sixWords(), typedWords()",
     "Sample pods and exports to build against · replayKit(), kitDownload()",
-    "Publishing a pod for a browser · answersToPublish(), samplesToPublish()"
+    "Publishing a pod for a browser · answersToPublish(), samplesToPublish()",
+    "Keeping reference tables up to date · tablesBeside(), tables.check()",
+    "Starting from the tables the package carries · tables.start()",
+    "Choosing an app's feeds and settings · configureTables(), cascade-runtime.json",
+    "Opening a pod with newer reference tables · openPod(), pod.opened, pod.unheldTableVersions()",
+    "Listing and searching the reference tables · tables.held(), tables.uses(), tables.search(), tables.codeNamed()",
+    "Looking up a code in the reference tables · tables.about(), tables.facts(), tables.inPanels(), tables.classedElsewhere()",
+    "Reading what ClinVar says of a variant · tables.variantClassification(), pod.agreement()",
+    "Asking a pod what the reference tables say of its records · pod.medicationClasses(), pod.panelResults(), pod.joinedBy()",
+    "Reading only the rows a pod's codes find · tables.references()"
   ],
   "glossary": [
     {
@@ -286,10 +295,144 @@
     {
       "term": "Unopened",
       "definition": "the `Refusal` thrown when a pod does not open with the secret given, or with none; its `outcome` gives the reason, such as `incorrect secret`."
+    },
+    {
+      "term": "builder",
+      "definition": "a program that builds a reference table on the app's own machine from its publisher's release, as is needed where a licence keeps a feed from publishing the rows.",
+      "aliases": ["builders"]
+    },
+    {
+      "term": "ClinVar",
+      "definition": "the public archive, kept by the US National Library of Medicine, of how laboratories classify variants, from benign to pathogenic; one of the reference tables.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#VariantClassifications"
+    },
+    {
+      "term": "coding expression",
+      "definition": "a variant written in HGVS notation against a gene's transcript, such as `NM_000249.3:c.2042C>T`.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#hgvsCodingDnaExpression"
+    },
+    {
+      "term": "combination",
+      "definition": "a medicine with more than one active ingredient, such as a tablet of lisinopril with hydrochlorothiazide.",
+      "aliases": ["combinations", "combination product"]
+    },
+    {
+      "term": "current version",
+      "definition": "of a series, the version a pod opened now is given: the newest one the app has kept.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#defaultTableVersion",
+      "aliases": ["current versions"]
+    },
+    {
+      "term": "drug class",
+      "definition": "a group of medicines that work alike or are built alike, such as ACE inhibitors, as the US Food and Drug Administration assigns them.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#DrugClasses",
+      "aliases": ["drug classes", "class", "classes", "classed"]
+    },
+    {
+      "term": "feed",
+      "definition": "a published list of the versions of reference tables, which an app reads to find newer ones.",
+      "aliases": ["feeds"]
+    },
+    {
+      "term": "index",
+      "definition": "a file kept beside a version of a reference table that says which rows each code finds, so that the rows need not all be read.",
+      "aliases": ["indexes", "index by code"]
+    },
+    {
+      "term": "matcher judgment",
+      "definition": "a Same the matcher wrote for records its rules found to be one thing; it names the version of each reference table it used.",
+      "aliases": ["matcher judgments"]
+    },
+    {
+      "term": "order of preference",
+      "definition": "for a table kind, the series an app reads first when several hold a code, set as `preference`; a code's name comes from the first series in it that names the code."
+    },
+    {
+      "term": "panel",
+      "definition": "a set of lab tests reported together, such as a thyroid panel.",
+      "aliases": ["panels"]
+    },
+    {
+      "term": "precise ingredient",
+      "definition": "a particular form of an ingredient, such as lisinopril anhydrous of lisinopril, which some medicine products are tied to.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#hasPreciseIngredient",
+      "aliases": ["precise ingredients"]
+    },
+    {
+      "term": "product ingredients",
+      "definition": "the reference table that gives each medicine product its active ingredient, from RxNorm.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ProductIngredients"
+    },
+    {
+      "term": "review status",
+      "definition": "ClinVar's statement of how well a classification is supported, such as `criteria provided, multiple submitters, no conflicts`.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#clinvarReviewStatus"
+    },
+    {
+      "term": "rule list",
+      "definition": "the vocabulary's list of what the matcher compares, each line naming a query and the table kind it reads; it has versions, as a reference table has.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#RuleListRow",
+      "aliases": ["rule lists"]
+    },
+    {
+      "term": "search list",
+      "definition": "a version's codes and their names kept as one file beside its rows, which a search reads.",
+      "aliases": ["search lists"]
+    },
+    {
+      "term": "series",
+      "definition": "one of the reference tables across its versions, such as RxNorm's product ingredients.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries"
+    },
+    {
+      "term": "starter copies",
+      "definition": "the reference tables as the package carries them, which a new app uses until it has read a feed.",
+      "aliases": ["starter"]
+    },
+    {
+      "term": "store",
+      "definition": "where an app keeps its reference tables: the folder `.tables/` beside its pods in Node, a database in a browser."
+    },
+    {
+      "term": "submitter",
+      "definition": "a laboratory that sent ClinVar its classification of a variant.",
+      "aliases": ["submitters"]
+    },
+    {
+      "term": "table kind",
+      "definition": "what a reference table's rows say, such as product ingredients or vaccine groups; the vocabulary declares each kind.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#TableKind",
+      "aliases": ["table kinds"]
+    },
+    {
+      "term": "variant",
+      "definition": "a difference in one of a person's genes from the reference sequence, as a genetic test reports it.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#GeneticVariantFinding",
+      "aliases": ["variants"]
+    },
+    {
+      "term": "verify",
+      "definition": "to check a version's rows, once fetched, against the checksum the feed gives for them and against the version's own name, which is worked out from the rows.",
+      "aliases": ["verifies", "verified"]
+    },
+    {
+      "term": "view entry",
+      "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
+      "aliases": ["view entries"]
     }
   ],
-  "shaped": ["pod.test.ts", "terms.test.ts"],
-  "build": [],
+  "shaped": [
+    "pod.test.ts",
+    "terms.test.ts",
+    "tables.test.ts",
+    "variants.test.ts",
+    "rowCache.test.ts"
+  ],
+  "build": [
+    "Row files kept between builds of the package",
+    "Starter copies of the reference tables, as the package is built with them"
+  ],
   "randomOrder": [
     "browser-types.test.ts",
     "changes.test.ts",
@@ -299,7 +442,6 @@
     "directory.test.ts",
     "entry.test.ts",
     "guide.test.ts",
-    "kinds-read.test.ts",
     "launcher-sandbox.test.ts",
     "outcomes.test.ts",
     "pack-dependencies.test.ts",
