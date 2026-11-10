@@ -717,7 +717,7 @@ describe("Checking a model's reply against a person's records · checkReply(), r
   });
 
   describe("given the fields the vocabulary's views write on a view entry", () => {
-    it("knows every field: each is one a fact can rest on, or is listed as one no fact can", async () => {
+    it("has every field the views write on a view entry either one a fact can rest on or listed as one no fact can, and none as both", async () => {
       const fields = await viewFields();
       assert.ok(fields.length > 40, "the views were read");
       const unmapped = fields.filter(
