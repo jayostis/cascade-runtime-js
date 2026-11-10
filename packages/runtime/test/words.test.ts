@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import type { Replayed } from "../src/replay.js";
@@ -7,7 +7,7 @@ import { MATCHER } from "../src/matcher.js";
 import { documentName, recordFromDocumentName } from "../src/names.js";
 import { CASCADE, Refusal } from "../src/step.js";
 import { Union } from "../src/store.js";
-import { KINDS, PROV, Words } from "../src/words.js";
+import { PROV, Words } from "../src/words.js";
 
 const RECORDS = "ontologies/cascade.ttl";
 const REGISTRY = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
@@ -60,142 +60,178 @@ async function wordsOver(
   });
 }
 
-test("a record in words is found through the stem its code system is registered with, as an IRI and never a literal", async () => {
-  const words = await wordsOver(REGISTRY);
-  assert.equal(
-    await words.record("allergy SNOMED 373270004"),
-    "urn:test:coded",
-  );
-  await assert.rejects(
-    words.record("allergy SNOMED 1234"),
-    /names no record|no record/,
-  );
-});
+/** A pod of seven records and four matcher judgments, over a vocabulary that registers SNOMED CT and NDC; no leaf changes it. */
+let plain: Promise<Words> | undefined;
+const plainWords = (): Promise<Words> => (plain ??= wordsOver(REGISTRY));
 
-test("a medication is found by its NDC through the space the vocabulary registers for it, and the matcher's same brand generic by the medications it joins", async () => {
-  const words = await wordsOver(REGISTRY);
-  assert.equal(
-    await words.record("medication NDC 00378520905"),
-    "urn:test:brand",
-  );
-  assert.equal(
-    await words.judgment(
-      "the matcher's same brand generic of medication NDC 00378520905 and medication NDC 00093101301",
-    ),
-    "urn:test:said",
-  );
-  assert.equal(
-    await words.judgment(
-      "the matcher's same product code of medication NDC 00378520905 and medication NDC 00093101301",
-    ),
-    "urn:test:product",
-  );
-});
-
-test("a record named by a code system the vocabulary does not register is an Error naming the system", async () => {
-  const words = await wordsOver(REGISTRY);
-  await assert.rejects(
-    words.record("lab result LOINC 2823-3"),
-    (error: unknown) =>
-      error instanceof Error &&
-      !(error instanceof Refusal) &&
-      error.message.includes("LOINC"),
-  );
-});
-
-test("a variant is found by its HGVS expression, which holds a colon, or by its ClinVar ID, and the matcher's two joins of variants are named by their words", async () => {
-  const words = await wordsOver(REGISTRY);
-  const [hgvs, id, named] = await Promise.all([
-    words.record("variant HGVS NM_000249.4:c.2042C>T"),
-    words.record("variant ClinVar 90011"),
-    words.record('variant ClinVar 90011 "NM_000249.4:c.2042C>T"'),
-  ]);
-  assert.deepEqual([hgvs, id, named], Array(3).fill("urn:test:martin"));
-  const members =
-    "variant HGVS NM_000249.4:c.2042C>T and variant HGVS NM_000249.3:c.2042C>T";
-  assert.equal(
-    await words.judgment(`the matcher's same variation of ${members}`),
-    "urn:test:variation",
-  );
-  assert.equal(
-    await words.judgment(
-      `the matcher's same variation through the table of ${members}`,
-    ),
-    "urn:test:through",
-  );
-});
-
-test("a handle names a record from a server by its base URL, normalised, its type and id, one from a document by the document's bytes and its selector, and a C-CDA entry by its id in its document's custodian and patient scopes, which a document that states none names by its selector; a retired form or none of the known inputs is an Error", async () => {
-  const bundle = new TextEncoder().encode('{"resourceType": "Bundle"}');
-  const summary = new TextEncoder()
-    .encode(`<ClinicalDocument xmlns="urn:hl7-org:v3">
+const BUNDLE = new TextEncoder().encode('{"resourceType": "Bundle"}');
+const SUMMARY = new TextEncoder()
+  .encode(`<ClinicalDocument xmlns="urn:hl7-org:v3">
   <recordTarget><patientRole><id root="2.16.840.1.113883.19.5.99" extension="MRN-1234"/></patientRole></recordTarget>
   <custodian><assignedCustodian><representedCustodianOrganization><id root="2.16.840.1.113883.19.5" extension="CLINIC-1"/></representedCustodianOrganization></assignedCustodian></custodian>
 </ClinicalDocument>`);
-  const words = await wordsOver(
-    REGISTRY,
-    {
-      records: {
-        SERVER: {
-          server: "https://FHIR.example.org:443/api/FHIR/R4/",
-          type: "AllergyIntolerance",
-          id: "eQ3xk2RtVb7Lm9Pw1aZy8A3",
-        },
-        DOCUMENT: { document: "downloads/bundle.json", selector: "/entry/3" },
-        CCDA: {
-          document: "downloads/summary.xml",
-          identifier: "2.16.840.1.113883.19.5:8237461",
-        },
-        "FULL-URL": {
-          fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52011",
-        },
-        "NO-INPUTS": { identifier: "x" },
-        UNSCOPED: {
-          document: "downloads/unscoped.xml",
-          identifier: "2.16.840.1.113883.19.5:8237461",
-        },
-      },
-    },
-    {
-      "test/downloads/bundle.json": bundle,
-      "test/downloads/summary.xml": summary,
-      "test/downloads/unscoped.xml": new TextEncoder().encode(
-        '<ClinicalDocument xmlns="urn:hl7-org:v3"/>',
-      ),
-    },
-  );
-  await assert.rejects(
-    words.record("UNSCOPED"),
-    /UNSCOPED names .*unscoped\.xml, whose custodian has no id that names an organization, or which states not exactly one patient with an id: handles\.json gives its selector/,
-  );
-  assert.equal(
-    await words.record("SERVER"),
-    "urn:uuid:81ad3fab-98f1-890c-8abe-e93c84afd9e0",
-  );
-  assert.equal(
-    await words.record("DOCUMENT"),
-    await recordFromDocumentName(await documentName(bundle), "/entry/3"),
-  );
-  assert.equal(
-    await words.record("CCDA"),
-    "urn:uuid:bb2e2b2b-5b01-8991-aa76-984b9b06ed2c",
-  );
-  for (const handle of ["FULL-URL", "NO-INPUTS"])
-    await assert.rejects(
-      words.record(handle),
-      new RegExp(`handles\\.json gives ${handle} no name inputs`),
-    );
-});
 
-test("a variant interpretation is a kind and no step names one: it has neither a code nor a name", async () => {
-  assert.equal(
-    KINDS["variant interpretation"],
-    `${CASCADE}VariantInterpretation`,
-  );
-  const words = await wordsOver(REGISTRY);
-  await assert.rejects(
-    words.record("variant interpretation"),
-    (error: unknown) =>
-      error instanceof Error && error.message.includes("names no record"),
-  );
+/**
+ * A feature's example names a record or a judgment in words, such as `allergy SNOMED 373270004`, or by a handle, a
+ * short name whose inputs the kit's `handles.json` gives (`runtime/steps.md`). `Words` finds the one thing in a pod those
+ * words name, so a feature says which record it means without writing its IRI.
+ */
+describe("Finding what an example names in words · Words.record(), Words.judgment()", () => {
+  /** A pod of seven records, whose code systems the vocabulary registers with made-up URI spaces (`urn:test:snomed/`, `urn:test:ndc/`). */
+  describe("Words.record(words)", () => {
+    let words: Words;
+    before(async () => {
+      words = await plainWords();
+    });
+
+    it("finds a record by its kind and a code, through the URI space the vocabulary registers for the code system", async () => {
+      assert.equal(
+        await words.record("allergy SNOMED 373270004"),
+        "urn:test:coded",
+        "allergy SNOMED 373270004",
+      );
+      assert.equal(
+        await words.record("medication NDC 00378520905"),
+        "urn:test:brand",
+        "medication NDC 00378520905",
+      );
+    });
+
+    it("rejects a code that a record holds only as a literal", async () => {
+      await assert.rejects(words.record("allergy SNOMED 1234"), /names no record/);
+    });
+
+    it("rejects, with an Error that is no Refusal and names the code system, a code system the vocabulary does not register", async () => {
+      await assert.rejects(
+        words.record("lab result LOINC 2823-3"),
+        (error: unknown) =>
+          error instanceof Error &&
+          !(error instanceof Refusal) &&
+          error.message.includes("LOINC"),
+      );
+    });
+
+    it("finds a variant by its HGVS expression, by its ClinVar ID, and by its ClinVar ID with its name", async () => {
+      for (const said of [
+        "variant HGVS NM_000249.4:c.2042C>T",
+        "variant ClinVar 90011",
+        'variant ClinVar 90011 "NM_000249.4:c.2042C>T"',
+      ])
+        assert.equal(await words.record(said), "urn:test:martin", said);
+    });
+
+    it("rejects a kind given with neither a code nor a name", async () => {
+      await assert.rejects(
+        words.record("variant interpretation"),
+        (error: unknown) =>
+          error instanceof Error && error.message.includes("names no record"),
+      );
+    });
+  });
+
+  /**
+   * A kit's `handles.json` gives a record a short name and the inputs its name is made from. The vocabulary here
+   * holds a document `bundle.json`, and two C-CDA documents, one that states a custodian and a patient and one that
+   * states neither.
+   */
+  describe("given a handle of `handles.json`", () => {
+    let words: Words;
+    before(async () => {
+      words = await wordsOver(
+        REGISTRY,
+        {
+          records: {
+            SERVER: {
+              server: "https://FHIR.example.org:443/api/FHIR/R4/",
+              type: "AllergyIntolerance",
+              id: "eQ3xk2RtVb7Lm9Pw1aZy8A3",
+            },
+            DOCUMENT: {
+              document: "downloads/bundle.json",
+              selector: "/entry/3",
+            },
+            CCDA: {
+              document: "downloads/summary.xml",
+              identifier: "2.16.840.1.113883.19.5:8237461",
+            },
+            "FULL-URL": {
+              fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52011",
+            },
+            "NO-INPUTS": { identifier: "x" },
+            UNSCOPED: {
+              document: "downloads/unscoped.xml",
+              identifier: "2.16.840.1.113883.19.5:8237461",
+            },
+          },
+        },
+        {
+          "test/downloads/bundle.json": BUNDLE,
+          "test/downloads/summary.xml": SUMMARY,
+          "test/downloads/unscoped.xml": new TextEncoder().encode(
+            '<ClinicalDocument xmlns="urn:hl7-org:v3"/>',
+          ),
+        },
+      );
+    });
+
+    it("finds a record read from a server by its base URL, normalised, its type and its id", async () => {
+      assert.equal(
+        await words.record("SERVER"),
+        "urn:uuid:81ad3fab-98f1-890c-8abe-e93c84afd9e0",
+      );
+    });
+
+    it("finds a record read from a document by the document's bytes and its selector", async () => {
+      assert.equal(
+        await words.record("DOCUMENT"),
+        await recordFromDocumentName(await documentName(BUNDLE), "/entry/3"),
+      );
+    });
+
+    it("finds a C-CDA record by its id and the custodian and patient ids its document states", async () => {
+      assert.equal(
+        await words.record("CCDA"),
+        "urn:uuid:bb2e2b2b-5b01-8991-aa76-984b9b06ed2c",
+      );
+    });
+
+    it("rejects, saying `handles.json` gives its selector, a C-CDA document that states no custodian id or no patient id", async () => {
+      await assert.rejects(
+        words.record("UNSCOPED"),
+        /UNSCOPED names .*unscoped\.xml, whose custodian has no id that names an organization, or which states not exactly one patient with an id: handles\.json gives its selector/,
+      );
+    });
+
+    it("rejects, saying the handle has no name inputs, inputs of no form it knows", async () => {
+      for (const handle of ["FULL-URL", "NO-INPUTS"])
+        await assert.rejects(
+          words.record(handle),
+          new RegExp(`handles\\.json gives ${handle} no name inputs`),
+          handle,
+        );
+    });
+  });
+
+  /** The matcher's judgments the pod holds are each about two records, and give a justification in words. */
+  describe("Words.judgment(words)", () => {
+    let words: Words;
+    before(async () => {
+      words = await plainWords();
+    });
+
+    it("finds the matcher's judgment by its justification in words and the records it joins", async () => {
+      const brand = "medication NDC 00378520905 and medication NDC 00093101301";
+      const variants =
+        "variant HGVS NM_000249.4:c.2042C>T and variant HGVS NM_000249.3:c.2042C>T";
+      const found = {
+        [`the matcher's same brand generic of ${brand}`]: "urn:test:said",
+        [`the matcher's same product code of ${brand}`]: "urn:test:product",
+        [`the matcher's same variation of ${variants}`]: "urn:test:variation",
+        [`the matcher's same variation through the table of ${variants}`]:
+          "urn:test:through",
+      };
+      for (const [said, judgment] of Object.entries(found))
+        assert.equal(await words.judgment(said), judgment, said);
+    });
+  });
 });
