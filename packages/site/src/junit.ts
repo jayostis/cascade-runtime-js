@@ -122,9 +122,7 @@ const lineOf = (value: string | undefined): number | undefined => {
  * that could not be collected has no `classname`, and its dotted path is the case's name.
  */
 function placedByPytest(attribute: ReadonlyMap<string, string>): Placed {
-  const segments = (
-    attribute.get("classname") || (attribute.get("name") ?? "")
-  )
+  const segments = (attribute.get("classname") || (attribute.get("name") ?? ""))
     .split(".")
     .filter((one) => one !== "");
   const file = attribute.get("file")?.replaceAll("\\", "/");
