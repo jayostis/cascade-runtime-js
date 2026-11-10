@@ -363,21 +363,6 @@
       "aliases": ["waves"]
     }
   ],
-  "shaped": [
-    "ask.test.ts",
-    "calibration.test.ts",
-    "checks.test.ts",
-    "evidence.test.ts",
-    "finish.test.ts",
-    "history.test.ts",
-    "judging.test.ts",
-    "pinned.test.ts",
-    "pod-client.test.ts",
-    "tables-fetch.test.ts",
-    "tables-given.test.ts",
-    "tables.test.ts",
-    "transcripts.test.ts"
-  ],
   "build": [
     "The cases in `cases/`, as checked in",
     "The tiers in `configs/`, against `calibration.json`",
@@ -393,6 +378,9 @@
     "judging.test.ts",
     "pinned.test.ts",
     "pod-client.test.ts",
+    "run.test.ts",
+    "sessions.test.ts",
+    "site.test.ts",
     "tables-fetch.test.ts",
     "tables-given.test.ts",
     "tables.test.ts",

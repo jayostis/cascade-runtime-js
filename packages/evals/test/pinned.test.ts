@@ -24,6 +24,7 @@ const git = (cwd: string, ...args: string[]) =>
 /**
  * A config's `pins` names a commit for each repository the pod arm depends on, so an eval can be run again on the code of
  * an earlier day. The pinned runtime is cloned and built apart, and everything it does runs in its own checkout.
+ * `cloneAt()` clones `source`, the folder or address of a repository, into `folder/name` at `pin`.
  */
 describe("Running the pod arm at pinned commits · resolvePins(), cloneAt(), checkKept(), pinnedPod(), askerOf()", () => {
   let root: string;
@@ -82,7 +83,7 @@ describe("Running the pod arm at pinned commits · resolvePins(), cloneAt(), che
   });
 
   describe("cloneAt(folder, name, source, pin)", () => {
-    it("turns `core.longpaths` on in the clone", () => {
+    it("turns `core.longpaths` on in the clone, so a file whose path passes 260 characters on Windows is checked out", () => {
       cloneAt(root, "cloned", source, commit);
       assert.equal(
         git(
