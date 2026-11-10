@@ -45,7 +45,7 @@ describe("The launcher check, when the launcher itself is down", () => {
       const unreachable = asking(false);
       const reported = await failureToReport(gaveUp, unreachable.answers);
       assert.ok(reported instanceof LauncherUnavailable);
-      assert.match(reported.message, /sandbox/i);
+      assert.match(reported.message, /launcher/i);
       assert.match(reported.message, /not the runtime/i);
       assert.ok(reported.message.includes(gaveUp.message));
       assert.equal(unreachable.asked.times, 1, "gave up with no status");
@@ -66,13 +66,64 @@ describe("The launcher check, when the launcher itself is down", () => {
       assert.ok(answered503 instanceof LauncherUnavailable, "gave up on 503s");
       assert.equal(failing.asked.times, 1);
     });
+  });
 
-    it("returns the runtime's own failure when the launcher does respond", async () => {
+  describe("launcherAnswers(fhirBase)", () => {
+    it("returns false for a 500 or a 503", async () => {
+      for (const status of [500, 503])
+        assert.equal(
+          await launcherAnswers(BASE, responding(status)),
+          false,
+          `${status}`,
+        );
+    });
+
+    it("returns false when the request fails, or is not back in the time allowed", async () => {
+      const failing: typeof fetch = async () => {
+        throw new TypeError("fetch failed");
+      };
+      assert.equal(await launcherAnswers(BASE, failing), false, "fails");
+
+      const hanging: typeof fetch = (_input, init) =>
+        new Promise((_resolve, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          ),
+        );
+      assert.equal(await launcherAnswers(BASE, hanging, 20), false, "late");
+    });
+  });
+});
+
+describe("The launcher check, when the launcher responds", () => {
+  describe("failureToReport(error, launcherAnswers)", () => {
+    it("returns the runtime's own failure when the runtime gave up after its retries", async () => {
       const up = asking(true);
       assert.equal(await failureToReport(gaveUp, up.answers), gaveUp);
       assert.equal(up.asked.times, 1);
     });
+  });
 
+  describe("launcherAnswers(fhirBase)", () => {
+    it("asks for the launcher's `metadata`", async () => {
+      const urls: string[] = [];
+      await launcherAnswers(BASE, responding(200, urls));
+      assert.deepEqual(urls, [`${BASE}/metadata`]);
+    });
+
+    it("returns true for a response below 500, a 429 among them", async () => {
+      for (const status of [200, 404, 429])
+        assert.equal(
+          await launcherAnswers(BASE, responding(status)),
+          true,
+          `${status}`,
+        );
+    });
+  });
+});
+
+describe("The launcher check, when the runtime's failure is not one the launcher's silence explains", () => {
+  describe("failureToReport(error, launcherAnswers)", () => {
     it("returns the runtime's own failure, without asking the launcher, when the runtime gave up on 429s", async () => {
       const rateLimited = new ConnectionFailure(
         "retries-exhausted",
@@ -114,47 +165,6 @@ describe("The launcher check, when the launcher itself is down", () => {
         );
         assert.equal(unasked.asked.times, 0, what);
       }
-    });
-  });
-
-  describe("launcherAnswers(fhirBase)", () => {
-    it("asks for the launcher's `metadata`", async () => {
-      const urls: string[] = [];
-      await launcherAnswers(BASE, responding(200, urls));
-      assert.deepEqual(urls, [`${BASE}/metadata`]);
-    });
-
-    it("returns true for a response below 500, a 429 among them", async () => {
-      for (const status of [200, 404, 429])
-        assert.equal(
-          await launcherAnswers(BASE, responding(status)),
-          true,
-          `${status}`,
-        );
-    });
-
-    it("returns false for a 500 or a 503", async () => {
-      for (const status of [500, 503])
-        assert.equal(
-          await launcherAnswers(BASE, responding(status)),
-          false,
-          `${status}`,
-        );
-    });
-
-    it("returns false when the request fails, or is not back in the time allowed", async () => {
-      const failing: typeof fetch = async () => {
-        throw new TypeError("fetch failed");
-      };
-      assert.equal(await launcherAnswers(BASE, failing), false, "fails");
-
-      const hanging: typeof fetch = (_input, init) =>
-        new Promise((_resolve, reject) =>
-          init?.signal?.addEventListener("abort", () =>
-            reject(init.signal?.reason),
-          ),
-        );
-      assert.equal(await launcherAnswers(BASE, hanging, 20), false, "late");
     });
   });
 });

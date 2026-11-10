@@ -42,7 +42,7 @@ export async function failureToReport(
     !(await launcherAnswers())
   )
     return new LauncherUnavailable(
-      `the SMART launcher's sandbox is down, not the runtime: ${error.message}, and its FHIR server answers no request of its own either`,
+      `the SMART launcher is down, not the runtime: ${error.message}, and its FHIR server answers no request of its own either`,
       { cause: error },
     );
   return error;

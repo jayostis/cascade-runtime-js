@@ -639,7 +639,12 @@
     "terms.test.ts",
     "tools.test.ts"
   ],
-  "build": ["The launcher check, when the launcher itself is down", "cascade-runtime/tools in a browser bundle"],
+  "build": [
+    "The launcher check, when the launcher itself is down",
+    "The launcher check, when the launcher responds",
+    "The launcher check, when the runtime's failure is not one the launcher's silence explains",
+    "cascade-runtime/tools in a browser bundle"
+  ],
   "randomOrder": [
     "browser-types.test.ts",
     "changes.test.ts",
