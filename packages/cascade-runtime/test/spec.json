@@ -71,6 +71,11 @@
       "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
     },
     {
+      "term": "cell",
+      "definition": "one tab-separated value on a line of a compact read, under the column name the view's first line gives.",
+      "aliases": ["cells"]
+    },
+    {
       "term": "citation",
       "definition": "where a fact points (`cite`): a view entry, a FHIR resource in a download, or a line of one. In a reply about downloads it also gives, field by field, what the fact says the record there holds.",
       "aliases": ["citations", "cite", "cites", "cited"]
@@ -98,7 +103,7 @@
     },
     {
       "term": "compact read",
-      "definition": "the whole pod as tab-separated text, which the `ask` tool returns a part at a time when called with `format: \"compact\"`.",
+      "definition": "the whole pod as tab-separated text, which the `ask` tool returns a part at a time when called with `format: \"compact\"`; each line is one row of a view, its cells separated by tabs.",
       "aliases": ["compact reads"]
     },
     {
@@ -160,7 +165,7 @@
     },
     {
       "term": "handle",
-      "definition": "a compact read's short name for a view entry: a letter for its view, then the first eight or more hexadecimal digits of the view entry's name, such as `L41e35923`.",
+      "definition": "a compact read's short name for a view entry: a letter for its view, then the first eight or more hexadecimal digits of the view entry's name, such as `L41e35923`. `ask` takes a list of them in `entries` to return only those view entries' rows.",
       "aliases": ["handles"]
     },
     {
@@ -187,6 +192,11 @@
       "term": "item",
       "definition": "one point of a reply, with what it rests on.",
       "aliases": ["items"]
+    },
+    {
+      "term": "join",
+      "definition": "of a record, to be put with the records of a view entry by a judgment, a Same or the matcher's; the view entry is then named for its least record, so its name, and the handle made from it, changes.",
+      "aliases": ["joins", "joined"]
     },
     {
       "term": "judgment",

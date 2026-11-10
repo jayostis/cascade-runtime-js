@@ -500,7 +500,7 @@ describe("Tools a model reads a pod with · TOOLS", () => {
       }
     });
 
-    it("throws `Refusal` for `entries` that is not a list of strings", async () => {
+    it("throws `Refusal` when the handles in `entries` are not a list of strings", async () => {
       const reads = labPod(1);
       try {
         for (const [what, entries, why] of [
@@ -564,7 +564,7 @@ describe("Reading a folder of pods for the tools · podReads()", () => {
     assert.equal(closes, 1, "after close()");
   });
 
-  it("forgets an opening that failed, so the next call opens the pod again", async () => {
+  it("forgets that a pod failed to open, so the next call opens it again", async () => {
     let opens = 0;
     const reads = podReads({
       names: async () => ["p"],
