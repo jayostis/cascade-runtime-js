@@ -13,8 +13,8 @@ export interface Entry {
   readonly id: string;
 }
 
-/** The terms page, from the tests page. */
-const TERMS = "../../terms/";
+/** The terms page, from a repository's tests page. */
+const TERMS = "../../../terms/";
 
 const slug = (term: string): string =>
   term

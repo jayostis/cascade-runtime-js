@@ -370,6 +370,22 @@ describe("checkShape(cases, spec, specPath)", () => {
     });
   });
 
+  describe("with a spec that owns no case of the report", () => {
+    it("reports it, naming the spec path it resolved, rather than passing silently", () => {
+      const report = checkShape(
+        readJunit(
+          xml([["sample.test.ts", CAPABILITY, "openPod()", "returns rows"]]),
+        ).cases,
+        SPEC,
+        "C:/work/py/tests/spec.json",
+      );
+      assert.equal(report.checked, 0);
+      assert.deepEqual(reported(report.problems, "owns"), [
+        "C:/work/py/tests/spec.json",
+      ]);
+    });
+  });
+
   describe("with a spec that lists no capabilities", () => {
     it("is skipped, and says so", () => {
       for (const spec of [{}, { capabilities: [] }, { capabilities: "x" }]) {
@@ -413,6 +429,25 @@ describe("node scripts/spec-shape.mjs <junit> <spec.json>", () => {
     assert.equal(done.status, 1);
     assert.match(done.stdout, /Something else › returns rows/);
     assert.match(done.stdout, /should return rows/);
+  });
+
+  it("exits 1 for a spec whose absolute path matches none of the report, since it then owns no case", () => {
+    const junit = join(folder, "own.xml");
+    const specFile = join(folder, "py", "tests", "spec.json");
+    mkdirSync(dirname(specFile), { recursive: true });
+    writeFileSync(
+      junit,
+      xml([["sample.test.ts", CAPABILITY, "openPod()", "returns rows"]]),
+    );
+    writeFileSync(
+      specFile,
+      JSON.stringify({ capabilities: SPEC.capabilities }),
+    );
+    const done = spawnSync(process.execPath, [CLI, junit, specFile], {
+      encoding: "utf8",
+    });
+    assert.equal(done.status, 1);
+    assert.match(done.stdout, /owns: /);
   });
 
   it("exits 0 for a spec that lists no capabilities, and says it skipped", () => {

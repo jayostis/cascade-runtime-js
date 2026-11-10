@@ -58,7 +58,10 @@ export const ROWS: ReadonlyMap<string, readonly Target[]> = new Map([
     "want-conformance",
     [
       { href: "conformance/", title: "Cascade runtime conformance results" },
-      { href: "conformance/tests/", title: "Cascade unit test reports" },
+      {
+        href: "conformance/tests/cascade-runtime-js/",
+        title: "The runtime's tests · Cascade unit test reports",
+      },
     ],
   ],
   [

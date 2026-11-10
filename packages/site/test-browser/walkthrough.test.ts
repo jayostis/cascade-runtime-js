@@ -87,8 +87,8 @@ test("the walkthrough passes a front page that has every row, and fails, naming 
       /want-conformance/,
     );
     await assert.rejects(
-      run({ retitled: "Cascade unit test reports" }),
-      /Cascade unit test reports/,
+      run({ retitled: "The runtime's tests · Cascade unit test reports" }),
+      /The runtime's tests · Cascade unit test reports/,
     );
   } finally {
     await browser.close();

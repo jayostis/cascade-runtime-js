@@ -421,6 +421,19 @@ async function hubWith(
         at: "2026-10-24T00:00:00Z",
       }),
       report: async () => ({ report, ...files }),
+      tests: async () => [
+        {
+          suite: {
+            repository: "jayostis/cascade-runtime-js",
+            title: "The runtime's tests",
+            about: "npm test",
+            workflow: "check.yml",
+            artifact: "runtime-tests",
+            report: "junit.xml",
+            runner: "node:test" as const,
+          },
+        },
+      ],
     },
     front: (rows) => hubFiles(["Records"], rows),
   });
@@ -465,7 +478,10 @@ test("the hub's spec section writes the spec's pages and the conformance table w
   assert.ok(conformance.hrefs.includes("../spec/naming.html"));
   assert.ok(conformance.hrefs.includes("earl.ttl"));
   assert.ok(conformance.hrefs.includes("table.md"));
-  assert.ok(conformance.hrefs.includes("tests/index.html"));
+  assert.ok(
+    conformance.hrefs.includes("tests/cascade-runtime-js/index.html"),
+    "the conformance page links each repository's unit test page",
+  );
 
   const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
     ran: boolean;
