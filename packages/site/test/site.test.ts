@@ -464,6 +464,13 @@ test("a site built under a lens other than the one `ask` and GraphDB use names t
     assert.ok(!said.includes("--lens"), title);
 });
 
+/** A kit's site as the Pages pages read it: its home page and the pod's files, which they list and pack. */
+const standIn = new Map(
+  ["index.html", "pod/manifest.ttl", "pod/a.ttl", "pod/b/c.ttl"].map(
+    (path) => [path, new TextEncoder().encode(path)] as const,
+  ),
+);
+
 /** The Pages tree over the suite's site, built once for the tests of its two pages. */
 async function pagesOf() {
   const kits = await kitsOf(vocabulary.files);
@@ -472,7 +479,7 @@ async function pagesOf() {
     kits.map(async (kit) => ({
       folder: kit.slice(kit.lastIndexOf("/") + 1),
       title: await titleOf(vocabulary.files, kit),
-      site: files,
+      site: standIn,
     })),
   );
   const vocabularyAt = {
