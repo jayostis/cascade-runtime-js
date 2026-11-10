@@ -1597,7 +1597,7 @@ describe("Keeping reference tables up to date · tablesBeside(), tables.check()"
     });
   });
 
-  describe("kindsRead(), given a vocabulary whose rule list and page marks name a kind it no longer declares", () => {
+  describe("given a vocabulary whose rule list and page marks name a kind it no longer declares", () => {
     it("reads no kind the vocabulary has stopped declaring, though the rule list or a page mark still names it", async () => {
       const vocabulary = new MemoryFiles("urn:test:vocabulary/");
       const write = (path: string, text: string) =>
@@ -2707,7 +2707,7 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
     });
   });
 
-  describe("merged(lists, spaces), which orders the codes `tables.search()` returns", () => {
+  describe("given lists of codes that `tables.search()` merges into one order, by `merged(lists, spaces)`", () => {
     it("orders codes written alike but for leading zeros, such as `07` and `7`, with the earlier series first", () => {
       const spaces = ["urn:test:a:", "urn:test:b:", "urn:test:c:"];
       const [a1, a7, a11, b7, b07, b10, c07, c9] = [
@@ -2755,7 +2755,7 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
     });
   });
 
-  describe("listing(text, spaces), which makes a version's search list", () => {
+  describe("given a version's rows from which `listing(text, spaces)` makes its search list", () => {
     it("puts in a version's search list every code with a preferred name, whatever its code system, and none with only an alternative name", () => {
       const space = "https://ns.cascadeprotocol.org/codes/cvx/";
       const outside = "urn:test:outside:1";
