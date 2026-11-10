@@ -174,7 +174,8 @@ async function writtenUnder(
 /**
  * An app opens a pod with the reference tables it carries, which may be newer, older or other than those the pod was last
  * matched with. `open` adopts what the tables hold of the pod's series, and returns in `unheld` the versions they do not
- * hold, so an app can say a newer app has been here.
+ * hold, so an app can say a newer app has been here. `select(query)` takes a SPARQL SELECT and returns the rows it gives
+ * over the pod's dataset.
  * @rule runtime/opening.feature O1
  * @rule runtime/opening.feature O2
  * @rule runtime/matcher.feature M9
@@ -512,7 +513,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
       assert.deepEqual(afterMatch, [V1]);
     });
 
-    it("returns the adopted version's description too, after an open", () => {
+    it("returns, from a query for the versions of a series, the adopted version's description too, after an open", () => {
       assert.deepEqual(afterOpen, [V1, V2]);
     });
   });
