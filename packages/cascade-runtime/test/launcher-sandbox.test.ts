@@ -22,7 +22,7 @@ async function reportedFor(error: unknown, answering: boolean) {
 const gaveUp = new ConnectionFailure(
   "retries-exhausted",
   "https://launch.example could not be reached for Patient",
-  { origin: "https://launch.example", resourceType: "Patient" },
+  { origin: "https://launch.example", askedFor: "Patient" },
 );
 
 test("a run that gave up after its retries is the sandbox's when the sandbox answers nothing either, and the runtime's when it answers", async () => {
@@ -42,7 +42,7 @@ test("a run that gave up on 429s is the runtime's, and the sandbox is not asked,
   const rateLimited = new ConnectionFailure(
     "retries-exhausted",
     "https://launch.example answered 429 to every try for Patient",
-    { origin: "https://launch.example", status: 429, resourceType: "Patient" },
+    { origin: "https://launch.example", status: 429, askedFor: "Patient" },
   );
   const limited = await reportedFor(rateLimited, false);
   assert.equal(limited.reported, rateLimited);
@@ -51,7 +51,7 @@ test("a run that gave up on 429s is the runtime's, and the sandbox is not asked,
   const failing = new ConnectionFailure(
     "retries-exhausted",
     "https://launch.example answered 503 to every try for Patient",
-    { origin: "https://launch.example", status: 503, resourceType: "Patient" },
+    { origin: "https://launch.example", status: 503, askedFor: "Patient" },
   );
   const down = await reportedFor(failing, false);
   assert.ok(down.reported instanceof LauncherUnavailable);

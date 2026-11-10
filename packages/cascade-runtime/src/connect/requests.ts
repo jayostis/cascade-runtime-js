@@ -51,7 +51,7 @@ export class Requests {
     let hops = 0;
     let tries = 0;
     for (;;) {
-      const at = { origin: url.origin, resourceType: sending.what };
+      const at = { origin: url.origin, askedFor: sending.what };
       this.#count(at);
       const outcome = await this.#once(url, sending);
       if (outcome instanceof ConnectionFailure) throw outcome;
@@ -88,7 +88,7 @@ export class Requests {
     }
   }
 
-  #count(at: { origin: string; resourceType: string }): void {
+  #count(at: { origin: string; askedFor: string }): void {
     const cancelled = this.cancelled();
     if (cancelled) throw cancelled;
     if (++this.#sent > this.#limits.requests)
@@ -106,7 +106,7 @@ export class Requests {
     sending: Sending,
     hops: number,
   ): URL {
-    const at = { origin: from.origin, status, resourceType: sending.what };
+    const at = { origin: from.origin, status, askedFor: sending.what };
     const location = headers.get("Location");
     if (sending.follow !== undefined && status === 0)
       throw new ConnectionFailure(
@@ -184,7 +184,7 @@ export class Requests {
       new ConnectionFailure(
         "cap-exceeded",
         `${url.origin}'s answer for ${what} passed the limit on bytes`,
-        { origin: url.origin, status: response.status, resourceType: what },
+        { origin: url.origin, status: response.status, askedFor: what },
       );
     const length = Number(response.headers.get("Content-Length"));
     if (Number.isFinite(length) && length > cap) {
@@ -266,7 +266,7 @@ export function parsed(
     throw new ConnectionFailure(
       "hospital-error",
       `${url.origin}'s answer for ${what} is not a JSON object`,
-      { origin: url.origin, status: answer.status, resourceType: what },
+      { origin: url.origin, status: answer.status, askedFor: what },
     );
   return value as Record<string, unknown>;
 }
