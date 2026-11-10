@@ -38,7 +38,7 @@
     },
     {
       "term": "act",
-      "definition": "one thing done to a pod that writes files to it: an import, an entry, a connection to a hospital's server, or a run of the matcher.",
+      "definition": "one thing done to a pod that writes files to it: an import, an entry session, a connection to a hospital's server, or a run of the matcher.",
       "vocabulary": "http://www.w3.org/ns/prov#Activity",
       "aliases": ["acts"]
     },
@@ -123,9 +123,9 @@
       "aliases": ["downloads"]
     },
     {
-      "term": "entry",
-      "definition": "a record the owner typed in themselves, which no source holds.",
-      "aliases": ["entries"]
+      "term": "entry session",
+      "definition": "one call of `pod.enter()`: the act that files what the owner typed, as one owner-entered record or several, under a `urn:uuid:` name the app makes once.",
+      "aliases": ["entry sessions"]
     },
     {
       "term": "Erroneous",
@@ -269,6 +269,12 @@
       "aliases": ["owners"]
     },
     {
+      "term": "owner-entered record",
+      "definition": "a record the owner typed in themselves and filed with `pod.enter()`, such as an allergy they know they have; no source holds it, and being the owner's own it needs no claim.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#EnteredRecordNamingRule",
+      "aliases": ["owner-entered records"]
+    },
+    {
       "term": "pack",
       "aliases": ["packs"],
       "definition": "one file holding all of a sample's files, so a page fetches them at once."
@@ -408,7 +414,7 @@
     },
     {
       "term": "step",
-      "definition": "one scripted action on a pod, such as making it, an import, an entry or a judgment, named by a letter and a number such as `J10`.",
+      "definition": "one scripted action on a pod, such as making it, an import, an entry session or a judgment, named by a letter and a number such as `J10`.",
       "aliases": ["steps"]
     },
     {
@@ -476,7 +482,7 @@
       "term": "view entry",
       "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
-      "aliases": ["view entries"]
+      "aliases": ["view entries", "entry", "entries"]
     },
     {
       "term": "vocabulary",
