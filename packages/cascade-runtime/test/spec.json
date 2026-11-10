@@ -540,7 +540,7 @@
     },
     {
       "term": "row",
-      "definition": "one line of a reference table, giving what it says of one code or variant.",
+      "definition": "one line of a table: of a view, what one view entry holds, a cell per column; of a reference table, what it says of one code or variant.",
       "aliases": ["rows"]
     },
     {
