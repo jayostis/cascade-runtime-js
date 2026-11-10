@@ -183,7 +183,7 @@ async function writtenUnder(
  * @rule runtime/matcher.feature M18
  * @rule runtime/naming.feature N15
  */
-describe("Opening a pod with tables it was not made on · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()", () => {
+describe("Opening a pod with tables other than the ones it was matched with · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()", () => {
   describe("given tables that lack a series the pod was matched with", () => {
     let unheld: readonly string[] | undefined;
     let refused: string | undefined;
@@ -350,7 +350,7 @@ describe("Opening a pod with tables it was not made on · CorePod.open(), Perfor
       assert.ok(refused);
     });
 
-    it("leaves the pod matching with the tables it had", () => {
+    it("leaves the pod able to run its matcher with the tables it had", () => {
       assert.equal(matched, undefined);
     });
   });

@@ -350,7 +350,7 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
         );
     });
 
-    it("names again a graph that held nothing", () => {
+    it("tells the store the empty graph's name again when it restores, once, for that graph only", () => {
       assert.deepEqual(done.restored.loaded, ["urn:empty"]);
     });
 

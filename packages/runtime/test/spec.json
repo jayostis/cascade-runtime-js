@@ -6,7 +6,7 @@
     "Writing a step's files · CorePod.import(), CorePod.open(), CorePod.judge()",
     "Reading a pod between steps · CorePod.dataset(), CorePod.revision(), CorePod.close()",
     "Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()",
-    "Opening a pod with tables it was not made on · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()",
+    "Opening a pod with tables other than the ones it was matched with · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()",
     "Refusing a rule list a run cannot trust · matcherRules(), originsJoining()",
     "Binding a comparison query to a run's records · boundToRecords(), boundToPairs()",
     "Reading entries as of a record's arrival · arrivalOrder(), ArrivedEntries",
@@ -265,9 +265,18 @@
       "aliases": ["releases"]
     },
     {
+      "term": "renew",
+      "definition": "of a kept store, to replace it with a new store filled from the old one, which frees the memory the old one held.",
+      "aliases": ["renewal", "renewed"]
+    },
+    {
       "term": "replay",
       "definition": "performing a story's steps, in order, on a new pod.",
       "aliases": ["replays", "replayed"]
+    },
+    {
+      "term": "restorable union",
+      "definition": "a union that can undo what a run did to it: it remembers the graphs it dropped, added to or took subjects from, and `restore()` puts every quad and blank node back."
     },
     {
       "term": "retraction",

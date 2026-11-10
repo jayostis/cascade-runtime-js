@@ -108,7 +108,7 @@ describe("Reading entries as of a record's arrival · arrivalOrder(), ArrivedEnt
   });
 
   describe("ArrivedEntries", () => {
-    it("returns for each record asked the entries that joining every earlier Same from scratch gives, on seeded random Sames and Differents", () => {
+    it("returns for each record asked the entries that merging the records of each earlier Same from scratch gives, on seeded random Sames and Differents", () => {
       for (let seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
         const draw = random(seed);
         const pick = <T>(all: readonly T[]): T =>
