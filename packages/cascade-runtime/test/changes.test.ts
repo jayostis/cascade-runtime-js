@@ -539,16 +539,21 @@ describe("Tools a model reads a pod with · TOOLS", () => {
       const found = (await toolNamed("find_changes").execute(
         {},
       )) as LabChange[];
-      assert.equal(found[0]!.key, "start:111:LDL");
-      assert.equal("rows" in found[0]!, false);
-      assert.equal("entry" in found[0]!.medication, false);
+      assert.deepEqual(keysOf(found), ["start:111:LDL", "start:333:LDL"]);
+      for (const change of found) {
+        assert.equal("rows" in change, false, change.key);
+        assert.equal("entry" in change.medication, false, change.key);
+      }
     });
 
     it("returns from `finding_rows` the rows behind the lab change a `key` names, those before and those after", async () => {
       const rows = (await toolNamed("finding_rows").execute({
         key: "start:111:LDL",
       })) as LabChange["rows"];
-      assert.deepEqual([rows.before.length, rows.after.length], [3, 3]);
+      assert.deepEqual(
+        [rows.before.map(({ value }) => value), rows.after.map(({ value }) => value)],
+        [["160", "158", "165"], ["100", "98", "96"]],
+      );
     });
 
     it("returns from `lab_series` one test's results by day, oldest first, with those it left out counted", async () => {

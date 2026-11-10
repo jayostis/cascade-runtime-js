@@ -180,7 +180,7 @@ describe("Finding lab changes after a medication starts or stops · findChanges(
           placed.push([story.patient, medication.dateIs, medication.date]);
           expected.push([story.patient, "prescription written", gold.date]);
         }
-      assert.ok(placed.length > 0);
+      assert.equal(placed.length, 3);
       assert.deepEqual(placed, expected);
     });
   });
