@@ -37,7 +37,7 @@
     "Checking a pod against the reference tables · reference_table_checks tool",
     "Offering tools to a model in a web page · toolRegistry()",
     "Checking a tool's input against its schema · checkInput()",
-    "Checking a model's reply against a person's records · checkReply(), replyErrors(), replySchema",
+    "Checking a model's reply against a person's records · checkReply(), replyErrors(), replySchema, numberedReply()",
     "Checking what a reply says a pod lacks · checkAbsence()",
     "Checking a citation of a download · checkCitation(), downloadsSource(), isoDate()",
     "Checking a citation of a view entry · checkCitation(), podRowsSource()",

@@ -101,7 +101,7 @@ const twoItemsAlike = (): string => {
  * A subject's prompt tells it to run `ask` for its next question, and `ask` hands one out only once the last is answered
  * by a reply that keeps the reply contract. So no later question shapes an earlier answer, and a broken answer is mended
  * while the session can still mend it. What the contract is, is "Checking a model's reply against a person's records ·
- * checkReply(), replyErrors(), replySchema" on cascade-runtime's page.
+ * checkReply(), replyErrors(), replySchema, numberedReply()" on cascade-runtime's page.
  */
 describe("Asking a session its questions one at a time · sessionPrompt(), ask()", () => {
   describe("given the pod arm's prompt (`sessionPrompt()`)", () => {
