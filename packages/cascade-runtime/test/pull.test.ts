@@ -23,7 +23,9 @@ function stopped(time: string): { now: () => Date } {
 
 /**
  * `pullFiles` saves a pull as files, which `pod.look()` and `pod.import()` take as they take an export. Pulls from two
- * hospitals land in one pod, where the matcher joins the records both hold.
+ * hospitals land in one pod, where the matcher joins the records both hold. The files themselves, and the pulls
+ * `pullFiles` refuses, are on the fhir-pull page, under "Saving a pull as files" and "Refusing a pull an import cannot
+ * state".
  * @rule runtime/arrivals.feature A11
  * @rule runtime/arrivals.feature A1
  * @rule runtime/matcher.feature M14

@@ -315,7 +315,9 @@ describe("Signing a person in to a hospital · connect(), loopbackSignIn()", () 
 /**
  * `serverReport` asks a connected hospital's server for its CapabilityStatement, the server's own account of what it
  * is, and returns it with the SMART configuration the sign-in read. `connectFiles` saves that report as the files
- * `pod.connect()` stores, from which a pod can tell one hospital's server from another's.
+ * `pod.connect()` stores, from which a pod can tell one hospital's server from another's. Reading those files back,
+ * and the connects refused, are on the fhir-pull page, under "Saving and reading what a hospital's server said of
+ * itself".
  * @rule runtime/arrivals.feature A16
  */
 describe("Reading what a hospital's server says of itself · serverReport(), connectFiles()", () => {
