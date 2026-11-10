@@ -1884,7 +1884,7 @@ describe("Checking what a reply says downloads lack · checkRecordsAbsence()", (
       const doc = bundle(observation({}));
       for (const [what, written] of [
         ["a newline", `\n${doc}`],
-        ["a byte-order mark", `﻿${doc}`],
+        ["a byte-order mark", String.fromCharCode(0xfeff) + doc],
       ] as const)
         assert.deepEqual(
           await inRecords("2026-02-17", [], written, ["4548-4"]),
