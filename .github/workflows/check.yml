@@ -85,7 +85,7 @@ jobs:
       # run first fails here. The seed is in the log; rerun with --test-random-seed=N to repeat it.
       - name: Tests in random order
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
-        run: node scripts/transpile.mjs && node scripts/random-order.mjs cascade-runtime && node scripts/random-order.mjs runtime
+        run: node scripts/transpile.mjs && node scripts/random-order.mjs cascade-runtime
       # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice. Its JUnit report is
       # read for the test page's shape below, as the `runtime-tests` job reads its own.
       - id: suite
