@@ -551,8 +551,14 @@ describe("Tools a model reads a pod with · TOOLS", () => {
         key: "start:111:LDL",
       })) as LabChange["rows"];
       assert.deepEqual(
-        [rows.before.map(({ value }) => value), rows.after.map(({ value }) => value)],
-        [["160", "158", "165"], ["100", "98", "96"]],
+        [
+          rows.before.map(({ value }) => value),
+          rows.after.map(({ value }) => value),
+        ],
+        [
+          ["160", "158", "165"],
+          ["100", "98", "96"],
+        ],
       );
     });
 

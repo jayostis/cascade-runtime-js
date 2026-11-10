@@ -94,7 +94,9 @@ describe("Importing the package in a web page · browserBuildVersion(), cascadeR
     });
 
     it("exports every type a page names to show a checked reply: 20 of them, from `Absence` to `Verdict`", () => {
-      const named = [...PAGE_SOURCE.matchAll(/^ {2}(\w+),$/gm)].map((m) => m[1]);
+      const named = [...PAGE_SOURCE.matchAll(/^ {2}(\w+),$/gm)].map(
+        (m) => m[1],
+      );
       assert.equal(named.length, 20);
       assert.deepEqual([named[0], named.at(-1)], ["Absence", "Verdict"]);
       assert.deepEqual(right, []);
