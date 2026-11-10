@@ -1,6 +1,19 @@
 {
   "about": "The library an app calls to import a person's health records into their pod, store them, and query them.",
-  "capabilities": [],
+  "capabilities": [
+    "Opening a pod · openPod()",
+    "Looking into an export before importing · pod.look()",
+    "Importing a health export · pod.import()",
+    "Recording a hospital connection · pod.connect()",
+    "Asking a pod questions · pod.ask()",
+    "Names for vocabulary terms · terms, codeStems",
+    "Entering a record by hand · pod.enter()",
+    "Recording the owner's judgment · pod.judge()",
+    "Opening a pod again · openPod()",
+    "Encrypting a pod with six words · openPod(), sixWords(), typedWords()",
+    "Sample pods and exports to build against · replayKit(), kitDownload()",
+    "Publishing a pod for a browser · answersToPublish(), samplesToPublish()"
+  ],
   "build": [],
   "randomOrder": [
     "browser-types.test.ts",
@@ -17,6 +30,7 @@
     "pack-dependencies.test.ts",
     "people-copies.test.ts",
     "pod-tools.test.ts",
+    "pod.test.ts",
     "pull.test.ts",
     "reply.test.ts",
     "rowCache.test.ts",
