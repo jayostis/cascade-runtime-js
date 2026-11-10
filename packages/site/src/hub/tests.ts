@@ -126,6 +126,9 @@ interface Level {
   readonly levels: Map<string, Level>;
   readonly entries: (Level | TestCase)[];
   readonly cases: TestCase[];
+  /** Whether a case under it failed, and the first line any case under it is written on; kept as cases are added. */
+  failing: boolean;
+  firstLine: number;
 }
 
 const isLevel = (entry: Level | TestCase): entry is Level => "levels" in entry;
@@ -133,11 +136,19 @@ const isLevel = (entry: Level | TestCase): entry is Level => "levels" in entry;
 /** A node:test case's file, as its package and its path under that package's `test/`. */
 function placeOf(file: string): string[] {
   const found = /^packages\/([^/]+)\/test\/(.+)$/.exec(file);
-  return found === null ? [file] : [found[1] ?? "", found[2] ?? ""];
+  return found === null ? ["", file] : [found[1] ?? "", found[2] ?? ""];
 }
 
 function levelOf(name: string, depth: number): Level {
-  return { name, depth, levels: new Map(), entries: [], cases: [] };
+  return {
+    name,
+    depth,
+    levels: new Map(),
+    entries: [],
+    cases: [],
+    failing: false,
+    firstLine: Infinity,
+  };
 }
 
 function grow(cases: readonly TestCase[]): Level {
@@ -153,6 +164,8 @@ function grow(cases: readonly TestCase[]): Level {
         at.entries.push(next);
       }
       next.cases.push(one);
+      next.failing ||= one.result === "failed";
+      next.firstLine = Math.min(next.firstLine, one.line ?? Infinity);
       at = next;
     }
     at.entries.push(one);
@@ -161,14 +174,10 @@ function grow(cases: readonly TestCase[]): Level {
 }
 
 const failing = (entry: Level | TestCase): boolean =>
-  isLevel(entry)
-    ? entry.cases.some((one) => one.result === "failed")
-    : entry.result === "failed";
+  isLevel(entry) ? entry.failing : entry.result === "failed";
 
 const firstLine = (entry: Level | TestCase): number =>
-  isLevel(entry)
-    ? Math.min(...entry.cases.map((one) => one.line ?? Infinity))
-    : (entry.line ?? Infinity);
+  isLevel(entry) ? entry.firstLine : (entry.line ?? Infinity);
 
 /**
  * A level's entries, failures first. Packages and files then go by name; describes and cases by the line they are written
@@ -219,6 +228,7 @@ function ctrf(
   run: TestRun,
   cases: readonly TestCase[],
   report: string,
+  failedOutside: number,
 ): unknown {
   const start = Date.parse(run.at);
   const duration =
@@ -234,7 +244,7 @@ function ctrf(
       summary: {
         tests: cases.length,
         passed: count(cases, "passed"),
-        failed: count(cases, "failed"),
+        failed: count(cases, "failed") + failedOutside,
         skipped: count(cases, "skipped"),
         pending: 0,
         other: 0,
@@ -292,8 +302,9 @@ function part(suite: Suite, run: TestRun | undefined): Part {
   const failed = count(cases, "failed");
   const counted = declaredFailures(run.report);
   // failingSuites includes describe suites holding a failed case, which node does not count in its failures; the threshold stays so that it never alarms falsely.
+  const hidden = counted !== undefined && counted > failed + failingSuites;
   const unlisted =
-    counted !== undefined && counted > failed + failingSuites
+    counted !== undefined && hidden
       ? markup`<p class="prose"><strong>Failed outside the cases below:</strong> node counts ${counted} ${counted === 1 ? "failure" : "failures"} but the report lists ${failed} failed ${failed === 1 ? "case" : "cases"}${failingSuites === 0 ? "" : markup` and ${failingSuites} ${failingSuites === 1 ? "test" : "tests"} holding them`}. A test with subtests or a hook that failed is left out of the report; <a href="${run.url}">the run's log</a> names it.</p>
 `
       : "";
@@ -307,7 +318,13 @@ function part(suite: Suite, run: TestRun | undefined): Part {
     html: markup`${heading}
 <p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${failed} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span> For an agent: <a href="${suite.key}.ctrf.json"><code>${suite.key}.ctrf.json</code></a>.</p>
 ${unlisted}${shownCases}`,
-    ctrf: ctrf(suite, run, cases, run.report),
+    ctrf: ctrf(
+      suite,
+      run,
+      cases,
+      run.report,
+      counted !== undefined && hidden ? counted - failed : 0,
+    ),
   };
 }
 
@@ -332,11 +349,6 @@ export const testsSection: Section<TestsContext> = {
       ...part(suite, reports[suite.key]),
     }));
     const written = parts.filter((one) => one.ctrf !== undefined);
-    const forAgents =
-      written.length === 0
-        ? ""
-        : markup`<p class="prose">The same results for an agent, in <a href="https://ctrf.io">CTRF</a>: ${written.map(({ suite }, at) => markup`${at === 0 ? "" : " and "}<a href="${suite.key}.ctrf.json"><code>${suite.key}.ctrf.json</code></a>`)}.</p>
-`;
     return new Map([
       [
         TESTS_PAGE,
@@ -359,7 +371,7 @@ ${frontPageLink(2)}
 <p class="prose">The newest run on <code>main</code> of the runtime's tests and of the vocabulary's. The runtime's read as
 a tree of package, file and describe, each case linked to its source; the vocabulary's as one table. Failures come first,
 and the levels that hold one are open.</p>
-${forAgents}${parts.map(({ html }) => html)}</main>
+${parts.map(({ html }) => html)}</main>
 </body>
 </html>
 `.text,

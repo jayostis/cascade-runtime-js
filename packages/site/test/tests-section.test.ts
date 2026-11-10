@@ -189,9 +189,14 @@ test("a run whose node report counts more failures than it lists says so beside 
   assert.doesNotMatch(honest.page.said, /node counts/);
 });
 
+/** The part of the page under the heading, up to the next one. */
+function partOf(markup: string, heading: string): string {
+  return (markup.split(`id="${heading}"`)[1] ?? "").split("<h2")[0] ?? "";
+}
+
 /** The levels (package, file, describe) after the heading, as the text of each summary, in the page's order. */
 function levelsOf(markup: string, heading: string): string[] {
-  const part = (markup.split(`id="${heading}"`)[1] ?? "").split("<h2")[0] ?? "";
+  const part = partOf(markup, heading);
   return [...part.matchAll(/<summary>([\s\S]*?)<\/summary>/g)].map(([, said]) =>
     text(said ?? ""),
   );
@@ -199,7 +204,7 @@ function levelsOf(markup: string, heading: string): string[] {
 
 /** The cases of the tree after the heading, as their name, result and time, in the page's order. */
 function casesOf(markup: string, heading: string): string[][] {
-  const part = (markup.split(`id="${heading}"`)[1] ?? "").split("<h2")[0] ?? "";
+  const part = partOf(markup, heading);
   return [...part.matchAll(/<li class="case">([\s\S]*?)<\/li>/g)].map(
     ([, item]) => {
       const leaf = (item ?? "").replace(/<pre[\s\S]*?<\/pre>/g, "");
@@ -234,10 +239,7 @@ test("each suite's newest run shows its cases with result and time, the runtime'
     ["skipped", "skipped", "0 ms"],
     ["deep pass", "passed", "0 ms"],
   ]);
-  assert.doesNotMatch(
-    (markup.split('id="runtime"')[1] ?? "").split("<h2")[0] ?? "",
-    /<table/,
-  );
+  assert.doesNotMatch(partOf(markup, "runtime"), /<table/);
   assert.equal(failureOf(markup, "runtime"), "1 == 2 and 3 > 2");
 
   const vocabulary = rowsOf(markup, "vocabulary");
@@ -376,4 +378,33 @@ test("the CTRF file written for a report holds every case with its full path of 
   assert.equal(results.summary.passed, 1);
   assert.equal(results.summary.failed, 1);
   assert.match(page.said, /2 cases: 1 passed, 1 failed, 0 skipped/);
+});
+
+test("the CTRF file counts a failure node reported outside the cases as failed", async () => {
+  const { tree } = await pageWith({
+    runtime: { report: NODE_UNLISTED, ...RUN },
+  });
+  const bytes = tree.get("conformance/tests/runtime.ctrf.json");
+  assert.ok(bytes);
+  const { results } = JSON.parse(new TextDecoder().decode(bytes)) as {
+    results: { summary: Record<string, number> };
+  };
+  assert.equal(results.summary.failed, 1);
+});
+
+test("the CTRF file is linked once, in its part, and a file outside packages/<pkg>/test/ still sits at file depth", async () => {
+  const { markup } = await pageWith({
+    runtime: { report: NODE, ...RUN },
+  });
+  assert.equal(markup.split('href="runtime.ctrf.json"').length - 1, 1);
+  const outside = NODE.replace(
+    /\/home\/runner\/work\/cascade-runtime-js\/cascade-runtime-js\/packages\/site\/dist\/test\/links\.test\.js/g,
+    "/home/runner/work/cascade-runtime-js/cascade-runtime-js/scripts/x.test.js",
+  );
+  const { markup: other } = await pageWith({
+    runtime: { report: outside, ...RUN },
+  });
+  assert.ok(
+    levelsOf(other, "runtime").some((l) => /^x\.test\.js|scripts\/x/.test(l)),
+  );
 });

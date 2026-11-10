@@ -29,8 +29,7 @@ function located({ file, line, column }) {
   if (file === undefined || line === undefined) return undefined;
   const path = file.startsWith("file:") ? fileURLToPath(file) : file;
   const origin = mapOf(path)?.findOrigin(line, column ?? 1);
-  if (origin === undefined || !("lineNumber" in origin))
-    return { file: path, line };
+  if (origin === undefined || !("lineNumber" in origin)) return undefined;
   const source = origin.fileName.startsWith("file:")
     ? fileURLToPath(origin.fileName)
     : resolve(dirname(path), origin.fileName);

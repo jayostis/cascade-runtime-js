@@ -247,6 +247,12 @@ describe("pod.import", () => {
     });
 
     describe("when an About claims the profile", () => {
+      let judged: Awaited<ReturnType<Pod["judge"]>>;
+
+      before(async () => {
+        judged = await pod.judge(about(profile));
+      });
+
       it("refuses a judgment that names itself", async () => {
         await assert.rejects(
           pod.judge(
@@ -257,7 +263,6 @@ describe("pod.import", () => {
       });
 
       it("files the About and claims the source", async () => {
-        const judged = await pod.judge(about(profile));
         assert.match(judged.judgment ?? "", /^urn:uuid:/);
         assert.deepEqual(await claimed(), [true]);
       });
