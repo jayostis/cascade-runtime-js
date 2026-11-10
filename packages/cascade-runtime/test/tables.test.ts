@@ -1580,6 +1580,9 @@ describe("Keeping reference tables up to date · tablesBeside(), tables.check()"
       }
     });
 
+  });
+
+  describe("kindsRead(), given a vocabulary whose rule list and page marks name a kind it no longer declares", () => {
     it("reads no kind the vocabulary has stopped declaring, though the rule list or a page mark still names it", async () => {
       const vocabulary = new MemoryFiles("urn:test:vocabulary/");
       const write = (path: string, text: string) =>
