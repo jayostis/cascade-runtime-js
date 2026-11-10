@@ -1,0 +1,382 @@
+{
+  "about": "The eval harness: it asks a synthetic person's questions of one model twice, once reaching her pod only through `cascade-mcp` (the pod arm) and once reading every download (the records arm), checks each answer by program, has blind judges grade the rest against a key written before any run, and writes the results and a report. It is run on demand by `cascade-evals`; no app calls it.",
+  "capabilities": [
+    "Giving every case's pod the reference tables · referenceTables(), giveTables()",
+    "Running the pod arm at pinned commits · resolvePins(), cloneAt(), checkKept(), pinnedPod(), askerOf()",
+    "Reusing a session whose inputs are unchanged · sessionInputsHash(), versionOf(), reusesPreparedPod()",
+    "Running a whole eval with one command · showRun(), runEval()",
+    "Confining a child to its job · childOf(), resolveClaude()",
+    "Giving a job back when its child leaves it unfinished · runEval(), giveBack()",
+    "Keeping one runner on a run · run.lock",
+    "Asking a session its questions one at a time · sessionPrompt(), ask()",
+    "Calling a job's pod server · callLogged(), stopPodServer()",
+    "Finding the transcript of a job · readTranscript(), transcriptsSince()",
+    "Charging each question its own cost · splitSession()",
+    "Holding a job to its own files and commands · checkAnswer()",
+    "Resolving a citation to what it cites · passageOf(), podProvenance(), evidenceOf()",
+    "Blinding the answers a judge reads · judgePackets(), blinded(), scrubbed(), tellsOf()",
+    "Reading a judge's verdict · gradesOf(), verdictProblems()",
+    "Counting what each arm found · countsOf(), instancesOf()",
+    "Finishing a run into results.json · finish()",
+    "Reading the report's front page · renderSite()",
+    "Reading one run's page · renderSite()",
+    "Seeing what an answer's citations cite · renderSite()",
+    "Printing what to show a doctor · renderSite()",
+    "Reading about a case's person, and how the test works · renderSite()",
+    "Publishing the report · renderSite(), buildSite()",
+    "Recording a run in the history · recordHistory()"
+  ],
+  "glossary": [
+    {
+      "term": "absence",
+      "definition": "what a reply says the records lack: the codes and words a record of it would carry (`match`), what was looked through (`coverage`), and the tool call (`query`) or the files (`sources`) that looked.",
+      "aliases": ["absences"]
+    },
+    {
+      "term": "answer",
+      "definition": "here, the reply a subject writes to one question, saved as `<question>.json` in the job's folder under the run's `answers/`.",
+      "aliases": ["answers", "answered"]
+    },
+    {
+      "term": "arm",
+      "definition": "one of the two ways a model is given a person's records: the pod arm or the records arm.",
+      "aliases": ["arms"]
+    },
+    {
+      "term": "backed",
+      "definition": "of an absence, borne out by what was looked through; an absence that is not comes back with `backed: false` and a `reason`.",
+      "aliases": ["backs"]
+    },
+    {
+      "term": "beyond the key",
+      "definition": "of a point in an answer, matching no key item; a judge gives each a verdict of its own: fair, true but not planted, speculative, or contradicted by the records."
+    },
+    {
+      "term": "C-CDA",
+      "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
+    },
+    {
+      "term": "cap",
+      "definition": "the most tokens and dollars a config lets a run spend; a job that would pass it is not started.",
+      "aliases": ["caps"]
+    },
+    {
+      "term": "case",
+      "definition": "a synthetic person the harness asks about: her downloads, her questions in sessions, and the key, in a folder of `cases/`.",
+      "aliases": ["cases"]
+    },
+    {
+      "term": "checkout",
+      "definition": "one copy of a repository on disk; a job can be reused from a run made in another checkout, such as a worktree.",
+      "aliases": ["checkouts"]
+    },
+    {
+      "term": "child",
+      "definition": "the `claude -p` process the runner starts for one job.",
+      "aliases": ["children"]
+    },
+    {
+      "term": "citation",
+      "definition": "where a fact points (`cite`): a view entry, a FHIR resource in a download, or a line of one. In a reply about downloads it also gives, field by field, what the fact says the record there holds.",
+      "aliases": ["citations", "cite", "cites", "cited"]
+    },
+    {
+      "term": "compact read",
+      "definition": "the whole pod as tab-separated text, which the `ask` tool returns a part at a time when called with `format: \"compact\"`; each line is one row of a view, its cells separated by tabs.",
+      "aliases": ["compact reads"]
+    },
+    {
+      "term": "config",
+      "definition": "a file of `configs/` that says which cases, models, repeats and judges a run has, and its cap; `smoke`, `standard` and `full` are the tiers.",
+      "aliases": ["configs"]
+    },
+    {
+      "term": "doctor card",
+      "definition": "the part of the report that shows one answer as a person could hand it to a doctor: the question, the short answer, each dated fact with its source.",
+      "aliases": ["doctor cards"]
+    },
+    {
+      "term": "download",
+      "definition": "a file of a person's records as a hospital's server or portal gave it, before any import: FHIR resources in JSON, or a C-CDA document.",
+      "aliases": ["downloads"]
+    },
+    {
+      "term": "fact",
+      "definition": "one record an item rests on: what the model says of it, and where it is.",
+      "aliases": ["facts"]
+    },
+    {
+      "term": "feed",
+      "definition": "a published list of the versions of reference tables, which an app reads to find newer ones.",
+      "aliases": ["feeds"]
+    },
+    {
+      "term": "FHIR",
+      "definition": "Fast Healthcare Interoperability Resources: HL7's standard for health records as JSON.",
+      "vocabulary": "https://hl7.org/fhir/R4/"
+    },
+    {
+      "term": "field",
+      "definition": "one kind of thing a record says: its `value`, `unit`, `status`, `code`, `name` or `id`, a date (`date`, `start`, `end`, `recorded`), or its text (`text`, from which a `quote` is taken).",
+      "aliases": ["fields"]
+    },
+    {
+      "term": "give back",
+      "definition": "to return a job a child left unfinished to `pending`, with what the child wrote removed, so the next `--go` runs it again from the start.",
+      "aliases": ["given back", "gives back", "giving back"]
+    },
+    {
+      "term": "hand-out",
+      "definition": "the moment `ask` gives a session its next question; also said of a job the runner has given to a child.",
+      "aliases": ["hand-outs", "handed out", "hands out"]
+    },
+    {
+      "term": "handle",
+      "definition": "a compact read's short name for a view entry: a letter for its view, then the first eight or more hexadecimal digits of the view entry's name, such as `L41e35923`. `ask` takes a list of them in `entries` to return only those view entries' rows.",
+      "aliases": ["handles"]
+    },
+    {
+      "term": "inputs hash",
+      "definition": "a digest of everything a session's answers depend on; a recorded session with the same hash is reused, not run again.",
+      "aliases": ["hash"]
+    },
+    {
+      "term": "instance",
+      "definition": "one case, model and repeat, with both arms' sessions and their judging: the unit the report counts.",
+      "aliases": ["instances"]
+    },
+    {
+      "term": "item",
+      "definition": "one point of a reply, with what it rests on.",
+      "aliases": ["items"]
+    },
+    {
+      "term": "job",
+      "definition": "one unit of work the runner hands out: a subject's session on one arm, or one judge's sitting.",
+      "aliases": ["jobs"]
+    },
+    {
+      "term": "judge",
+      "definition": "a model that grades both arms' answers against the key without being told which arm wrote which.",
+      "aliases": ["judges", "judged"]
+    },
+    {
+      "term": "key",
+      "definition": "what a case's author wrote, before any run, that a good answer to each question finds: `key.json` for programs and `key.md` for the judges.",
+      "aliases": ["keys"]
+    },
+    {
+      "term": "key item",
+      "definition": "one thing the key expects of one question: a fact or an absence to find, a planted gap to raise, or a trap to avoid.",
+      "aliases": ["key items"]
+    },
+    {
+      "term": "letters",
+      "definition": "the names, A and B, under which a packet shows the two arms' answers, in an order drawn for each judge's sitting.",
+      "aliases": ["letter"]
+    },
+    {
+      "term": "model",
+      "definition": "a language model that an app lets answer a person's questions about their records.",
+      "aliases": ["models"]
+    },
+    {
+      "term": "named question",
+      "definition": "a query the vocabulary carries under a name, such as `pod/My active allergies`.",
+      "aliases": ["named questions"]
+    },
+    {
+      "term": "packet",
+      "definition": "the one file a judge reads: the questions, both arms' blinded answers under letters, and the key's prose.",
+      "aliases": ["packets"]
+    },
+    {
+      "term": "passage",
+      "definition": "the lines of a download a citation points at, as the harness read them, at most `PASSAGE_CAP` characters.",
+      "aliases": ["passages"]
+    },
+    {
+      "term": "pinned run",
+      "definition": "a run whose config names a commit for each repository the pod arm depends on; the runtime of those commits builds the pods and serves them.",
+      "aliases": ["pins", "pinned"]
+    },
+    {
+      "term": "plan",
+      "definition": "a run's `plan.json`: its config, cases and jobs, each job with its status.",
+      "aliases": ["plans", "planned"]
+    },
+    {
+      "term": "pod",
+      "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
+      "aliases": ["pods"]
+    },
+    {
+      "term": "pod arm",
+      "definition": "the arm in which the model reaches the person's pod only through `cascade-mcp`'s tools."
+    },
+    {
+      "term": "print view",
+      "definition": "a page of the report that holds every doctor card of one arm of one run, laid out for paper.",
+      "aliases": ["print views"]
+    },
+    {
+      "term": "prompt version",
+      "definition": "a digest of every part of an arm's prompt; it is one of a session's inputs."
+    },
+    {
+      "term": "provenance",
+      "definition": "of a view entry, what the pod's own files say it came from: its records, each record's versions, and the documents those were read from."
+    },
+    {
+      "term": "record",
+      "definition": "one thing said about a person's health, such as an allergy, a medication or a lab result.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Record",
+      "aliases": ["records"]
+    },
+    {
+      "term": "records arm",
+      "definition": "the arm in which the model is given every download as a file and reads them itself."
+    },
+    {
+      "term": "reference tables",
+      "definition": "public code lists, such as RxNorm for medicines, that tell a runtime when two codes mean one thing.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries",
+      "aliases": ["reference table"]
+    },
+    {
+      "term": "reply",
+      "definition": "a model's answer to a person's question about their records, as JSON.",
+      "aliases": ["replies"]
+    },
+    {
+      "term": "reply contract",
+      "definition": "the form a reply must take: an `answer`, a `short` form of it, and `items`. `replySchema` is its JSON Schema, and `replyErrors()` lists where a reply departs from it.",
+      "aliases": ["contract", "contracts"]
+    },
+    {
+      "term": "resource",
+      "definition": "one record in FHIR, named by its type and its id, such as `Observation/ldl-1`.",
+      "aliases": ["resources"]
+    },
+    {
+      "term": "run",
+      "definition": "one execution of a config, in a folder of `runs/`: its plan, prompts, answers, verdicts and, once finished, `results.json` and the report.",
+      "aliases": ["runs"]
+    },
+    {
+      "term": "scrubber",
+      "definition": "the function that replaces, with `[record]`, text only one arm writes: a resource reference, a file name with a line, a handle, an IRI.",
+      "aliases": ["scrubbed", "scrubs"]
+    },
+    {
+      "term": "session",
+      "definition": "one chat: the questions a case asks in it, asked in order of one model on one arm. A subject's job is one session.",
+      "aliases": ["sessions"]
+    },
+    {
+      "term": "starter copies",
+      "definition": "the reference tables as the package carries them, which a new app uses until it has read a feed.",
+      "aliases": ["starter"]
+    },
+    {
+      "term": "subject",
+      "definition": "here, the model being evaluated, as it answers a session. The person a pod is about is written \"the person\" on this page.",
+      "aliases": ["subjects"]
+    },
+    {
+      "term": "tag",
+      "definition": "the first line of a job's prompt, `eval-tag: <run>/<job>`, by which a Workflow agent's transcript is known as the job's.",
+      "aliases": ["tags"]
+    },
+    {
+      "term": "tell",
+      "definition": "wording the scrubber cannot remove that could let a judge guess the arm, such as \"the pod\" or \"line 211\"; each is recorded with its arm and question.",
+      "aliases": ["tells"]
+    },
+    {
+      "term": "tie",
+      "definition": "codes, words, a day and a kind of record that the caller holds an absence to as well as the absence's own, passed as `tied`; the evals take them from their answer key."
+    },
+    {
+      "term": "tool",
+      "definition": "a function a model may call: a name, a description, a JSON Schema for its input, and the code that runs it.",
+      "aliases": ["tools"]
+    },
+    {
+      "term": "tool call",
+      "definition": "one run of a tool by a model: the tool's name, the input it was given, whether it succeeded, and what it returned.",
+      "aliases": ["tool calls"]
+    },
+    {
+      "term": "transcript",
+      "definition": "the `.jsonl` file Claude Code writes of one session: every model call with its tokens, and every tool use.",
+      "aliases": ["transcripts"]
+    },
+    {
+      "term": "trap",
+      "definition": "a key item that names something a good answer does not say; it is graded avoided or raised, and counted apart from the key items an answer should find.",
+      "aliases": ["traps"]
+    },
+    {
+      "term": "Turtle",
+      "definition": "a W3C text format for writing statements in the vocabulary's terms; `pod.enter()` and `pod.judge()` take it.",
+      "vocabulary": "https://www.w3.org/TR/turtle/"
+    },
+    {
+      "term": "verdict",
+      "definition": "here, what one judge wrote of one packet: a grade for each key item under each letter, and a grade for each point beyond the key.",
+      "aliases": ["verdicts"]
+    },
+    {
+      "term": "view entry",
+      "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
+      "aliases": ["view entries", "entry", "entries"]
+    },
+    {
+      "term": "violation",
+      "definition": "one tool use of a job outside what it was allowed: a file read, a command run or a file written that is not its own.",
+      "aliases": ["violations"]
+    },
+    {
+      "term": "wave",
+      "definition": "the jobs the runner starts together; the cap is checked between waves.",
+      "aliases": ["waves"]
+    }
+  ],
+  "shaped": [
+    "ask.test.ts",
+    "calibration.test.ts",
+    "checks.test.ts",
+    "evidence.test.ts",
+    "finish.test.ts",
+    "history.test.ts",
+    "judging.test.ts",
+    "pinned.test.ts",
+    "pod-client.test.ts",
+    "tables-fetch.test.ts",
+    "tables-given.test.ts",
+    "tables.test.ts",
+    "transcripts.test.ts"
+  ],
+  "build": [
+    "The cases in `cases/`, as checked in",
+    "The tiers in `configs/`, against `calibration.json`",
+    "The recorded run the report's tests read"
+  ],
+  "randomOrder": [
+    "ask.test.ts",
+    "calibration.test.ts",
+    "checks.test.ts",
+    "evidence.test.ts",
+    "finish.test.ts",
+    "history.test.ts",
+    "judging.test.ts",
+    "pinned.test.ts",
+    "pod-client.test.ts",
+    "tables-fetch.test.ts",
+    "tables-given.test.ts",
+    "tables.test.ts",
+    "transcripts.test.ts"
+  ]
+}
