@@ -2661,6 +2661,15 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
       assert.deepEqual(paged.asked, paged.aboutCodes);
     });
 
+    it("throws `Refusal` for a series whose version no file can be named for", async () => {
+      await assert.rejects(
+        (await nameless()).search("urn:test:series", ""),
+        Refusal,
+      );
+    });
+  });
+
+  describe("merged(lists, spaces), which orders the codes `tables.search()` returns", () => {
     it("orders codes written alike but for leading zeros, such as `07` and `7`, with the earlier series first", () => {
       const spaces = ["urn:test:a:", "urn:test:b:", "urn:test:c:"];
       const [a1, a7, a11, b7, b07, b10, c07, c9] = [
@@ -2707,6 +2716,9 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
         );
     });
 
+  });
+
+  describe("listing(text, spaces), which makes a version's search list", () => {
     it("puts in a version's search list every code with a preferred name, whatever its code system, and none with only an alternative name", () => {
       const space = "https://ns.cascadeprotocol.org/codes/cvx/";
       const outside = "urn:test:outside:1";
@@ -2723,12 +2735,6 @@ describe("Listing and searching the reference tables · tables.held(), tables.us
       );
     });
 
-    it("throws `Refusal` for a series whose version no file can be named for", async () => {
-      await assert.rejects(
-        (await nameless()).search("urn:test:series", ""),
-        Refusal,
-      );
-    });
   });
 
   describe("given a search list kept beside a version that cannot be used", () => {
