@@ -175,5 +175,53 @@ export async function hubWith(
   return tree;
 }
 
+const ODD_NOTE = `# Odd layouts
+
+Names are in [a note that is gone](gone.md) and [the currency note](currency.md).
+
+## Earlier
+
+| thing | what we do |
+|---|---|
+| x | a decoy that is no Choice row |
+
+## Choice
+
+| thing | prior art | what we do | borrowed or diverged |
+|---|---|---|---|
+| x | | first (N1) | ours |
+| \`a \\| b\` | | piped (N3) | ours |
+| z | | waits on #193 | ours |
+
+A line that breaks the table.
+
+| y | | more (N2) | ours |
+
+## Row x
+
+Text.
+`;
+
+const ODD_FEATURE = `Feature: Odd
+  Rule: N1. Cites x
+    decisions/odd.md, row "x". Fine.
+
+  Rule: N2. Cites y
+    decisions/odd.md, row "y". Linked without an anchor.
+
+  Rule: N3. Cites the piped one
+    decisions/odd.md, row "a | b". Linked with an anchor.
+`;
+
+/** A vocabulary whose note has a Choice table that Markdown renders otherwise than the site reads it: a row after a line that breaks the table, an escaped pipe, an earlier table, and a heading named for a row. */
+export async function oddVocabulary(): Promise<MemoryFiles> {
+  const files = new MemoryFiles(TREE);
+  await files.write("decisions/README.md", text("# Decision notes\n"));
+  await files.write("decisions/odd.md", text(ODD_NOTE));
+  await files.write("decisions/currency.md", text("# Currency\n"));
+  await files.write("runtime/odd.feature", text(ODD_FEATURE));
+  return files;
+}
+
 export const treeText = (tree: ReadonlyMap<string, Uint8Array>, path: string) =>
   new TextDecoder().decode(tree.get(path));
