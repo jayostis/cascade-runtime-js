@@ -395,7 +395,7 @@ describe("Saving a pull as files · pullFiles()", () => {
       assert.equal("documents" in jsonOf(none, "north/pull.json"), false);
     });
 
-    it("saves once a document that was read twice", () => {
+    it("saves once a document whose bytes two entries of the pull hold", () => {
       const twice = pullFiles(
         {
           ...PULL,
