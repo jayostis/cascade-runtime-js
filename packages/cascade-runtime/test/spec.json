@@ -630,7 +630,7 @@
     },
     {
       "term": "schema",
-      "definition": "a description, in JSON Schema, of what a tool's input may hold: its properties, the type of each, and which are required.",
+      "definition": "a description, in JSON Schema, of what a tool's input may hold: its properties, the type of each, which are required, and the values or bounds each allows (`enum`, `minimum`, `maximum`).",
       "vocabulary": "https://json-schema.org/",
       "aliases": ["schemas"]
     },
