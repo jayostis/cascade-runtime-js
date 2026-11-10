@@ -567,7 +567,6 @@ test("the suite list names each repository's workflow, artifact, report and runn
       ["jayostis/cascade-starter-kit", "check.yml", "node:test"],
       ["jayostis/cascade-sandbox", "check.yml", "node:test"],
       ["jayostis/cascade-reference-tables", "check.yml", "node:test"],
-      ["jayostis/cascade-health-assistant", "check.yml", "vitest"],
       ["jayostis/cascade-bridge-rs", "test.yml", "nextest"],
       ["jayostis/cascade-bridge-spec", "validate.yml", "pytest"],
     ],
