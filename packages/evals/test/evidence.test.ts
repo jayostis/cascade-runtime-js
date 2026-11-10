@@ -39,7 +39,11 @@ const record = (call: number, tool = "ask", at = input): ToolCallRecord => ({
 });
 
 /** The evidence of the one absence of a pod-arm answer whose query names `call` of the tool and input `query`. */
-async function podEvidence(call: number | undefined, query = input) {
+async function podEvidence(
+  call: number | undefined,
+  query = input,
+  calls = [record(1), record(2), record(3, "ask", other), record(4)],
+) {
   const [found] = await evidenceOf({
     job: { id: "j", arm: "pod" } as Job,
     question: "q",
@@ -64,7 +68,7 @@ async function podEvidence(call: number | undefined, query = input) {
     prepared: {} as unknown as Prepared,
     reading: [],
     provenance: () => undefined,
-    toolCalls: [record(1), record(2), record(3, "ask", other)],
+    toolCalls: calls,
   });
   return found!.call;
 }
@@ -295,8 +299,17 @@ describe("Resolving a citation to what it cites · passageOf(), podProvenance(),
       assert.equal(await podEvidence(3), null);
     });
 
-    it("returns the first call of the absence's tool and input that answered when it names no number", async () => {
+    it("returns the first call of the absence's tool and input that succeeded when it names no number", async () => {
       assert.equal((await podEvidence(undefined))?.call, 2);
+    });
+
+    it("returns the first call of the absence's tool and input when it names no number and none succeeded", async () => {
+      const failed = { ...record(5), ok: false };
+      const found = await podEvidence(undefined, input, [
+        { ...record(1), ok: false },
+        failed,
+      ]);
+      assert.equal(found?.call, 1);
     });
   });
 
