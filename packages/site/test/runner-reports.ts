@@ -154,12 +154,12 @@ const NAMING = `<property name="file" value="crates/bridge/src/naming.rs"/>${lev
 export const NEXTEST = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="nextest-run" tests="3" failures="1" errors="0" uuid="9b1d4c8e-0000-4000-8000-000000000000" timestamp="2026-11-10T10:00:00.000+00:00" time="0.050">
     <testsuite name="cascade-bridge" tests="2" disabled="0" errors="0" failures="1">
-        <testcase name="naming::tests::when_the_selector_has_a_pipe::escapes_it" classname="cascade-bridge" timestamp="2026-11-10T10:00:00.001+00:00" time="0.002">
+        <testcase name="naming::tests::naming_a_record::when_the_selector_has_a_pipe::escapes_it" classname="cascade-bridge" timestamp="2026-11-10T10:00:00.001+00:00" time="0.002">
             <properties>${NAMING}<property name="title" value="escapes it"/><property name="line" value="31"/></properties>
         </testcase>
-        <testcase name="naming::tests::when_the_selector_has_a_pipe::keeps_the_base" classname="cascade-bridge" timestamp="2026-11-10T10:00:00.002+00:00" time="0.003">
+        <testcase name="naming::tests::naming_a_record::when_the_selector_has_a_pipe::keeps_the_base" classname="cascade-bridge" timestamp="2026-11-10T10:00:00.002+00:00" time="0.003">
             <properties>${NAMING}<property name="line" value="40"/></properties>
-            <failure type="test failure with exit code 101">thread 'naming::tests::when_the_selector_has_a_pipe::keeps_the_base' panicked at crates/bridge/src/naming.rs:42:9:
+            <failure type="test failure with exit code 101">thread 'naming::tests::naming_a_record::when_the_selector_has_a_pipe::keeps_the_base' panicked at crates/bridge/src/naming.rs:42:9:
 assertion failed: kept</failure>
             <system-out></system-out>
             <system-err>note: run with RUST_BACKTRACE=1</system-err>
