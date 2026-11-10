@@ -3,13 +3,13 @@ import { test } from "node:test";
 import { ConnectionFailure } from "cascade-runtime";
 import {
   rethrowing,
-  SandboxUnavailable,
-  sandboxAnswers,
+  LauncherUnavailable,
+  launcherAnswers,
 } from "./launcher-sandbox.js";
 
 const BASE = "https://launch.example/v/r4/sim/abc/fhir";
 
-/** What `rethrowing` threw, and whether it asked the sandbox. */
+/** What `rethrowing` threw, and whether it asked the launcher. */
 async function threw(error: unknown, answering: boolean) {
   let asked = 0;
   const thrown = await rethrowing(error, async () => {
@@ -30,7 +30,7 @@ const gaveUp = new ConnectionFailure(
 
 test("a run that gave up after its retries is the sandbox's when the sandbox answers nothing either, and the runtime's when it answers", async () => {
   const down = await threw(gaveUp, false);
-  assert.ok(down.thrown instanceof SandboxUnavailable);
+  assert.ok(down.thrown instanceof LauncherUnavailable);
   assert.match(down.thrown.message, /sandbox/i);
   assert.match(down.thrown.message, /not the runtime/i);
   assert.ok(down.thrown.message.includes(gaveUp.message));
@@ -57,7 +57,7 @@ test("a run that gave up on 429s is the runtime's, and the sandbox is not asked,
     { origin: "https://launch.example", status: 503, resourceType: "Patient" },
   );
   const down = await threw(failing, false);
-  assert.ok(down.thrown instanceof SandboxUnavailable);
+  assert.ok(down.thrown instanceof LauncherUnavailable);
   assert.equal(down.asked, 1);
 });
 
@@ -83,13 +83,13 @@ test("the sandbox answers when its metadata is answered below 429 and 5xx, and n
       seen.push(String(input));
       return new Response("{}", { status });
     };
-  assert.equal(await sandboxAnswers(BASE, answering(200)), true);
-  assert.equal(await sandboxAnswers(BASE, answering(404)), true);
+  assert.equal(await launcherAnswers(BASE, answering(200)), true);
+  assert.equal(await launcherAnswers(BASE, answering(404)), true);
   assert.deepEqual(seen, [`${BASE}/metadata`, `${BASE}/metadata`]);
-  assert.equal(await sandboxAnswers(BASE, answering(429)), true);
+  assert.equal(await launcherAnswers(BASE, answering(429)), true);
   for (const status of [500, 503])
     assert.equal(
-      await sandboxAnswers(BASE, answering(status)),
+      await launcherAnswers(BASE, answering(status)),
       false,
       `${status}`,
     );
@@ -97,7 +97,7 @@ test("the sandbox answers when its metadata is answered below 429 and 5xx, and n
   const refusing: typeof fetch = async () => {
     throw new TypeError("fetch failed");
   };
-  assert.equal(await sandboxAnswers(BASE, refusing), false);
+  assert.equal(await launcherAnswers(BASE, refusing), false);
 
   const hanging: typeof fetch = (_input, init) =>
     new Promise((_resolve, reject) =>
@@ -105,5 +105,5 @@ test("the sandbox answers when its metadata is answered below 429 and 5xx, and n
         reject(init.signal?.reason),
       ),
     );
-  assert.equal(await sandboxAnswers(BASE, hanging, 20), false);
+  assert.equal(await launcherAnswers(BASE, hanging, 20), false);
 });
