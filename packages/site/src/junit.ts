@@ -118,10 +118,13 @@ const lineOf = (value: string | undefined): number | undefined => {
 
 /**
  * pytest's `classname` is the module's dotted path and then each class the test is in. xunit1 also writes the file and
- * the 0-based line; xunit2 writes neither, so there the classes are the segments from the first capitalised one.
+ * the 0-based line; xunit2 writes neither, so there the classes are the segments from the first capitalised one. A module
+ * that could not be collected has no `classname`, and its dotted path is the case's name.
  */
 function placedByPytest(attribute: ReadonlyMap<string, string>): Placed {
-  const segments = (attribute.get("classname") ?? "")
+  const segments = (
+    attribute.get("classname") || (attribute.get("name") ?? "")
+  )
     .split(".")
     .filter((one) => one !== "");
   const file = attribute.get("file")?.replaceAll("\\", "/");
@@ -362,7 +365,7 @@ export function readJunit(xml: string): JunitReport {
         const after = found.index + whole.length;
         const end = text.indexOf(`</${tag}>`, after);
         const message =
-          attribute.get("message") ??
+          attribute.get("message") ||
           (selfClosed === "/" || end === -1
             ? undefined
             : decode(text.slice(after, end)).trim());

@@ -498,9 +498,14 @@ test("a pytest, vitest or nextest report reads as a tree of capability, situatio
   assert.ok(!tree.has("conformance/tests/index.html"), "there is no index");
 });
 
-test("a pytest case with no hook's properties sits under its classes, at its 1-based line, named as pytest names it", () => {
+test("a pytest case with no hook's properties sits under its classes, at its 1-based line, named as pytest names it, and a module that failed to collect is in its file", () => {
   const bare = PYTEST_XUNIT1.replace(/<properties>.*?<\/properties>/g, "");
   const [first] = readJunit(bare).cases;
+  const [broken] = readJunit(
+    `<testsuites name="pytest tests"><testsuite name="pytest" timestamp="t"><testcase classname="" name="tests.test_broken" time="0.000"><error message="collection failure">ImportError</error></testcase></testsuite></testsuites>`,
+  ).cases;
+  assert.equal(broken?.suite, "tests/test_broken.py");
+  assert.equal(broken?.result, "failed");
   assert.deepEqual(
     {
       suite: first?.suite,
