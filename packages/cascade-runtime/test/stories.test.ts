@@ -69,7 +69,7 @@ before(async () => {
     pulls.set(patient, pull);
     const pod = await openPod();
     const imported = await pod.import(pullFiles(pull, "north"), {
-      aboutSubject: true,
+      claim: true,
     });
     assert.equal(imported.refused, undefined, patient);
     pods.set(patient, pod);
@@ -151,10 +151,10 @@ test("the stopped story's C-CDA copy joins its FHIR pull: the medication is one 
   const pod = await openPod();
   try {
     const first = await pod.import(pullFiles(pulls.get(story.patient)!, "n"), {
-      aboutSubject: true,
+      claim: true,
     });
     assert.equal(first.refused, undefined);
-    const second = await pod.import(file, { aboutSubject: true });
+    const second = await pod.import(file, { claim: true });
     assert.equal(second.refused, undefined);
 
     const medications = await pod.ask({

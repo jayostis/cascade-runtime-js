@@ -85,7 +85,7 @@ only instruction.
   don't know about, and say yes or no to records it thinks are the same thing."
 
 Between them they use every call: reading, `openPod`, `ask`, `close`; writing,
-`openPod`, `look`, `import` with `aboutSubject: true` (only after a yes),
+`openPod`, `look`, `import` with `claim: true` (only after a yes),
 `enter`, `judge`, `ask`, `close`. `match` is covered by the default `import` and `enter` run; an explicit
 `match` with matching on is a wrong turn.
 

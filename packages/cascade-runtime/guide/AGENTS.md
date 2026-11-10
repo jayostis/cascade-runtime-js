@@ -297,7 +297,7 @@ async function bringIn(folder, options = {}) {
   });
   if (sources === undefined) return undefined;
   if (!(await askPerson("Are these records yours?", sources))) return undefined;
-  const imported = await pod.import(folder, { aboutSubject: true, ...options });
+  const imported = await pod.import(folder, { claim: true, ...options });
   if (imported.refused) await showPerson(`Not brought in: ${imported.refused}`);
   const naming = await recordsBy("profile/Which records name it", "profile");
   const claimed = imported.claimed.map(({ profile: p }) => [p, naming(p)]);
@@ -326,7 +326,7 @@ The same calls run in Node and in a browser:
   configuration the sign-in read, and the client id, as a version of the
   server's record: the pod's record of the connect;
 - `pull(connection, DEMO_PLAN)` fetches the record, and gives a `Pull`;
-- `pod.import(pullFiles(pull, name), { aboutSubject: true })` brings it in, as
+- `pod.import(pullFiles(pull, name), { claim: true })` brings it in, as
   `bringIn` does an export.
 
 A failure is a `ConnectionFailure`, whose `kind` says why: `cancelled` when the
@@ -408,7 +408,7 @@ const files = pullFiles(record, "cascade-north-1");
 if (
   await askPerson("Are these records yours?", await hospitalPod.look(files))
 ) {
-  const brought = await hospitalPod.import(files, { aboutSubject: true });
+  const brought = await hospitalPod.import(files, { claim: true });
   if (brought.refused) await showPerson(`Not brought in: ${brought.refused}`);
 }
 await hospitalPod.close();
@@ -773,7 +773,7 @@ await confirmClaims(await bringIn(pickExport()));
 ## The steps run separately
 
 After the yes, `import` with `{ match: false }` only files, and without
-`aboutSubject` claims nothing, so each profile is asked about alone: claim each
+`claim` it claims nothing, so each profile is asked about alone: claim each
 `unclaimed` one with an About, then `match` the import's `activity`; `match()`
 rechecks the pod. Then offer each counting join of the matcher's, a pair at a
 time, filing a Different over a pair the person says no to. `replayKit`, behind
@@ -781,7 +781,7 @@ time, filing a Different over a pair the person says no to. `replayKit`, behind
 folder it is in, for tests only.
 
 ```js
-const fileOnly = { aboutSubject: false, match: false };
+const fileOnly = { claim: false, match: false };
 const filed = await bringIn(pickExport(), fileOnly);
 const naming = await recordsBy("profile/Which records name it", "profile");
 for (const profile of filed?.unclaimed ?? [])

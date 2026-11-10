@@ -93,7 +93,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
     [south, "south"],
   ] as const) {
     const imported = await pod.import(pullFiles(pull, name), {
-      aboutSubject: true,
+      claim: true,
     });
     assert.equal(imported.refused, undefined, name);
   }
@@ -187,7 +187,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
     await mkdir(dirname(join(folder, path)), { recursive: true });
     await writeFile(join(folder, path), bytes);
   }
-  const again = await pod.import(join(folder, "north"), { aboutSubject: true });
+  const again = await pod.import(join(folder, "north"), { claim: true });
   assert.equal(again.refused, undefined);
   assert.deepEqual(again.wrote, []);
 });

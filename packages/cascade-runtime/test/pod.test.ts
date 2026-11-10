@@ -253,7 +253,7 @@ test("an import with the claim records an About for each unclaimed profile and i
   );
   const told: ImportProgress[] = [];
   const imported = await pod.import(exported("x-e4"), {
-    aboutSubject: true,
+    claim: true,
     onProgress: (progress) => {
       told.push(progress);
     },
@@ -350,7 +350,7 @@ test("an import with the claim records an About for each unclaimed profile and i
     ).sort(),
   );
 
-  const again = await pod.import(exported("x-e6"), { aboutSubject: true });
+  const again = await pod.import(exported("x-e6"), { claim: true });
   assert.deepEqual(again.claimed, []);
 });
 
@@ -387,7 +387,7 @@ test("a profile that is the subject itself is not unclaimed, so the claim record
     );
     try {
       const imported = await itself.import(exported("x-e2"), {
-        aboutSubject: true,
+        claim: true,
         match: false,
       });
       assert.equal(imported.refused, undefined);
@@ -475,7 +475,7 @@ test("the look reads an export's or a download's index and writes nothing: a FHI
       /^Error: ccda-download cannot read /,
     );
 
-    const imported = await priya.import(download, { aboutSubject: true });
+    const imported = await priya.import(download, { claim: true });
     assert.equal(imported.refused, undefined);
     assert.deepEqual(
       (await priya.look(download)).map(({ claimed }) => claimed),
