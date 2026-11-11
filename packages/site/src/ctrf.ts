@@ -4,6 +4,11 @@ import type { Described, Result, TestCase } from "./junit.js";
 export interface CtrfReport {
   readonly cases: TestCase[];
   readonly tool?: string;
+  /** True when the report says no case was timed: each case's `duration` of 0 is then no time at all. */
+  readonly unmeasured: boolean;
+  /** When the run began and ended, in milliseconds, as `results.summary` gives them. */
+  readonly start?: number;
+  readonly stop?: number;
 }
 
 const RESULTS: Readonly<Record<string, Result>> = {
@@ -90,8 +95,13 @@ export function readCtrf(json: string): CtrfReport {
   if (!Array.isArray(tests))
     throw new Error("the report holds no results.tests list");
   const tool = text(object(results["tool"])["name"]);
+  const summary = object(results["summary"]);
+  const { start, stop } = summary;
+  const timed = typeof start === "number" && typeof stop === "number";
   return {
     cases: tests.map(caseOf),
     ...(tool === undefined ? {} : { tool }),
+    unmeasured: object(results["extra"])["caseDurations"] === "unmeasured",
+    ...(timed ? { start, stop } : {}),
   };
 }

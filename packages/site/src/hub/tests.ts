@@ -651,14 +651,18 @@ function summaryBar(
   run: TestRun,
   cases: readonly TestCase[],
   packages: ReadonlyMap<string, PackageInfo>,
-  milliseconds: number,
+  milliseconds: number | undefined,
 ): Html {
   const known = packages.size > 0 ? packagesOf(packages) : markup``;
   return markup`<div class="summary-bar" role="group" aria-label="Summary of ${titleInSentence(suite)}">
 ${known}<span class="run">commit <a href="${repositoryUrl(suite)}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a></span>
 <span class="tallies">${badge("passed", count(cases, "passed"))}${count(cases, "failed") === 0 ? "" : badge("failed", count(cases, "failed"))}${badge("skipped", count(cases, "skipped"))}</span>
-<span class="duration" title="run time">${seconds(milliseconds / 1000)}</span>
-<span class="controls" data-controls hidden><button type="button" data-action="expand-all">Expand all</button><button type="button" data-action="collapse-all">Collapse all</button><button type="button" data-action="failures-only" aria-pressed="false">Failures only</button></span>
+${
+  milliseconds === undefined
+    ? ""
+    : markup`<span class="duration" title="run time">${seconds(milliseconds / 1000)}</span>
+`
+}<span class="controls" data-controls hidden><button type="button" data-action="expand-all">Expand all</button><button type="button" data-action="collapse-all">Collapse all</button><button type="button" data-action="failures-only" aria-pressed="false">Failures only</button></span>
 </div>
 `;
 }
@@ -740,10 +744,11 @@ function ctrf(
   suite: Suite,
   run: TestRun,
   cases: readonly TestCase[],
-  duration: number,
+  duration: number | undefined,
   failedOutside: number,
   packages: ReadonlyMap<string, PackageInfo>,
   tool: string,
+  unmeasured: boolean,
 ): unknown {
   const start = Date.parse(run.at);
   return {
@@ -754,6 +759,7 @@ function ctrf(
     ...extraOfGlossaries(suite, run, cases, packages),
     results: {
       tool: { name: tool },
+      ...(unmeasured ? { extra: { caseDurations: "unmeasured" } } : {}),
       summary: {
         tests: cases.length,
         passed: count(cases, "passed"),
@@ -762,7 +768,7 @@ function ctrf(
         pending: 0,
         other: 0,
         start: Number.isNaN(start) ? 0 : start,
-        stop: Number.isNaN(start) ? 0 : start + Math.round(duration),
+        stop: Number.isNaN(start) ? 0 : start + Math.round(duration ?? 0),
       },
       tests: cases.map((one) => ({
         name: one.name,
@@ -790,18 +796,25 @@ interface Part {
   readonly ctrf?: unknown;
 }
 
+/** What a CTRF report says of its tool and of its time; a runner's report says neither. */
+interface CtrfTiming {
+  readonly tool?: string;
+  readonly unmeasured?: boolean;
+  readonly start?: number;
+  readonly stop?: number;
+}
+
 /** The cases of a run's report, read as its suite's runner writes it; a `ctrf` suite's report is already CTRF. */
-function casesOf(
-  suite: Suite,
-  run: TestRun,
-): JunitReport & { readonly tool?: string } {
+function casesOf(suite: Suite, run: TestRun): JunitReport & CtrfTiming {
   if (suite.runner !== "ctrf") return readJunit(run.report);
-  const { cases, tool } = readCtrf(run.report);
+  const { cases, tool, unmeasured, start, stop } = readCtrf(run.report);
   return {
     cases,
     packages: new Map(),
     failingSuites: 0,
     ...(tool === undefined ? {} : { tool }),
+    unmeasured,
+    ...(start === undefined || stop === undefined ? {} : { start, stop }),
   };
 }
 
@@ -815,9 +828,9 @@ function part(suite: Suite, run: TestRun | undefined): Part {
   let cases: TestCase[];
   let failingSuites: number;
   let packages: ReadonlyMap<string, PackageInfo>;
-  let tool: string | undefined;
+  let timing: CtrfTiming;
   try {
-    ({ cases, failingSuites, packages, tool } = casesOf(suite, run));
+    ({ cases, failingSuites, packages, ...timing } = casesOf(suite, run));
   } catch (error) {
     return {
       html: markup`<p class="prose">${runLine(suite, run)}.</p>
@@ -838,9 +851,16 @@ function part(suite: Suite, run: TestRun | undefined): Part {
       : "";
   const shownCases =
     cases.length === 0 ? "" : packageSections(cases, packages, suite, run);
-  const milliseconds =
-    (suite.runner === "ctrf" ? undefined : declaredDuration(run.report)) ??
-    cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0);
+  // A CTRF report whose cases were not timed has a run time only where it gives its start and stop.
+  const milliseconds: number | undefined =
+    timing.start !== undefined && timing.stop !== undefined
+      ? timing.stop - timing.start
+      : timing.unmeasured === true
+        ? undefined
+        : ((suite.runner === "ctrf"
+            ? undefined
+            : declaredDuration(run.report)) ??
+          cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0));
   const none =
     failed === 0 && !hidden
       ? markup`<p class="no-failures">No failures.</p>\n`
@@ -855,7 +875,8 @@ ${unlisted}${none}${shownCases}`,
       milliseconds,
       counted !== undefined && hidden ? counted - failed : 0,
       packages,
-      tool ?? suite.runner,
+      timing.tool ?? suite.runner,
+      timing.unmeasured === true,
     ),
   };
 }
