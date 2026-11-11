@@ -33,6 +33,8 @@ export interface TestCase {
   readonly result: Result;
   /** Seconds, when the report says. */
   readonly seconds?: number;
+  /** A CTRF report's `duration` as the producer gave it, which the CTRF written beside the page republishes unchanged. */
+  readonly milliseconds?: number;
   /** What a failed case said, or why a skipped one was skipped, as the report keeps it. */
   readonly message?: string;
   /** What a CTRF report says of the case beyond what the page shows of it, which the CTRF written beside the page keeps. */
