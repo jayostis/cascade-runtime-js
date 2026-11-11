@@ -109,7 +109,7 @@ describe("Test results for an agent · <repository>.ctrf.json", () => {
       assert.equal(duration, 3500);
     });
 
-    it("writes no start, stop or duration when an unmeasured report gives none", async () => {
+    it("writes the run's time as both start and stop, and no duration, when an unmeasured report gives none", async () => {
       const { tree } = await pageWith({}, [
         {
           suite: CTRF_SUITE,
@@ -119,8 +119,8 @@ describe("Test results for an agent · <repository>.ctrf.json", () => {
       const { summary } = ctrfOf(tree, CTRF_NAME).results as unknown as {
         summary: Record<string, unknown>;
       };
-      assert.ok(!("start" in summary));
-      assert.ok(!("stop" in summary));
+      assert.equal(summary.start, Date.parse(RUN.at));
+      assert.equal(summary.stop, Date.parse(RUN.at));
       assert.ok(!("duration" in summary));
     });
 

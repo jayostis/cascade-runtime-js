@@ -761,7 +761,10 @@ function ctrf(
           duration: timing.stop - timing.start,
         }
       : suite.runner === "ctrf"
-        ? {}
+        ? {
+            start: Number.isNaN(runAt) ? 0 : runAt,
+            stop: Number.isNaN(runAt) ? 0 : runAt,
+          }
         : {
             start: Number.isNaN(runAt) ? 0 : runAt,
             stop: Number.isNaN(runAt) ? 0 : runAt + Math.round(duration ?? 0),
