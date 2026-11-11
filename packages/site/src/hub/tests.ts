@@ -744,13 +744,29 @@ function ctrf(
   suite: Suite,
   run: TestRun,
   cases: readonly TestCase[],
+  timing: CtrfTiming,
   duration: number | undefined,
   failedOutside: number,
   packages: ReadonlyMap<string, PackageInfo>,
   tool: string,
   unmeasured: boolean,
 ): unknown {
-  const start = Date.parse(run.at);
+  const runAt = Date.parse(run.at);
+  // The producer's own start and stop are kept as given; only a JUnit suite has none, and its run's time stands in.
+  const span =
+    timing.start !== undefined && timing.stop !== undefined
+      ? {
+          start: timing.start,
+          stop: timing.stop,
+          duration: timing.stop - timing.start,
+        }
+      : suite.runner === "ctrf"
+        ? {}
+        : {
+            start: Number.isNaN(runAt) ? 0 : runAt,
+            stop: Number.isNaN(runAt) ? 0 : runAt + Math.round(duration ?? 0),
+            duration: Math.round(duration ?? 0),
+          };
   return {
     reportFormat: "CTRF",
     specVersion: "0.2.0",
@@ -767,8 +783,7 @@ function ctrf(
         skipped: count(cases, "skipped"),
         pending: 0,
         other: 0,
-        start: Number.isNaN(start) ? 0 : start,
-        stop: Number.isNaN(start) ? 0 : start + Math.round(duration ?? 0),
+        ...span,
       },
       tests: cases.map((one) => ({
         name: one.name,
@@ -872,6 +887,7 @@ ${unlisted}${none}${shownCases}`,
       suite,
       run,
       cases,
+      timing,
       milliseconds,
       counted !== undefined && hidden ? counted - failed : 0,
       packages,

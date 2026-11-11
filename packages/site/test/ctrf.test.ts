@@ -97,14 +97,31 @@ describe("Test results for an agent · <repository>.ctrf.json", () => {
       const written = ctrfOf(tree, CTRF_NAME) as unknown as {
         results: {
           extra?: { caseDurations?: string };
-          summary: { start: number; stop: number };
+          summary: { start: number; stop: number; duration: number };
           tests: { duration: number }[];
         };
       };
       assert.equal(written.results.extra?.caseDurations, "unmeasured");
       assert.ok(written.results.tests.every((t) => t.duration === 0));
-      const { start, stop } = written.results.summary;
-      assert.equal(stop - start, 3500);
+      const { start, stop, duration } = written.results.summary;
+      assert.equal(start, 1000);
+      assert.equal(stop, 4500);
+      assert.equal(duration, 3500);
+    });
+
+    it("writes no start, stop or duration when an unmeasured report gives none", async () => {
+      const { tree } = await pageWith({}, [
+        {
+          suite: CTRF_SUITE,
+          run: { ...RUN, report: unmeasuredCtrf() },
+        },
+      ]);
+      const { summary } = ctrfOf(tree, CTRF_NAME).results as unknown as {
+        summary: Record<string, unknown>;
+      };
+      assert.ok(!("start" in summary));
+      assert.ok(!("stop" in summary));
+      assert.ok(!("duration" in summary));
     });
 
     it("keeps what the report says of a case beyond its levels and description", async () => {
