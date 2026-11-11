@@ -397,3 +397,25 @@ export const FOUR_PACKAGES = (failing?: string): string =>
       )
       .join(""),
   );
+
+/**
+ * An adapter's CTRF report as cascade-bridge-spec's start action writes it: the run is timed and its cases
+ * are not: each case `duration` 0, `results.extra.caseDurations` "unmeasured", `summary.start` and `stop` the run.
+ */
+export const unmeasuredCtrf = (
+  start?: number,
+  stop?: number,
+  marked = true,
+): string => {
+  const report = JSON.parse(CTRF_REPORT) as {
+    results: { summary: object; extra?: object };
+  };
+  report.results.summary = {
+    ...report.results.summary,
+    ...(start === undefined || stop === undefined
+      ? {}
+      : { start, stop, duration: stop - start }),
+  };
+  if (marked) report.results.extra = { caseDurations: "unmeasured" };
+  return JSON.stringify(report);
+};
