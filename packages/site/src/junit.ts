@@ -33,7 +33,7 @@ export interface TestCase {
   readonly result: Result;
   /** Seconds, when the report says. */
   readonly seconds?: number;
-  /** What a failed case said, as the report keeps it. */
+  /** What a failed case said, or why a skipped one was skipped, as the report keeps it. */
   readonly message?: string;
   /** What a CTRF report says of the case beyond what the page shows of it, which the CTRF written beside the page keeps. */
   readonly extra?: Readonly<Record<string, unknown>>;
@@ -375,6 +375,15 @@ export function readJunit(xml: string): JunitReport {
         if (message) building.message = message;
       } else if (tag === "skipped" && building.result === "passed") {
         building.result = "skipped";
+        // pytest and node:test give the reason as `message`; some runners give it only as the element's text.
+        const after = found.index + whole.length;
+        const end = text.indexOf(`</${tag}>`, after);
+        const reason =
+          attribute.get("message") ||
+          (selfClosed === "/" || end === -1
+            ? undefined
+            : decode(text.slice(after, end)).trim());
+        if (reason) building.message = reason;
       }
     }
     if (selfClosed === "/") close(tag);

@@ -168,9 +168,11 @@ export const failureOf = (markup: string, heading: string): string =>
 
 /** What each skipped case after the heading said of why, in the page's order. */
 export const skipReasonsOf = (markup: string, heading: string): string[] =>
-  [...(markup.split(`id="${heading}"`)[1] ?? "").matchAll(/<p class="skip-reason">([\s\S]*?)<\/p>/g)].map(
-    ([, said]) => text(said ?? ""),
-  );
+  [
+    ...(markup.split(`id="${heading}"`)[1] ?? "").matchAll(
+      /<p class="skip-reason">([\s\S]*?)<\/p>/g,
+    ),
+  ].map(([, said]) => text(said ?? ""));
 
 /** The levels (package, file, describe) after the heading, as the text of each summary, in the page's order. */
 export function levelsOf(markup: string, heading: string): string[] {

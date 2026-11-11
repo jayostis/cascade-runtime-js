@@ -167,7 +167,8 @@ summary { list-style: none; }
 dfn { font-style: normal; }
 .level-name { font-weight: 600; }
 li.case { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; column-gap: .5rem; }
-li.case > .said, li.case > pre.failure { grid-column: 2 / -1; }
+li.case > .said, li.case > pre.failure, li.case > .skip-reason { grid-column: 2 / -1; }
+.skip-reason { margin: 0; color: var(--quiet); font-size: .9em; overflow-wrap: anywhere; }
 li.case .name { overflow-wrap: anywhere; }
 li.capability { list-style: none; margin: .75rem 0; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
 li.capability > details { margin: 0; }
@@ -463,7 +464,7 @@ function leaf(one: TestCase, suite: Suite, run: TestRun, links: Links): Html {
     one.description === undefined && one.rules.length === 0
       ? ""
       : markup`<div class="said">${prose(one.description, links)}${rulesOf(one.rules)}</div>`;
-  return markup`<li class="case" data-result="${one.result}">${status(one.result)} <span class="name">${named(one.name, source, links)}</span><span class="time">${seconds(one.seconds)}</span>${said}${one.message === undefined ? "" : markup`<pre class="failure">${shown(one.message)}</pre>`}</li>\n`;
+  return markup`<li class="case" data-result="${one.result}">${status(one.result)} <span class="name">${named(one.name, source, links)}</span><span class="time">${seconds(one.seconds)}</span>${said}${one.message === undefined ? "" : one.result === "skipped" ? markup`<p class="skip-reason">${shown(one.message)}</p>` : markup`<pre class="failure">${shown(one.message)}</pre>`}</li>\n`;
 }
 
 /** A situation, or a level under one: its description, its rules and what it holds. */
