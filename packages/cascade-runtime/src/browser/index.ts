@@ -618,6 +618,15 @@ class BrowserPod implements Pod {
     return this.#opened?.head;
   }
 
+  get titled(): boolean {
+    return this.#known().titled;
+  }
+
+  async retitle(title: string): Promise<void> {
+    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
+    await (await this.#pod()).retitle(title);
+  }
+
   async look(exported: string | Exported): Promise<readonly ExportSource[]> {
     return (await this.#pod()).look(exported);
   }
@@ -791,7 +800,7 @@ function deleted(name: string, copying: unknown): Promise<void> {
  * published in the folder at that URL, from its pack `<folder>.pack.json` when one is published beside it, else as its
  * `files.json` lists it, with the answers published beside it in place of any kept before. A copy that fails leaves no database, unless another
  * copy filled it meanwhile, which it keeps. Its answers are kept in a database of their own, `cascade-answers:<name>`,
- * with its address, subject and title in `pod.json`. A pod whose `pod.json` is kept opens without the engine, and
+ * with its address, subject, title and whether it was `titled` in `pod.json`, which `pod.retitle` rewrites. A pod whose `pod.json` is kept opens without the engine, and
  * answers a question by name from its kept answers until it first computes. With `options.secret`, a new pod is made
  * encrypted under it, its answers too, and an encrypted pod opens with it, as typed or as `typedWords` cleans it; an
  * encrypted pod that does not open, or a secret given for a plaintext pod, throws `Unopened`. A secret is refused with

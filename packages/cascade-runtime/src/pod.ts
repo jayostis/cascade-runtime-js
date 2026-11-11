@@ -104,6 +104,12 @@ export interface Pod {
   /** Whether its files and its kept answers are sealed under a key only its secret opens. */
   readonly encrypted: boolean;
   /**
+   * Whether a title was given when the pod was made, or since by `retitle`. A pod made with none is named for its
+   * folder or database, which is no title: an app that wants the pod titled, as for the person whose record it claims,
+   * calls `retitle` when this is false. A pod made before this was recorded is titled.
+   */
+  readonly titled: boolean;
+  /**
    * The app's last snapshot in the pod (N14), which the app's tables store keeps beside the pod's name and hands back
    * as the writer's head at the next open; none until the app performs an act in it, so a first act is a new writer's.
    */
@@ -164,6 +170,12 @@ export interface Pod {
    * its kept answers knows them once the engine has opened it.
    */
   unheldTableVersions(): Promise<readonly string[] | undefined>;
+  /**
+   * Sets the pod's title, in its manifest and in `pod.json` (sealed in an encrypted pod), and so for the pod opened again;
+   * `titled` is true from then on. It changes no revision, so every kept answer stays valid. Throws `Refusal` for an
+   * empty or all-whitespace title.
+   */
+  retitle(title: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -530,6 +542,7 @@ class OpenPod implements Pod {
   #queue: Promise<unknown> = Promise.resolve();
   #bridge: Promise<LoadedBridge> | undefined;
   #closed = false;
+  #titled: boolean;
 
   constructor(
     parts: Parts,
@@ -539,8 +552,10 @@ class OpenPod implements Pod {
     tables: readonly string[],
     answers: Answers | undefined,
     readonly encrypted: boolean,
+    titled: boolean,
     readonly opened?: Opened,
   ) {
+    this.#titled = titled;
     this.#parts = parts;
     this.#core = core;
     this.#answers = answers;
@@ -553,6 +568,25 @@ class OpenPod implements Pod {
 
   get head(): Head | undefined {
     return this.#core.head;
+  }
+
+  get titled(): boolean {
+    return this.#titled;
+  }
+
+  retitle(title: string): Promise<void> {
+    return this.#next(async () => {
+      if (title.trim() === "")
+        throw new Refusal("a pod's title is not empty or all white space");
+      await this.#core.retitle(title);
+      await this.#answers?.describe({
+        address: this.address,
+        subject: this.subject,
+        title,
+        titled: true,
+      });
+      this.#titled = true;
+    });
   }
 
   look(exported: string | Exported): Promise<readonly ExportSource[]> {
@@ -1129,7 +1163,7 @@ function coreOver(
   pod: Files,
   address: string,
   subject: string,
-  title: string,
+  title: string | undefined,
   writer?: { readonly head: Head | undefined },
 ): CorePod {
   const { build } = parts;
@@ -1238,7 +1272,7 @@ export async function openPodWith(
       );
     const address = newBase();
     const subject = randomId();
-    const title = options.title ?? disk?.name ?? "pod";
+    const { title } = options;
     const files =
       folder === undefined
         ? new MemoryFiles(address)
@@ -1255,7 +1289,12 @@ export async function openPodWith(
     const created = await core.create();
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
-    await answers?.describe({ address, subject, title });
+    await answers?.describe({
+      address,
+      subject,
+      title: title ?? disk?.name ?? "pod",
+      titled: title !== undefined,
+    });
     if (folder !== undefined)
       await parts.tables.recordOpen(address, shipped(references), disk?.name);
     return new OpenPod(
@@ -1266,6 +1305,7 @@ export async function openPodWith(
       tables,
       answers,
       encrypted,
+      title !== undefined,
     );
   }
   const store = parts.newStore();
@@ -1281,8 +1321,13 @@ export async function openPodWith(
   const [subject] = subjects;
   if (subject === undefined || subjects.length > 1)
     throw new Error(`${folder} holds ${subjects.length} subjects, not one`);
-  const title = stated.title ?? disk.name;
-  await answers?.describe({ address, subject, title });
+  const { title } = stated;
+  await answers?.describe({
+    address,
+    subject,
+    title: title ?? disk.name,
+    titled: title !== undefined,
+  });
   const files = parts.folder(folder, address).files;
   const core = coreOver(parts, references, files, address, subject, title, {
     head: await parts.tables.headOf(address),
@@ -1295,6 +1340,7 @@ export async function openPodWith(
     tables,
     answers,
     encrypted,
+    title !== undefined,
     options.adopt === false
       ? undefined
       : await openedWithTables(

@@ -33,7 +33,6 @@ import {
   type Triple,
 } from "@cascade-runtime/runtime";
 import {
-  argon2id,
   checkouts,
   findRoot,
   FolderFiles,
@@ -1232,6 +1231,12 @@ describe("Opening a pod again · openPod()", () => {
   describe("when a pod is retitled · pod.retitle(title), pod.titled", () => {
     const DCT_TITLE = "http://purl.org/dc/terms/title";
 
+    /** The pod as a packed runtime opens it, its answers kept beside it, and Argon2id stood in for. */
+    const open = (
+      at: string,
+      options: { title?: string; secret?: string } = {},
+    ) => openFolderPod({ ...kept, derive: fastDerive() }, at, options);
+
     /** The title the manifest and `pod.json` of the pod in the folder hold, read from the disk, with the key of a sealed pod. */
     async function titlesOf(at: string, key?: PodKey) {
       const own = new FolderFiles(at);
@@ -1259,7 +1264,7 @@ describe("Opening a pod again · openPod()", () => {
     it("gives the new title in the manifest, in `pod.json` and on the reopened pod, and leaves the kept rows of a question as they were", async () => {
       const at = join(pods, "retitled");
       await cp((await alexPod()).folder, at, { recursive: true });
-      const first = await openPod(at);
+      const first = await open(at);
       let rows: Rows;
       try {
         assert.equal(first.titled, false);
@@ -1273,7 +1278,7 @@ describe("Opening a pod again · openPod()", () => {
       const stored = await titlesOf(at);
       assert.equal(stored.manifest, "Ada Lovelace");
       assert.equal(stored.described?.title, "Ada Lovelace");
-      const second = await openPod(at);
+      const second = await open(at);
       try {
         assert.equal(second.titled, true);
       } finally {
@@ -1295,7 +1300,7 @@ describe("Opening a pod again · openPod()", () => {
         [untitled, {}],
         [named, {}],
       ] as const) {
-        const pod = await openPod(at, options);
+        const pod = await open(at, options);
         states.push(pod.titled);
         await pod.close();
       }
@@ -1309,7 +1314,7 @@ describe("Opening a pod again · openPod()", () => {
 
     it("refuses an empty or all-whitespace title with a `Refusal`, leaving the pod untitled", async () => {
       const at = join(pods, "refusing");
-      const pod = await openPod(at);
+      const pod = await open(at);
       try {
         for (const title of ["", " ", "\n\t "])
           await assert.rejects(
@@ -1326,14 +1331,14 @@ describe("Opening a pod again · openPod()", () => {
 
     it("seals the new title of an encrypted pod, which opens again with its secret as titled", async () => {
       const at = join(pods, "retitled-sealed");
-      const made = await openPod(at, { secret: WORDS });
+      const made = await open(at, { secret: WORDS });
       try {
         assert.equal(made.titled, false);
         await made.retitle("Ada Lovelace");
       } finally {
         await made.close();
       }
-      const reopened = await openPod(at, { secret: WORDS });
+      const reopened = await open(at, { secret: WORDS });
       try {
         assert.equal(reopened.titled, true);
       } finally {
@@ -1347,7 +1352,7 @@ describe("Opening a pod again · openPod()", () => {
           held: async () => true,
         },
         WORDS,
-        argon2id,
+        fastDerive(),
       );
       assert.ok(key);
       const stored = await titlesOf(at, key);

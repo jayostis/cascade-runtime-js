@@ -60,7 +60,9 @@ const pod = await openPod("pods/mine", { title: "My records" });
 ```
 
 A missing or empty folder is a new pod, the only time `title` is read;
-`openPod()` is one in memory. `subject` is whom the records are about, `owner`
+`openPod()` is one in memory. A pod made with no `title` has `pod.titled` false and
+is named for its folder; `await pod.retitle(name)` titles it, in its manifest and
+its `pod.json`, for every later open, and changes no kept answer. `subject` is whom the records are about, `owner`
 who keeps the pod, `address` a random base its names are made from: no identity
 is registered under either (that comes later, jayostis/cascade-vocabulary#62).
 A pod's answers are kept beside it, never in it: in `.answers/<name>/` beside
