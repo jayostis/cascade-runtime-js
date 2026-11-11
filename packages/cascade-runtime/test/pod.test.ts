@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import {
   cp,
   mkdir,
@@ -12,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
 import {
   type DeriveKey,
@@ -38,6 +40,7 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { shipped } from "../src/tables.js";
 import {
+  checkSecret,
   type Exported,
   type ImportProgress,
   openPod,
@@ -52,7 +55,7 @@ import { kitDownload, kitStory, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
 import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
-import { checkFolderSecret, openFolderPod } from "../src/node/folder-pod.js";
+import { openFolderPod } from "../src/node/folder-pod.js";
 import { answersToPublish, partsOf } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
@@ -1392,47 +1395,57 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
   });
 
   describe("checkSecret(folder, secret)", () => {
-    const bytesIn = async (at: string) =>
+    /** Each file under the folder with its size and mtime: what a write would change. */
+    const stampsOf = async (at: string) =>
       Promise.all(
-        (await filesIn(at)).map(async (file) => [
-          file,
-          (await readFile(file)).toString("hex"),
-        ]),
+        (await filesIn(at).catch(() => [])).map(async (file) => {
+          const { mtimeMs, size } = await stat(file);
+          return [file, mtimeMs, size];
+        }),
       );
 
-    it("answers true for the secret, as typed or cleaned, and false for another, deriving one key each and leaving the pod's folder and answers as they were", async () => {
-      const { folder: at } = await sealedPod();
-      const before = [
-        await bytesIn(at),
-        await bytesIn(join(pods, ".answers", "sealed")),
-      ];
-      const derive = fastDerive();
-      const answers = [];
+    it("answers true for the secret, as typed or cleaned, and false for another, and writes nothing", async () => {
+      const at = join(pods, "checked-sealed");
+      const sealed = await openPod(at, { secret: WORDS, title: TITLE });
+      await sealed.ask(HELD);
+      await sealed.close();
+      const answers = join(pods, ".answers", "checked-sealed");
+      const before = [await stampsOf(at), await stampsOf(answers)];
+      const answered = [];
       for (const secret of [
         WORDS,
         " T-SHIRT, Abacus yo yo zoom drop down felt-tip ",
         "a b c d e f",
       ])
-        answers.push(await checkFolderSecret({ derive }, at, secret));
-      assert.deepEqual(answers, [true, true, false]);
-      assert.equal(derive.calls, 4);
-      assert.deepEqual(before, [
-        await bytesIn(at),
-        await bytesIn(join(pods, ".answers", "sealed")),
-      ]);
+        answered.push(await checkSecret(at, secret));
+      assert.deepEqual(answered, [true, true, false]);
+      assert.deepEqual(before, [await stampsOf(at), await stampsOf(answers)]);
     });
 
     it("throws `Unopened` with `not encrypted` for a pod that has no header, and writes nothing", async () => {
       const plain = join(pods, "plain-checked");
-      const pod = await openPodWith(kept, plain);
+      const pod = await openPod(plain);
       await pod.close();
-      const before = await bytesIn(plain);
+      const before = await stampsOf(plain);
       await assert.rejects(
-        checkFolderSecret({ derive: fastDerive() }, plain, WORDS),
+        checkSecret(plain, WORDS),
         (error) =>
           error instanceof Unopened && error.outcome === "not encrypted",
       );
-      assert.deepEqual(await bytesIn(plain), before);
+      assert.deepEqual(await stampsOf(plain), before);
+    });
+
+    it("leaves `configureTables` open, since it opens no pod and makes no tables", async () => {
+      const script = `
+        import { checkSecret, configureTables } from "cascade-runtime";
+        await checkSecret(process.argv[1], "a b c d e f").catch(() => undefined);
+        configureTables({});
+      `;
+      await promisify(execFile)(
+        process.execPath,
+        ["--input-type=module", "-e", script, join(pods, "nopod")],
+        { cwd: dirname(fileURLToPath(import.meta.url)), timeout: 120_000 },
+      );
     });
   });
 

@@ -1,4 +1,5 @@
 import { dirname, join, resolve as absolute } from "node:path";
+import { argon2id } from "@cascade-runtime/runtime/node";
 import { resolved } from "./node/resolved.js";
 import { checkedOutcome, startedOutcome } from "./outcomes.js";
 import type { Phase } from "./phase.js";
@@ -190,5 +191,5 @@ export async function checkSecret(
   folder: string,
   secret: string,
 ): Promise<boolean> {
-  return checkFolderSecret(await resolved(), folder, secret);
+  return checkFolderSecret({ derive: argon2id }, folder, secret);
 }
