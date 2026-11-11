@@ -33,7 +33,7 @@ export interface TestCase {
   readonly result: Result;
   /** Seconds, when the report says. */
   readonly seconds?: number;
-  /** What a failed case said, as the report keeps it. */
+  /** What a failed case said, or why a skipped one was skipped, as the report keeps it. */
   readonly message?: string;
   /** What a CTRF report says of the case beyond what the page shows of it, which the CTRF written beside the page keeps. */
   readonly extra?: Readonly<Record<string, unknown>>;
@@ -64,6 +64,23 @@ function decode(text: string): string {
         decimal !== undefined ? Number(decimal) : parseInt(String(hex), 16);
       return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
     });
+}
+
+/** Why a case failed or was skipped: the `message` attribute, else the element's text (nextest writes only that). */
+function reasonOf(
+  attribute: ReadonlyMap<string, string>,
+  selfClosed: string | undefined,
+  text: string,
+  after: number,
+  tag: string,
+): string | undefined {
+  const end = text.indexOf(`</${tag}>`, after);
+  return (
+    attribute.get("message") ||
+    (selfClosed === "/" || end === -1
+      ? undefined
+      : decode(text.slice(after, end)).trim())
+  );
 }
 
 function attributesOf(source: string): ReadonlyMap<string, string> {
@@ -364,17 +381,24 @@ export function readJunit(xml: string): JunitReport {
     } else if (building !== undefined) {
       if (tag === "failure" || tag === "error") {
         building.result = "failed";
-        // nextest writes what failed only as the element's text.
-        const after = found.index + whole.length;
-        const end = text.indexOf(`</${tag}>`, after);
-        const message =
-          attribute.get("message") ||
-          (selfClosed === "/" || end === -1
-            ? undefined
-            : decode(text.slice(after, end)).trim());
+        const message = reasonOf(
+          attribute,
+          selfClosed,
+          text,
+          found.index + whole.length,
+          tag,
+        );
         if (message) building.message = message;
       } else if (tag === "skipped" && building.result === "passed") {
         building.result = "skipped";
+        const reason = reasonOf(
+          attribute,
+          selfClosed,
+          text,
+          found.index + whole.length,
+          tag,
+        );
+        if (reason) building.message = reason;
       }
     }
     if (selfClosed === "/") close(tag);
