@@ -384,3 +384,21 @@ describe("Reading a pod between steps · CorePod.dataset(), CorePod.revision(), 
     });
   });
 });
+
+/** A retitle changes no revision, whatever the title holds: the title's line ends at a newline, not at a separator the manifest's text carries. */
+describe("Retitling a pod · CorePod.retitle(), CorePod.revision()", () => {
+  it("leaves the revision as it was for a title holding a line or paragraph separator", async () => {
+    const pod = new CorePod(
+      options(new MemoryFiles(ADDRESS), await layout(), {
+        now: "2026-02-01T08:00:00Z",
+      }),
+    );
+    await pod.create();
+    await pod.retitle("plain");
+    const titled = await pod.revision();
+    for (const title of ["sep\u2028after", "para\u2029x", "\u2028 ", "a\nb"]) {
+      await pod.retitle(title);
+      assert.equal(await pod.revision(), titled, JSON.stringify(title));
+    }
+  });
+});

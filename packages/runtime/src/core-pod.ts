@@ -247,10 +247,15 @@ class HeldFiles implements Files {
   }
 }
 
-/** The manifest's line giving the pod's title, which a retitle changes and no answer depends on. */
-const TITLE_LINE = /^\S+ <http:\/\/purl\.org\/dc\/terms\/title> .*\n?/gm;
+/** The manifest's line giving the pod's title, which a retitle changes and no answer depends on; a line ends at a newline alone, not at U+2028 or U+2029, which a title may hold. */
+const TITLE_LINE =
+  /(?<=^|\n)\S+ <http:\/\/purl\.org\/dc\/terms\/title> [^\n]*\n?/g;
 
-/** The hash of the pod's address, the files it holds but those the build writes, and its manifest's bytes but its title; nothing is parsed. */
+/**
+ * The hash of the pod's address, the files it holds but those the build writes, and its manifest's bytes but its title;
+ * nothing is parsed. The build adds the title to the pod's union, so a named question that read the manifest's
+ * `dct:title` would keep a stale answer after a retitle; none does.
+ */
 export async function podRevision(
   pod: Files,
   layout: Layout,
