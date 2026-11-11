@@ -341,6 +341,68 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
     });
   });
 
+  describe("given an entry whose session states only that it is a `cascade:HandEntrySession`", () => {
+    let refused: (string | undefined)[];
+    let stopped: unknown;
+    let session: Graph;
+
+    before(async () => {
+      const source = new MemoryFiles("https://story.example/");
+      await source.write(
+        "s/specific.ttl",
+        new TextEncoder()
+          .encode(`<urn:uuid:2d7f4b18-6e35-4c90-b1a2-8f0c3e9d5a67> a <${CASCADE}HandEntrySession> .
+<urn:cascade:output-0> a <${CASCADE}AllergyOrIntolerance> .
+<urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
+  <${CASCADE}allergen> "Peanut" .`),
+      );
+      const story: Story = {
+        address: "https://pod.example/",
+        subject: "urn:uuid:a5e8c1d3-2f47-4b9a-8e60-1c3d5f7a9b24",
+        steps: [
+          {
+            name: "create",
+            when: "2026-06-01T09:00:00Z",
+            happened: { kind: "creation" },
+          },
+          {
+            name: "entry",
+            when: "2026-06-03T09:00:00Z",
+            happened: { kind: "entry", file: "specific.ttl" },
+          },
+        ],
+      };
+      const done = await replay({
+        runtime: RUNTIME,
+        story,
+        source,
+        vocabulary: await vocabulary(),
+        folder: "s",
+        title: "",
+        pod: new MemoryFiles(story.address),
+        newStore,
+        layout: await layout(),
+        importers: [],
+      });
+      stopped = done.stopped;
+      refused = done.steps.map((step) => step.refused);
+      session = await wroteBy(done, 1);
+    });
+
+    it("takes the entry, and files its session as a `prov:Activity` too", () => {
+      const type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+      assert.equal(stopped, undefined);
+      assert.deepEqual(refused, [undefined, undefined]);
+      assert.deepEqual(
+        session
+          .subjects(type, iri(`${CASCADE}HandEntrySession`))
+          .flatMap((act) => session.objects(act, type).map((o) => o.value))
+          .sort(),
+        ["http://www.w3.org/ns/prov#Activity", `${CASCADE}HandEntrySession`],
+      );
+    });
+  });
+
   describe("reachedIn(graph, document)", () => {
     const doc = "ni:///sha-256;doc";
     const transmitter = (act: string, agent: string): string =>

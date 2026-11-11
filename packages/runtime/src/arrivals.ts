@@ -1244,7 +1244,13 @@ export async function fileEntry(
   shapes: Shapes,
 ): Promise<string> {
   let graph = await parseStepFile(entry, context.newStore);
-  const activities = graph.subjects(TYPE, iri(`${PROV}Activity`));
+  const activities = [
+    ...new Map(
+      [`${PROV}Activity`, HAND_ENTRY_SESSION].flatMap((kind) =>
+        graph.subjects(TYPE, iri(kind)).map((act) => [written(act), act]),
+      ),
+    ).values(),
+  ];
   if (activities.length !== 1)
     throw new Refusal(
       `${entry.name} holds ${activities.length} activities, not one`,
@@ -1346,7 +1352,11 @@ export async function fileEntry(
   context.writes.act({
     name: session.value,
     path: sessions.path(session.value),
-    triples: typedAs(graph.closure(session), session, HAND_ENTRY_SESSION),
+    triples: typedAs(
+      typedAs(graph.closure(session), session, `${PROV}Activity`),
+      session,
+      HAND_ENTRY_SESSION,
+    ),
   });
   return session.value;
 }
