@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { TestRun } from "../hub/context.js";
 
 /**
- * One suite's newest run on main, kept in a folder as `junit.xml` with `run.json` beside it (`commit`, `at`, `url`), and
+ * One suite's newest run on main, kept in a folder as `report` (JUnit or CTRF, as its runner wrote it) with `run.json` beside it (`commit`, `at`, `url`), and
  * the `spec.json` its artifact held, when it held one. A folder without both, or a `run.json` that does not name the run,
  * is no run: `log` says so, and the page says so for that suite.
  */
@@ -13,7 +13,7 @@ export async function readTestRun(
   suite: string,
   log: (line: string) => void,
 ): Promise<TestRun | undefined> {
-  const reportFile = join(folder, "junit.xml");
+  const reportFile = join(folder, "report");
   const runFile = join(folder, "run.json");
   if (!existsSync(reportFile) || !existsSync(runFile)) {
     log(`no ${suite} test report in ${folder}, so its page says not available`);

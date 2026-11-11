@@ -470,7 +470,7 @@ function pagesContext(
  * what is made of the kits, which is most of the time. `--report` names the conformance run's EARL report, with its
  * table.md beside it; the spec and conformance pages show every result as not run when there is none. `--tests` names the
  * folder of the unit test reports, a folder in it for each suite of `packages/site/test-suites.json` named as its
- * repository, each with `junit.xml`, `run.json` and perhaps `spec.json`; the page of a suite with none says it is not
+ * repository, each with `report`, `run.json` and perhaps `spec.json`; the page of a suite with none says it is not
  * available.
  */
 async function buildPages(args: string[]): Promise<number> {

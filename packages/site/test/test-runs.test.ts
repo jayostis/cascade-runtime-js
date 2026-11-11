@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { readTestRun } from "../src/node/test-runs.js";
 
-const RUN = { commit: "abc123", at: "2026-11-10T00:00:00Z", url: "https://x/1" };
+const RUN = {
+  commit: "abc123",
+  at: "2026-11-10T00:00:00Z",
+  url: "https://x/1",
+};
 
 /**
  * The deploy keeps each suite's newest run in a folder of the tests folder, whatever runner wrote it: its report, its
