@@ -752,7 +752,10 @@ function ctrf(
   unmeasured: boolean,
 ): unknown {
   const runAt = Date.parse(run.at);
-  // The producer's own start and stop are kept as given; only a JUnit suite has none, and its run's time stands in.
+  // The producer's own start and stop are kept as given; without them the run's time stands in, spanning the cases' time.
+  // Only an unmeasured report has no time to span, and CTRF 0.2.0 still needs a start and a stop.
+  const lasted =
+    suite.runner === "ctrf" ? (duration ?? 0) : Math.round(duration ?? 0);
   const span =
     timing.start !== undefined && timing.stop !== undefined
       ? {
@@ -760,15 +763,15 @@ function ctrf(
           stop: timing.stop,
           duration: timing.stop - timing.start,
         }
-      : suite.runner === "ctrf"
+      : unmeasured
         ? {
             start: Number.isNaN(runAt) ? 0 : runAt,
             stop: Number.isNaN(runAt) ? 0 : runAt,
           }
         : {
             start: Number.isNaN(runAt) ? 0 : runAt,
-            stop: Number.isNaN(runAt) ? 0 : runAt + Math.round(duration ?? 0),
-            duration: Math.round(duration ?? 0),
+            stop: (Number.isNaN(runAt) ? 0 : runAt) + lasted,
+            duration: lasted,
           };
   return {
     reportFormat: "CTRF",
@@ -791,7 +794,7 @@ function ctrf(
       tests: cases.map((one) => ({
         name: one.name,
         status: one.result,
-        duration: Math.round((one.seconds ?? 0) * 1000),
+        duration: one.milliseconds ?? Math.round((one.seconds ?? 0) * 1000),
         ...(one.describes.length === 0 ? {} : { suite: [...one.describes] }),
         ...extraOf(one),
         filePath: one.file,

@@ -4,7 +4,7 @@ import type { Described, Result, TestCase } from "./junit.js";
 export interface CtrfReport {
   readonly cases: TestCase[];
   readonly tool?: string;
-  /** True when the report says no case was timed: each case's `duration` of 0 is then no time at all. */
+  /** True when the report says no case was timed: each case's `duration` of 0 is then no time at all, and none is read. */
   readonly unmeasured: boolean;
   /** When the run began and ended, in milliseconds, as `results.summary` gives them. */
   readonly start?: number;
@@ -30,7 +30,7 @@ const object = (value: unknown): Record<string, unknown> =>
 const text = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
 
-function caseOf(raw: unknown, at: number): TestCase {
+function caseOf(raw: unknown, at: number, unmeasured: boolean): TestCase {
   const given = object(raw);
   const name = text(given["name"]);
   if (name === undefined)
@@ -59,6 +59,7 @@ function caseOf(raw: unknown, at: number): TestCase {
   const description = text(extra["description"]);
   const message = text(given["message"]);
   const line = given["line"];
+  const duration = given["duration"];
   return {
     file: text(given["filePath"]) ?? "",
     describes: suite,
@@ -71,6 +72,9 @@ function caseOf(raw: unknown, at: number): TestCase {
       ? { line }
       : {}),
     ...(message === undefined ? {} : { message }),
+    ...(!unmeasured && typeof duration === "number" && duration >= 0
+      ? { seconds: duration / 1000, milliseconds: duration }
+      : {}),
     ...(Object.keys(passedOn).length === 0 ? {} : { extra: passedOn }),
   };
 }
@@ -97,11 +101,12 @@ export function readCtrf(json: string): CtrfReport {
   const tool = text(object(results["tool"])["name"]);
   const summary = object(results["summary"]);
   const { start, stop } = summary;
+  const unmeasured = object(results["extra"])["caseDurations"] === "unmeasured";
   const timed = typeof start === "number" && typeof stop === "number";
   return {
-    cases: tests.map(caseOf),
+    cases: tests.map((one, at) => caseOf(one, at, unmeasured)),
     ...(tool === undefined ? {} : { tool }),
-    unmeasured: object(results["extra"])["caseDurations"] === "unmeasured",
+    unmeasured,
     ...(timed ? { start, stop } : {}),
   };
 }

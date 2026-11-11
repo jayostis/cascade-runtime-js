@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readCtrf } from "../src/ctrf.js";
-import { unmeasuredCtrf } from "./tests-page.js";
+import { timedCtrf, unmeasuredCtrf } from "./tests-page.js";
 
 /** A CTRF report of the given tests, as cascade-bridge-spec's start action writes one. */
 const reportOf = (...tests: object[]): string =>
@@ -86,6 +86,31 @@ describe("Reading a report already in CTRF · readCtrf()", () => {
       assert.equal(read.unmeasured, false);
       assert.equal(read.start, undefined);
       assert.equal(read.stop, undefined);
+    });
+
+    it("reads a timed test's `duration` in milliseconds as the case's seconds", () => {
+      const read = readCtrf(timedCtrf([2500, 40, 0]));
+      assert.deepEqual(
+        read.cases.map((one) => one.seconds),
+        [2.5, 0.04, 0],
+      );
+      assert.equal(read.unmeasured, false);
+    });
+
+    it("reads no time from a report marked unmeasured, whose `duration` of 0 is no time", () => {
+      const read = readCtrf(unmeasuredCtrf(1000, 4500));
+      assert.ok(read.cases.every((one) => one.seconds === undefined));
+    });
+
+    it("reads no time from a test with no `duration` or one that is not a number", () => {
+      const read = readCtrf(
+        reportOf(
+          { name: "a", status: "passed" },
+          { name: "b", status: "passed", duration: "fast" },
+          { name: "c", status: "passed", duration: -5 },
+        ),
+      );
+      assert.ok(read.cases.every((one) => one.seconds === undefined));
     });
 
     it("throws, naming what is missing, for a text that is not a CTRF report", () => {

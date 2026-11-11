@@ -419,3 +419,28 @@ export const unmeasuredCtrf = (
   if (marked) report.results.extra = { caseDurations: "unmeasured" };
   return JSON.stringify(report);
 };
+
+/**
+ * A CTRF report whose cases are timed, `duration` in milliseconds, as a runner that writes CTRF itself would give it:
+ * no marker, and a run time only when `start` and `stop` are given.
+ */
+export const timedCtrf = (
+  durations: readonly number[],
+  start?: number,
+  stop?: number,
+): string => {
+  const report = JSON.parse(CTRF_REPORT) as {
+    results: {
+      summary: object;
+      tests: { duration: number; name: string }[];
+    };
+  };
+  report.results.tests = durations.map((duration, at) => ({
+    ...report.results.tests[at % report.results.tests.length]!,
+    name: `example-${String(at + 1).padStart(4, "0")}`,
+    duration,
+  }));
+  if (start !== undefined && stop !== undefined)
+    report.results.summary = { ...report.results.summary, start, stop };
+  return JSON.stringify(report);
+};
