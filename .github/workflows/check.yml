@@ -657,7 +657,7 @@ jobs:
               mkdir -p "$try"
               gh run download "$id" -R "$repository" -n "$artifact" -D "$try" </dev/null >/dev/null 2>&1 || true
               if [ -f "$try/$file" ]; then
-                [ "$file" = junit.xml ] || mv "$try/$file" "$try/junit.xml"
+                [ "$file" = report ] || mv "$try/$file" "$try/report"
                 [ -f "$try/run.json" ] || printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$sha" "$at" "$url" > "$try/run.json"
                 mv "$try"/* "$kept"/
                 rm -rf "$try"

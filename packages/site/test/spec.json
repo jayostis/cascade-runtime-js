@@ -27,6 +27,7 @@
     "The summary bar and its controls · testsSection",
     "Reading a report from each test runner · readJunit()",
     "Reading a report already in CTRF · readCtrf()",
+    "Reading a suite's kept run from the tests folder · readTestRun()",
     "Writing doc comments into a report · scripts/junit-reporter.mjs",
     "Failures node:test leaves out of its report · declaredFailures()",
     "Test results for an agent · <repository>.ctrf.json",
