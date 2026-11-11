@@ -73,7 +73,7 @@ function caseOf(raw: unknown, at: number, unmeasured: boolean): TestCase {
       : {}),
     ...(message === undefined ? {} : { message }),
     ...(!unmeasured && typeof duration === "number" && duration >= 0
-      ? { seconds: duration / 1000 }
+      ? { seconds: duration / 1000, milliseconds: duration }
       : {}),
     ...(Object.keys(passedOn).length === 0 ? {} : { extra: passedOn }),
   };

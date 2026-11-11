@@ -227,6 +227,21 @@ describe("A page of test results for each repository · testsSection", () => {
       assert.match(said, /8.00 s/);
     });
 
+    it("shows the same bar and keeps the producer's case durations when its republished CTRF is read back", async () => {
+      const report = timedCtrf([2500, 0.4, 1.5]);
+      const first = await pageWith({}, [
+        { suite: CTRF_SUITE, run: { ...RUN, report } },
+      ]);
+      const written = ctrfOf(first.tree, CTRF_NAME);
+      assert.deepEqual(
+        written.results.tests.map((t) => t.duration),
+        [2500, 0.4, 1.5],
+      );
+      const again = (await barFor(JSON.stringify(written))).said;
+      assert.equal(again, (await barFor(report)).said);
+      assert.match(again, /2.50 s/);
+    });
+
     it("shows no time on a case of a report marked unmeasured", async () => {
       const { markup } = await pageWith({}, [
         {
