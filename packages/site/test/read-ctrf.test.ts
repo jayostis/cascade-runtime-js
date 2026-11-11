@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readCtrf } from "../src/ctrf.js";
+import { unmeasuredCtrf } from "./tests-page.js";
 
 /** A CTRF report of the given tests, as cascade-bridge-spec's start action writes one. */
 const reportOf = (...tests: object[]): string =>
@@ -71,6 +72,20 @@ describe("Reading a report already in CTRF · readCtrf()", () => {
       ).cases;
       assert.equal(one?.file, "fixtures/manifest.ttl");
       assert.equal(one?.line, 42);
+    });
+
+    it("reads the marker that no case was timed, and the run's start and stop", () => {
+      const read = readCtrf(unmeasuredCtrf(1000, 4500));
+      assert.equal(read.unmeasured, true);
+      assert.equal(read.start, 1000);
+      assert.equal(read.stop, 4500);
+    });
+
+    it("reads no marker and no times from a report that holds none", () => {
+      const read = readCtrf(unmeasuredCtrf(undefined, undefined, false));
+      assert.equal(read.unmeasured, false);
+      assert.equal(read.start, undefined);
+      assert.equal(read.stop, undefined);
     });
 
     it("throws, naming what is missing, for a text that is not a CTRF report", () => {

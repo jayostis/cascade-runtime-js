@@ -5,10 +5,12 @@ import { suitesOf } from "../src/hub/tests.js";
 import { NODE, PYTEST } from "./runner-reports.js";
 import { readPage } from "./page.js";
 import {
+  barOf,
   casesOf,
   CTRF_NAME,
   CTRF_REPORT,
   CTRF_SUITE,
+  unmeasuredCtrf,
   ctrfOf,
   levelsOf,
   OTHER_RUN,
@@ -184,6 +186,24 @@ describe("A page of test results for each repository · testsSection", () => {
   });
 
   describe("with a suite whose report is CTRF", () => {
+    const barFor = async (report: string) =>
+      barOf(
+        (await pageWith({}, [{ suite: CTRF_SUITE, run: { ...RUN, report } }]))
+          .markup,
+        CTRF_NAME,
+      );
+
+    it("shows no time for a report whose cases were not timed and that gives no run time", async () => {
+      const { bar } = await barFor(unmeasuredCtrf());
+      assert.doesNotMatch(bar, /class="duration"/);
+    });
+
+    it("shows the run time between its start and stop, not the cases' unmeasured zeros", async () => {
+      const { said } = await barFor(unmeasuredCtrf(1000, 4500));
+      assert.match(said, /3\.50 s/);
+      assert.doesNotMatch(said, /\b0 ms/);
+    });
+
     it("shows its cases under the levels the report names", async () => {
       const { markup } = await pageWith({}, [
         { suite: CTRF_SUITE, run: { ...RUN, report: CTRF_REPORT } },

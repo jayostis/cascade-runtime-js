@@ -13,6 +13,7 @@ import {
   pageWith,
   R,
   RUN,
+  unmeasuredCtrf,
   WITH_GLOSSARY,
 } from "./tests-page.js";
 
@@ -84,6 +85,43 @@ describe("Test results for an agent · <repository>.ctrf.json", () => {
         written.results.tool.name,
         "cascade-bridge-spec compatibility",
       );
+    });
+
+    it("carries the marker that no case was timed, and the run's real start and stop", async () => {
+      const { tree } = await pageWith({}, [
+        {
+          suite: CTRF_SUITE,
+          run: { ...RUN, report: unmeasuredCtrf(1000, 4500) },
+        },
+      ]);
+      const written = ctrfOf(tree, CTRF_NAME) as unknown as {
+        results: {
+          extra?: { caseDurations?: string };
+          summary: { start: number; stop: number; duration: number };
+          tests: { duration: number }[];
+        };
+      };
+      assert.equal(written.results.extra?.caseDurations, "unmeasured");
+      assert.ok(written.results.tests.every((t) => t.duration === 0));
+      const { start, stop, duration } = written.results.summary;
+      assert.equal(start, 1000);
+      assert.equal(stop, 4500);
+      assert.equal(duration, 3500);
+    });
+
+    it("writes the run's time as both start and stop, and no duration, when an unmeasured report gives none", async () => {
+      const { tree } = await pageWith({}, [
+        {
+          suite: CTRF_SUITE,
+          run: { ...RUN, report: unmeasuredCtrf() },
+        },
+      ]);
+      const { summary } = ctrfOf(tree, CTRF_NAME).results as unknown as {
+        summary: Record<string, unknown>;
+      };
+      assert.equal(summary.start, Date.parse(RUN.at));
+      assert.equal(summary.stop, Date.parse(RUN.at));
+      assert.ok(!("duration" in summary));
     });
 
     it("keeps what the report says of a case beyond its levels and description", async () => {
