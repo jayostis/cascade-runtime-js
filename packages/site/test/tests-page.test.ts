@@ -17,6 +17,7 @@ import {
   partOf,
   R,
   RUN,
+  skipReasonsOf,
   suite,
   text,
   V,
@@ -107,6 +108,21 @@ describe("A page of test results for each repository · testsSection", () => {
     it("counts the cases that passed, failed and were skipped", () => {
       assert.match(built.page.said, /4 cases: 2 passed, 1 failed, 1 skipped/);
       assert.match(built.page.said, /3 cases: 1 passed, 1 failed, 1 skipped/);
+    });
+  });
+
+  describe("with skipped cases", () => {
+    const SKIPS = `<?xml version="1.0"?><testsuites name="pytest tests"><testsuite name="pytest"><testcase classname="tests.test_a" name="test_message"><skipped type="pytest.skip" message="no cascade-vocabulary checkout &amp; so on"/></testcase><testcase classname="tests.test_a" name="test_text"><skipped type="pytest.skip">only in the text</skipped></testcase><testcase classname="tests.test_a" name="test_bare"><skipped/></testcase></testsuite></testsuites>`;
+
+    it("shows each reason as a short line: the message, else the element's text, else none", async () => {
+      const { markup } = await pageWith({
+        vocabulary: { report: SKIPS, ...OTHER_RUN },
+      });
+      assert.deepEqual(skipReasonsOf(markup, V), [
+        "no cascade-vocabulary checkout & so on",
+        "only in the text",
+      ]);
+      assert.doesNotMatch(markup, /<pre class="failure">/);
     });
   });
 

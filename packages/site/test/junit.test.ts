@@ -20,6 +20,7 @@ import {
   partOf,
   R,
   RUN,
+  skipReasonsOf,
   suite,
   text,
   V,
@@ -84,6 +85,14 @@ describe("Reading a report from each test runner · readJunit()", () => {
     it("keeps what a failed case said, its markup shown as text", () => {
       assert.equal(failureOf(markup, R), "1 == 2 and 3 > 2");
     });
+
+    it("keeps why a case was skipped, as a line and not a failure block", () => {
+      assert.deepEqual(skipReasonsOf(markup, R), ["later"]);
+      assert.doesNotMatch(
+        markup.split(`id="${R}"`)[1] ?? "",
+        /<pre class="failure">[^<]*later/,
+      );
+    });
   });
 
   describe("with a pytest report", () => {
@@ -108,6 +117,10 @@ describe("Reading a report from each test runner · readJunit()", () => {
         ["test_gone", "failed", "200 ms"],
         ["test_later", "skipped", "0 ms"],
       ]);
+    });
+
+    it("keeps why a case was skipped", () => {
+      assert.deepEqual(skipReasonsOf(markup, V), ["later"]);
     });
 
     it("links the module's file at the commit run", () => {
