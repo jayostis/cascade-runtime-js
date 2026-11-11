@@ -638,6 +638,13 @@ async function nameFaults(run: KitRun, held: Written): Promise<string[]> {
         .map(([s, p, o]) => [swap(s), p, swap(o)] as unknown as Triple);
       const found = new Map<string, Triple>();
       const keyed = (t: Triple): string => t.map(written).join(" ");
+      const typed: Triple = [
+        iri(thisImport),
+        iri(TYPE),
+        iri(`${CASCADE}DocumentImport`),
+      ];
+      if (!expected.some((t) => keyed(t) === keyed(typed)))
+        expected.push(typed);
       for (const subject of new Set(
         expected.flatMap(([s]) =>
           s.termType === "NamedNode" ? [s.value] : [],

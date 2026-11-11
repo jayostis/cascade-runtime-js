@@ -22,6 +22,7 @@ import {
 } from "./names.js";
 import type { StepWrites } from "./pod.js";
 import {
+  type BlankNode,
   iri,
   literal,
   type NamedNode,
@@ -62,6 +63,8 @@ const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const CURRENT_REVISIONS = `${QUERIES}derivations/current-revisions.rq`;
 const LADDER_LENS = "everyday";
 const SERVER = `${CASCADE}Server`;
+const DOCUMENT_IMPORT = `${CASCADE}DocumentImport`;
+const HAND_ENTRY_SESSION = `${CASCADE}HandEntrySession`;
 const SERVER_BASE_URL = `${CASCADE}serverBaseUrl`;
 const OA = "http://www.w3.org/ns/oa#";
 const FINDING = `${CASCADE}FindingForReview`;
@@ -1036,6 +1039,26 @@ function importDescription(
   );
 }
 
+/** An act's description, stating once that the act is a `kind` (A11, A12). */
+function typedAs(
+  triples: readonly Triple[],
+  act: NamedNode | BlankNode,
+  kind: string,
+): Triple[] {
+  return [
+    ...triples.filter(
+      ([s, p, o]) =>
+        !(
+          s.termType === act.termType &&
+          s.value === act.value &&
+          p.value === TYPE &&
+          o.value === kind
+        ),
+    ),
+    [act, iri(TYPE), iri(kind)],
+  ];
+}
+
 async function hasFindings(
   findings: Uint8Array,
   document: string,
@@ -1203,7 +1226,7 @@ export async function fileExport(
     name,
     path: layout.place(`${PROV}Activity`, [USED]).path(name),
     triples: [
-      ...(descriptions[0] ?? []),
+      ...typedAs(descriptions[0] ?? [], iri(name), DOCUMENT_IMPORT),
       ...[...kept.keys()].map((document): Triple => [
         iri(name),
         iri(USED),
@@ -1221,7 +1244,13 @@ export async function fileEntry(
   shapes: Shapes,
 ): Promise<string> {
   let graph = await parseStepFile(entry, context.newStore);
-  const activities = graph.subjects(TYPE, iri(`${PROV}Activity`));
+  const activities = [
+    ...new Map(
+      [`${PROV}Activity`, HAND_ENTRY_SESSION].flatMap((kind) =>
+        graph.subjects(TYPE, iri(kind)).map((act) => [written(act), act]),
+      ),
+    ).values(),
+  ];
   if (activities.length !== 1)
     throw new Refusal(
       `${entry.name} holds ${activities.length} activities, not one`,
@@ -1323,7 +1352,11 @@ export async function fileEntry(
   context.writes.act({
     name: session.value,
     path: sessions.path(session.value),
-    triples: graph.closure(session),
+    triples: typedAs(
+      typedAs(graph.closure(session), session, `${PROV}Activity`),
+      session,
+      HAND_ENTRY_SESSION,
+    ),
   });
   return session.value;
 }
