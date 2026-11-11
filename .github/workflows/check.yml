@@ -216,6 +216,10 @@ jobs:
       - name: Run the tests page's script
         if: ${{ !cancelled() }}
         run: npm run test:tests-page
+      # The packed browser build opens a pod over IndexedDB in Chromium, retitles it and opens it again.
+      - name: Retitle a pod in a browser
+        if: ${{ !cancelled() }}
+        run: npm run test:pod-browser
       # A newcomer on the front page of this tree reaches each row of "Find your way" in one click, on a page of the expected title.
       - name: Walk the front page's rows
         if: ${{ !cancelled() }}

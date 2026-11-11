@@ -4,6 +4,7 @@ import type { AdaptersOf } from "./bridge.js";
 import {
   builtFileBytes,
   type Derive,
+  manifest,
   type PodState,
   type VocabularyBuild,
 } from "./build.js";
@@ -68,8 +69,8 @@ export interface CorePodOptions {
   readonly pod: Files;
   readonly address: string;
   readonly subject: string;
-  /** What the pod's manifest takes as its title. */
-  readonly title: string;
+  /** What the pod's manifest takes as its title; none for a pod that was never titled, whose manifest holds no title. */
+  readonly title: string | undefined;
   /** The vocabulary, whose queries the matcher and the build run. */
   readonly vocabulary: Files;
   readonly layout: Layout;
@@ -246,7 +247,15 @@ class HeldFiles implements Files {
   }
 }
 
-/** The hash of the pod's address, the files it holds but those the build writes, and its manifest's bytes; nothing is parsed. */
+/** The manifest's line giving the pod's title, which a retitle changes and no answer depends on; a line ends at a newline alone, not at U+2028 or U+2029, which a title may hold. */
+const TITLE_LINE =
+  /(?<=^|\n)\S+ <http:\/\/purl\.org\/dc\/terms\/title> [^\n]*\n?/g;
+
+/**
+ * The hash of the pod's address, the files it holds but those the build writes, and its manifest's bytes but its title;
+ * nothing is parsed. The build adds the title to the pod's union, so a named question that read the manifest's
+ * `dct:title` would keep a stale answer after a retitle; none does.
+ */
 export async function podRevision(
   pod: Files,
   layout: Layout,
@@ -259,7 +268,13 @@ export async function podRevision(
       (await pod.list("")).filter((path) => !rebuilt.has(path)).sort(),
     ]),
   );
-  const manifest = (await pod.read(layout.manifest)) ?? new Uint8Array();
+  const written = await pod.read(layout.manifest);
+  const manifest =
+    written === undefined
+      ? new Uint8Array()
+      : new TextEncoder().encode(
+          new TextDecoder().decode(written).replace(TITLE_LINE, ""),
+        );
   const bytes = new Uint8Array(listing.length + manifest.length);
   bytes.set(listing);
   bytes.set(manifest, listing.length);
@@ -408,7 +423,7 @@ async function copied(pod: Files): Promise<Files> {
  * refused, no file of the person's, and with a build the views and the other files the build writes are rebuilt after it.
  */
 export class CorePod {
-  readonly #options: CorePodOptions;
+  #options: CorePodOptions;
   #references: Promise<References> | undefined;
   #readShapes: Promise<Shapes> | undefined;
   /** What is built of the pod as it stands, by what it is; a step drops it all. */
@@ -495,6 +510,35 @@ export class CorePod {
       const { pod, layout, address } = this.#options;
       return podRevision(pod, layout, address);
     });
+  }
+
+  /**
+   * Sets the title the pod's manifest takes, and writes the manifest again with it, as a build writes it. The manifest
+   * is a rebuilt file, outside the set hash, and the revision hashes it but for its title, so no revision, set hash or
+   * kept answer changes. What is kept is dropped, since it holds the old title; the pod builds again when next read.
+   */
+  async retitle(title: string): Promise<void> {
+    this.#options = { ...this.#options, title };
+    const { pod, layout, address, build, time } = this.#options;
+    this.#release();
+    this.#dropBuilt();
+    if (build === undefined) return;
+    const store = this.#options.newStore();
+    let at: string;
+    try {
+      at = (await podStated(pod, layout, store)).at ?? time.now();
+    } finally {
+      store.free?.();
+    }
+    await pod.write(
+      layout.manifest,
+      builtFileBytes(
+        layout,
+        address,
+        layout.manifest,
+        manifest(address + layout.manifest, title, at, this.#head?.snapshot),
+      ),
+    );
   }
 
   /** Drops what is kept, and frees it; the pod builds again when next read. */

@@ -27,6 +27,7 @@ import {
   ntriples,
   OxigraphStore,
   type Placed,
+  type PodKey,
   questions,
   RDF,
   type Triple,
@@ -1224,6 +1225,147 @@ describe("Opening a pod again · openPod()", () => {
         firstParent: [head1.snapshot],
         merged: [],
       });
+    });
+  });
+
+  describe("when a pod is retitled · pod.retitle(title), pod.titled", () => {
+    const DCT_TITLE = "http://purl.org/dc/terms/title";
+
+    /** The pod as a packed runtime opens it, its answers kept beside it, and Argon2id stood in for. */
+    const open = (
+      at: string,
+      options: { title?: string; secret?: string } = {},
+    ) => openFolderPod({ ...kept, derive: fastDerive() }, at, options);
+
+    /** The title the manifest and `pod.json` of the pod in the folder hold, read from the disk, with the key of a sealed pod. */
+    async function titlesOf(at: string, key?: PodKey) {
+      const own = new FolderFiles(at);
+      const answers = kept.answers?.at(at);
+      assert.ok(answers);
+      const [files, described] =
+        key === undefined
+          ? [own, answers]
+          : [
+              new EncryptedFiles(own, key),
+              new EncryptedFiles(answers, key, { kind: "answers" }),
+            ];
+      const bytes = await files.read(kept.layout.manifest);
+      assert.ok(bytes, "the pod has no manifest");
+      const triples = await new OxigraphStore().parse(
+        bytes,
+        "pod://titles/manifest.ttl",
+      );
+      return {
+        manifest: triples.find(([, p]) => p.value === DCT_TITLE)?.[2].value,
+        described: await new Answers(described, "").described(),
+      };
+    }
+
+    it("gives the new title in the manifest, in `pod.json` and on the reopened pod, and leaves the kept rows of a question as they were", async () => {
+      const at = join(pods, "retitled");
+      await cp((await alexPod()).folder, at, { recursive: true });
+      const first = await open(at);
+      let rows: Rows;
+      try {
+        assert.equal(first.titled, false);
+        rows = await first.ask(QUESTION);
+        assert.ok(rows.length > 0);
+        await first.retitle("Ada Lovelace");
+        assert.equal(first.titled, true);
+      } finally {
+        await first.close();
+      }
+      const stored = await titlesOf(at);
+      assert.equal(stored.manifest, "Ada Lovelace");
+      assert.equal(stored.described?.title, "Ada Lovelace");
+      const second = await open(at);
+      try {
+        assert.equal(second.titled, true);
+      } finally {
+        await second.close();
+      }
+      assert.equal((await titlesOf(at)).manifest, "Ada Lovelace");
+      await opened(unbuilt(), at, async (pod) => {
+        assert.deepEqual(await pod.ask(QUESTION), rows);
+      });
+    });
+
+    it("says a pod is titled only when a title was given when it was made or by `retitle`", async () => {
+      const untitled = join(pods, "untitled");
+      const named = join(pods, "named");
+      const states: boolean[] = [];
+      for (const [at, options] of [
+        [untitled, {}],
+        [named, { title: "ada" }],
+        [untitled, {}],
+        [named, {}],
+      ] as const) {
+        const pod = await open(at, options);
+        states.push(pod.titled);
+        await pod.close();
+      }
+      assert.deepEqual(states, [false, true, false, true]);
+      const stored = await titlesOf(untitled);
+      assert.equal(stored.manifest, undefined);
+      assert.equal(stored.described?.title, "untitled");
+      assert.equal(stored.described?.titled, false);
+      assert.equal((await titlesOf(named)).manifest, "ada");
+    });
+
+    it("refuses an empty or all-whitespace title with a `Refusal`, leaving the pod untitled", async () => {
+      const at = join(pods, "refusing");
+      const pod = await open(at);
+      try {
+        for (const title of ["", " ", "\n\t "])
+          await assert.rejects(
+            pod.retitle(title),
+            (error) => error instanceof Refusal,
+            JSON.stringify(title),
+          );
+        assert.equal(pod.titled, false);
+      } finally {
+        await pod.close();
+      }
+      assert.equal((await titlesOf(at)).manifest, undefined);
+    });
+
+    it("seals the new title of an encrypted pod, which opens again with its secret as titled", async () => {
+      const at = join(pods, "retitled-sealed");
+      const made = await open(at, { secret: WORDS });
+      try {
+        assert.equal(made.titled, false);
+        await made.retitle("Ada Lovelace");
+      } finally {
+        await made.close();
+      }
+      const reopened = await open(at, { secret: WORDS });
+      try {
+        assert.equal(reopened.titled, true);
+      } finally {
+        await reopened.close();
+      }
+      const key = await podKey(
+        {
+          files: new FolderFiles(at),
+          header: await headerIn(at),
+          reread: () => headerIn(at),
+          held: async () => true,
+        },
+        WORDS,
+        fastDerive(),
+      );
+      assert.ok(key);
+      const stored = await titlesOf(at, key);
+      assert.equal(stored.manifest, "Ada Lovelace");
+      assert.equal(stored.described?.title, "Ada Lovelace");
+      for (const file of [
+        ...(await filesIn(at)),
+        ...(await filesIn(join(pods, ".answers", "retitled-sealed"))),
+      ])
+        assert.ok(
+          !(await readFile(file, "latin1")).includes("Ada Lovelace"),
+          file,
+        );
     });
   });
 });

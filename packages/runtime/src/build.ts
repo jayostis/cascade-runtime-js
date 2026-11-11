@@ -29,7 +29,8 @@ export interface PodState {
   readonly address: string;
   /** The time of the step, an `xsd:dateTime`. */
   readonly at: string;
-  readonly title: string;
+  /** None for a pod that was never titled: its manifest then holds no `dct:title`. */
+  readonly title: string | undefined;
   /** The writer's last snapshot, which the manifest's build used: a view is stale when the writer's is another. */
   readonly snapshot?: string;
 }
@@ -166,9 +167,10 @@ export function typeIndex(
   ];
 }
 
-function manifest(
+/** The triples of a pod's manifest. */
+export function manifest(
   file: string,
-  title: string,
+  title: string | undefined,
   at: string,
   snapshot?: string,
 ): Triple[] {
@@ -178,7 +180,9 @@ function manifest(
   const created = literal(at, `${XSD}dateTime`);
   return [
     [manifest, iri(TYPE), iri(`${CASCADE}PodManifest`)],
-    [manifest, iri(`${DCT}title`), literal(title)],
+    ...(title === undefined
+      ? []
+      : [[manifest, iri(`${DCT}title`), literal(title)] as Triple]),
     [manifest, iri(`${DCT}created`), created],
     [manifest, iri(`${PROV}wasGeneratedBy`), activity],
     [activity, iri(TYPE), iri(`${PROV}Activity`)],

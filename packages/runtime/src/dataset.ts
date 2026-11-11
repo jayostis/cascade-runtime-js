@@ -42,7 +42,7 @@ export async function built(
   address: string,
   files: readonly string[],
   at: string | undefined,
-  title: string,
+  title: string | undefined,
   lens: string,
   union: Union,
   derive?: Derive,

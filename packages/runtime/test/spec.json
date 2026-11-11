@@ -12,6 +12,7 @@
     "Writing a code as an IRI · codeIri()",
     "Minting IDs and telling the time · clock, StoryTime",
     "Reading a pod between steps · CorePod.dataset(), CorePod.revision(), CorePod.close()",
+    "Retitling a pod · CorePod.retitle(), CorePod.revision()",
     "Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()",
     "Building a pod's views, labels and type index · CorePodOptions.build, vocabularyDerive(), podDataset()",
     "Receiving another writer's files · CorePod.receive()",

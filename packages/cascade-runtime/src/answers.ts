@@ -6,6 +6,8 @@ export interface Described {
   readonly address: string;
   readonly subject: string;
   readonly title: string;
+  /** Whether a title was given when the pod was made or by `retitle`; a `pod.json` that says nothing says it was. */
+  readonly titled: boolean;
   /** The versions of the tables the pod was published with, sorted. */
   readonly tables?: readonly string[];
 }
@@ -87,6 +89,7 @@ export class Answers {
             address: found.address,
             subject: found.subject,
             title: found.title,
+            titled: found.titled !== false,
             ...(Array.isArray(found.tables) &&
             found.tables.every((version) => typeof version === "string")
               ? { tables: found.tables as readonly string[] }
@@ -103,7 +106,8 @@ export class Answers {
     if (
       found?.address !== described.address ||
       found.subject !== described.subject ||
-      found.title !== described.title
+      found.title !== described.title ||
+      found.titled !== described.titled
     ) {
       this.#described = Promise.resolve(described);
       await written(this.#files, DESCRIBED, described);
