@@ -9,6 +9,7 @@ import {
   CTRF_NAME,
   CTRF_REPORT,
   CTRF_SUITE,
+  ctrfOf,
   levelsOf,
   OTHER_RUN,
   PATH,
@@ -123,6 +124,24 @@ describe("A page of test results for each repository · testsSection", () => {
         "only in the text",
       ]);
       assert.doesNotMatch(markup, /<pre class="failure">/);
+    });
+
+    it("gives each reason as the CTRF entry's message: the message, else the element's text, else none", async () => {
+      const { tree } = await pageWith({
+        vocabulary: { report: SKIPS, ...OTHER_RUN },
+      });
+      assert.deepEqual(
+        ctrfOf(tree, V).results.tests.map(({ name, status, message }) => [
+          name,
+          status,
+          message,
+        ]),
+        [
+          ["test_message", "skipped", "no cascade-vocabulary checkout & so on"],
+          ["test_text", "skipped", "only in the text"],
+          ["test_bare", "skipped", undefined],
+        ],
+      );
     });
   });
 

@@ -66,6 +66,23 @@ function decode(text: string): string {
     });
 }
 
+/** Why a case failed or was skipped: the `message` attribute, else the element's text (nextest writes only that). */
+function reasonOf(
+  attribute: ReadonlyMap<string, string>,
+  selfClosed: string | undefined,
+  text: string,
+  after: number,
+  tag: string,
+): string | undefined {
+  const end = text.indexOf(`</${tag}>`, after);
+  return (
+    attribute.get("message") ||
+    (selfClosed === "/" || end === -1
+      ? undefined
+      : decode(text.slice(after, end)).trim())
+  );
+}
+
 function attributesOf(source: string): ReadonlyMap<string, string> {
   const found = new Map<string, string>();
   for (const [, name, double, single] of source.matchAll(ATTRIBUTE))
@@ -364,25 +381,23 @@ export function readJunit(xml: string): JunitReport {
     } else if (building !== undefined) {
       if (tag === "failure" || tag === "error") {
         building.result = "failed";
-        // nextest writes what failed only as the element's text.
-        const after = found.index + whole.length;
-        const end = text.indexOf(`</${tag}>`, after);
-        const message =
-          attribute.get("message") ||
-          (selfClosed === "/" || end === -1
-            ? undefined
-            : decode(text.slice(after, end)).trim());
+        const message = reasonOf(
+          attribute,
+          selfClosed,
+          text,
+          found.index + whole.length,
+          tag,
+        );
         if (message) building.message = message;
       } else if (tag === "skipped" && building.result === "passed") {
         building.result = "skipped";
-        // pytest and node:test give the reason as `message`; some runners give it only as the element's text.
-        const after = found.index + whole.length;
-        const end = text.indexOf(`</${tag}>`, after);
-        const reason =
-          attribute.get("message") ||
-          (selfClosed === "/" || end === -1
-            ? undefined
-            : decode(text.slice(after, end)).trim());
+        const reason = reasonOf(
+          attribute,
+          selfClosed,
+          text,
+          found.index + whole.length,
+          tag,
+        );
         if (reason) building.message = reason;
       }
     }

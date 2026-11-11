@@ -236,6 +236,7 @@ export function ctrfOf(tree: ReadonlyMap<string, Uint8Array>, name = R) {
         suite?: string[];
         status: string;
         duration: number;
+        message?: string;
         extra?: { description?: string; levels?: unknown[] };
       }[];
     };
