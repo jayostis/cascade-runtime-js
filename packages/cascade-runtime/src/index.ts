@@ -1,8 +1,9 @@
 import { dirname, join, resolve as absolute } from "node:path";
+import { argon2id } from "@cascade-runtime/runtime/node";
 import { resolved } from "./node/resolved.js";
 import { checkedOutcome, startedOutcome } from "./outcomes.js";
 import type { Phase } from "./phase.js";
-import { openFolderPod } from "./node/folder-pod.js";
+import { checkFolderSecret, openFolderPod } from "./node/folder-pod.js";
 import type { Pod } from "./pod.js";
 import { CHECK_ON_OPEN_MS, type Tables } from "./tables.js";
 
@@ -178,4 +179,17 @@ export async function openPod(
     folder,
     options,
   );
+}
+
+/**
+ * Whether `secret` opens the encrypted pod in `folder`, as typed or as `typedWords` cleans it, as `openPod` takes it:
+ * true for the right secret, false for a wrong one. It reads only the pod's header and derives one key; it writes
+ * nothing, loads no tables or records and opens no pod, so a pod open on the folder is left as it is. Throws `Unopened`
+ * with `not encrypted` for a folder with no header, and with `malformed` or `unsupported version` for a header that is.
+ */
+export async function checkSecret(
+  folder: string,
+  secret: string,
+): Promise<boolean> {
+  return checkFolderSecret({ derive: argon2id }, folder, secret);
 }

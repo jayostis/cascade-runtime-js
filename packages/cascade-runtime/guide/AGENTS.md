@@ -67,6 +67,13 @@ A pod's answers are kept beside it, never in it: in `.answers/<name>/` beside
 its folder. An ask by name returns what was kept until any step changes the
 pod or the tables; removing a pod's folder, remove its `.answers/<name>` too.
 
+To seal a pod, give `openPod` a `secret`: a new pod is made encrypted under it,
+and an encrypted pod opens only with it. Make one with `sixWords()` (six words
+the person writes down), and pass what they type back as it is: `openPod` also
+tries it as `typedWords(text)` cleans it. A wrong secret, or a secret for a
+pod that is not sealed, throws `Unopened`. `await checkSecret(folder, secret)`
+answers `true` or `false` without opening the pod or writing anything.
+
 The matcher's reference tables come from the feeds `cascade-runtime.json`
 names. The pods in a folder share `.tables/` in it: the first `openPod` in a
 process reads the feeds, unless `tables.checkOnOpen` is `false`, and keeps each
