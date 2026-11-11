@@ -76,3 +76,28 @@ async function openedWith(
     return openHeader(header, cleaned, derive);
   }
 }
+
+/**
+ * Whether the secret opens the pod's header, as typed or as `typedWords` cleans it; false for an incorrect one. Reads
+ * nothing but the header it is given. Throws `Unopened` for a header that is none (`not encrypted`), malformed or of an
+ * unsupported version.
+ */
+export async function secretChecked(
+  header: Uint8Array | undefined,
+  secret: string,
+  derive: DeriveKey,
+): Promise<boolean> {
+  if (header === undefined)
+    throw new Unopened(
+      "not encrypted",
+      "The pod is not encrypted: it has no secret to check.",
+    );
+  try {
+    await openedWith(header, secret, derive);
+    return true;
+  } catch (error) {
+    if (error instanceof Unopened && error.outcome === "incorrect secret")
+      return false;
+    throw error;
+  }
+}

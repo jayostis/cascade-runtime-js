@@ -1,7 +1,7 @@
 import { resolve as absolute } from "node:path";
 import { Refusal } from "@cascade-runtime/runtime";
 import { headerIn } from "@cascade-runtime/runtime/node";
-import { podKey } from "../encrypted.js";
+import { podKey, secretChecked } from "../encrypted.js";
 import { openPodWith, type Parts, type Pod } from "../pod.js";
 
 /**
@@ -38,4 +38,16 @@ export async function openFolderPod(
     folder,
     key === undefined ? rest : { ...rest, key },
   );
+}
+
+/**
+ * Whether the secret opens the encrypted pod in the folder: only its header is read, and nothing is written, loaded or
+ * opened. See `secretChecked`.
+ */
+export async function checkFolderSecret(
+  parts: Pick<Parts, "derive">,
+  folder: string,
+  secret: string,
+): Promise<boolean> {
+  return secretChecked(await headerIn(absolute(folder)), secret, parts.derive);
 }

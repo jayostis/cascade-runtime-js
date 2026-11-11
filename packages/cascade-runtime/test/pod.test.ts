@@ -52,7 +52,7 @@ import { kitDownload, kitStory, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
 import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
-import { openFolderPod } from "../src/node/folder-pod.js";
+import { checkFolderSecret, openFolderPod } from "../src/node/folder-pod.js";
 import { answersToPublish, partsOf } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
@@ -1388,6 +1388,51 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
         assert.deepEqual(await filesIn(at), held, name);
       }
       assert.equal(derive.calls, 0);
+    });
+  });
+
+  describe("checkSecret(folder, secret)", () => {
+    const bytesIn = async (at: string) =>
+      Promise.all(
+        (await filesIn(at)).map(async (file) => [
+          file,
+          (await readFile(file)).toString("hex"),
+        ]),
+      );
+
+    it("answers true for the secret, as typed or cleaned, and false for another, deriving one key each and leaving the pod's folder and answers as they were", async () => {
+      const { folder: at } = await sealedPod();
+      const before = [
+        await bytesIn(at),
+        await bytesIn(join(pods, ".answers", "sealed")),
+      ];
+      const derive = fastDerive();
+      const answers = [];
+      for (const secret of [
+        WORDS,
+        " T-SHIRT, Abacus yo yo zoom drop down felt-tip ",
+        "a b c d e f",
+      ])
+        answers.push(await checkFolderSecret({ derive }, at, secret));
+      assert.deepEqual(answers, [true, true, false]);
+      assert.equal(derive.calls, 4);
+      assert.deepEqual(before, [
+        await bytesIn(at),
+        await bytesIn(join(pods, ".answers", "sealed")),
+      ]);
+    });
+
+    it("throws `Unopened` with `not encrypted` for a pod that has no header, and writes nothing", async () => {
+      const plain = join(pods, "plain-checked");
+      const pod = await openPodWith(kept, plain);
+      await pod.close();
+      const before = await bytesIn(plain);
+      await assert.rejects(
+        checkFolderSecret({ derive: fastDerive() }, plain, WORDS),
+        (error) =>
+          error instanceof Unopened && error.outcome === "not encrypted",
+      );
+      assert.deepEqual(await bytesIn(plain), before);
     });
   });
 

@@ -37,7 +37,7 @@ import {
 } from "@cascade-runtime/runtime/web";
 import { ANSWERS, Answers, DESCRIBED } from "../answers.js";
 import { LOOKUPS, type Lookups, lookupsOf, withLookups } from "../lookups.js";
-import { podKey } from "../encrypted.js";
+import { podKey, secretChecked } from "../encrypted.js";
 import {
   bridgeLoaded,
   type Done,
@@ -928,6 +928,32 @@ export async function podTitle(name: string): Promise<string | undefined> {
     return (await new Answers(kept, "").described())?.title;
   } finally {
     kept.close();
+  }
+}
+
+/**
+ * Whether `secret` opens the encrypted pod in the browser's database `cascade-pod:<name>`, as typed or as `typedWords`
+ * cleans it, as `openPod` takes it: true for the right secret, false for a wrong one. It reads only the pod's header and
+ * derives one key; it writes nothing, opens no pod and creates no database, so a pod open under the name is left as it
+ * is. Throws `Unopened` with `not encrypted` for a name with no pod or no header, and with `malformed` or `unsupported
+ * version` for a header that is. A failure of IndexedDB itself is thrown.
+ */
+export async function checkSecret(
+  name: string,
+  secret: string,
+): Promise<boolean> {
+  const here = (await indexedDB.databases()).some(
+    (each) => each.name === DATABASE + name,
+  );
+  if (!here) return secretChecked(undefined, secret, derive());
+  const database = await IndexedDbFiles.open(
+    DATABASE + name,
+    `${DATABASE}${name}/`,
+  );
+  try {
+    return await secretChecked(await database.read(HEADER), secret, derive());
+  } finally {
+    database.close();
   }
 }
 
