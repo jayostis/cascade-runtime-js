@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { NODE, NODE_UNLISTED } from "./runner-reports.js";
 import {
+  CTRF_NAME,
+  CTRF_REPORT,
+  CTRF_SUITE,
   ctrfOf,
   ctrfPath,
   DESCRIBED,
@@ -66,6 +69,32 @@ describe("Test results for an agent · <repository>.ctrf.json", () => {
         runtime: { report: NODE_UNLISTED, ...RUN },
       });
       assert.equal(ctrfOf(tree).results.summary["failed"], 1);
+    });
+  });
+
+  describe("with a suite whose report is CTRF", () => {
+    it("names the tool the report names, not the suite's runner", async () => {
+      const { tree } = await pageWith({}, [
+        { suite: CTRF_SUITE, run: { ...RUN, report: CTRF_REPORT } },
+      ]);
+      const written = ctrfOf(tree, CTRF_NAME) as unknown as {
+        results: { tool: { name: string } };
+      };
+      assert.equal(
+        written.results.tool.name,
+        "cascade-bridge-spec compatibility",
+      );
+    });
+
+    it("keeps what the report says of a case beyond its levels and description", async () => {
+      const { tree } = await pageWith({}, [
+        { suite: CTRF_SUITE, run: { ...RUN, report: CTRF_REPORT } },
+      ]);
+      const one = ctrfOf(tree, CTRF_NAME).results.tests.find(
+        (t) => t.name === "example-0003",
+      ) as { extra?: Record<string, unknown> } | undefined;
+      assert.equal(one?.extra?.["outcome"], "passed");
+      assert.equal(one?.extra?.["type"], "Isomorphic conversion test");
     });
   });
 

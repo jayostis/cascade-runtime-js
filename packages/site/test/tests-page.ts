@@ -38,6 +38,63 @@ export const VOCABULARY = suite(
   "The vocabulary's tests",
 );
 
+/** An adapter's fixture cases: no test runner ran them, and cascade-bridge-spec's start action wrote their CTRF. */
+export const CTRF_SUITE: Suite = {
+  ...suite(
+    "jayostis/cascade-bridge-adapter-fhir-r4",
+    "ctrf",
+    "The FHIR R4 adapter's fixture cases",
+  ),
+  report: "report.ctrf.json",
+  tests: "fixtures/",
+};
+export const CTRF_NAME = "cascade-bridge-adapter-fhir-r4";
+const LEVELS = ["synthetic adapter fixture cases", "with engine on native"];
+export const CTRF_REPORT = JSON.stringify({
+  reportFormat: "CTRF",
+  specVersion: "0.2.0",
+  results: {
+    tool: { name: "cascade-bridge-spec compatibility" },
+    summary: {
+      tests: 2,
+      passed: 1,
+      failed: 1,
+      skipped: 0,
+      pending: 0,
+      other: 0,
+    },
+    tests: [
+      {
+        name: "example-0003",
+        status: "passed",
+        duration: 0,
+        suite: LEVELS,
+        filePath: "fixtures/manifest.ttl",
+        line: 42,
+        extra: {
+          description: "A document that fails its schema.",
+          outcome: "passed",
+          type: "Isomorphic conversion test",
+          levels: [
+            { name: LEVELS[0], description: "10 cases of an adapter." },
+            { name: LEVELS[1] },
+          ],
+        },
+      },
+      {
+        name: "example-0001",
+        status: "failed",
+        duration: 0,
+        suite: LEVELS,
+        filePath: "fixtures/manifest.ttl",
+        line: 31,
+        message: "example-0001 is reported failed",
+        extra: { outcome: "failed" },
+      },
+    ],
+  },
+});
+
 export const RUN = {
   commit: "0123456789abcdef0123456789abcdef01234567",
   at: "2026-11-04T22:12:35Z",

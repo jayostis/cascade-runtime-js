@@ -73,5 +73,25 @@
     "artifact": "unit-tests",
     "report": "junit.xml",
     "runner": "pytest"
+  },
+  {
+    "repository": "jayostis/cascade-bridge-adapter-fhir-r4",
+    "title": "The FHIR R4 adapter's fixture cases",
+    "about": "each fixture case of the adapter, run by each host of each engine it must pass with",
+    "workflow": "validate.yml",
+    "artifact": "report-cascade-bridge-adapter-fhir-r4",
+    "report": "report.ctrf.json",
+    "runner": "ctrf",
+    "tests": "fixtures/"
+  },
+  {
+    "repository": "jayostis/cascade-bridge-adapter-ccda",
+    "title": "The C-CDA adapter's fixture cases",
+    "about": "each fixture case of the adapter, run by each host of each engine it must pass with",
+    "workflow": "validate.yml",
+    "artifact": "report-cascade-bridge-adapter-ccda",
+    "report": "report.ctrf.json",
+    "runner": "ctrf",
+    "tests": "fixtures/"
   }
 ]

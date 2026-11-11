@@ -55,7 +55,7 @@ export interface Suite {
    * then these, then any other by name.
    */
   readonly packages?: readonly string[];
-  readonly runner: "node:test" | "pytest" | "vitest" | "nextest";
+  readonly runner: "node:test" | "pytest" | "vitest" | "nextest" | "ctrf";
 }
 
 /** A suite and its newest run; the run is absent when the build was given none, or when it could not be fetched. */

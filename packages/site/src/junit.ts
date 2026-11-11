@@ -35,6 +35,8 @@ export interface TestCase {
   readonly seconds?: number;
   /** What a failed case said, as the report keeps it. */
   readonly message?: string;
+  /** What a CTRF report says of the case beyond what the page shows of it, which the CTRF written beside the page keeps. */
+  readonly extra?: Readonly<Record<string, unknown>>;
 }
 
 const TAG =
