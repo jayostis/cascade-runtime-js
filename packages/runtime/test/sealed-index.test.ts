@@ -123,23 +123,26 @@ async function earlierSealed(
 }
 
 /** What an upgrade's claim, as stored, says: the text of the claim sealed as a 1.2 file under the pod's key. */
-async function claimSays(key: PodKey, bytes: Uint8Array): Promise<string> {
+async function claimSays(key: PodKey, stored: Uint8Array): Promise<string> {
+  const bytes = new Uint8Array(stored);
   return text(
-    await crypto.subtle.decrypt(
-      {
-        name: "AES-GCM",
-        iv: bytes.subarray(0, 12),
-        tagLength: 128,
-        additionalData: new Uint8Array([
-          ...encoded("cascade-pod-resource"),
-          0,
-          ...encoded("2"),
-          0,
-          ...encoded(UPGRADE_CLAIM),
-        ]),
-      },
-      key.key,
-      bytes.subarray(12),
+    new Uint8Array(
+      await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: bytes.subarray(0, 12),
+          tagLength: 128,
+          additionalData: new Uint8Array([
+            ...encoded("cascade-pod-resource"),
+            0,
+            ...encoded("2"),
+            0,
+            ...encoded(UPGRADE_CLAIM),
+          ]),
+        },
+        key.key,
+        bytes.subarray(12),
+      ),
     ),
   );
 }
@@ -517,10 +520,11 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
       const files = new StoppingFiles();
       const made = await newHeader(SECRET, derive);
       assert.ok(await madeNewPod(files, made));
-      assert.deepEqual(files.changes, [
-        `writeNew ${SEALED_INDEX}/0`,
-        `writeNew ${HEADER}`,
-      ]);
+      assert.deepEqual(
+        files.changes.filter((change) => !change.includes("/probe-")),
+        [`writeNew ${SEALED_INDEX}/0`, `writeNew ${HEADER}`],
+      );
+      assert.deepEqual(await files.list(""), [`${SEALED_INDEX}/0`, HEADER]);
       assert.deepEqual(await readAs(await reopened(files)), []);
       const bare = new MemoryFiles("urn:test:pod/");
       await bare.write(HEADER, made.bytes);
@@ -984,7 +988,7 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
         const files: Files = {
           iri: memory.iri,
           read: async (path) => {
-            if (!ticked && path !== HEADER && path !== UPGRADE_CLAIM) {
+            if (!ticked && FILES.some(([earlier]) => earlier === path)) {
               ticked = true;
               mock.timers.tick(5000);
             }

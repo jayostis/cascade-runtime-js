@@ -701,18 +701,57 @@ async function sealedEarlier(
 }
 
 /**
+ * Proves, before any of a pod's own files is changed, that the files can do each kind of write a 1.3 pod's layout needs:
+ * a file in a new folder under `sealed/`, and a file written whole or not at all only where none is, as an index is (a
+ * hard link, which FAT and exFAT have none of). What it wrote is removed again. Throws a `Refusal` saying so, so that a
+ * pod is never left with a 1.3 header it cannot go on to write under; and one for a file at `sealed`, whose folder it
+ * would be.
+ */
+async function layoutProved(files: Files): Promise<void> {
+  if ((await files.read(SEALED)) !== undefined)
+    throw new Refusal(
+      `The pod holds a file at ${SEALED}, the path an encrypted pod of this version keeps its sealed files under. Nothing was changed.`,
+    );
+  const folder = `${SEALED}/probe-${hex(random(6))}`;
+  const [written, claimed] = [`${folder}/file`, `${folder}/new`];
+  let step = "a file in a new folder";
+  try {
+    await files.write(written, random(16));
+    step = "a file written whole or not at all, where none is";
+    if (!(await created(files, claimed, random(16))))
+      throw new Error("it was refused as already there");
+  } catch (error) {
+    throw new Refusal(
+      `The folder's file system cannot hold an encrypted pod: it did not take ${step} (${(error as Error).message}). Nothing was changed; use a folder on another file system.`,
+    );
+  } finally {
+    await files.remove?.([written, claimed]).catch(() => undefined);
+  }
+}
+
+/**
  * Makes a new 1.3 pod in the files, with the header and key `newHeader` gave: its empty sealed index, then its header,
  * each only where none is, so that a 1.3 header with no index beside it is never a pod being made. False when another
- * opening made the pod, or is making it.
+ * opening made the pod, or is making it. Where a folder holds the sealed index of a pod whose maker stopped before its
+ * header, the new index is the next generation after the latest, which is the one a pod opens: none is removed or
+ * written over, so that of two openings that make the pod again only one writes the index. Refuses, making nothing,
+ * where the files cannot hold a 1.3 pod (`layoutProved`).
  */
 export async function madeNewPod(
   files: Files,
   made: { readonly bytes: Uint8Array; readonly key: PodKey },
 ): Promise<boolean> {
-  const empty = await seal(made.key.key, indexBytes(0, new Map()), INDEX_BOUND);
-  if (!(await created(files, indexAt(0), empty))) return false;
+  await layoutProved(files);
+  const [latest] = countersIn(await files.list(SEALED_INDEX));
+  const counter = latest === undefined ? 0 : latest + 1;
+  const empty = await seal(
+    made.key.key,
+    indexBytes(counter, new Map()),
+    INDEX_BOUND,
+  );
+  if (!(await created(files, indexAt(counter), empty))) return false;
   if (await created(files, HEADER, made.bytes)) return true;
-  await files.remove?.([indexAt(0)]);
+  await files.remove?.([indexAt(counter)]);
   return false;
 }
 
@@ -889,8 +928,10 @@ export class SealedIndex {
    * replacing its bytes, so that a claim is there until the upgrade ends; every earlier file looked at before the 1.3
    * header is written, and how many open stated in the claim; then each sealed again under its keyed name, the index
    * written, and the earlier files removed, the claim last. None when another opening claimed or finished it first.
-   * Refused while the pod is still whole as the earlier version, its claim removed, for a file that does not open at a
-   * path the layout uses; and, once its header says 1.3, for fewer files than the claim states.
+   * Refused while the pod is still whole as the earlier version, its claim removed or never made, for a file that does
+   * not open at a path the layout uses, and for files that cannot do the writes the 1.3 layout needs or a file at
+   * `sealed` (`layoutProved`, run before the claim); and, once its header says 1.3, for fewer files than the claim
+   * states.
    */
   static async #upgrade(
     files: Files,
@@ -910,6 +951,7 @@ export class SealedIndex {
     let count = stale?.count;
     if (resumed && count === undefined)
       throw changed("its sealed index is missing");
+    if (!resumed) await layoutProved(files);
     const claim = async () =>
       seal(
         earlier.key,
@@ -978,7 +1020,11 @@ export class SealedIndex {
       }
       if (!resumed) {
         count = carried.length;
-        await files.write(UPGRADE_CLAIM, await claim());
+        const counted = renewed.then(async () =>
+          files.write(UPGRADE_CLAIM, await claim()),
+        );
+        renewed = counted.catch(() => undefined);
+        await counted;
         await files.write(HEADER, header);
         headerWritten = true;
       }
@@ -1081,6 +1127,30 @@ export class SealedIndex {
     return "written";
   }
 
+  /**
+   * Whether the latest stored index names, by keyed name, every file of a write whose own index a later one overtook;
+   * if it does, it is held as the pod's index, which holds the write. A keyed name is the path's and the sealing's tag,
+   * so another writer's later rewrite of a path, though identical, is not this write.
+   */
+  async #survived(
+    sealed: readonly (readonly [string, string, Uint8Array])[],
+  ): Promise<boolean> {
+    const [latest] = countersIn(await this.#files.list(SEALED_INDEX));
+    if (latest === undefined) return false;
+    const stored = await this.#files.read(indexAt(latest));
+    if (stored === undefined) return false;
+    const plain = await opened(this.#key.key, stored, INDEX_BOUND);
+    const read = plain === undefined ? undefined : indexOf(plain);
+    if (read === undefined || read.counter !== latest) return false;
+    if (sealed.some(([path, name]) => read.entries.get(path)?.name !== name))
+      return false;
+    this.#stored = stored;
+    this.#counter = latest;
+    this.#entries = read.entries;
+    this.#sorted = undefined;
+    return true;
+  }
+
   /** Each file of the listing under `sealed/` that the index does not name, the index's own aside. */
   #unnamed(listing: readonly string[]): string[] {
     const named = new Set([...this.#entries.values()].map(({ name }) => name));
@@ -1151,8 +1221,10 @@ export class SealedIndex {
   /**
    * Seals and writes the files, the plaintext ones as they are, then the index naming them, one write of it for all;
    * then removes the earlier indexes, the earlier copy of each file written again, and, at an opening's first write,
-   * every file under `sealed/` the index does not name. Refuses, writing no index, when the header or the stored index
-   * changed since the pod was opened, or another opening wrote an index of the same counter first.
+   * every file under `sealed/` the index does not name. Refuses when the header or the stored index changed since the
+   * pod was opened, writing no index, or another opening wrote an index of the same counter first, and when a later
+   * index overtook this one without naming every file written (`#survived`); an overtaking one that names them all is
+   * the write done, held as the pod's index, and the removals left for a later write.
    */
   write(files: readonly (readonly [string, Uint8Array])[]): Promise<void> {
     const writing = this.#writing.then(() => this.#write(files));
@@ -1187,11 +1259,15 @@ export class SealedIndex {
       entries.set(path, { name, tag: tagOf(bytes) });
     }
     const committed = await this.#committed(this.#counter + 1, entries);
+    if (committed === "unsure") {
+      if (!(await this.#survived(sealed))) throw new Refusal(AGAIN);
+      for (const [path] of plain) this.#plaintext.add(path);
+      return;
+    }
     if (committed !== "written") {
-      if (committed === "taken")
-        await this.#files
-          .remove?.(sealed.map(([, name]) => name))
-          .catch(() => undefined);
+      await this.#files
+        .remove?.(sealed.map(([, name]) => name))
+        .catch(() => undefined);
       throw new Refusal(AGAIN);
     }
     for (const [path] of plain) this.#plaintext.add(path);
@@ -1368,7 +1444,7 @@ export class EncryptedFiles implements Files {
         );
       if (
         this.#kind === "pod" &&
-        (lower === UPGRADE_CLAIM || under(SEALED, lower))
+        (lower === UPGRADE_CLAIM || lower === SEALED || under(SEALED, lower))
       )
         throw new Refusal(
           `${path} is where a pod's own sealed files and claims are stored: no file of the pod is written there`,

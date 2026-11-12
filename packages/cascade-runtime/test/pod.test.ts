@@ -1671,7 +1671,7 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
 
     /** The files as they are, but a write of the header that `before` runs first, or that throws. */
     const writingHeader = (
-      files: Files,
+      files: FolderFiles,
       before: () => Promise<void> | void,
     ): Files => ({
       iri: files.iri,

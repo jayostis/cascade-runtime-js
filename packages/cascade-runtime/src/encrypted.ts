@@ -6,6 +6,7 @@ import {
   openHeader,
   type PodKey,
   readHeader,
+  SEALED_INDEX,
   Unopened,
 } from "@cascade-runtime/runtime";
 import { typedWords } from "./six-words.js";
@@ -22,34 +23,58 @@ export interface HeldPod {
   held(): Promise<boolean>;
 }
 
+/** How an opening waits for the header of another that is making the pod: how many times it looks, and how long between, in milliseconds; 100 and 50 unless given. */
+export interface HeaderWait {
+  readonly looks?: number;
+  readonly every?: number;
+}
+
 /**
  * The key the pod opens with: none for a pod opened without a secret and with no header. A pod with a header is read
  * first, so a malformed one is refused before any secret is asked for; then opened with the secret as given, and, when
  * that is an incorrect secret, with the secret cleaned as typed words are. A new pod given a secret is made encrypted,
  * its empty sealed index and then its header written before anything else (`madeNewPod`); an opening that loses that
- * race to another waits for the other's header. Throws `Unopened` when the pod does not open with what was given.
+ * race to another waits for the other's header. A folder with no header that holds only sealed indexes is a pod being
+ * made, or one whose maker stopped between its two writes, and holds no record: it waits as the loser does, and, no
+ * header coming, makes the pod again. Throws `Unopened` when the pod does not open with what was given.
  */
 export async function podKey(
   found: HeldPod,
   secret: string | undefined,
   derive: DeriveKey,
+  wait: HeaderWait = {},
 ): Promise<PodKey | undefined> {
   const { header } = found;
   if (header !== undefined) return openedWith(header, secret, derive);
   if (secret === undefined) return undefined;
-  if (await found.held())
+  const listing = (await found.held()) ? await found.files.list("") : [];
+  if (listing.some((path) => !path.startsWith(`${SEALED_INDEX}/`)))
     throw new Unopened(
       "not encrypted",
       "The pod is not encrypted: it opens without a secret.",
     );
+  if (listing.length > 0) {
+    const winner = await headerAfter(found, wait);
+    if (winner !== undefined) return openedWith(winner, secret, derive);
+  }
   const made = await newHeader(secret, derive);
   if (await madeNewPod(found.files, made)) return made.key;
-  for (let look = 0; look < 100; look++) {
-    const winner = await found.reread();
-    if (winner !== undefined) return openedWith(winner, secret, derive);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
+  const winner = await headerAfter(found, wait);
+  if (winner !== undefined) return openedWith(winner, secret, derive);
   throw new Unopened("cannot open", "The pod's header could not be read.");
+}
+
+/** The header another opening writes, looked for until the looks are used; none when it does not come. */
+async function headerAfter(
+  found: HeldPod,
+  { looks = 100, every = 50 }: HeaderWait,
+): Promise<Uint8Array | undefined> {
+  for (let look = 0; look < looks; look++) {
+    const header = await found.reread();
+    if (header !== undefined) return header;
+    await new Promise((resolve) => setTimeout(resolve, every));
+  }
+  return undefined;
 }
 
 async function openedWith(
