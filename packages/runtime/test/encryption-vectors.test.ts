@@ -237,7 +237,7 @@ describe("Matching a 1.2 pod's sealing against known answers · newHeader(), ope
   });
 
   /** A 1.2 key's files are sealed as a 1.2 pod seals them: an upgrade's claim is one, for a 1.2 runtime to read. */
-  describe("EncryptedFiles under a 1.2 key", () => {
+  describe("given EncryptedFiles under a 1.2 key", () => {
     it("seals a file under the pod's data key, bound to `cascade-pod-resource`, `2` and its path, with a new nonce for each seal", async () => {
       const { derive } = recordingDerive();
       const { bytes, key } = await newHeader(SECRET, derive);
@@ -384,7 +384,7 @@ describe("Matching a 1.3 pod's sealing against known answers · SealedIndex.open
     });
   });
 
-  describe("EncryptedFiles over a new header's index", () => {
+  describe("given EncryptedFiles over a new header's sealed index", () => {
     it("stores each file at `sealed/` and the hex HMAC, under HKDF of the data key, of its path, a zero byte and its tag; sealed bound to `cascade-pod-resource`, `3` and its path; named by an index bound to `cascade-pod-index`, `3`", async () => {
       const { derive } = recordingDerive();
       const { bytes, key } = await newHeader(SECRET, derive);
