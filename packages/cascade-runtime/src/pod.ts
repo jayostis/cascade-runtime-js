@@ -26,6 +26,7 @@ import {
   ntriples,
   podRevision,
   type PodKey,
+  SealedIndex,
   podStated,
   questions,
   randomId,
@@ -1222,14 +1223,18 @@ async function subjectsFiled(
   return [...found];
 }
 
-/** The parts with every file of a pod's folder and of its kept answers sealed under the key. */
-function sealedParts(parts: Parts, key: PodKey): Parts {
+/** The parts with every file of a pod's folder, read through its sealed index, and of its kept answers sealed under the key. */
+function sealedParts(parts: Parts, index: SealedIndex): Parts {
   const { answers } = parts;
+  const { key } = index;
   return {
     ...parts,
     folder: (path, iri) => {
       const folder = parts.folder(path, iri);
-      return { ...folder, files: new EncryptedFiles(folder.files, key) };
+      return {
+        ...folder,
+        files: new EncryptedFiles(folder.files, key, { index }),
+      };
     },
     ...(answers === undefined
       ? {}
@@ -1246,16 +1251,30 @@ function sealedParts(parts: Parts, key: PodKey): Parts {
 /**
  * The pod in the folder, or in memory with none. A missing or empty folder, or memory, is a new pod, named from a base
  * of its own and created; a folder holding a pod opens as it is, and is given the app's tables unless `adopt` is false.
- * With `key`, the folder's pod is encrypted under it, and a folder holding only its header is a new pod.
+ * With `key`, the folder's pod is encrypted under it, and a folder holding only its header is a new pod; its sealed index
+ * is the one given, or else opened here, the pod upgraded to 1.3 first when it is an earlier version. Throws `Unopened`,
+ * `changed outside the runtime`, when the index does not hold.
  */
 export async function openPodWith(
   unsealed: Parts,
   folder?: string,
-  options: { title?: string; adopt?: boolean; key?: PodKey } = {},
+  options: {
+    title?: string;
+    adopt?: boolean;
+    key?: PodKey;
+    index?: SealedIndex;
+  } = {},
 ): Promise<Pod> {
-  const encrypted = options.key !== undefined;
+  const { key } = options;
+  const encrypted = key !== undefined;
   const parts =
-    options.key === undefined ? unsealed : sealedParts(unsealed, options.key);
+    key === undefined || folder === undefined
+      ? unsealed
+      : sealedParts(
+          unsealed,
+          options.index ??
+            (await SealedIndex.open(unsealed.folder(folder).files, key)),
+        );
   const disk = folder === undefined ? undefined : parts.folder(folder);
   const answers =
     folder === undefined || parts.answers === undefined

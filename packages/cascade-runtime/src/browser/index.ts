@@ -16,6 +16,7 @@ import {
   Refusal,
   repositoryName,
   type RuntimeConfig,
+  SealedIndex,
   type Source,
   type TablesSettings as ConfigSettings,
   tablesSettings,
@@ -853,6 +854,8 @@ export async function openPod(
       secret,
       derive(),
     );
+    const index =
+      key === undefined ? undefined : await SealedIndex.open(database, key);
     const kept = await IndexedDbFiles.open(
       ANSWERS_DATABASE + name,
       `${ANSWERS_DATABASE}${name}/`,
@@ -880,7 +883,7 @@ export async function openPod(
           answers: { runtime: read.runtime, at: () => kept },
         },
         name,
-        key === undefined ? rest : { ...rest, key },
+        index === undefined ? rest : { ...rest, key: index.key, index },
       );
     const databases = [database, kept];
     const encrypted = key !== undefined;
@@ -894,11 +897,13 @@ export async function openPod(
         ? undefined
         : await keptPod(
             { ...read, lens: read.config.lens },
-            key === undefined ? database : new EncryptedFiles(database, key),
+            index === undefined
+              ? database
+              : new EncryptedFiles(database, index.key, { index }),
             new Answers(
-              key === undefined
+              index === undefined
                 ? kept
-                : new EncryptedFiles(kept, key, { kind: "answers" }),
+                : new EncryptedFiles(kept, index.key, { kind: "answers" }),
               read.runtime,
             ),
           );

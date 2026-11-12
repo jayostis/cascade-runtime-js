@@ -10,6 +10,7 @@ import {
 } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
 import type { SamesStillJoined } from "./derive.js";
+import { Unopened } from "./encryption.js";
 import { type Files, MemoryFiles, relative, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
@@ -1174,7 +1175,7 @@ export class CorePod {
       performed =
         typeof activity === "string" ? { wrote, activity } : { wrote };
     } catch (error) {
-      if (!(error instanceof Refusal)) {
+      if (!(error instanceof Refusal) || error instanceof Unopened) {
         change = undefined;
         throw error;
       }
@@ -1192,6 +1193,7 @@ export class CorePod {
         await this.#rebuild(options.build, at, change);
       } catch (error) {
         this.#dropBuilt();
+        if (error instanceof Unopened) throw error;
         throw new BuildFailure(performed, error);
       } finally {
         this.#builtBefore = undefined;
