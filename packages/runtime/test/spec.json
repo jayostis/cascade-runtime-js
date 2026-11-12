@@ -36,6 +36,7 @@
     "Reading and writing files by path · Files, MemoryFiles, FolderFiles, ExportedFiles",
     "Fetching a folder of files in a web page · FetchedFiles, packFolder(), unpackFolder()",
     "Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles",
+    "Matching a 1.2 pod's sealing against known answers · newHeader(), openHeader(), EncryptedFiles",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
     "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"
   ],
@@ -761,6 +762,7 @@
     "core-pod.test.ts",
     "derive.test.ts",
     "developer-story.test.ts",
+    "encryption-vectors.test.ts",
     "encryption.test.ts",
     "entries.test.ts",
     "files.test.ts",
@@ -803,6 +805,7 @@
     "core-pod.test.ts",
     "derive.test.ts",
     "developer-story.test.ts",
+    "encryption-vectors.test.ts",
     "encryption.test.ts",
     "entries.test.ts",
     "files.test.ts",
