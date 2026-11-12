@@ -93,6 +93,7 @@ export class IndexedDbFiles implements Files {
     adding.onerror = (event) => {
       if (adding.error?.name !== "ConstraintError") return;
       event.preventDefault();
+      event.stopPropagation();
       created = false;
     };
     await done(transaction);
