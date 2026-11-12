@@ -1,0 +1,53 @@
+{
+  "description": "Known-answer vectors for a version 1.2 pod header and the resources sealed under it (resourceFormat 2): the data key is wrapped under an Argon2id key and each resource is AES-256-GCM sealed under it with the additional data `cascade-pod-resource 0x00 2 0x00 <path>`. Every value was computed by an implementation other than the runtime's; a reader must open each pod to the plaintexts stated. Plain JSON: nothing here needs the runtime to be read.",
+  "generatedBy": {
+    "script": "a one-off Python 3.12 script, not kept; the runtime's code was not used",
+    "argon2id": "argon2-cffi 23.1.0 (libargon2, the reference implementation), type id, version 0x13, a 32-byte output, no secret value or associated data",
+    "aes256gcm": "cryptography 44.0.0, a 12-byte nonce, a 16-byte tag"
+  },
+  "testOnlyKeys": "every passphrase below is published for these tests: never reuse one",
+  "positive": [
+    {
+      "id": "E12-001",
+      "path": "known-answer-1.2/current-parameters",
+      "layout": "pod",
+      "headerVersion": "1.2",
+      "passphrases": ["marble ledger orbit quince hazel ember"],
+      "mustNotOpenWith": ["marble ledger orbit quince hazel amber"],
+      "proves": "a 1.2 header whose one wrap uses the parameters a new header carries (t=3, m=65536, p=1), and two resources sealed under its data key, each bound to its own path",
+      "header": "{\n  \"version\": \"1.2\",\n  \"algorithm\": \"aes-256-gcm\",\n  \"resourceFormat\": 2,\n  \"wraps\": [\n    {\n      \"by\": \"passphrase\",\n      \"label\": \"primary\",\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"kdf\": \"argon2id\",\n      \"kdfParams\": {\n        \"salt\": \"BQwTGiEoLzY9REtSWWBnbg==\",\n        \"t\": 3,\n        \"m\": 65536,\n        \"p\": 1\n      },\n      \"wrappedDek\": \"yM/W3eTr8vkABw4VaQFWDeX0hP/Fr6UDq6MMUTEyofIHrjxDhY0pIzdqrv6DvgmiUc0y4Ul/bCeyC4Pi\"\n    }\n  ]\n}\n",
+      "files": [
+        {
+          "path": "clinical/medications.ttl",
+          "plaintext": "<#metformin> a <#Medication> .\n",
+          "sealed": "KC82PURLUllgZ251z8ceJjOXAg0wizrb07tVMmiKbF35c+A0U9gyL1nVAahmlaXeWkussy+PLNIh1Jg="
+        },
+        {
+          "path": "profile/card.ttl",
+          "plaintext": "<#me> a <#Person> .\n",
+          "sealed": "KTA3PkVMU1phaG92cmBn/D7OENgMbQ0Ay5Zrus8J/koSJ6jW63eBL6RZ45815M/L"
+        }
+      ]
+    },
+    {
+      "id": "E12-002",
+      "path": "known-answer-1.2/two-wraps-own-parameters",
+      "layout": "pod",
+      "headerVersion": "1.2",
+      "passphrases": [
+        "tundra cobalt fennel harbor willow sparrow",
+        "pässwörd ✓ 中文"
+      ],
+      "mustNotOpenWith": ["tundra cobalt fennel harbor willow sparrows"],
+      "proves": "two wraps of one data key, each with its own salt and parameters (t=2, m=4096, p=2 and t=1, m=64, p=1); the second secret is non-ASCII, derived from its UTF-8 bytes as typed",
+      "header": "{\n  \"version\": \"1.2\",\n  \"algorithm\": \"aes-256-gcm\",\n  \"resourceFormat\": 2,\n  \"wraps\": [\n    {\n      \"by\": \"passphrase\",\n      \"label\": \"primary\",\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"kdf\": \"argon2id\",\n      \"kdfParams\": {\n        \"salt\": \"PENKUVhfZm10e4KJkJeepQ==\",\n        \"t\": 2,\n        \"m\": 4096,\n        \"p\": 2\n      },\n      \"wrappedDek\": \"0tng5+71/AMKERgfFPmtxHGmstHv96BrX10vev32Lw2nUtWMH+M7GKe0iEPuR8u9vDWzzOfFq5Y3PPQY\"\n    },\n    {\n      \"by\": \"passphrase\",\n      \"label\": \"primary\",\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"kdf\": \"argon2id\",\n      \"kdfParams\": {\n        \"salt\": \"gomQl56lrLO6wcjP1t3k6w==\",\n        \"t\": 1,\n        \"m\": 64,\n        \"p\": 1\n      },\n      \"wrappedDek\": \"3OPq8fj/Bg0UGyIpBDkNlAB0Y2enKGUw4XZL4fCHUJuydl0gWEI7vbGFpUjTHrk8bQB/tTEiFHtR9Sko\"\n    }\n  ]\n}\n",
+      "files": [
+        {
+          "path": "notes/a.ttl",
+          "plaintext": "<#a> <#b> <#c> .\n",
+          "sealed": "UFdeZWxzeoGIj5ad1/YHUX9enTpz7B+Nah2XziF8kabO6bj1tuvfRgo5i2Un"
+        }
+      ]
+    }
+  ]
+}
