@@ -1720,6 +1720,47 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
       assert.equal(new TextDecoder().decode(await sealed.read("a.ttl")), "a");
     });
 
+    it("makes the pod again when the opening that began it stopped after proving the layout, leaving a probe and no index, and its first write sweeps the probe", async () => {
+      const derive = fastDerive();
+      const at = join(pods, "probe-left");
+      const { files } = holding(at);
+      await files.write("sealed/probe-0a1b2c3d4e5f/file", new Uint8Array(16));
+      const key = await podKey(holding(at), WORDS, derive, {
+        looks: 3,
+        every: 1,
+      });
+      assert.ok(key);
+      const sealed = new EncryptedFiles(files, key, {
+        index: await SealedIndex.open(files, key),
+      });
+      await sealed.write("a.ttl", new TextEncoder().encode("a"));
+      assert.deepEqual(
+        (await files.list("")).filter((path) => path.includes("probe-")),
+        [],
+      );
+    });
+
+    it("refuses a folder whose header was deleted and whose sealed records remain, removing nothing", async () => {
+      const derive = fastDerive();
+      const at = join(pods, "header-deleted");
+      const { files } = holding(at);
+      const made = await newHeader(WORDS, derive);
+      assert.ok(await madeNewPod(files, made));
+      const sealed = new EncryptedFiles(files, made.key, {
+        index: await SealedIndex.open(files, made.key),
+      });
+      await sealed.write("a.ttl", new TextEncoder().encode("a"));
+      await rm(join(at, HEADER));
+      const before = (await files.list("")).sort();
+      assert.ok(before.some((path) => /^sealed\/[0-9a-f]{2}\//.test(path)));
+      await assert.rejects(
+        podKey(holding(at), WORDS, derive, { looks: 3, every: 1 }),
+        (error: unknown) =>
+          error instanceof Unopened && error.outcome === "not encrypted",
+      );
+      assert.deepEqual((await files.list("")).sort(), before);
+    });
+
     it("opens with the header of an opening that is still making the pod, after its sealed index and before its header", async () => {
       const derive = fastDerive();
       const at = join(pods, "being-made");
