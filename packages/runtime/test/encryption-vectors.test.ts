@@ -10,6 +10,7 @@ import {
   type DeriveKey,
   EncryptedFiles,
   HEADER,
+  madeNewPod,
   newHeader,
   openHeader,
   SEALED_INDEX,
@@ -387,9 +388,10 @@ describe("Matching a 1.3 pod's sealing against known answers · SealedIndex.open
   describe("given EncryptedFiles over a new header's sealed index", () => {
     it("stores each file at `sealed/` and the hex HMAC, under HKDF of the data key, of its path, a zero byte and its tag; sealed bound to `cascade-pod-resource`, `3` and its path; named by an index bound to `cascade-pod-index`, `3`", async () => {
       const { derive } = recordingDerive();
-      const { bytes, key } = await newHeader(SECRET, derive);
+      const made = await newHeader(SECRET, derive);
+      const { bytes, key } = made;
       const memory = new MemoryFiles("urn:test:pod/");
-      await memory.write(HEADER, bytes);
+      assert.ok(await madeNewPod(memory, made));
       const files = new EncryptedFiles(memory, key, {
         index: await SealedIndex.open(memory, key),
       });
@@ -413,7 +415,7 @@ describe("Matching a 1.3 pod's sealing against known answers · SealedIndex.open
         text(
           await decrypted(
             dek,
-            (await memory.read(SEALED_INDEX)) ?? new Uint8Array(),
+            (await memory.read(`${SEALED_INDEX}/1`)) ?? new Uint8Array(),
             new Uint8Array([
               ...encoded("cascade-pod-index"),
               0,
@@ -458,7 +460,7 @@ describe("Matching a 1.3 pod's sealing against known answers · SealedIndex.open
       }
       assert.deepEqual(
         await memory.list("sealed"),
-        [...stored, SEALED_INDEX].sort(),
+        [...stored, `${SEALED_INDEX}/1`].sort(),
       );
     });
   });

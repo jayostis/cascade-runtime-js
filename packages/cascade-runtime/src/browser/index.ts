@@ -859,6 +859,7 @@ export async function openPod(
         ? undefined
         : await SealedIndex.open(database, key, {
             listing: Promise.resolve(held),
+            laidOut: (path) => read.layout.uses(path),
           });
     const kept = await IndexedDbFiles.open(
       ANSWERS_DATABASE + name,

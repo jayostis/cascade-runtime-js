@@ -8,6 +8,7 @@ import {
   EncryptedFiles,
   type EncryptedFilesOptions,
   HEADER,
+  madeNewPod,
   newHeader,
   openHeader,
   SEALED_INDEX,
@@ -61,8 +62,9 @@ async function outcomeOf(opening: Promise<unknown>): Promise<string> {
 async function sealedPod(options?: EncryptedFilesOptions) {
   const memory = new MemoryFiles("urn:test:pod/");
   const derive = fastDerive();
-  const { bytes, key } = await newHeader(SECRET, derive);
-  await memory.write(HEADER, bytes);
+  const made = await newHeader(SECRET, derive);
+  const { bytes, key } = made;
+  assert.ok(await madeNewPod(memory, made));
   const index = await SealedIndex.open(memory, key);
   return {
     memory,
@@ -75,7 +77,9 @@ async function sealedPod(options?: EncryptedFilesOptions) {
 
 /** The sealed files a pod stores, by their keyed names: all but its header and its index. */
 const keyedFiles = async (memory: Files) =>
-  (await memory.list("sealed")).filter((path) => path !== SEALED_INDEX);
+  (await memory.list("sealed")).filter(
+    (path) => !path.startsWith(`${SEALED_INDEX}/`),
+  );
 
 /** A sealed pod holding `a.ttl` and `b/c.ttl`, read through files that record the path of each read made of them once opened. */
 async function countingPod() {
@@ -422,7 +426,7 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       });
       const created = await pod.create();
       assert.match(created.refused ?? "", /too large to seal as one file/);
-      assert.deepEqual(await memory.list(""), [SEALED_INDEX, HEADER]);
+      assert.deepEqual(await memory.list(""), [`${SEALED_INDEX}/0`, HEADER]);
     });
   });
 });

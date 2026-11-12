@@ -24,6 +24,7 @@ import {
   HEADER,
   iri,
   Layout,
+  madeNewPod,
   MATCHER,
   MemoryFiles,
   newHeader,
@@ -1688,9 +1689,15 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
         .filter((path) => path !== HEADER);
       assert.deepEqual(
         stored.filter(
-          (path) => !/^sealed\/[0-9a-f]{2}\/[0-9a-f]{62}$/.test(path),
+          (path) =>
+            !/^sealed\/[0-9a-f]{2}\/[0-9a-f]{62}$/.test(path) &&
+            !/^sealed\/index\/\d+$/.test(path),
         ),
-        [SEALED_INDEX],
+        [],
+      );
+      assert.equal(
+        stored.filter((path) => path.startsWith(`${SEALED_INDEX}/`)).length,
+        1,
       );
       const told = new Set(
         logical.flatMap((path) =>
@@ -1715,7 +1722,7 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
     it("throws `Unopened`, `changed outside the runtime`, on the next open after one of its files is deleted", async () => {
       const at = await copied(sealedAlex.folder, "sealed-alex-deleted");
       const [one] = (await filesIn(join(at, "sealed"))).filter(
-        (file) => !file.endsWith("index"),
+        (file) => !/[\\/]index[\\/]\d+$/.test(file),
       );
       assert.ok(one);
       await rm(one);
@@ -1750,10 +1757,11 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
   });
 
   describe("when a 1.2 pod is opened with its secret", () => {
-    it("leaves it 1.2 for a wrong secret; with its secret, upgrades it to 1.3, no file stored under its own path, and answers as before", async () => {
+    it("leaves it 1.2 for a wrong secret; with its secret, upgrades it to 1.3, no file stored under its own path, a file the system put there left as it was, and answers as before", async () => {
       const sealedAlex = await sealedAlexPod();
       const at = await copied(sealedAlex.folder, "sealed-alex-1.2");
       await asEarlier(at, sealedAlex.derive);
+      await writeFile(join(at, ".DS_Store"), "by the system");
       const version = async () =>
         (
           JSON.parse(
@@ -1779,6 +1787,10 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
             !stored.includes(join(at, ...path.split("/"))),
             `${path} is stored under its own path`,
           );
+        assert.equal(
+          await readFile(join(at, ".DS_Store"), "utf8"),
+          "by the system",
+        );
         assert.deepEqual(await opened.ask(HELD), sealedAlex.rows);
       } finally {
         await opened.close();
@@ -1858,11 +1870,13 @@ function watched() {
     write: (path, bytes) => files.write(path, bytes),
     ...(files.writeNew === undefined
       ? {}
-      : { writeNew: files.writeNew.bind(files) }),
-    replace: (path, bytes, holds) => {
-      if (path === SEALED_INDEX) counted.indexWrites += 1;
-      return replaced(files, path, bytes, holds);
-    },
+      : {
+          writeNew: (path: string, bytes: Uint8Array) => {
+            if (path.startsWith(`${SEALED_INDEX}/`)) counted.indexWrites += 1;
+            return files.writeNew?.(path, bytes) ?? Promise.resolve(false);
+          },
+        }),
+    replace: (path, bytes, holds) => replaced(files, path, bytes, holds),
     ...(files.remove === undefined ? {} : { remove: files.remove.bind(files) }),
     list: (folder) => files.list(folder),
   });
@@ -1969,7 +1983,7 @@ async function sealedCopy(
   const plain = new FolderFiles(from);
   const files = new FolderFiles(to);
   const made = await newHeader(WORDS, derive);
-  await files.write(HEADER, made.bytes);
+  assert.ok(await madeNewPod(files, made));
   const sealed = new EncryptedFiles(files, made.key, {
     index: await SealedIndex.open(files, made.key),
   });

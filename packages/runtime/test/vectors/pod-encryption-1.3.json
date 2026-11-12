@@ -1,5 +1,5 @@
 {
-  "description": "Known-answer vectors for a version 1.3 pod header and the resources sealed under it (resourceFormat 3): the data key is wrapped under an Argon2id key; each resource is AES-256-GCM sealed under it with the additional data `cascade-pod-resource 0x00 3 0x00 <path>` and stored at `sealed/<two letters>/<the rest>`, the lower-case hex of HMAC-SHA-256 under HKDF-SHA-256(data key, no salt, info `cascade-pod-names`) of `<path> 0x00 <its GCM tag>`; the sealed index, at `sealed/index`, is the UTF-8 JSON `{\"counter\":n,\"files\":[[path, name, tag in hex], ...]}` sorted by path, sealed with the additional data `cascade-pod-index 0x00 3`. Every value was computed by an implementation other than the runtime's; a reader must open each pod to the plaintexts stated. Plain JSON: nothing here needs the runtime to be read.",
+  "description": "Known-answer vectors for a version 1.3 pod header and the resources sealed under it (resourceFormat 3): the data key is wrapped under an Argon2id key; each resource is AES-256-GCM sealed under it with the additional data `cascade-pod-resource 0x00 3 0x00 <path>` and stored at `sealed/<two letters>/<the rest>`, the lower-case hex of HMAC-SHA-256 under HKDF-SHA-256(data key, no salt, info `cascade-pod-names`) of `<path> 0x00 <its GCM tag>`; the sealed index, at `sealed/index/<n>` for its counter n, is the UTF-8 JSON `{\"counter\":n,\"files\":[[path, name, tag in hex], ...]}` sorted by path, sealed with the additional data `cascade-pod-index 0x00 3`. Every value was computed by an implementation other than the runtime's; a reader must open each pod to the plaintexts stated. Plain JSON: nothing here needs the runtime to be read.",
   "generatedBy": {
     "script": "a one-off Python 3.12 script, not kept; the runtime's code was not used",
     "argon2id": "argon2-cffi 23.1.0 (libargon2, the reference implementation), type id, version 0x13, a 32-byte output, no secret value or associated data",
@@ -32,7 +32,7 @@
         }
       ],
       "index": {
-        "stored": "sealed/index",
+        "stored": "sealed/index/4",
         "plaintext": "{\"counter\":4,\"files\":[[\"clinical/medications.ttl\",\"a4c9c22a61ecab5ff3f304a1de75fb776b74babf72e8795453f0c03521ad6203\",\"5f41d7b2483adb4b3ef07006621f1d7d\"],[\"records/née-café.ttl\",\"ee2a3f6566a5d7eb89d78a877499355852769b7f7c16f1239482a245967d69f4\",\"dea9098b9b19da0fda09eb1ceb83edf5\"]]}",
         "sealed": "WmFob3Z9hIuSmaCnItw08WKRE5Ten2uP1xBTCWk7T3YPsjpGfH2auOwBDkJOnpJT//LDBix1/gJxDpkP4/Q0kOqNO6XoMO7hKYk4hMnc52wfpoHgy872exg1sgwBtsVbeu9NEiLcrsYewEG9c9M4wPr8a/vM9rSQvGyqmCIDbNVbC7x8UqJ1k6ABZkd47C2tHWqTkXqSBk6lLimKUMLX2v5NnKf8hKc/y+rLFTKb8KgiK1D4M/i/PmFZ6QWBwLPsiGUlZ/Rmm3upqCFp0Aa8q8nFjCexbbPF0Z19ouQ/qDs8jVaTY7ToF2G/giHPmiC+pkJkT8UlB5y9trBInIvlmuOmudjeNZ+/kJHc8Z0CYnBRRDu0fhJ+CnLspwMctPkNcrsnjtyYZeDWKJQ+UZCZ4WE2jgHLWoM="
       }
@@ -58,7 +58,7 @@
         }
       ],
       "index": {
-        "stored": "sealed/index",
+        "stored": "sealed/index/1",
         "plaintext": "{\"counter\":1,\"files\":[[\"profile/card.ttl\",\"cd81da39e12c24e0102381b46b890d0a684f42127e1530cbc16f34148525127b\",\"573d3652bca7f24cff4faac0341cc28f\"]]}",
         "sealed": "WmFob3Z9hIuSmaCnaPp3doPEXKbB4LI9wOal23APi4kkXKKoNqT9zdRdgfvSoo6sXqbEaYVnssTLtZ/RvL6XXwxr9ytKz4bWIYUejjdSbExI2xFkF/qHVybN7wZdSRcBQUanGVJUojOdaHCOf2siWXMbLFLTBiWSbr88YvTZjL1EH6EAuXtnWgqdbk78aXAHXblMBEOkpOJ0PZU3mAce+chqHcofPu+TDesSUTzK"
       }

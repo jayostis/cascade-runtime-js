@@ -1,7 +1,7 @@
 import {
   type DeriveKey,
   type Files,
-  HEADER,
+  madeNewPod,
   newHeader,
   openHeader,
   type PodKey,
@@ -26,7 +26,8 @@ export interface HeldPod {
  * The key the pod opens with: none for a pod opened without a secret and with no header. A pod with a header is read
  * first, so a malformed one is refused before any secret is asked for; then opened with the secret as given, and, when
  * that is an incorrect secret, with the secret cleaned as typed words are. A new pod given a secret is made encrypted,
- * its header written before anything else. Throws `Unopened` when the pod does not open with what was given.
+ * its empty sealed index and then its header written before anything else (`madeNewPod`); an opening that loses that
+ * race to another waits for the other's header. Throws `Unopened` when the pod does not open with what was given.
  */
 export async function podKey(
   found: HeldPod,
@@ -42,14 +43,13 @@ export async function podKey(
       "The pod is not encrypted: it opens without a secret.",
     );
   const made = await newHeader(secret, derive);
-  const won = found.files.writeNew
-    ? await found.files.writeNew(HEADER, made.bytes)
-    : (await found.files.write(HEADER, made.bytes), true);
-  if (won) return made.key;
-  const winner = await found.reread();
-  if (winner === undefined)
-    throw new Unopened("cannot open", "The pod's header could not be read.");
-  return openedWith(winner, secret, derive);
+  if (await madeNewPod(found.files, made)) return made.key;
+  for (let look = 0; look < 100; look++) {
+    const winner = await found.reread();
+    if (winner !== undefined) return openedWith(winner, secret, derive);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Unopened("cannot open", "The pod's header could not be read.");
 }
 
 async function openedWith(

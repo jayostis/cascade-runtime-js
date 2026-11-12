@@ -139,7 +139,11 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       } finally {
         mock.restoreAll();
       }
-      assert.equal(keyCopies.length, 3);
+      assert.equal(
+        keyCopies.length,
+        4,
+        "the wrapping key's, and the data key's for its wrap, its AES key and its names key",
+      );
       for (const copy of keyCopies) {
         assert.equal(copy.length, 32);
         assert.ok(

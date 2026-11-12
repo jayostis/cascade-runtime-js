@@ -37,7 +37,10 @@ export async function openFolderPod(
     parts.derive,
   );
   if (key === undefined) return openPodWith(parts, folder, rest);
-  const index = await SealedIndex.open(files, key, { listing });
+  const index = await SealedIndex.open(files, key, {
+    listing,
+    laidOut: (path) => parts.layout.uses(path),
+  });
   return openPodWith(parts, folder, { ...rest, key: index.key, index });
 }
 

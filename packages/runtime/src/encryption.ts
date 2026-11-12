@@ -16,7 +16,10 @@ export const HEADER = "settings/encryption.json";
 const PLAINTEXT = new Set([HEADER, "README.md", "provenance/egress-log.jsonl"]);
 /** The folder a 1.3 pod keeps its sealed files in, each under its keyed name, in one of 256 folders by its first two letters. */
 const SEALED = "sealed";
-/** Where a 1.3 pod keeps its sealed index. */
+/**
+ * The folder a 1.3 pod keeps its sealed index in: each write of the index a new file, named by its counter in decimal
+ * and made only where none is, so that of two openings that write one pod from the same index only one writes it.
+ */
 export const SEALED_INDEX = "sealed/index";
 /** The claim an upgrade to 1.3 holds while it runs: sealed as a file of the version it upgrades from, a Turtle comment. */
 export const UPGRADE_CLAIM = "upgrading.ttl";
@@ -627,8 +630,8 @@ function indexOf(
   return { counter, entries };
 }
 
-/** How an upgrade to 1.3 waits on, and takes over, another opening's claim. */
-export interface UpgradeTiming {
+/** What opening a pod's sealed index takes besides the pod: how it waits on an upgrade's claim, and what the pod layout uses. */
+export interface SealedIndexOptions {
   /** How long a claim holds once it was last renewed, in milliseconds; 30 seconds unless given. */
   readonly claimHolds?: number;
   /** How often a claim is renewed while its upgrade runs, and looked at by an opening waiting on it; 5 seconds and 100 milliseconds unless given. */
@@ -637,10 +640,16 @@ export interface UpgradeTiming {
   /** The time now, in milliseconds. */
   readonly now?: () => number;
   /**
-   * `files.list("")`, begun before the key was derived so the two overlap; a file the index names that it lacks is
-   * looked for in a listing taken again before the pod is refused.
+   * `files.list("")`, begun before the key was derived so the two overlap; a file the index names that it lacks, or an
+   * index it lacks, is looked for in a listing taken again before the pod is refused.
    */
   readonly listing?: Promise<readonly string[]>;
+  /**
+   * Whether the pod layout uses the path. An upgrade leaves where it is a file that does not open at a path the layout
+   * does not use, such as a `.DS_Store`, and refuses the pod as changed outside the runtime for one at a path it uses.
+   * Every path, unless given.
+   */
+  readonly laidOut?: (path: string) => boolean;
 }
 
 const sleep = (ms: number) =>
@@ -649,6 +658,63 @@ const sleep = (ms: number) =>
 /** The files a pod holds as an earlier version stores them: by their own paths, but its header, its plaintext ones, a claim and a 1.3 pod's sealed folder. */
 const isEarlierFile = (path: string) =>
   !PLAINTEXT.has(path) && path !== UPGRADE_CLAIM && !under(SEALED, path);
+
+const AGAIN =
+  "the pod was written by another opening since this one opened it; open it again";
+
+const indexAt = (counter: number): string => `${SEALED_INDEX}/${counter}`;
+
+/** The counters of the stored indexes among the paths, highest first. */
+function countersIn(paths: readonly string[]): number[] {
+  const counters: number[] = [];
+  for (const path of paths) {
+    if (!under(SEALED_INDEX, path)) continue;
+    const counter = path.slice(SEALED_INDEX.length + 1);
+    if (/^(?:0|[1-9]\d{0,14})$/.test(counter)) counters.push(Number(counter));
+  }
+  return counters.sort((one, other) => other - one);
+}
+
+/** Writes the file only where none is: `writeNew`, or, where the files have none, a `replace` of no file. */
+const created = (
+  files: Files,
+  path: string,
+  bytes: Uint8Array,
+): Promise<boolean> =>
+  files.writeNew
+    ? files.writeNew(path, bytes)
+    : replaced(files, path, bytes, undefined);
+
+/** Whether the bytes are a file an earlier version sealed at the path under the pod's key. */
+async function sealedEarlier(
+  key: PodKey,
+  bytes: Uint8Array,
+  path: string,
+): Promise<boolean> {
+  for (const version of ["1.2", "1.1"] as const)
+    if (
+      (await opened(key.key, bytes, boundTo("pod", version, path))) !==
+      undefined
+    )
+      return true;
+  return false;
+}
+
+/**
+ * Makes a new 1.3 pod in the files, with the header and key `newHeader` gave: its empty sealed index, then its header,
+ * each only where none is, so that a 1.3 header with no index beside it is never a pod being made. False when another
+ * opening made the pod, or is making it.
+ */
+export async function madeNewPod(
+  files: Files,
+  made: { readonly bytes: Uint8Array; readonly key: PodKey },
+): Promise<boolean> {
+  const empty = await seal(made.key.key, indexBytes(0, new Map()), INDEX_BOUND);
+  if (!(await created(files, indexAt(0), empty))) return false;
+  if (await created(files, HEADER, made.bytes)) return true;
+  await files.remove?.([indexAt(0)]);
+  return false;
+}
 
 /**
  * A 1.3 pod's sealed index, read and opened once per open and held: each of its files' path, with the keyed name it is
@@ -695,18 +761,20 @@ export class SealedIndex {
 
   /**
    * The pod's sealed index, the pod upgraded to 1.3 first when its header is an earlier version. Throws `Unopened`,
-   * `changed outside the runtime`, for an index that does not open, a file it names that is missing, a pod with files
-   * and no index, or an earlier header beside an index. Waits while another opening upgrades the pod.
+   * `changed outside the runtime`, for an index that does not open, a file it names that is missing, a 1.3 header with
+   * no index, or an earlier header beside an index. Waits while another opening upgrades the pod, and opens again from
+   * the start when another opening writes the pod while it opens.
    */
   static async open(
     files: Files,
     key: PodKey,
-    timing: UpgradeTiming = {},
+    options: SealedIndexOptions = {},
   ): Promise<SealedIndex> {
-    const now = timing.now ?? Date.now;
-    const holds = timing.claimHolds ?? 30_000;
-    const lookEvery = timing.lookEvery ?? 100;
+    const now = options.now ?? Date.now;
+    const holds = options.claimHolds ?? 30_000;
+    const lookEvery = options.lookEvery ?? 100;
     const upgraded = upgradedHeader(key.header);
+    let early = options.listing;
     for (;;) {
       const header = await files.read(HEADER);
       let current = key;
@@ -717,11 +785,15 @@ export class SealedIndex {
           );
         current = { ...key, version: "1.3", header: upgraded };
       }
-      const [stored, claim] = await Promise.all([
-        files.read(SEALED_INDEX),
+      const begun = await early?.catch(() => undefined);
+      early = undefined;
+      const [listing, claim] = await Promise.all([
+        begun ?? files.list(""),
         files.read(UPGRADE_CLAIM),
       ]);
-      if (stored !== undefined) {
+      const [counter] = countersIn(listing);
+      if (counter === undefined && begun !== undefined) continue;
+      if (counter !== undefined) {
         if (current.version !== "1.3")
           throw changed(
             `its header says version ${current.version} beside a 1.3 sealed index`,
@@ -729,11 +801,11 @@ export class SealedIndex {
         const index = await SealedIndex.#opened(
           files,
           current,
-          stored,
-          (await timing.listing?.catch(() => undefined)) ??
-            (await files.list("")),
+          counter,
+          listing,
         );
-        if (claim !== undefined) await index.#sweep(await files.list(""));
+        if (index === undefined) continue;
+        if (claim !== undefined) await index.#upgradeEnded(listing);
         return index;
       }
       if (claim !== undefined) {
@@ -744,102 +816,173 @@ export class SealedIndex {
           await sleep(lookEvery);
           continue;
         }
-        await files.remove?.([UPGRADE_CLAIM]);
         const taken = await SealedIndex.#upgrade(
           files,
           { ...current, version: claimed.from },
-          timing,
+          options,
+          { bytes: claim, count: claimed.count },
         );
         if (taken !== undefined) return taken;
         continue;
       }
-      if (current.version === "1.3") {
-        const listing = await files.list("");
-        if (listing.some((path) => !PLAINTEXT.has(path)))
-          throw changed("its sealed index is missing");
-        const empty = await seal(
-          current.key,
-          indexBytes(0, new Map()),
-          INDEX_BOUND,
-        );
-        if (await replaced(files, SEALED_INDEX, empty, undefined))
-          return new SealedIndex(files, current, 0, new Map(), empty, listing);
-        continue;
-      }
-      const upgrading = await SealedIndex.#upgrade(files, current, timing);
+      if (current.version === "1.3")
+        throw changed("its sealed index is missing");
+      const upgrading = await SealedIndex.#upgrade(files, current, options);
       if (upgrading !== undefined) return upgrading;
     }
   }
 
-  /** The index in the stored bytes, each file it names there. */
+  /**
+   * The index stored under the counter, each file it names found in the listing or in one taken again; none when
+   * another opening wrote a later index since the listing, so that the pod is opened again.
+   */
   static async #opened(
     files: Files,
     key: PodKey,
-    stored: Uint8Array,
+    counter: number,
     listing: readonly string[],
-  ): Promise<SealedIndex> {
+  ): Promise<SealedIndex | undefined> {
+    const stored = await files.read(indexAt(counter));
+    if (stored === undefined) return undefined;
     const plain = await opened(key.key, stored, INDEX_BOUND);
     const read = plain === undefined ? undefined : indexOf(plain);
-    if (read === undefined)
+    if (read === undefined || read.counter !== counter)
       throw changed("its sealed index does not open under its key");
     let held = new Set(listing);
-    for (const [path, { name }] of read.entries)
-      if (!held.has(name)) {
+    let listedAgain = false;
+    for (const [path, { name }] of read.entries) {
+      if (held.has(name)) continue;
+      if (!listedAgain) {
+        listedAgain = true;
         held = new Set((listing = await files.list("")));
-        if (!held.has(name)) throw changed(`${path} is missing`);
+        if (held.has(name)) continue;
       }
-    return new SealedIndex(
-      files,
-      key,
-      read.counter,
-      read.entries,
-      stored,
-      listing,
-    );
+      if (countersIn(await files.list(SEALED_INDEX))[0] !== counter)
+        return undefined;
+      throw changed(`${path} is missing`);
+    }
+    return new SealedIndex(files, key, counter, read.entries, stored, listing);
   }
 
   /**
-   * The pod, held as an earlier version, upgraded in place to 1.3: claimed, its 1.3 header written, every file sealed
-   * again under its keyed name, the index written, then the earlier files and the claim removed. None when another
-   * opening claimed or finished it first. A crash before the index is written leaves the claim and the earlier files,
-   * from which the next opening upgrades again; after it, the earlier files, which the next opening removes.
+   * Ends an upgrade that stopped after writing its index: removes each file the earlier version stored at a path the
+   * index names, then the claim. A failure leaves both for the next opening.
+   */
+  async #upgradeEnded(listing: readonly string[]): Promise<void> {
+    const earlier: string[] = [];
+    for (const path of listing.filter(isEarlierFile))
+      if (this.#entries.has(path)) {
+        const bytes = await this.#files.read(path);
+        if (
+          bytes !== undefined &&
+          (await sealedEarlier(this.#key, bytes, path))
+        )
+          earlier.push(path);
+      }
+    await Promise.resolve(this.#files.remove?.(earlier))
+      .then(() => this.#files.remove?.([UPGRADE_CLAIM]))
+      .catch(() => undefined);
+  }
+
+  /**
+   * The pod, held as an earlier version, upgraded in place to 1.3. Claimed, or a claim held too long taken over by
+   * replacing its bytes, so that a claim is there until the upgrade ends; every earlier file looked at before the 1.3
+   * header is written, and how many open stated in the claim; then each sealed again under its keyed name, the index
+   * written, and the earlier files removed, the claim last. None when another opening claimed or finished it first.
+   * Refused while the pod is still whole as the earlier version, its claim removed, for a file that does not open at a
+   * path the layout uses; and, once its header says 1.3, for fewer files than the claim states.
    */
   static async #upgrade(
     files: Files,
     earlier: PodKey,
-    timing: UpgradeTiming,
+    options: SealedIndexOptions,
+    stale?: { readonly bytes: Uint8Array; readonly count: number | undefined },
   ): Promise<SealedIndex | undefined> {
-    const now = timing.now ?? Date.now;
+    const now = options.now ?? Date.now;
+    const laidOut = options.laidOut ?? (() => true);
+    const header = upgradedHeader(earlier.header);
+    const stated = (await files.read(HEADER)) ?? new Uint8Array();
+    const resumed = same(stated, header);
+    if (!resumed && !same(stated, earlier.header))
+      throw new Refusal(
+        "the pod's header changed since it was opened; open it again",
+      );
+    let count = stale?.count;
+    if (resumed && count === undefined)
+      throw changed("its sealed index is missing");
     const claim = async () =>
       seal(
         earlier.key,
-        encoded(
-          `# cascade-runtime upgrades this pod from ${earlier.version} to 1.3; claimed ${now()}\n`,
-        ),
+        encoded(claimText(earlier.version, now(), count)),
         boundTo("pod", earlier.version, UPGRADE_CLAIM),
       );
-    const won = files.writeNew
-      ? await files.writeNew(UPGRADE_CLAIM, await claim())
-      : await replaced(files, UPGRADE_CLAIM, await claim(), undefined);
+    const won =
+      stale === undefined
+        ? await created(files, UPGRADE_CLAIM, await claim())
+        : await replaced(files, UPGRADE_CLAIM, await claim(), stale.bytes);
     if (!won) return undefined;
     let renewed: Promise<unknown> = Promise.resolve();
     const renewing = setInterval(() => {
       renewed = renewed
         .then(async () => files.write(UPGRADE_CLAIM, await claim()))
         .catch(() => undefined);
-    }, timing.renewEvery ?? 5000);
+    }, options.renewEvery ?? 5000);
     (renewing as { unref?: () => void }).unref?.();
     const renewalsStopped = async () => {
       clearInterval(renewing);
       await renewed;
     };
+    const indexed = async () =>
+      countersIn(await files.list(SEALED_INDEX)).length > 0;
+    const openedEarlier = async (path: string) => {
+      const bytes = await files.read(path);
+      return bytes === undefined
+        ? undefined
+        : opened(earlier.key, bytes, boundTo("pod", earlier.version, path));
+    };
+    let headerWritten = resumed;
+    const written: string[] = [];
     try {
-      const header = upgradedHeader(earlier.header);
-      const key: PodKey = { ...earlier, version: "1.3", header };
-      if (!same((await files.read(HEADER)) ?? new Uint8Array(), header))
-        await files.write(HEADER, header);
-      const reading = new EncryptedFiles(files, { ...earlier, header });
       const listing = await files.list("");
+      if (countersIn(listing).length > 0) return undefined;
+      const paths = listing.filter(isEarlierFile);
+      const carried: string[] = [];
+      let gone = false;
+      for (let at = 0; at < paths.length; at += UPGRADE_BATCH) {
+        const looked = await Promise.all(
+          paths.slice(at, at + UPGRADE_BATCH).map(async (path) => {
+            const bytes = await files.read(path);
+            const opens =
+              bytes === undefined
+                ? undefined
+                : (await opened(
+                    earlier.key,
+                    bytes,
+                    boundTo("pod", earlier.version, path),
+                  )) !== undefined;
+            return [path, opens] as const;
+          }),
+        );
+        for (const [path, opens] of looked)
+          if (opens === undefined) gone = true;
+          else if (opens) carried.push(path);
+          else if (laidOut(path)) {
+            if (await indexed()) return undefined;
+            throw changed(`${path} does not open under its key`);
+          }
+      }
+      if (gone && (await indexed())) return undefined;
+      if (resumed && carried.length < (count ?? 0)) {
+        if (await indexed()) return undefined;
+        throw changed("its sealed index is missing");
+      }
+      if (!resumed) {
+        count = carried.length;
+        await files.write(UPGRADE_CLAIM, await claim());
+        await files.write(HEADER, header);
+        headerWritten = true;
+      }
+      const key: PodKey = { ...earlier, version: "1.3", header };
       const index = new SealedIndex(
         files,
         key,
@@ -848,48 +991,47 @@ export class SealedIndex {
         undefined,
         listing,
       );
-      const paths = listing.filter(isEarlierFile);
       const entries = new Map<string, Named>();
-      const written: string[] = [];
-      try {
-        for (let at = 0; at < paths.length; at += UPGRADE_BATCH) {
-          const read = await Promise.all(
-            paths.slice(at, at + UPGRADE_BATCH).map(async (path) => {
-              try {
-                return [path, await reading.read(path)] as const;
-              } catch (error) {
-                if (error instanceof Refusal)
-                  throw changed(`${path} does not open under its key`);
-                throw error;
-              }
-            }),
-          );
-          const sealed = await index.#sealed(
-            read.flatMap(([path, bytes]) =>
-              bytes === undefined ? [] : [[path, bytes] as const],
-            ),
-          );
-          await writeAll(
-            files,
-            sealed.map(([, name, bytes]) => [name, bytes] as const),
-          );
-          for (const [path, name, bytes] of sealed) {
-            entries.set(path, { name, tag: tagOf(bytes) });
-            written.push(name);
-          }
+      for (let at = 0; at < carried.length; at += UPGRADE_BATCH) {
+        const read = await Promise.all(
+          carried
+            .slice(at, at + UPGRADE_BATCH)
+            .map(async (path) => [path, await openedEarlier(path)] as const),
+        );
+        const lost = read.find(([, plain]) => plain === undefined);
+        if (lost !== undefined) {
+          if (await indexed()) return undefined;
+          throw changed(`${lost[0]} is missing`);
         }
-        const committed = await index.#committed(1, entries);
-        if (!committed) {
-          await files.remove?.(written).catch(() => undefined);
-          return undefined;
+        const sealed = await index.#sealed(
+          read.flatMap(([path, plain]) =>
+            plain === undefined ? [] : [[path, plain] as const],
+          ),
+        );
+        await writeAll(
+          files,
+          sealed.map(([, name, bytes]) => [name, bytes] as const),
+        );
+        for (const [path, name, bytes] of sealed) {
+          entries.set(path, { name, tag: tagOf(bytes) });
+          written.push(name);
         }
-      } catch (error) {
-        await files.remove?.(written).catch(() => undefined);
-        throw error;
       }
+      const committed = await index.#committed(1, entries);
+      if (committed === "taken")
+        await files.remove?.(written).catch(() => undefined);
+      written.length = 0;
+      if (committed !== "written") return undefined;
       await renewalsStopped();
-      await index.#sweep(await files.list(""));
+      await Promise.resolve(files.remove?.(carried))
+        .then(() => files.remove?.([UPGRADE_CLAIM]))
+        .catch(() => undefined);
       return index;
+    } catch (error) {
+      await files.remove?.(written).catch(() => undefined);
+      if (!headerWritten)
+        await files.remove?.([UPGRADE_CLAIM]).catch(() => undefined);
+      throw error;
     } finally {
       await renewalsStopped();
     }
@@ -915,33 +1057,37 @@ export class SealedIndex {
     );
   }
 
-  /** Writes the index with these entries and counter, unless the stored index is no longer the one held; false then. */
+  /**
+   * Writes the index with these entries under the counter, only where no index of that counter is: `taken` when one is,
+   * another opening's; `unsure` when by the time it is written a later index is there, which another opening may have
+   * written from it or from the one this took the place of. Held as the pod's index only when `written`.
+   */
   async #committed(
     counter: number,
     entries: Map<string, Named>,
-  ): Promise<boolean> {
+  ): Promise<"written" | "taken" | "unsure"> {
     const bytes = await seal(
       this.#key.key,
       indexBytes(counter, entries),
       INDEX_BOUND,
     );
-    if (!(await replaced(this.#files, SEALED_INDEX, bytes, this.#stored)))
-      return false;
+    if (!(await created(this.#files, indexAt(counter), bytes))) return "taken";
+    if (countersIn(await this.#files.list(SEALED_INDEX))[0] !== counter)
+      return "unsure";
     this.#stored = bytes;
     this.#counter = counter;
     this.#entries = entries;
     this.#sorted = undefined;
-    return true;
+    return "written";
   }
 
-  /** Removes each file of the listing the index does not name, but the header, the plaintext files and the index. */
-  async #sweep(listing: readonly string[]): Promise<void> {
+  /** Each file of the listing under `sealed/` that the index does not name, the index's own aside. */
+  #unnamed(listing: readonly string[]): string[] {
     const named = new Set([...this.#entries.values()].map(({ name }) => name));
-    const unnamed = listing.filter(
+    return listing.filter(
       (path) =>
-        !PLAINTEXT.has(path) && path !== SEALED_INDEX && !named.has(path),
+        under(SEALED, path) && !under(SEALED_INDEX, path) && !named.has(path),
     );
-    await this.#files.remove?.(unnamed).catch(() => undefined);
   }
 
   /**
@@ -958,23 +1104,31 @@ export class SealedIndex {
     throw changed(what);
   }
 
-  /** Refuses when the stored index is not the one held: a later one is another opening's write, any other a change from outside. */
-  async #storedUnchanged(): Promise<void> {
-    const stored = await this.#files.read(SEALED_INDEX);
-    if (sameBytes(stored, this.#stored)) return;
-    const plain =
-      stored === undefined
-        ? undefined
-        : await opened(this.#key.key, stored, INDEX_BOUND);
-    const read = plain === undefined ? undefined : indexOf(plain);
-    if (read !== undefined && read.counter > this.#counter)
-      throw new Refusal(
-        "the pod was written by another opening since this one opened it; open it again",
+  /**
+   * The counters of the stored indexes, once the latest is the one held; refused when it is not, a later one being
+   * another opening's write and any other a change from outside.
+   */
+  async #storedUnchanged(): Promise<number[]> {
+    const counters = countersIn(await this.#files.list(SEALED_INDEX));
+    const [latest] = counters;
+    if (latest !== undefined && latest > this.#counter)
+      throw new Refusal(AGAIN);
+    if (latest === undefined) throw changed("its sealed index is missing");
+    if (latest < this.#counter)
+      throw changed(
+        "its sealed index is older than the one it was opened with",
       );
+    const stored = await this.#files.read(indexAt(latest));
+    if (stored === undefined) return this.#storedUnchanged();
+    if (sameBytes(stored, this.#stored)) return counters;
+    const plain = await opened(this.#key.key, stored, INDEX_BOUND);
+    const read = plain === undefined ? undefined : indexOf(plain);
     throw changed(
       read === undefined
         ? "its sealed index does not open under its key"
-        : "its sealed index is older than the one it was opened with",
+        : read.counter < this.#counter
+          ? "its sealed index is older than the one it was opened with"
+          : "its sealed index is not the copy the pod last wrote",
     );
   }
 
@@ -996,8 +1150,9 @@ export class SealedIndex {
 
   /**
    * Seals and writes the files, the plaintext ones as they are, then the index naming them, one write of it for all;
-   * then removes the earlier copy of each file written again, and, at an opening's first write, every stored file the
-   * index does not name. Refuses, writing no index, when the header or the stored index changed since the pod was opened.
+   * then removes the earlier indexes, the earlier copy of each file written again, and, at an opening's first write,
+   * every file under `sealed/` the index does not name. Refuses, writing no index, when the header or the stored index
+   * changed since the pod was opened, or another opening wrote an index of the same counter first.
    */
   write(files: readonly (readonly [string, Uint8Array])[]): Promise<void> {
     const writing = this.#writing.then(() => this.#write(files));
@@ -1018,7 +1173,8 @@ export class SealedIndex {
     const sealed = await this.#sealed(
       files.filter(([path]) => !PLAINTEXT.has(path)),
     );
-    const before = this.#swept ? [] : await this.#files.list("");
+    const counters = await this.#storedUnchanged();
+    const before = this.#swept ? [] : await this.#files.list(SEALED);
     await writeAll(this.#files, [
       ...sealed.map(([, name, bytes]) => [name, bytes] as const),
       ...plain,
@@ -1030,17 +1186,24 @@ export class SealedIndex {
       if (was !== undefined && was.name !== name) replacedNames.push(was.name);
       entries.set(path, { name, tag: tagOf(bytes) });
     }
-    if (!(await this.#committed(this.#counter + 1, entries))) {
-      await this.#files
-        .remove?.(sealed.map(([, name]) => name))
-        .catch(() => undefined);
-      await this.#storedUnchanged();
-      throw changed("its sealed index changed while it was written");
+    const committed = await this.#committed(this.#counter + 1, entries);
+    if (committed !== "written") {
+      if (committed === "taken")
+        await this.#files
+          .remove?.(sealed.map(([, name]) => name))
+          .catch(() => undefined);
+      throw new Refusal(AGAIN);
     }
     for (const [path] of plain) this.#plaintext.add(path);
     this.#sorted = undefined;
     this.#swept = true;
-    await this.#sweep([...before, ...replacedNames]);
+    await this.#files
+      .remove?.([
+        ...counters.filter((counter) => counter < this.#counter).map(indexAt),
+        ...replacedNames,
+        ...this.#unnamed(before),
+      ])
+      .catch(() => undefined);
   }
 
   /** Each path the index names under the folder, and each plaintext file there is, sorted; nothing is read. */
@@ -1052,11 +1215,26 @@ export class SealedIndex {
 
 const UPGRADE_BATCH = 64;
 
-/** The upgrade a claim's bytes state, from the version they are sealed as: when it was claimed, and from which version. */
+/** A claim's text: the upgrade, when it was claimed, and, once its files are looked at, how many it carries over. */
+const claimText = (
+  from: HeaderVersion,
+  at: number,
+  count: number | undefined,
+): string =>
+  `# cascade-runtime upgrades this pod from ${from} to 1.3; claimed ${at}${count === undefined ? "" : `; ${count} files`}\n`;
+
+/** The upgrade a claim's bytes state, from the version they are sealed as: when it was claimed, from which version, and how many files it carries over. */
 async function claimOf(
   key: PodKey,
   bytes: Uint8Array,
-): Promise<{ readonly from: HeaderVersion; readonly at: number } | undefined> {
+): Promise<
+  | {
+      readonly from: HeaderVersion;
+      readonly at: number;
+      readonly count: number | undefined;
+    }
+  | undefined
+> {
   for (const from of ["1.2", "1.1"] as const) {
     const plain = await opened(
       key.key,
@@ -1065,13 +1243,17 @@ async function claimOf(
     );
     if (plain === undefined) continue;
     const stated =
-      /^# cascade-runtime upgrades this pod from (1\.[0-2]) to 1\.3; claimed (\d+)\n$/.exec(
+      /^# cascade-runtime upgrades this pod from (1\.[0-2]) to 1\.3; claimed (\d+)(?:; (\d+) files)?\n$/.exec(
         new TextDecoder().decode(plain),
       );
     if (stated === null) return undefined;
     const version = stated[1] as HeaderVersion;
     if ((version === "1.2") !== (from === "1.2")) return undefined;
-    return { from: version, at: Number(stated[2]) };
+    return {
+      from: version,
+      at: Number(stated[2]),
+      count: stated[3] === undefined ? undefined : Number(stated[3]),
+    };
   }
   return undefined;
 }
@@ -1179,9 +1361,17 @@ export class EncryptedFiles implements Files {
     const given: (readonly [string, Uint8Array])[] = [];
     for (const [pathOrIri, bytes] of files) {
       const path = this.#path(pathOrIri);
-      if (this.#kind === "pod" && path.toLowerCase() === HEADER.toLowerCase())
+      const lower = path.toLowerCase();
+      if (this.#kind === "pod" && lower === HEADER.toLowerCase())
         throw new Refusal(
           `${HEADER} is written only when the pod's encryption is made`,
+        );
+      if (
+        this.#kind === "pod" &&
+        (lower === UPGRADE_CLAIM || under(SEALED, lower))
+      )
+        throw new Refusal(
+          `${path} is where a pod's own sealed files and claims are stored: no file of the pod is written there`,
         );
       if (!this.#plain(path) && bytes.length > this.#maxBytes)
         throw new Refusal(

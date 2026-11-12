@@ -320,7 +320,29 @@ export class FolderFiles implements Files {
     }
   }
 
-  async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+  /**
+   * Does a write, again with its folders looked at afresh when it found no folder where one was: another process's
+   * `remove` takes away a folder it left empty, which this one may have looked at already.
+   */
+  async #again<T>(pathOrIri: string, writing: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await writing();
+      } catch (error) {
+        if (attempt === 5 || (error as NodeJS.ErrnoException).code !== "ENOENT")
+          throw error;
+        const parts = this.#parts(pathOrIri);
+        for (let depth = 1; depth < parts.length; depth++)
+          this.#checked.delete(parts.slice(0, depth).join("/"));
+      }
+    }
+  }
+
+  write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+    return this.#again(pathOrIri, () => this.#write(pathOrIri, bytes));
+  }
+
+  async #write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
     const local = this.#local(pathOrIri);
     const at = await this.#writable(pathOrIri);
     const writing = join(
@@ -345,7 +367,11 @@ export class FolderFiles implements Files {
   }
 
   /** Writes the file only when none is at its path, whole or not at all; false when one is. */
-  async writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
+  writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
+    return this.#again(pathOrIri, () => this.#writeNew(pathOrIri, bytes));
+  }
+
+  async #writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
     const at = await this.#writable(pathOrIri);
     const writing = join(
       dirname(at),
@@ -468,7 +494,10 @@ export class FolderFiles implements Files {
   }
 }
 
-/** Every file under the folder, its subfolders read in parallel: on Windows a third of a recursive `readdir`'s time. */
+/**
+ * Every file under the folder, its subfolders read in parallel: on Windows a third of a recursive `readdir`'s time. A
+ * subfolder another process removed once it was empty, while this one read, holds nothing.
+ */
 async function filesUnder(
   folder: string,
   seen?: (folder: string) => void,
@@ -478,7 +507,11 @@ async function filesUnder(
   const found = await Promise.all(
     entries.map((entry) => {
       const path = join(folder, entry.name);
-      if (entry.isDirectory()) return filesUnder(path, seen);
+      if (entry.isDirectory())
+        return filesUnder(path, seen).catch((error: unknown) => {
+          if (absent(error)) return [];
+          throw error;
+        });
       return entry.isFile() && !WRITING.test(entry.name) ? [path] : [];
     }),
   );

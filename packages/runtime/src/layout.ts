@@ -179,6 +179,14 @@ export class Layout {
     return this.#namedInAFolder(path);
   }
 
+  /** Whether the layout uses the path: a file it gives by itself, or one named as N9 names a file in a folder it gives. */
+  uses(path: string): boolean {
+    return (
+      this.placements.some(({ file }) => file === path) ||
+      this.#namedInAFolder(path)
+    );
+  }
+
   /** Whether the file at the path is a sync's act file: named as N9 names a file in the syncs' folder. */
   inSyncsFolder(path: string): boolean {
     return (
