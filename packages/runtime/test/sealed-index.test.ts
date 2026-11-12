@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, describe, it } from "node:test";
+import { after, before, describe, it, mock } from "node:test";
 import { promisify } from "node:util";
 import {
   type DeriveKey,
@@ -96,11 +96,11 @@ async function earlierPod(files: Files): Promise<PodKey> {
   return key;
 }
 
-/** An upgrade's claim, sealed as a 1.2 file at its path under the pod's key: claimed at the time, stating a count of files or none. */
-async function sealedClaim(
+/** A file sealed as a 1.2 runtime sealed it, at any path, bound to the path, whether or not this runtime would write there. */
+async function earlierSealed(
   key: PodKey,
-  at: number,
-  count?: number,
+  path: string,
+  body: string,
 ): Promise<Uint8Array> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const sealed = await crypto.subtle.encrypt(
@@ -113,16 +113,44 @@ async function sealedClaim(
         0,
         ...encoded("2"),
         0,
-        ...encoded(UPGRADE_CLAIM),
+        ...encoded(path),
       ]),
     },
     key.key,
-    encoded(
-      `# cascade-runtime upgrades this pod from 1.2 to 1.3; claimed ${at}${count === undefined ? "" : `; ${count} files`}\n`,
-    ),
+    encoded(body),
   );
   return new Uint8Array([...iv, ...new Uint8Array(sealed)]);
 }
+
+/** What an upgrade's claim, as stored, says: the text of the claim sealed as a 1.2 file under the pod's key. */
+async function claimSays(key: PodKey, bytes: Uint8Array): Promise<string> {
+  return text(
+    await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: bytes.subarray(0, 12),
+        tagLength: 128,
+        additionalData: new Uint8Array([
+          ...encoded("cascade-pod-resource"),
+          0,
+          ...encoded("2"),
+          0,
+          ...encoded(UPGRADE_CLAIM),
+        ]),
+      },
+      key.key,
+      bytes.subarray(12),
+    ),
+  );
+}
+
+/** An upgrade's claim, sealed as a 1.2 file at its path under the pod's key: claimed at the time, stating a count of files or none. */
+const sealedClaim = (key: PodKey, at: number, count?: number) =>
+  earlierSealed(
+    key,
+    UPGRADE_CLAIM,
+    `# cascade-runtime upgrades this pod from 1.2 to 1.3; claimed ${at}${count === undefined ? "" : `; ${count} files`}\n`,
+  );
 
 /** What a pod reads as: each file it lists, with its text. */
 async function readAs(pod: Files): Promise<string[][]> {
@@ -266,6 +294,32 @@ class Interleaving implements Files {
   list(folder: string) {
     return this.memory.list(folder);
   }
+}
+
+/** The files, but a write of a kind and path that `refused` says throws, as a file system that cannot take it would. */
+function refusing(
+  memory: MemoryFiles,
+  refused: (kind: "write" | "writeNew", path: string) => boolean,
+): Files {
+  const check = (kind: "write" | "writeNew", path: string) => {
+    if (refused(kind, path))
+      throw new Error(`EPERM: operation not permitted, ${kind} '${path}'`);
+  };
+  return {
+    iri: memory.iri,
+    read: (path) => memory.read(path),
+    write: async (path, bytes) => {
+      check("write", path);
+      return memory.write(path, bytes);
+    },
+    writeNew: async (path, bytes) => {
+      check("writeNew", path);
+      return memory.writeNew(path, bytes);
+    },
+    replace: (path, bytes, holds) => memory.replace(path, bytes, holds),
+    remove: (paths) => memory.remove(paths),
+    list: (folder) => memory.list(folder),
+  };
 }
 
 /** The files, with `landing` run once where `at` says, before that call returns: where another opening's write lands. */
@@ -442,7 +496,12 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
         [older, earlier],
       ] as const) {
         const held = await files.list("");
-        for (const path of [UPGRADE_CLAIM, "sealed/index", "sealed/ab/cd"])
+        for (const path of [
+          UPGRADE_CLAIM,
+          "sealed",
+          "sealed/index",
+          "sealed/ab/cd",
+        ])
           await assert.rejects(
             writing.write(path, encoded("<#a> <#b> <#c> .")),
             (error) => error instanceof Refusal && error.message.includes(path),
@@ -470,6 +529,69 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
         "changed outside the runtime",
       );
       assert.deepEqual(await bare.list(""), [HEADER]);
+    });
+  });
+
+  describe("given a folder that cannot hold a 1.3 pod", () => {
+    it("refuses an upgrade and a new pod with a `Refusal` that says the file system cannot hold it, leaving a whole 1.2 pod and an empty folder", async () => {
+      const cases: [
+        string,
+        (kind: "write" | "writeNew", path: string) => boolean,
+      ][] = [
+        [
+          "no hard links, as FAT and exFAT have none",
+          (kind) => kind === "writeNew",
+        ],
+        ["no file under sealed/", (_kind, path) => path.startsWith("sealed/")],
+      ];
+      const plain = (error: unknown) =>
+        error instanceof Refusal &&
+        !(error instanceof Unopened) &&
+        /file system/.test(error.message);
+      for (const [what, refused] of cases) {
+        const memory = new MemoryFiles("urn:test:pod/");
+        await earlierPod(memory);
+        const held = await memory.list("");
+        await assert.rejects(
+          reopened(refusing(memory, refused)),
+          plain,
+          `${what}: an upgrade`,
+        );
+        assert.equal(await versionIn(memory), "1.2", what);
+        assert.deepEqual(await memory.list(""), held, what);
+        const fresh = new MemoryFiles("urn:test:pod/");
+        await assert.rejects(
+          madeNewPod(refusing(fresh, refused), await newHeader(SECRET, derive)),
+          plain,
+          `${what}: a new pod`,
+        );
+        assert.deepEqual(await fresh.list(""), [], what);
+      }
+    });
+
+    it("refuses a 1.2 pod holding a file at `sealed`, the name its sealed folder needs, each time it is opened, and leaves it whole with no claim", async () => {
+      const files = new FolderFiles(
+        join(folders, "file-at-sealed"),
+        undefined,
+        {
+          refuseLinks: true,
+        },
+      );
+      const key = await earlierPod(files);
+      await files.write(
+        "sealed",
+        await earlierSealed(key, "sealed", "<#a> <#b> <#c> .\n"),
+      );
+      const held = await files.list("");
+      for (const open of [1, 2]) {
+        await assert.rejects(
+          reopened(files),
+          (error) => error instanceof Refusal && !(error instanceof Unopened),
+          `open ${open}`,
+        );
+        assert.equal(await versionIn(files), "1.2", `open ${open}`);
+        assert.deepEqual(await files.list(""), held, `open ${open}`);
+      }
     });
   });
 
@@ -665,6 +787,60 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
       assert.deepEqual(outcomes, ["done", "done", "done", "done"]);
     });
 
+    it("tells a writer its write was written, though another opening wrote the next index before it looked, when that index names every file the writer wrote; refuses it when it does not", async () => {
+      const told = async (
+        another: (pod: EncryptedFiles) => Promise<unknown>,
+      ) => {
+        const memory = new MemoryFiles("urn:test:pod/");
+        await madePod(memory);
+        let wrote = false;
+        let landed = false;
+        const files: Files = {
+          iri: memory.iri,
+          read: (path) => memory.read(path),
+          write: (path, bytes) => memory.write(path, bytes),
+          writeNew: async (path, bytes) => {
+            const done = await memory.writeNew(path, bytes);
+            if (path.startsWith(`${SEALED_INDEX}/`)) wrote = true;
+            return done;
+          },
+          replace: (path, bytes, holds) => memory.replace(path, bytes, holds),
+          remove: (paths) => memory.remove(paths),
+          list: async (folder) => {
+            if (wrote && !landed && folder === SEALED_INDEX) {
+              landed = true;
+              await another(await reopened(memory));
+            }
+            return memory.list(folder);
+          },
+        };
+        const writer = await reopened(files);
+        const outcome = await outcomeOf(
+          writer.writeAll([
+            ["views/a.ttl", encoded("<#a> <#b> <#c> .\n")],
+            ["views/c.ttl", encoded("<#c> <#b> <#a> .\n")],
+          ]),
+        );
+        return { memory, writer, outcome };
+      };
+      const elsewhere = await told((other) =>
+        other.write("views/b.ttl", encoded("<#b> <#c> <#d> .\n")),
+      );
+      assert.equal(elsewhere.outcome, "done");
+      const fresh = await reopened(elsewhere.memory);
+      for (const path of ["views/a.ttl", "views/b.ttl", "views/c.ttl"])
+        assert.ok((await fresh.list("views")).includes(path), path);
+      assert.equal(
+        text(await elsewhere.writer.read("views/a.ttl")),
+        "<#a> <#b> <#c> .\n",
+        "the writer reads what it was told it wrote",
+      );
+      const rewritten = await told((other) =>
+        other.write("views/a.ttl", encoded("<#a> <#b> <#c> .\n")),
+      );
+      assert.match(rewritten.outcome, AGAIN);
+    });
+
     it("ends, when two processes write one pod again and again, with a pod that opens and holds every write either was told was written", async () => {
       const at = join(folders, "two-processes");
       await madePod(new FolderFiles(at, undefined, { refuseLinks: true }));
@@ -795,6 +971,58 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
         }
       }
       assert.deepEqual([...seen].sort(), ["1.2", "1.3"]);
+    });
+
+    it("states the file count in the claim a stop before the index leaves, though a renewal that began before the count was set lands after it", async () => {
+      mock.timers.enable({ apis: ["setInterval"] });
+      try {
+        const memory = new MemoryFiles("urn:test:pod/");
+        const key = await earlierPod(memory);
+        let ticked = false;
+        let held: Promise<void> | undefined;
+        let release = () => {};
+        const files: Files = {
+          iri: memory.iri,
+          read: async (path) => {
+            if (!ticked && path !== HEADER && path !== UPGRADE_CLAIM) {
+              ticked = true;
+              mock.timers.tick(5000);
+            }
+            return memory.read(path);
+          },
+          write: async (path, bytes) => {
+            if (
+              path === UPGRADE_CLAIM &&
+              held === undefined &&
+              !/; \d+ files/.test(await claimSays(key, bytes))
+            ) {
+              held = new Promise<void>((resolve) => {
+                release = resolve;
+                setTimeout(resolve, 100);
+              });
+              await held;
+            }
+            return memory.write(path, bytes);
+          },
+          writeNew: async (path, bytes) => {
+            if (path.startsWith(`${SEALED_INDEX}/`)) {
+              release();
+              throw new Error("stopped before the index");
+            }
+            return memory.writeNew(path, bytes);
+          },
+          replace: (path, bytes, holds) => memory.replace(path, bytes, holds),
+          remove: (paths) => memory.remove(paths),
+          list: (folder) => memory.list(folder),
+        };
+        await assert.rejects(reopened(files), /stopped before the index/);
+        assert.ok(held !== undefined, "a renewal without the count was slow");
+        assert.equal(await versionIn(memory), "1.3");
+        const resumed = await reopened(memory, { claimHolds: 0 });
+        assert.deepEqual(await readAs(resumed), WRITTEN);
+      } finally {
+        mock.timers.reset();
+      }
     });
 
     it("upgrades it once when two openings race, and opens it for both", async () => {

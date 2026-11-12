@@ -1658,6 +1658,94 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
       assert.equal(new TextDecoder().decode(read), "a");
     });
 
+    /** A folder as `openFolderPod` hands it to `podKey`: holding whatever it holds, its header read again as it is looked for. */
+    const holding = (at: string) => {
+      const files = new FolderFiles(at);
+      return {
+        files,
+        header: undefined,
+        reread: () => headerIn(at),
+        held: async () => (await files.list("")).length > 0,
+      };
+    };
+
+    /** The files as they are, but a write of the header that `before` runs first, or that throws. */
+    const writingHeader = (
+      files: Files,
+      before: () => Promise<void> | void,
+    ): Files => ({
+      iri: files.iri,
+      read: (path) => files.read(path),
+      write: (path, bytes) => files.write(path, bytes),
+      writeNew: async (path, bytes) => {
+        if (path === HEADER) await before();
+        return files.writeNew(path, bytes);
+      },
+      replace: (path, bytes, holds) => files.replace(path, bytes, holds),
+      remove: (paths) => files.remove(paths),
+      list: (folder) => files.list(folder),
+    });
+
+    it("makes the pod again with the secret given, when the opening that began it stopped between its two writes and left only its sealed index", async () => {
+      const derive = fastDerive();
+      const at = join(pods, "half-made");
+      const { files } = holding(at);
+      await assert.rejects(
+        madeNewPod(
+          writingHeader(files, () => {
+            throw new Error("stopped");
+          }),
+          await newHeader(WORDS, derive),
+        ),
+        /stopped/,
+      );
+      assert.deepEqual(await files.list(""), [`${SEALED_INDEX}/0`]);
+      const secret = "a b c d e f";
+      const key = await podKey(holding(at), secret, derive, {
+        looks: 3,
+        every: 1,
+      });
+      assert.ok(key);
+      assert.ok(
+        await openHeader(
+          (await headerIn(at)) ?? new Uint8Array(),
+          secret,
+          derive,
+        ),
+      );
+      const sealed = new EncryptedFiles(files, key, {
+        index: await SealedIndex.open(files, key),
+      });
+      await sealed.write("a.ttl", new TextEncoder().encode("a"));
+      assert.equal(new TextDecoder().decode(await sealed.read("a.ttl")), "a");
+    });
+
+    it("opens with the header of an opening that is still making the pod, after its sealed index and before its header", async () => {
+      const derive = fastDerive();
+      const at = join(pods, "being-made");
+      const { files } = holding(at);
+      let reached = () => {};
+      const between = new Promise<void>((resolve) => (reached = resolve));
+      const making = madeNewPod(
+        writingHeader(files, async () => {
+          reached();
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }),
+        await newHeader(WORDS, derive),
+      );
+      await between;
+      const key = await podKey(holding(at), WORDS, derive, {
+        looks: 100,
+        every: 5,
+      });
+      assert.ok(key);
+      assert.ok(await making);
+      const sealed = new EncryptedFiles(files, key, {
+        index: await SealedIndex.open(files, key),
+      });
+      assert.deepEqual(await sealed.list(""), []);
+    });
+
     it("opens for exactly one of two different secrets, with `incorrect secret` for the other", async () => {
       const derive = fastDerive();
       const other = join(pods, "raced-apart");
