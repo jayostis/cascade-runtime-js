@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { constants } from "node:fs";
+import { constants, type Stats } from "node:fs";
 import {
   link,
   lstat,
@@ -335,6 +335,24 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
         Refusal,
       );
       assert.equal(text(await files.read("subject/real.txt")), "real");
+    });
+
+    it("throws Refusal for a file that lstat says is a link, which a machine that makes no file link cannot show", async () => {
+      const { pod } = await world();
+      const files = new FolderFiles(pod, undefined, {
+        ...REFUSING,
+        fs: {
+          noFollow: undefined,
+          lstat: async (path) => {
+            const stat = await lstat(path);
+            return path.endsWith("real.txt")
+              ? ({ ...stat, isSymbolicLink: () => true } as Stats)
+              : stat;
+          },
+        },
+      });
+      await assert.rejects(files.read("subject/real.txt"), Refusal);
+      assert.equal(await files.read("subject/none.txt"), undefined);
     });
   });
 });
