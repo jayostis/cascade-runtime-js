@@ -18,18 +18,25 @@ import { after, before, describe, it } from "node:test";
 import {
   type DeriveKey,
   EncryptedFiles,
+  type Files,
   findingName,
   type FolderPack,
+  HEADER,
   iri,
   Layout,
   MATCHER,
   MemoryFiles,
+  newHeader,
   ntriples,
+  openHeader,
   OxigraphStore,
   type Placed,
   type PodKey,
   questions,
   RDF,
+  replaced,
+  SEALED_INDEX,
+  SealedIndex,
   type Triple,
 } from "@cascade-runtime/runtime";
 import {
@@ -56,7 +63,7 @@ import { kitDownload, kitStory, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
 import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
-import { openFolderPod } from "../src/node/folder-pod.js";
+import { checkFolderSecret, openFolderPod } from "../src/node/folder-pod.js";
 import { answersToPublish, partsOf } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
@@ -1639,13 +1646,12 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
         opening(at, WORDS, derive),
       ]);
       assert.ok(first !== undefined && second !== undefined);
-      await new EncryptedFiles(new FolderFiles(at), first).write(
-        "a.ttl",
-        new TextEncoder().encode("a"),
-      );
-      const read = await new EncryptedFiles(new FolderFiles(at), second).read(
-        "a.ttl",
-      );
+      const sealed = async (key: PodKey) =>
+        new EncryptedFiles(new FolderFiles(at), key, {
+          index: await SealedIndex.open(new FolderFiles(at), key),
+        });
+      await (await sealed(first)).write("a.ttl", new TextEncoder().encode("a"));
+      const read = await (await sealed(second)).read("a.ttl");
       assert.equal(new TextDecoder().decode(read), "a");
     });
 
@@ -1664,7 +1670,312 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
       assert.deepEqual(outcomes.sort(), ["incorrect secret", "opened"]);
     });
   });
+
+  /** Alex's pod made with the six words from two downloads, each import's index writes counted. */
+  describe("when a pod made with a secret holds records", () => {
+    let sealedAlex: SealedAlex;
+
+    before(async () => {
+      sealedAlex = await sealedAlexPod();
+    });
+
+    it("names its files so its folder shows no record kind, no count by kind, and no hash of a record's triples", async () => {
+      const { folder: at, logical } = sealedAlex;
+      const stored = (await filesIn(at))
+        .map((file) => relative(at, file).split(sep).join("/"))
+        .filter((path) => path !== HEADER);
+      assert.deepEqual(
+        stored.filter(
+          (path) => !/^sealed\/[0-9a-f]{2}\/[0-9a-f]{62}$/.test(path),
+        ),
+        [SEALED_INDEX],
+      );
+      const told = new Set(
+        logical.flatMap((path) =>
+          path.split(/[/.]/).filter((part) => part.length >= 8),
+        ),
+      );
+      assert.ok(told.size > 20, [...told].join(" "));
+      for (const path of stored)
+        for (const part of told)
+          assert.ok(!path.includes(part), `${path} holds ${part}`);
+    });
+
+    it("writes its sealed index as often for an import of x-e4 as for one of x-e2, which writes more files", () => {
+      const [first, second] = sealedAlex.imports;
+      assert.ok(
+        first && second && first.wrote > second.wrote,
+        JSON.stringify(sealedAlex.imports),
+      );
+      assert.equal(second.indexWrites, first.indexWrites);
+    });
+
+    it("throws `Unopened`, `changed outside the runtime`, on the next open after one of its files is deleted", async () => {
+      const at = await copied(sealedAlex.folder, "sealed-alex-deleted");
+      const [one] = (await filesIn(join(at, "sealed"))).filter(
+        (file) => !file.endsWith("index"),
+      );
+      assert.ok(one);
+      await rm(one);
+      const refused = await unopenedBy(
+        openFolderPod({ ...kept, derive: sealedAlex.derive }, at, {
+          secret: WORDS,
+        }),
+      );
+      assert.equal(refused.outcome, "changed outside the runtime");
+    });
+
+    it("throws `Unopened`, `changed outside the runtime`, from an import whose step reads a file changed since the pod opened, rather than refusing it", async () => {
+      const at = await copied(sealedAlex.folder, "sealed-alex-changed");
+      const watching = watched();
+      const pod = await openFolderPod(
+        { ...watching.parts, derive: sealedAlex.derive },
+        at,
+        { secret: WORDS },
+      );
+      try {
+        watching.changeUnread();
+        await assert.rejects(
+          pod.import(exported("x-e6")),
+          (error) =>
+            error instanceof Unopened &&
+            error.outcome === "changed outside the runtime",
+        );
+      } finally {
+        await pod.close();
+      }
+    });
+  });
+
+  describe("when a 1.2 pod is opened with its secret", () => {
+    it("leaves it 1.2 for a wrong secret; with its secret, upgrades it to 1.3, no file stored under its own path, and answers as before", async () => {
+      const sealedAlex = await sealedAlexPod();
+      const at = await copied(sealedAlex.folder, "sealed-alex-1.2");
+      await asEarlier(at, sealedAlex.derive);
+      const version = async () =>
+        (
+          JSON.parse(
+            await readFile(join(at, ...HEADER.split("/")), "utf8"),
+          ) as {
+            version: string;
+          }
+        ).version;
+      const parts = { ...kept, derive: sealedAlex.derive };
+      assert.equal(
+        (await unopenedBy(openFolderPod(parts, at, { secret: "a b c d e f" })))
+          .outcome,
+        "incorrect secret",
+      );
+      assert.ok(await checkFolderSecret(parts, at, WORDS));
+      assert.equal(await version(), "1.2");
+      const opened = await openFolderPod(parts, at, { secret: WORDS });
+      try {
+        assert.equal(await version(), "1.3");
+        const stored = await filesIn(at);
+        for (const path of sealedAlex.logical)
+          assert.ok(
+            !stored.includes(join(at, ...path.split("/"))),
+            `${path} is stored under its own path`,
+          );
+        assert.deepEqual(await opened.ask(HELD), sealedAlex.rows);
+      } finally {
+        await opened.close();
+      }
+    });
+  });
+
+  describe("when the same records are held plain and sealed", () => {
+    it("answers every question in the vocabulary the same", async () => {
+      const plainAt = join(pods, "plain-alex-same");
+      const made = await openPodWith(kept, plainAt);
+      try {
+        await made.import(exported("x-e2"));
+      } finally {
+        await made.close();
+      }
+      const derive = fastDerive();
+      const sealedAt = join(pods, "sealed-alex-same");
+      await sealedCopy(plainAt, sealedAt, derive);
+      const askedOnOpening = async (opening: Promise<Pod>) => {
+        const pod = await opening;
+        try {
+          const rows: unknown[] = [];
+          for (const question of (await questions(kept.vocabulary)).keys())
+            rows.push([question, await pod.ask(question)]);
+          return { rows, encrypted: pod.encrypted };
+        } finally {
+          await pod.close();
+        }
+      };
+      const plain = await askedOnOpening(openPodWith(kept, plainAt));
+      const sealed = await askedOnOpening(
+        openFolderPod({ ...kept, derive }, sealedAt, { secret: WORDS }),
+      );
+      assert.deepEqual([plain.encrypted, sealed.encrypted], [false, true]);
+      assert.deepEqual(sealed.rows, plain.rows);
+    });
+  });
 });
+
+interface SealedAlex {
+  readonly folder: string;
+  readonly derive: DeriveKey;
+  /** The path of each of its files above the sealing. */
+  readonly logical: readonly string[];
+  readonly rows: unknown;
+  readonly imports: readonly { wrote: number; indexWrites: number }[];
+}
+
+let sealedAlexMade: Promise<SealedAlex> | undefined;
+
+/** Parts whose pod files count each write of the sealed index and, once told, change any sealed file read that was not read before. */
+function watched() {
+  const read = new Set<string>();
+  let changing = false;
+  const counted = { indexWrites: 0 };
+  const watch = (files: Files): Files => ({
+    iri: files.iri,
+    read: async (path) => {
+      const bytes = await files.read(path);
+      const at = path.startsWith(files.iri)
+        ? path.slice(files.iri.length)
+        : path;
+      if (
+        bytes !== undefined &&
+        changing &&
+        !read.has(at) &&
+        /^sealed\/[0-9a-f]{2}\//.test(at)
+      ) {
+        const changed = new Uint8Array(bytes);
+        changed[20] = (changed[20] ?? 0) ^ 1;
+        return changed;
+      }
+      read.add(at);
+      return bytes;
+    },
+    write: (path, bytes) => files.write(path, bytes),
+    ...(files.writeNew === undefined
+      ? {}
+      : { writeNew: files.writeNew.bind(files) }),
+    replace: (path, bytes, holds) => {
+      if (path === SEALED_INDEX) counted.indexWrites += 1;
+      return replaced(files, path, bytes, holds);
+    },
+    ...(files.remove === undefined ? {} : { remove: files.remove.bind(files) }),
+    list: (folder) => files.list(folder),
+  });
+  const parts: Parts = {
+    ...kept,
+    folder: (path, iri) => {
+      const folder = kept.folder(path, iri);
+      return { ...folder, files: watch(folder.files) };
+    },
+  };
+  return {
+    parts,
+    counted,
+    changeUnread: () => {
+      changing = true;
+    },
+  };
+}
+
+/** Alex's pod made with the six words, x-e2 then x-e4 imported, asked one question, and closed: made once. */
+function sealedAlexPod(): Promise<SealedAlex> {
+  sealedAlexMade ??= (async () => {
+    const at = join(pods, "sealed-alex");
+    const derive = fastDerive();
+    const watching = watched();
+    const pod = await openFolderPod({ ...watching.parts, derive }, at, {
+      secret: WORDS,
+    });
+    const imports: { wrote: number; indexWrites: number }[] = [];
+    let rows: unknown;
+    try {
+      for (const name of ["x-e2", "x-e4"]) {
+        const before = watching.counted.indexWrites;
+        const done = await pod.import(exported(name), { match: false });
+        imports.push({
+          wrote: done.wrote.length,
+          indexWrites: watching.counted.indexWrites - before,
+        });
+      }
+      rows = await pod.ask(HELD);
+    } finally {
+      await pod.close();
+    }
+    return {
+      folder: at,
+      derive,
+      logical: await logicalIn(at, derive),
+      rows,
+      imports,
+    };
+  })();
+  return sealedAlexMade;
+}
+
+/** The path of each file of the sealed pod in the folder, above the sealing. */
+async function logicalIn(at: string, derive: DeriveKey): Promise<string[]> {
+  const files = new FolderFiles(at);
+  const key = await openHeader(
+    (await files.read(HEADER)) ?? new Uint8Array(),
+    WORDS,
+    derive,
+  );
+  const index = await SealedIndex.open(files, key);
+  return new EncryptedFiles(files, key, { index }).list("");
+}
+
+/** A copy of the folder, its sealed answers beside it left behind. */
+async function copied(from: string, name: string): Promise<string> {
+  const at = join(pods, name);
+  await cp(from, at, { recursive: true });
+  return at;
+}
+
+/** The sealed pod in the folder written back as a 1.2 runtime held it: a 1.2 header, each file sealed under its own path. */
+async function asEarlier(at: string, derive: DeriveKey): Promise<void> {
+  const files = new FolderFiles(at);
+  const header = new TextDecoder().decode(await files.read(HEADER));
+  const key = await openHeader(new TextEncoder().encode(header), WORDS, derive);
+  const sealed = new EncryptedFiles(files, key, {
+    index: await SealedIndex.open(files, key),
+  });
+  const held: [string, Uint8Array][] = [];
+  for (const path of await sealed.list(""))
+    held.push([path, (await sealed.read(path)) ?? new Uint8Array()]);
+  const earlier = new TextEncoder().encode(
+    header
+      .replace('"version": "1.3"', '"version": "1.2"')
+      .replace('"resourceFormat": 3', '"resourceFormat": 2'),
+  );
+  await rm(join(at, "sealed"), { recursive: true });
+  await files.write(HEADER, earlier);
+  await new EncryptedFiles(
+    files,
+    await openHeader(earlier, WORDS, derive),
+  ).writeAll(held);
+}
+
+/** The plain pod's files sealed, as they are, into a new pod made with the six words in the other folder. */
+async function sealedCopy(
+  from: string,
+  to: string,
+  derive: DeriveKey,
+): Promise<void> {
+  const plain = new FolderFiles(from);
+  const files = new FolderFiles(to);
+  const made = await newHeader(WORDS, derive);
+  await files.write(HEADER, made.bytes);
+  const sealed = new EncryptedFiles(files, made.key, {
+    index: await SealedIndex.open(files, made.key),
+  });
+  const held: [string, Uint8Array][] = [];
+  for (const path of await plain.list(""))
+    held.push([path, (await plain.read(path)) ?? new Uint8Array()]);
+  await sealed.writeAll(held);
+}
 
 /**
  * `replayKit` builds a kit's pod by performing its story, and `kitDownload` returns the path of one of its exports.

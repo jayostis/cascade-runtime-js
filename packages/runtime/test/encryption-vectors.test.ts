@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac, hkdfSync } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
@@ -11,6 +12,8 @@ import {
   HEADER,
   newHeader,
   openHeader,
+  SEALED_INDEX,
+  SealedIndex,
   Unopened,
 } from "../src/encryption.js";
 import { MemoryFiles } from "../src/files.js";
@@ -233,13 +236,14 @@ describe("Matching a 1.2 pod's sealing against known answers · newHeader(), ope
     });
   });
 
-  describe("EncryptedFiles", () => {
+  /** A 1.2 key's files are sealed as a 1.2 pod seals them: an upgrade's claim is one, for a 1.2 runtime to read. */
+  describe("EncryptedFiles under a 1.2 key", () => {
     it("seals a file under the pod's data key, bound to `cascade-pod-resource`, `2` and its path, with a new nonce for each seal", async () => {
       const { derive } = recordingDerive();
       const { bytes, key } = await newHeader(SECRET, derive);
       const memory = new MemoryFiles("urn:test:pod/");
       await memory.write(HEADER, bytes);
-      const files = new EncryptedFiles(memory, key);
+      const files = new EncryptedFiles(memory, { ...key, version: "1.2" });
       const [wrap] = headerOf(bytes).wraps;
       const salt = bytesOf(String(wrap?.kdfParams["salt"]));
       const kek = new Uint8Array(await crypto.subtle.digest("SHA-256", salt));
@@ -274,6 +278,188 @@ describe("Matching a 1.2 pod's sealing against known answers · newHeader(), ope
       for (const [, sealed] of stored)
         nonces.add(Buffer.from(sealed?.subarray(0, 12) ?? []).toString("hex"));
       assert.equal(nonces.size, 3, "two seals of the same bytes share a nonce");
+    });
+  });
+});
+
+interface KnownAnswer13 extends Positive {
+  readonly header: string;
+  readonly files: readonly {
+    readonly path: string;
+    readonly plaintext: string;
+    readonly stored: string;
+    readonly sealed: string;
+  }[];
+  readonly index: {
+    readonly stored: string;
+    readonly plaintext: string;
+    readonly sealed: string;
+  };
+}
+
+async function knownAnswers13(): Promise<readonly KnownAnswer13[]> {
+  const read = JSON.parse(
+    await readFile(VECTORS.replace("1.2.json", "1.3.json"), "utf8"),
+  ) as { positive: KnownAnswer13[] };
+  return read.positive;
+}
+
+/** A 1.3 pod as a second implementation stored it: its header, each sealed resource at its keyed name, its index. */
+async function pod13Of(vector: KnownAnswer13) {
+  const memory = new MemoryFiles("urn:test:pod/");
+  await memory.write(HEADER, encoded(vector.header));
+  for (const { stored, sealed } of vector.files)
+    await memory.write(stored, bytesOf(sealed));
+  await memory.write(vector.index.stored, bytesOf(vector.index.sealed));
+  return memory;
+}
+
+/** The 1.3 additional data of a pod's file, by hand: `cascade-pod-resource`, `3`, the path, each but the last followed by a zero byte. */
+const boundToPath13 = (path: string) =>
+  new Uint8Array([
+    ...encoded("cascade-pod-resource"),
+    0,
+    ...encoded("3"),
+    0,
+    ...encoded(path),
+  ]);
+
+/**
+ * The 1.3 sealing of a pod, checked against what other code computed: known-answer pods whose resources are stored
+ * under keyed names and listed by a sealed index, and what `EncryptedFiles` writes, taken apart with WebCrypto and
+ * Node's own HKDF and HMAC.
+ */
+describe("Matching a 1.3 pod's sealing against known answers · SealedIndex.open(), EncryptedFiles", () => {
+  /** `test/vectors/pod-encryption-1.3.json`: pods computed with libargon2 (argon2-cffi) and `cryptography`, as plain JSON. */
+  describe("given the known-answer 1.3 pods (`pod-encryption-1.3.json`)", () => {
+    it("lists, and reads with each secret of each pod, the plaintext each sealed resource holds", async () => {
+      const vectors = await knownAnswers13();
+      assert.equal(vectors.length, 2);
+      for (const vector of vectors) {
+        const memory = await pod13Of(vector);
+        for (const secret of vector.passphrases) {
+          const key = await openHeader(
+            encoded(vector.header),
+            secret,
+            argon2idOnce,
+          );
+          const files = new EncryptedFiles(memory, key, {
+            index: await SealedIndex.open(memory, key),
+          });
+          assert.deepEqual(
+            await files.list(""),
+            vector.files.map(({ path }) => path).sort(),
+            vector.id,
+          );
+          for (const { path, plaintext } of vector.files)
+            assert.equal(
+              text(await files.read(path)),
+              plaintext,
+              `${vector.id} ${path} with ${secret}`,
+            );
+        }
+      }
+    });
+
+    it("throws Unopened, `changed outside the runtime`, for a resource stored under another's keyed name", async () => {
+      const [vector] = await knownAnswers13();
+      const [first, second] = vector?.files ?? [];
+      assert.ok(vector !== undefined && first && second);
+      const memory = await pod13Of(vector);
+      await memory.write(second.stored, bytesOf(first.sealed));
+      const key = await openHeader(
+        encoded(vector.header),
+        vector.passphrases[0] ?? "",
+        argon2idOnce,
+      );
+      const files = new EncryptedFiles(memory, key, {
+        index: await SealedIndex.open(memory, key),
+      });
+      await assert.rejects(
+        files.read(second.path),
+        (error: unknown) =>
+          error instanceof Unopened &&
+          error.outcome === "changed outside the runtime",
+      );
+    });
+  });
+
+  describe("EncryptedFiles over a new header's index", () => {
+    it("stores each file at `sealed/` and the hex HMAC, under HKDF of the data key, of its path, a zero byte and its tag; sealed bound to `cascade-pod-resource`, `3` and its path; named by an index bound to `cascade-pod-index`, `3`", async () => {
+      const { derive } = recordingDerive();
+      const { bytes, key } = await newHeader(SECRET, derive);
+      const memory = new MemoryFiles("urn:test:pod/");
+      await memory.write(HEADER, bytes);
+      const files = new EncryptedFiles(memory, key, {
+        index: await SealedIndex.open(memory, key),
+      });
+      const same = encoded("<#a> <#b> <#c> .\n");
+      await files.writeAll([
+        ["a/one.ttl", same],
+        ["b/two.ttl", same],
+      ]);
+      const [wrap] = headerOf(bytes).wraps;
+      const salt = bytesOf(String(wrap?.kdfParams["salt"]));
+      const kek = new Uint8Array(await crypto.subtle.digest("SHA-256", salt));
+      const raw = await decrypted(
+        await aesKey(kek),
+        bytesOf(wrap?.wrappedDek ?? ""),
+      );
+      const dek = await aesKey(raw);
+      const names = Buffer.from(
+        hkdfSync("sha256", raw, new Uint8Array(), "cascade-pod-names", 32),
+      );
+      const index = JSON.parse(
+        text(
+          await decrypted(
+            dek,
+            (await memory.read(SEALED_INDEX)) ?? new Uint8Array(),
+            new Uint8Array([
+              ...encoded("cascade-pod-index"),
+              0,
+              ...encoded("3"),
+            ]),
+          ),
+        ),
+      ) as { counter: number; files: [string, string, string][] };
+      assert.equal(index.counter, 1);
+      assert.deepEqual(
+        index.files.map(([path]) => path),
+        ["a/one.ttl", "b/two.ttl"],
+      );
+      const stored: string[] = [];
+      for (const [path, name, tag] of index.files) {
+        const at = `sealed/${name.slice(0, 2)}/${name.slice(2)}`;
+        stored.push(at);
+        const sealed = (await memory.read(at)) ?? new Uint8Array();
+        assert.equal(Buffer.from(sealed.subarray(-16)).toString("hex"), tag);
+        assert.equal(
+          createHmac("sha256", names)
+            .update(
+              Buffer.concat([
+                encoded(path),
+                Buffer.from([0]),
+                sealed.subarray(-16),
+              ]),
+            )
+            .digest("hex"),
+          name,
+          path,
+        );
+        assert.deepEqual(
+          [...(await decrypted(dek, sealed, boundToPath13(path)))],
+          [...same],
+          path,
+        );
+        await assert.rejects(
+          decrypted(dek, sealed, boundToPath13(`${path}x`)),
+          `${path} bound to another path`,
+        );
+      }
+      assert.deepEqual(
+        await memory.list("sealed"),
+        [...stored, SEALED_INDEX].sort(),
+      );
     });
   });
 });
