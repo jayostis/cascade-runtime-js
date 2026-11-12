@@ -38,13 +38,16 @@ export async function writeAll(
   for (const [path, bytes] of written) await files.write(path, bytes);
 }
 
-/** The path an IRI under the root's IRI names, or the path itself; anything else is refused. */
+/**
+ * The path an IRI under the root's IRI names, or the path itself; anything else is refused. A backslash is a
+ * separator and a colon a drive or a stream on Windows, so no path has either, on any platform.
+ */
 export function relative(files: Pick<Files, "iri">, pathOrIri: string): string {
   const path = pathOrIri.startsWith(files.iri)
     ? pathOrIri.slice(files.iri.length)
     : pathOrIri;
   if (
-    /^[a-z][a-z0-9+.-]*:/i.test(path) ||
+    /[\\:]/.test(path) ||
     path.startsWith("/") ||
     path.split("/").some((part) => part === "..")
   ) {

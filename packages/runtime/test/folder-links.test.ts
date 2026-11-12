@@ -377,7 +377,10 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
       }
       const before = await held(outside);
       await assert.rejects(files.write("s/planted.txt", bytes("X")), Refusal);
-      await assert.rejects(files.writeNew("s/planted.txt", bytes("X")), Refusal);
+      await assert.rejects(
+        files.writeNew("s/planted.txt", bytes("X")),
+        Refusal,
+      );
       assert.deepEqual(await held(outside), before);
     });
   });

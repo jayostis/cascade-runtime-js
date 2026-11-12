@@ -14,6 +14,7 @@ import {
 import {
   basename,
   dirname,
+  isAbsolute,
   join,
   relative as relativePath,
   sep,
@@ -116,6 +117,8 @@ export class FolderFiles implements Files {
   #root: Promise<string> | undefined;
   /** The folders under the folder found to be folders, no link and none of their parents; one that is none is not kept. */
   readonly #checked = new Map<string, Promise<boolean>>();
+  /** The files a listing found to be files, no link, as the folders are: a read of one skips the look at the file where the platform has no flag for it. */
+  readonly #listed = new Set<string>();
 
   constructor(
     readonly folder: string,
@@ -211,7 +214,11 @@ export class FolderFiles implements Files {
     const { noFollow } = this.#fs;
     if (noFollow !== undefined)
       return { path, flag: constants.O_RDONLY | noFollow };
-    if (!(await this.#notLink(path, parts))) return undefined;
+    if (
+      !this.#listed.has(parts.join("/")) &&
+      !(await this.#notLink(path, parts))
+    )
+      return undefined;
     return { path, flag: "r" };
   }
 
@@ -236,10 +243,16 @@ export class FolderFiles implements Files {
       return local;
     }
     const parts = this.#parts(pathOrIri);
-    const root = (await this.#resolved(true)) as string;
+    // A listing that ran first may have shared a failed resolve of a folder not yet made; the second makes it.
+    const root = (await this.#resolved(true)) ?? (await this.#resolved(true));
+    if (root === undefined) throw new Error(`${this.folder} cannot be made`);
     await this.#made(root, parts.slice(0, -1));
     const path = join(root, ...parts);
     await this.#notLink(path, parts);
+    // The folders were looked at once; the folder the file goes in is resolved again, for a swap since then.
+    const inside = relativePath(root, await this.#fs.realpath(dirname(path)));
+    if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside))
+      throw linked(parts.join("/"));
     return path;
   }
 
@@ -364,9 +377,11 @@ export class FolderFiles implements Files {
       if (absent(error)) return [];
       throw error;
     }
-    return files
-      .map((file) => relativePath(root, file).split(sep).join("/"))
-      .sort();
+    const paths = files.map((file) =>
+      relativePath(root, file).split(sep).join("/"),
+    );
+    if (this.#refuse) for (const path of paths) this.#listed.add(path);
+    return paths.sort();
   }
 }
 
