@@ -216,8 +216,9 @@ jobs:
       - name: Run the tests page's script
         if: ${{ !cancelled() }}
         run: npm run test:tests-page
-      # The packed browser build opens a pod over IndexedDB in Chromium, retitles it and opens it again.
-      - name: Retitle a pod in a browser
+      # The packed browser build opens a pod over IndexedDB in Chromium, retitles it and opens it again, and checks the
+      # secrets of known-answer 1.2 pods through its Argon2id worker.
+      - name: Retitle a pod and check a secret in a browser
         if: ${{ !cancelled() }}
         run: npm run test:pod-browser
       # A newcomer on the front page of this tree reaches each row of "Find your way" in one click, on a page of the expected title.
