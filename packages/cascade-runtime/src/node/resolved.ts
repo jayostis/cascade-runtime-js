@@ -96,7 +96,11 @@ export function configureTables(
 /** The answers of the pod in the folder: a folder of their own, `.answers/<name>`, beside the pod's. */
 export function answersBeside(path: string): FolderFiles {
   const folder = absolute(path);
-  return new FolderFiles(join(dirname(folder), ".answers", basename(folder)));
+  return new FolderFiles(
+    join(dirname(folder), ".answers", basename(folder)),
+    undefined,
+    { refuseLinks: true },
+  );
 }
 
 const PACKAGE = fileURLToPath(new URL("../../../", import.meta.url));
@@ -194,7 +198,7 @@ export async function partsOf(
     folder: (path, iri) => {
       const folder = absolute(path);
       return {
-        files: new FolderFiles(folder, iri),
+        files: new FolderFiles(folder, iri, { refuseLinks: true }),
         name: basename(folder),
       };
     },

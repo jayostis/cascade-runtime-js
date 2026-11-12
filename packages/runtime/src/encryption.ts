@@ -10,6 +10,8 @@ const PLAINTEXT = new Set([HEADER, "README.md", "provenance/egress-log.jsonl"]);
 const HEADER_MAX_BYTES = 65536;
 const MAX_WRAPS = 16;
 const MAX_PASSPHRASE_WRAPS = 6;
+/** The most Argon2 work, the sum of `t` times `m` over a header's passphrase wraps, that a header may ask for: eight times a new pod's wrap, or two wraps of the largest cost. */
+export const MAX_ARGON2_COST = 8 * 3 * 65536;
 const SEAL_MAX_BYTES = 256 * 1024 * 1024;
 const NONCE = 12;
 const TAG = 16;
@@ -221,6 +223,14 @@ function headerOf(value: unknown): Header {
   });
   if (passphrases.length > MAX_PASSPHRASE_WRAPS)
     malformed(`it has more than ${MAX_PASSPHRASE_WRAPS} passphrase wraps`);
+  const cost = passphrases.reduce(
+    (sum, { params }) => sum + params.t * params.m,
+    0,
+  );
+  if (cost > MAX_ARGON2_COST)
+    malformed(
+      `its passphrase wraps ask for more than ${MAX_ARGON2_COST} of t times m in all`,
+    );
   if (passphrases.length === 0)
     throw new Unopened(
       "cannot open",
@@ -274,17 +284,22 @@ async function seal(
   aad?: Uint8Array<ArrayBuffer>,
 ): Promise<Uint8Array<ArrayBuffer>> {
   const iv = random(NONCE);
-  const sealed = await globalThis.crypto.subtle.encrypt(
-    {
-      name: "AES-GCM",
-      iv,
-      tagLength: TAG * 8,
-      ...(aad === undefined ? {} : { additionalData: aad }),
-    },
-    key,
-    copied(plain),
-  );
-  return joined(iv, new Uint8Array(sealed));
+  const bytes = copied(plain);
+  try {
+    const sealed = await globalThis.crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv,
+        tagLength: TAG * 8,
+        ...(aad === undefined ? {} : { additionalData: aad }),
+      },
+      key,
+      bytes,
+    );
+    return joined(iv, new Uint8Array(sealed));
+  } finally {
+    bytes.fill(0);
+  }
 }
 
 /** The plaintext of a sealed file, or none when it does not authenticate. */
@@ -359,13 +374,16 @@ export async function openHeader(
   );
 }
 
-/** A new `1.2` header holding one passphrase wrap, labelled "primary", of a new data key under the secret; and that key. */
+/**
+ * A new `1.2` header holding one passphrase wrap, labelled "primary", of a new data key under the secret; and that key.
+ * Each byte copy of the data key and of the key that wraps it is zeroed after use, as far as JavaScript allows: a string
+ * or WebAssembly memory cannot be cleared.
+ */
 export async function newHeader(
   secret: string,
   derive: DeriveKey,
 ): Promise<{ readonly bytes: Uint8Array; readonly key: PodKey }> {
   const salt = random(16);
-  const raw = random(32);
   const secretBytes = encoded(secret);
   let kek: Uint8Array;
   try {
@@ -373,6 +391,7 @@ export async function newHeader(
   } finally {
     secretBytes.fill(0);
   }
+  const raw = random(32);
   let wrapped: Uint8Array;
   try {
     wrapped = await seal(await aesKey(kek), raw);
