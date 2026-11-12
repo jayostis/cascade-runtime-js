@@ -6,7 +6,7 @@ import {
   openHeader,
   type PodKey,
   readHeader,
-  SEALED_INDEX,
+  heldWhileMaking,
   Unopened,
 } from "@cascade-runtime/runtime";
 import { typedWords } from "./six-words.js";
@@ -34,8 +34,8 @@ export interface HeaderWait {
  * first, so a malformed one is refused before any secret is asked for; then opened with the secret as given, and, when
  * that is an incorrect secret, with the secret cleaned as typed words are. A new pod given a secret is made encrypted,
  * its empty sealed index and then its header written before anything else (`madeNewPod`); an opening that loses that
- * race to another waits for the other's header. A folder with no header that holds only sealed indexes is a pod being
- * made, or one whose maker stopped between its two writes, and holds no record: it waits as the loser does, and, no
+ * race to another waits for the other's header. A folder with no header that holds only sealed indexes and the probe of a
+ * layout proved (`heldWhileMaking`) is a pod being made, or one whose maker stopped between its writes, and holds no record: it waits as the loser does, and, no
  * header coming, makes the pod again. Throws `Unopened` when the pod does not open with what was given.
  */
 export async function podKey(
@@ -48,7 +48,7 @@ export async function podKey(
   if (header !== undefined) return openedWith(header, secret, derive);
   if (secret === undefined) return undefined;
   const listing = (await found.held()) ? await found.files.list("") : [];
-  if (listing.some((path) => !path.startsWith(`${SEALED_INDEX}/`)))
+  if (listing.some((path) => !heldWhileMaking(path)))
     throw new Unopened(
       "not encrypted",
       "The pod is not encrypted: it opens without a secret.",

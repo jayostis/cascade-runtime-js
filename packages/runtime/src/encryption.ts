@@ -664,6 +664,10 @@ const AGAIN =
 
 const indexAt = (counter: number): string => `${SEALED_INDEX}/${counter}`;
 
+/** Whether a file is one a pod being made holds before its header: a sealed index, or what `layoutProved` wrote and did not remove. */
+export const heldWhileMaking = (path: string): boolean =>
+  under(SEALED_INDEX, path) || /^sealed\/probe-[0-9a-f]+\/[^/]+$/.test(path);
+
 /** The counters of the stored indexes among the paths, highest first. */
 function countersIn(paths: readonly string[]): number[] {
   const counters: number[] = [];
