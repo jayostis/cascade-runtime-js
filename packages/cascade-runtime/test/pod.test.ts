@@ -1253,7 +1253,9 @@ describe("Opening a pod again · openPod()", () => {
         key === undefined
           ? [own, answers]
           : [
-              new EncryptedFiles(own, key),
+              new EncryptedFiles(own, key, {
+                index: await SealedIndex.open(own, key),
+              }),
               new EncryptedFiles(answers, key, { kind: "answers" }),
             ];
       const bytes = await files.read(kept.layout.manifest);
