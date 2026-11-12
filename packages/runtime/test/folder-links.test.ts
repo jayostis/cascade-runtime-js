@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -316,6 +317,113 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
       assert.deepEqual(
         calls.lstat.filter((path) => !path.endsWith(".txt")),
         [],
+      );
+    });
+  });
+
+  describe("given a path with a backslash or a colon in it", () => {
+    const PATHS = [
+      "subject\\real.txt",
+      "..\\outside\\secret.txt",
+      "subject/..\\..\\outside\\secret.txt",
+      "C:x",
+      "subject/C:x",
+      "subject/real.txt:stream",
+    ];
+
+    for (const options of [REFUSING, {}]) {
+      const mode = options === REFUSING ? "refusing links" : "following links";
+      it(`throws for a read, a range, a write and a new write of it, ${mode}, and touches nothing`, async () => {
+        const { pod, base } = await world();
+        const files = new FolderFiles(pod, undefined, options);
+        const before = await held(base);
+        for (const path of PATHS) {
+          await assert.rejects(files.read(path), /is not a path/, path);
+          await assert.rejects(files.readRange(path, 0, 4), /is not a path/);
+          await assert.rejects(files.write(path, bytes("X")), /is not a path/);
+          await assert.rejects(
+            files.writeNew(path, bytes("X")),
+            /is not a path/,
+          );
+        }
+        assert.deepEqual(await held(base), before);
+      });
+    }
+
+    it("throws for a backslash behind a junction, which the platform reads as a separator, and writes nothing outside", async (t) => {
+      const where = await world();
+      const reason = await planted(KINDS[2] as Kind, where);
+      if (reason !== true) return t.skip(reason);
+      const files = new FolderFiles(where.pod, undefined, REFUSING);
+      const before = await held(where.outside);
+      await assert.rejects(files.read("subject\\junction\\secret.txt"));
+      await assert.rejects(files.write("subject\\junction\\w.txt", bytes("X")));
+      assert.deepEqual(await held(where.outside), before);
+    });
+  });
+
+  describe("given a folder that refuses links, and a folder of the pod swapped for a link after it was looked at", () => {
+    it("throws Refusal for a write into the swapped folder, and writes nothing outside the pod", async (t) => {
+      const { pod, outside } = await world();
+      const files = new FolderFiles(pod, undefined, REFUSING);
+      await files.write("s/f.txt", bytes("first"));
+      await rename(join(pod, "s"), join(pod, "s-moved"));
+      try {
+        await symlink(outside, join(pod, "s"), "junction");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EPERM")
+          return t.skip("a junction needs a privilege");
+        throw error;
+      }
+      const before = await held(outside);
+      await assert.rejects(files.write("s/planted.txt", bytes("X")), Refusal);
+      await assert.rejects(files.writeNew("s/planted.txt", bytes("X")), Refusal);
+      assert.deepEqual(await held(outside), before);
+    });
+  });
+
+  describe("given a folder that refuses links, and a pod folder that does not exist yet", () => {
+    it("makes the folder for a first writeNew that runs with a listing of it", async () => {
+      const { base } = await world();
+      const files = new FolderFiles(join(base, "later"), undefined, REFUSING);
+      const [listed, written] = await Promise.all([
+        files.list(""),
+        files.writeNew("a/one.txt", bytes("one")),
+      ]);
+      assert.deepEqual(listed, []);
+      assert.equal(written, true);
+      assert.equal(text(await files.read("a/one.txt")), "one");
+    });
+  });
+
+  describe("given a folder that refuses links on a platform that cannot open a file without following a link, and a listing", () => {
+    it("looks at no file with lstat for a read of a listed file, and at an unlisted one", async () => {
+      const { pod: folder } = await world();
+      await new FolderFiles(folder).write("a/one.txt", bytes("one"));
+      const looked: string[] = [];
+      const files = new FolderFiles(folder, undefined, {
+        ...REFUSING,
+        fs: {
+          noFollow: undefined,
+          lstat: (path) => {
+            looked.push(path);
+            return lstat(path);
+          },
+        },
+      });
+      for (const path of await files.list("a")) {
+        await files.read(path);
+        await files.readRange(path, 0, 1);
+      }
+      assert.deepEqual(
+        looked.filter((path) => path.endsWith(".txt")),
+        [],
+      );
+      await files.read("subject/real.txt");
+      assert.equal(
+        looked.filter((path) => path.endsWith("real.txt")).length,
+        1,
+        "an unlisted file is looked at",
       );
     });
   });
