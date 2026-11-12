@@ -545,8 +545,10 @@ function hex(bytes: Uint8Array): string {
   return out;
 }
 
+const HEX = /^(?:[0-9a-f]{2})+$/;
+
 function fromHex(text: string, length: number): Uint8Array | undefined {
-  if (!new RegExp(`^[0-9a-f]{${length * 2}}$`).test(text)) return undefined;
+  if (text.length !== length * 2 || !HEX.test(text)) return undefined;
   const bytes = new Uint8Array(length);
   for (let i = 0; i < length; i++)
     bytes[i] = Number.parseInt(text.slice(i * 2, i * 2 + 2), 16);
@@ -634,6 +636,11 @@ export interface UpgradeTiming {
   readonly lookEvery?: number;
   /** The time now, in milliseconds. */
   readonly now?: () => number;
+  /**
+   * `files.list("")`, begun before the key was derived so the two overlap; a file the index names that it lacks is
+   * looked for in a listing taken again before the pod is refused.
+   */
+  readonly listing?: Promise<readonly string[]>;
 }
 
 const sleep = (ms: number) =>
@@ -658,6 +665,8 @@ export class SealedIndex {
   #stored: Uint8Array | undefined;
   #sorted: string[] | undefined;
   #writing: Promise<unknown> = Promise.resolve();
+  /** Whether a write of this opening has removed every stored file the index did not name. */
+  #swept = false;
   /** The plaintext files the pod holds, but its header: found when it was opened, and each written since. */
   readonly #plaintext: Set<string>;
 
@@ -717,14 +726,14 @@ export class SealedIndex {
           throw changed(
             `its header says version ${current.version} beside a 1.3 sealed index`,
           );
-        const listing = await files.list("");
         const index = await SealedIndex.#opened(
           files,
           current,
           stored,
-          listing,
+          (await timing.listing?.catch(() => undefined)) ??
+            (await files.list("")),
         );
-        if (claim !== undefined) await index.#sweep(listing);
+        if (claim !== undefined) await index.#sweep(await files.list(""));
         return index;
       }
       if (claim !== undefined) {
@@ -773,9 +782,12 @@ export class SealedIndex {
     const read = plain === undefined ? undefined : indexOf(plain);
     if (read === undefined)
       throw changed("its sealed index does not open under its key");
-    const held = new Set(listing);
+    let held = new Set(listing);
     for (const [path, { name }] of read.entries)
-      if (!held.has(name)) throw changed(`${path} is missing`);
+      if (!held.has(name)) {
+        held = new Set((listing = await files.list("")));
+        if (!held.has(name)) throw changed(`${path} is missing`);
+      }
     return new SealedIndex(
       files,
       key,
@@ -841,19 +853,22 @@ export class SealedIndex {
       const written: string[] = [];
       try {
         for (let at = 0; at < paths.length; at += UPGRADE_BATCH) {
-          const batch: (readonly [string, Uint8Array])[] = [];
-          for (const path of paths.slice(at, at + UPGRADE_BATCH)) {
-            let bytes: Uint8Array | undefined;
-            try {
-              bytes = await reading.read(path);
-            } catch (error) {
-              if (error instanceof Refusal)
-                throw changed(`${path} does not open under its key`);
-              throw error;
-            }
-            if (bytes !== undefined) batch.push([path, bytes]);
-          }
-          const sealed = await index.#sealed(batch);
+          const read = await Promise.all(
+            paths.slice(at, at + UPGRADE_BATCH).map(async (path) => {
+              try {
+                return [path, await reading.read(path)] as const;
+              } catch (error) {
+                if (error instanceof Refusal)
+                  throw changed(`${path} does not open under its key`);
+                throw error;
+              }
+            }),
+          );
+          const sealed = await index.#sealed(
+            read.flatMap(([path, bytes]) =>
+              bytes === undefined ? [] : [[path, bytes] as const],
+            ),
+          );
           await writeAll(
             files,
             sealed.map(([, name, bytes]) => [name, bytes] as const),
@@ -981,8 +996,8 @@ export class SealedIndex {
 
   /**
    * Seals and writes the files, the plaintext ones as they are, then the index naming them, one write of it for all;
-   * then removes the files the index no longer names and any other it does not. Refuses, writing no index, when the
-   * header or the stored index changed since the pod was opened.
+   * then removes the earlier copy of each file written again, and, at an opening's first write, every stored file the
+   * index does not name. Refuses, writing no index, when the header or the stored index changed since the pod was opened.
    */
   write(files: readonly (readonly [string, Uint8Array])[]): Promise<void> {
     const writing = this.#writing.then(() => this.#write(files));
@@ -1003,7 +1018,7 @@ export class SealedIndex {
     const sealed = await this.#sealed(
       files.filter(([path]) => !PLAINTEXT.has(path)),
     );
-    const before = await this.#files.list("");
+    const before = this.#swept ? [] : await this.#files.list("");
     await writeAll(this.#files, [
       ...sealed.map(([, name, bytes]) => [name, bytes] as const),
       ...plain,
@@ -1024,6 +1039,7 @@ export class SealedIndex {
     }
     for (const [path] of plain) this.#plaintext.add(path);
     this.#sorted = undefined;
+    this.#swept = true;
     await this.#sweep([...before, ...replacedNames]);
   }
 

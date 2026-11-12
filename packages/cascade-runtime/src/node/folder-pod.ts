@@ -23,10 +23,13 @@ export async function openFolderPod(
     return openPodWith(parts, undefined, rest);
   }
   const { files } = parts.folder(folder);
+  const header = await headerIn(absolute(folder));
+  const listing = header === undefined ? undefined : files.list("");
+  listing?.catch(() => undefined);
   const key = await podKey(
     {
       files,
-      header: await headerIn(absolute(folder)),
+      header,
       reread: () => headerIn(absolute(folder)),
       held: async () => (await files.list("")).length > 0,
     },
@@ -34,7 +37,7 @@ export async function openFolderPod(
     parts.derive,
   );
   if (key === undefined) return openPodWith(parts, folder, rest);
-  const index = await SealedIndex.open(files, key);
+  const index = await SealedIndex.open(files, key, { listing });
   return openPodWith(parts, folder, { ...rest, key: index.key, index });
 }
 

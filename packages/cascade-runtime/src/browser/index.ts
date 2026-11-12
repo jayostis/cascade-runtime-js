@@ -855,7 +855,11 @@ export async function openPod(
       derive(),
     );
     const index =
-      key === undefined ? undefined : await SealedIndex.open(database, key);
+      key === undefined
+        ? undefined
+        : await SealedIndex.open(database, key, {
+            listing: Promise.resolve(held),
+          });
     const kept = await IndexedDbFiles.open(
       ANSWERS_DATABASE + name,
       `${ANSWERS_DATABASE}${name}/`,
