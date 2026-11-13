@@ -122,6 +122,19 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
       );
     });
 
+    it("keeps each path of the directory table whole at a desktop width", async () => {
+      await opened(1440);
+      const wraps = await tab
+        .locator("#ins table")
+        .first()
+        .locator("tbody tr td:first-child")
+        .evaluateAll((cells) =>
+          cells.map((cell) => getComputedStyle(cell).whiteSpace),
+        );
+      assert.ok(wraps.length > 0);
+      for (const wrap of wraps) assert.equal(wrap, "nowrap");
+    });
+
     it("says 'judgments', 'records', 'revisions' and 'versions' in the singular for a count of one", async () => {
       await opened();
       for (let step = 0; step < data.log.length; step += 1) {
@@ -373,6 +386,53 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
       assert.match((await tab.locator("#ins h1").textContent()) ?? "", /Act 0/);
     });
 
+    it("scrolls the log so that the selected act is in view, from the slider and from an address", async () => {
+      await tab.route("**/explorer.json", async (route) => {
+        const response = await route.fetch();
+        const changed = (await response.json()) as ExplorerData;
+        const last = changed.log.at(-1) as ExplorerData["log"][number];
+        await route.fulfill({
+          response,
+          json: {
+            ...changed,
+            log: [...changed.log, ...Array.from({ length: 30 }, () => last)],
+          },
+        });
+      });
+      try {
+        await opened();
+        const inView = () =>
+          tab.evaluate(() => {
+            const pane = document
+              .getElementById("log")
+              ?.getBoundingClientRect();
+            const row = document
+              .querySelector(".act.cur")
+              ?.getBoundingClientRect();
+            return (
+              pane !== undefined &&
+              row !== undefined &&
+              row.top >= pane.top - 1 &&
+              row.bottom <= pane.bottom + 1
+            );
+          });
+        await tab.fill("#rng", "25");
+        assert.ok(await inView(), "act 25 is out of view after the slider");
+        await tab.locator('.act[data-step="4"]').scrollIntoViewIfNeeded();
+        await tab.locator('.act[data-step="4"]').click();
+        assert.ok(await inView(), "act 4 is out of view after a click");
+        await tab.goto(`${served.url}index.html#%7Elog&step=30`);
+        await tab.reload();
+        await tab.waitForSelector(".row", { state: "attached" });
+        assert.ok(
+          await inView(),
+          "act 30 is out of view when opened by address",
+        );
+      } finally {
+        await tab.unroute("**/explorer.json");
+      }
+    });
+
     it("moves to the selected pane on a phone", async () => {
       await opened(390);
       await tab.click('[data-pane="log"]');
@@ -383,9 +443,12 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
 
   describe("when a file of the pod is open", () => {
     const open = async (kind: string) => {
-      await opened();
       const target = data.files.find((file) => file.kind === kind);
       assert.ok(target, kind);
+      return openFile(target);
+    };
+    const openFile = async (target: ExplorerData["files"][number]) => {
+      await opened();
       await tab.fill("#flt", target.path.split("/").at(-1) ?? "");
       await tab.locator(`#tree [data-go="p:${target.path}"]`).click();
       await tab.waitForFunction(
@@ -446,6 +509,106 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
       const read = tab.locator("#ins .card", { hasText: "Read by" });
       assert.ok((await read.locator("a[data-go^='q:']").count()) > 0);
       assert.match((await read.textContent()) ?? "", /approximate/i);
+    });
+
+    it("lists under 'Read by' for a materialized view only the questions and the labels query, never its writer, a derivation or a matcher", async () => {
+      const target = await open("view");
+      const read = tab.locator("#ins .card", { hasText: "Read by" });
+      const paths = await read
+        .locator("a[data-go^='q:']")
+        .evaluateAll((links) =>
+          links.map((link) => link.getAttribute("data-go")?.slice(2) ?? ""),
+        );
+      assert.ok(paths.length > 0, "no query reads the view");
+      const writer = data.queries[target.writtenBy ?? -1]?.path;
+      assert.ok(writer, "the view has a writer");
+      for (const path of paths) {
+        const query = data.queries.find((each) => each.path === path);
+        assert.ok(query, path);
+        assert.ok(
+          query.group.startsWith("questions/") || path === "queries/labels.rq",
+          `${path} (${query.group}) is listed as reading a built file`,
+        );
+        assert.notEqual(path, writer, "the view's writer is listed");
+      }
+    });
+
+    it("makes a document's subject, which is the hash of its bytes, a link to the bytes", async () => {
+      const bytes = data.files.find(
+        (each) => each.kind === "bytes" && each.document !== undefined,
+      );
+      assert.ok(bytes, "the pod stores bytes under a document");
+      const document = data.files[bytes.document ?? -1];
+      assert.ok(document);
+      await openFile(document);
+      assert.ok(
+        (await tab.locator(`#body a[data-go="p:${bytes.path}"]`).count()) > 0,
+        "the Turtle does not link the bytes",
+      );
+      assert.ok(
+        (await tab
+          .locator("#ins .card", { hasText: "Names and is named by" })
+          .locator(`a[data-go="p:${bytes.path}"]`)
+          .count()) > 0,
+        "the card for names does not list the bytes",
+      );
+    });
+
+    it("prints an entry before the members whose names extend its own", async () => {
+      let pairs = 0;
+      for (const view of data.files.filter((each) => each.kind === "view")) {
+        await openFile(view);
+        const subjects = ((await tab.locator("#body").textContent()) ?? "")
+          .split("\n")
+          .flatMap((line) => /^<(#[^>]*)>/.exec(line)?.[1] ?? []);
+        subjects.forEach((later, at) => {
+          const earlier = subjects.findIndex(
+            (each) => each !== later && later.startsWith(each),
+          );
+          if (earlier < 0) return;
+          pairs += 1;
+          assert.ok(earlier < at, `${later} is before ${subjects[earlier]}`);
+        });
+      }
+      assert.ok(pairs > 0, "no view of the pod has an entry with members");
+    });
+
+    it("hangs a wrapped line of the Turtle under its own start on a phone", async () => {
+      const target = data.files.find((each) => each.kind === "revision");
+      assert.ok(target);
+      await tab.setViewportSize({ width: 390, height: 800 });
+      await tab.goto(`${served.url}index.html`);
+      await tab.waitForSelector(".row", { state: "attached" });
+      await tab.click('[data-pane="tree"]');
+      await tab.fill("#flt", target.path.split("/").at(-1) ?? "");
+      await tab.locator(`#tree [data-go="p:${target.path}"]`).click();
+      await tab.waitForFunction(
+        () =>
+          !(
+            document.getElementById("body")?.textContent ?? "Loading"
+          ).startsWith("Loading"),
+      );
+      const wrapped = await tab.locator("#body .ln").evaluateAll((lines) =>
+        lines.flatMap((line) => {
+          const range = document.createRange();
+          range.selectNodeContents(line);
+          const rects = [...range.getClientRects()].filter(
+            (rect) => rect.width > 0,
+          );
+          const tops = [...new Set(rects.map((rect) => Math.round(rect.top)))];
+          if (tops.length < 2) return [];
+          const left = (top: number) =>
+            Math.min(
+              ...rects
+                .filter((rect) => Math.round(rect.top) === top)
+                .map((rect) => rect.left),
+            );
+          return [[left(tops[0] ?? 0), left(tops[1] ?? 0)]];
+        }),
+      );
+      assert.ok(wrapped.length > 0, "no line of the Turtle wraps at 390 px");
+      for (const [first, next] of wrapped)
+        assert.ok((next ?? 0) > (first ?? 0), `${next} is not under ${first}`);
     });
   });
 
@@ -514,6 +677,26 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
       );
       await tab.locator(".stops .stop", { hasText: "Log" }).click();
       assert.match((await tab.locator("#ins h1").textContent()) ?? "", /Act/);
+    });
+
+    it("gives each source its own colour in the legend, the same on every label tag", async () => {
+      await opened();
+      const kinds = ["pod", "vocabulary", "query", "layout", "kit", "fixed"];
+      const colour = (selector: string) =>
+        tab
+          .locator(selector)
+          .first()
+          .evaluate((tag) => getComputedStyle(tag).color);
+      const legend = await Promise.all(
+        kinds.map((kind) => colour(`header.top .legend .src.${kind}`)),
+      );
+      assert.equal(new Set(legend).size, kinds.length, legend.join(" "));
+      for (const kind of ["pod", "layout", "fixed"])
+        assert.equal(
+          await colour(`#ins .src.${kind}`),
+          await colour(`header.top .legend .src.${kind}`),
+          kind,
+        );
     });
 
     it("draws, on the root, how it fits together, each box opening its folder", async () => {

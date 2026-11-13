@@ -1159,13 +1159,29 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   // names between files
   const names: Set<number>[] = loaded.map(() => new Set());
   const namedBy: Set<number>[] = loaded.map(() => new Set());
-  loaded.forEach(({ graph }, file) => {
-    if (
-      graph === undefined ||
-      kinds[file] === "view" ||
-      kinds[file] === "built"
-    )
-      return;
+  // a document's subject is the hash of its bytes, so it names the bytes the pod stores under that hash
+  const bytesOfHash = new Map<string, number>();
+  loaded.forEach(({ path }, file) => {
+    const stem = path.slice(path.lastIndexOf("/") + 1);
+    if (kinds[file] === "bytes" && /^[0-9a-f]{64}$/.test(stem))
+      bytesOfHash.set(stem, file);
+  });
+  const bytesOfSubject = (value: string): number | undefined => {
+    const hash = /^ni:\/\/\/sha-256;([A-Za-z0-9_-]{43})$/.exec(value)?.[1];
+    if (hash === undefined) return undefined;
+    const hex = [...atob(hash.replace(/-/g, "+").replace(/_/g, "/") + "=")]
+      .map((char) => char.charCodeAt(0).toString(16).padStart(2, "0"))
+      .join("");
+    return bytesOfHash.get(hex);
+  };
+  loaded.forEach(({ graph, thing }, file) => {
+    if (graph === undefined) return;
+    const bytes =
+      kinds[file] === "document" ? bytesOfSubject(thing) : undefined;
+    if (bytes !== undefined) {
+      names[file]?.add(bytes);
+      namedBy[bytes]?.add(file);
+    }
     for (const [, , target] of graph.triples) {
       const found =
         target.termType === "NamedNode"

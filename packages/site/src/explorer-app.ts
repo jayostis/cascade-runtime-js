@@ -44,7 +44,7 @@ ${front !== undefined && markup`<a href="${front}">Cascade pods</a>`}
 export const EXPLORER_SCRIPT = String.raw`'use strict';
 (function () {
 var root = document.getElementById('explorer');
-var D, F, Q, END, answers, byThing, labels, viewDir;
+var D, F, Q, END, answers, byThing, labels, viewDir, storedIn, builtIn, readSets, bytesOf, shownAct = -1;
 var state = { sel: 'p:', step: 0, open: { 'p:': 1, 'q:': 1 }, pane: 'ins', filter: '' };
 var KIND = { bytes: 'source bytes', revision: 'revision', version: 'version', record: 'record', judgment: 'judgment', assertion: 'matcher assertion', retraction: 'retraction', import: 'import', session: 'hand-entry session', matcherrun: 'matcher run', act: 'act', document: 'document', series: 'reference series', subject: 'subject', profile: 'profile', preferences: 'preferences', typeindex: 'type index', manifest: 'manifest', view: 'materialized view', built: 'built file', other: 'file' };
 var FIXED = {
@@ -58,7 +58,7 @@ var FIXED = {
   logTime: 'A person’s judgment is named by no snapshot. It carries its own time, and is placed in the log by it.',
   logNone: 'These files are named by no act and carry no time: they were there when the pod was made.',
   pipeline: 'The build loads the pod’s stored files, then runs the derivations in a fixed order. Each is a CONSTRUCT that adds statements to the derived state, which the next can read; that state is never written to the pod. The view definitions then read it and write the files of the views’ folder. Click a box.',
-  readBy: 'Approximate: the queries whose WHERE names a term that the files here use, the most terms in common first. A trace of the run would be exact.'
+  readBy: 'Approximate: the queries whose WHERE names a term that the files here use, the most terms in common first. A term many files use is left out; so are the matcher’s and table queries, a file’s own writer, and, for a file the build writes, every query but the questions and the labels query. A trace of the run would be exact.'
 };
 var TAGS = {
   pod: 'What the pod’s own files say',
@@ -226,14 +226,35 @@ var DIR_CARDS = ['Written by', 'Read by', 'Contains'];
 var QUERY_CARDS = ['Output', 'Reads', 'Writes'];
 function none(text) { return '<span class="lbl">' + text + '</span>'; }
 
-/* the queries whose WHERE names a term the files use: approximate, as nothing records which query read which file */
-function readByHtml(files) {
-  var have = new Set(), found = [];
-  files.forEach(function (f) { (f.terms || []).forEach(function (i) { have.add(D.termList[i]); }); });
-  D.queries.forEach(function (q, qi) {
-    var shared = q.reads.filter(function (t) { return have.has(t); });
-    if (shared.length) found.push({ qi: qi, shared: shared });
+/* the queries whose WHERE names a term the files use: approximate, as nothing records which query read which file. A built file is read only by the questions and the labels query, a matcher or tables query reads none, a file's own writer does not read it, and a term that many files use says nothing of one. */
+function topFolder(f) { var i = f.path.indexOf('/'); return i < 0 ? '' : f.path.slice(0, i); }
+function indexTerms() {
+  storedIn = new Map(); builtIn = new Map();
+  D.files.forEach(function (f) {
+    (f.terms || []).forEach(function (i) {
+      var t = D.termList[i];
+      if (f.writer === 'build') builtIn.set(t, (builtIn.get(t) || 0) + 1);
+      else { if (!storedIn.has(t)) storedIn.set(t, new Set()); storedIn.get(t).add(topFolder(f)); }
+    });
   });
+  readSets = D.queries.map(function (q) { return new Set(q.reads); });
+}
+function mayRead(q, built) { return q.group !== 'matcher' && q.group !== 'tables' && (!built || q.group.indexOf('questions/') === 0 || q.path === 'queries/labels.rq'); }
+function readByHtml(files) {
+  var own = new Set(files.map(function (f) { return D.files.indexOf(f); })), shared = new Map(), found = [];
+  files.forEach(function (f) {
+    var built = f.writer === 'build';
+    (f.terms || []).forEach(function (i) {
+      var t = D.termList[i];
+      if (built ? builtIn.get(t) > 2 : storedIn.get(t).size >= 3) return;
+      D.queries.forEach(function (q, qi) {
+        if (!mayRead(q, built) || (q.file != null && own.has(q.file)) || !readSets[qi].has(t)) return;
+        if (!shared.has(qi)) shared.set(qi, new Set());
+        shared.get(qi).add(t);
+      });
+    });
+  });
+  shared.forEach(function (ts, qi) { found.push({ qi: qi, shared: Array.from(ts) }); });
   found.sort(function (a, b) { return b.shared.length - a.shared.length || (D.queries[a.qi].path < D.queries[b.qi].path ? -1 : 1); });
   var note = '<p class="lbl">' + esc(FIXED.readBy) + tag('fixed') + '</p>';
   if (!found.length) return none('No query’s WHERE names a term used here.') + note;
@@ -289,7 +310,7 @@ function rootPanel() {
     '<p class="gen">' + (state.step === END ? 'As published' : 'After act ' + state.step + ' of ' + END) + ': <b>' + vis.length + '</b> files. <b>' + c('record') + '</b> ' + (c('record') === 1 ? 'record' : 'records') + ', <b>' + c('revision') + '</b> ' + (c('revision') === 1 ? 'revision' : 'revisions') + ', <b>' + c('version') + '</b> ' + (c('version') === 1 ? 'version' : 'versions') + ', <b>' + c('judgment') + '</b> ' + (c('judgment') === 1 ? 'judgment' : 'judgments') + '.' + tag('pod') + '</p>' +
     fixed('pod') +
     section('How it fits together <span>· click a box</span>', flowHtml() + fixed('pipeline')) +
-    section('The directory', '<div class="tw-x"><table><thead><tr><th>path</th><th>the layout files here</th><th class="num">files</th><th>written by</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div><p class="gen">What is filed where is stated in <code>runtime/pod-layout.ttl</code>.' + tag('layout') + '</p>' + fixed('twoRoots')) +
+    section('The directory', '<div class="tw-x"><table class="dirs"><thead><tr><th>path</th><th>the layout files here</th><th class="num">files</th><th>written by</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div><p class="gen">What is filed where is stated in <code>runtime/pod-layout.ttl</code>.' + tag('layout') + '</p>' + fixed('twoRoots')) +
     section('Views, both meanings', fixed('views') + '<div class="tw-x"><table class="vmap"><thead><tr><th>definition (vocabulary)</th><th></th><th>file (this pod, last build)</th></tr></thead><tbody>' + views.join('') + '</tbody></table></div>') +
     section('This build', '<dl class="kv"><dt>manifest</dt><dd>' + fileRef(D.pod.manifest) + (D.pod.created ? ' · created ' + esc(fmt(D.pod.created)) : '') + '</dd><dt>lens</dt><dd>' + esc(D.pod.lens) + '</dd>' + (D.pod.runtime ? '<dt>runtime</dt><dd>' + esc(D.pod.runtime) + '</dd>' : '') + (D.pod.head ? '<dt>latest snapshot</dt><dd class="mono">' + esc(D.pod.head) + '</dd>' : '') + (D.pod.brokenAt ? '<dt>broken at</dt><dd class="mono">' + esc(D.pod.brokenAt) + '</dd>' : '') + '</dl>' + pageLinks());
 }
@@ -438,7 +459,19 @@ function fileOfIri(iri) {
   var i = byThing.get(iri);
   if (i == null) i = byThing.get(iri.replace(/#.*$/, ''));
   if (i == null && iri.indexOf(D.pod.address) === 0) i = F.has(iri.slice(D.pod.address.length).replace(/#.*$/, '')) ? D.files.indexOf(F.get(iri.slice(D.pod.address.length).replace(/#.*$/, ''))) : null;
-  return i;
+  return i == null ? bytesOfNi(iri) : i;
+}
+/* a document's subject is the SHA-256 of its bytes, which the pod stores under attachments/ by the hash in hex */
+function bytesOfNi(iri) {
+  var m = /^ni:\/\/\/sha-256;([A-Za-z0-9_-]{43})$/.exec(iri), bin, hex = '';
+  if (!m) return null;
+  try { bin = atob(m[1].replace(/-/g, '+').replace(/_/g, '/') + '='); } catch (e) { return null; }
+  for (var k = 0; k < bin.length; k++) hex += ('0' + bin.charCodeAt(k).toString(16)).slice(-2);
+  return bytesOf.has(hex) ? bytesOf.get(hex) : null;
+}
+/* one block per source line, so that a line the screen wraps hangs under its own start */
+function hung(html) {
+  return html.split('\n').map(function (l) { return '<span class="ln" style="--h:' + (/^ */.exec(l)[0].length + 4) + 'ch">' + l + '\n</span>'; }).join('');
 }
 function turtle(text, f) {
   var triples = [], lines = text.split('\n');
@@ -495,9 +528,23 @@ function turtle(text, f) {
   });
   var primary = function (s) { return s.charAt(0) === '<' && absolute(s) === f.thing; };
   order = order.filter(primary).concat(order.filter(function (s) { return !primary(s); }));
+  /* a subject comes before the subjects whose names extend its own: an entry before its members */
+  var key = function (s) { return s.charAt(0) === '<' ? absolute(s) : s; }, placed = [];
+  order.forEach(function (s) {
+    var at = placed.findIndex(function (r) { return key(r) !== key(s) && key(r).indexOf(key(s)) === 0; });
+    if (at < 0) placed.push(s); else placed.splice(at, 0, s);
+  });
+  order = placed;
+  function subjectHtml(s, sa) {
+    var h = sa ? iriHtml(s, null) : esc(s), bi = sa ? bytesOfNi(sa) : null;
+    if (bi == null || bi === self) return h;
+    var g = D.files[bi], why = 'the hash in its name';
+    note(why, g.path, g.label || shortPath(g.path));
+    return '<a data-go="' + esc('p:' + g.path) + '" title="' + esc('the bytes this name is the hash of') + '">' + h + '</a> <b class="num">' + notes.get(why).n + '</b>';
+  }
   var blocks = order.map(function (s) {
     var sa = s.charAt(0) === '<' ? absolute(s) : null, lab = sa && labels.get(sa);
-    var out = [(sa ? iriHtml(s, null) : esc(s)) + (lab ? '  <span class="c"># ' + esc(lab) + '</span>' : '')];
+    var out = [subjectHtml(s, sa) + (lab ? '  <span class="c"># ' + esc(lab) + '</span>' : '')];
     var preds = Array.from(by.get(s).keys()).sort(function (a, b) {
       var x = a.slice(1, -1) === RDF_TYPE ? '' : a, y = b.slice(1, -1) === RDF_TYPE ? '' : b;
       return x < y ? -1 : x > y ? 1 : 0;
@@ -546,7 +593,7 @@ function fillBodies() {
       var rest = whole.length - t.length, tail = rest ? '… ' + rest + ' more characters' : '';
       var ttl = f ? turtle(t, f) : null;
       if (ttl) {
-        b.innerHTML = ttl.html + (tail ? '\n\n<span class="c"># ' + esc(tail) + '</span>' : '');
+        b.innerHTML = hung(ttl.html + (tail ? '\n\n<span class="c"># ' + esc(tail) + '</span>' : ''));
         document.getElementById('notes').innerHTML = ttl.notes;
       } else b.textContent = t + (tail ? '\n' + tail : '');
     }, function () { if (state.sel === now) b.textContent = 'This file is not published beside the page.'; });
@@ -576,9 +623,20 @@ function frame() {
     '<section class="pane" data-p="ins"><h2>Selected</h2><div class="scroll insp" id="ins"></div></section>' +
     '<section class="pane" data-p="log"><h2>Log <span>the pod’s own history</span></h2><div class="logctl"><button data-stepby="-1" aria-label="Previous act">◀</button><input type="range" id="rng" min="0" max="' + END + '" step="1" aria-label="Act"><button data-stepby="1" aria-label="Next act">▶</button></div><div class="scroll" id="log"></div></section></div></div>';
 }
+/* scrolls the log pane, and no other, so that the selected act's row is inside it */
+function keepActInView(pane) {
+  var row = pane.querySelector('.act.cur'), p = pane.getBoundingClientRect();
+  if (!row || !p.height) return;
+  var r = row.getBoundingClientRect();
+  if (r.top < p.top) pane.scrollTop -= p.top - r.top;
+  else if (r.bottom > p.bottom) pane.scrollTop += r.bottom - p.bottom;
+}
 function render() {
   document.getElementById('tree').innerHTML = treeHtml();
-  document.getElementById('log').innerHTML = logHtml();
+  var pane = document.getElementById('log'), kept = pane.scrollTop;
+  pane.innerHTML = logHtml();
+  pane.scrollTop = kept;
+  if (shownAct !== state.step) { shownAct = state.step; keepActInView(pane); }
   document.getElementById('ins').innerHTML = inspectorHtml();
   document.getElementById('rng').value = state.step;
   var at = D.log[state.step];
@@ -654,6 +712,9 @@ function start(data, kept) {
   Q = new Map(D.queries.map(function (q) { return [q.path, q]; }));
   END = D.log.length - 1; state.step = END;
   byThing = new Map(D.files.map(function (f, i) { return [f.thing, i]; }));
+  bytesOf = new Map();
+  D.files.forEach(function (f, i) { var stem = f.path.split('/').pop(); if (f.kind === 'bytes' && /^[0-9a-f]{64}$/.test(stem)) bytesOf.set(stem, i); });
+  indexTerms();
   labels = new Map();
   D.files.forEach(function (f) { if (f.label) { labels.set(f.thing, f.label); labels.set(D.pod.address + f.path, f.label); } });
   D.views.forEach(function (v) { v.entries.forEach(function (en) { labels.set(D.pod.address + en.id, en.label); }); });
@@ -686,7 +747,7 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .top .who { font-size: 1.15rem; white-space: nowrap; }
 #explorer .top .addr { font: 12.5px var(--mono); color: #c9d1d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 #explorer .top .legend { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11.5px; color: #c9d1d6; }
-#explorer .top .src { margin-left: 0; color: #c9d1d6; border-color: #5b6475; }
+#explorer .top .src { margin-left: 0; background: #fff; }
 #explorer .bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 6px 14px; border-bottom: 1px solid var(--rule); background: var(--panel); }
 #explorer .stops { display: flex; flex-wrap: wrap; gap: 4px; }
 #explorer .stop { border: 1px solid var(--rule); background: #fff; border-radius: 3px; padding: 3px 9px; font: 12.5px system-ui, sans-serif; cursor: pointer; }
@@ -737,6 +798,12 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .pill.kit { border-color: var(--pencil); color: var(--pencil); }
 #explorer .pill.outside { border-style: dashed; color: var(--quiet); }
 #explorer .src { display: inline-block; margin-left: .4rem; font: 10px/14px var(--mono); padding: 0 4px; border: 1px solid var(--line); border-radius: 3px; color: var(--quiet); vertical-align: 1px; }
+#explorer .src.pod { color: var(--link); border-color: var(--link); }
+#explorer .src.vocabulary { color: var(--built); border-color: var(--built); }
+#explorer .src.query { color: var(--new); border-color: var(--new); }
+#explorer .src.layout { color: var(--amber); border-color: var(--amber); }
+#explorer .src.kit { color: var(--pencil); border-color: var(--pencil); }
+#explorer .src.fixed { color: var(--quiet); border-color: var(--quiet); }
 #explorer .fx, #explorer .gen { margin: .4rem 0; max-width: 46rem; }
 #explorer .fx { color: var(--quiet); }
 #explorer .lbl { color: var(--quiet); font-size: 12px; }
@@ -749,6 +816,7 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .kv dt { font-weight: 600; } #explorer .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 #explorer pre.code { background: var(--panel); padding: .6rem; border-radius: 4px; overflow: auto; max-height: 28rem; margin: .4rem 0; white-space: pre; }
 #explorer pre.turtle { white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 var(--mono); }
+#explorer pre.turtle .ln { display: block; padding-left: var(--h, 0); text-indent: calc(-1 * var(--h, 0)); }
 #explorer pre .c { color: var(--quiet); }
 #explorer pre .l { color: #1f5f7a; }
 #explorer pre a { color: var(--pencil); text-decoration: underline dotted; cursor: pointer; }
@@ -779,6 +847,7 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .card i.term { display: inline-block; margin: 0 .5rem .15rem 0; }
 #explorer .tw-x { overflow-x: auto; }
 #explorer table .num, #explorer th.num { text-align: right; }
+#explorer table.dirs td:first-child { white-space: nowrap; }
 #explorer tr.dim td { color: var(--quiet); }
 #explorer a[data-go], #explorer a[data-step] { cursor: pointer; }
 #explorer .logctl { display: flex; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); }

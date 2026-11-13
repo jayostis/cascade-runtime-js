@@ -20,6 +20,7 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { agentFiles } from "../src/agents.js";
 import {
+  EXPLORER_BUDGET,
   EXPLORER_FILE,
   type ExplorerData,
   type ExplorerFile,
@@ -359,6 +360,38 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
         const named = data.files[node.document ?? -1];
         assert.ok(named?.label, `${node.path} has no document with a label`);
         assert.equal(node.label, named.label, node.path);
+      }
+    });
+
+    it("gives a materialized view the files its statements name, so that its card agrees with its Turtle", () => {
+      const { data } = alex;
+      const view = file(data, "clinical/allergies.ttl");
+      assert.equal(view.kind, "view");
+      assert.ok(view.names.length > 0, "the view names no file");
+      for (const named of view.names)
+        assert.ok(
+          data.files[named]?.namedBy.includes(data.files.indexOf(view)),
+          `${data.files[named]?.path} is not named by the view`,
+        );
+      assert.ok(
+        JSON.stringify(data).length <= EXPLORER_BUDGET,
+        "the object is over its budget",
+      );
+    });
+
+    it("has each stored document name the bytes whose hash is its subject", () => {
+      const { data } = alex;
+      const stored = data.files.filter(({ kind }) => kind === "bytes");
+      assert.ok(stored.length > 0, "no bytes are stored");
+      for (const bytes of stored) {
+        const at = data.files.indexOf(bytes);
+        const document = data.files[bytes.document ?? -1];
+        assert.ok(document, `${bytes.path} has no document`);
+        assert.ok(
+          document.names.includes(at),
+          `${document.path} does not name ${bytes.path}`,
+        );
+        assert.ok(bytes.namedBy.includes(bytes.document ?? -1), bytes.path);
       }
     });
 
