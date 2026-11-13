@@ -48,6 +48,7 @@ async function inMemory(
   texts: Record<string, string>,
   performers: Parameters<typeof runConformance>[0]["performers"],
   withShapes = false,
+  tools?: Parameters<typeof runConformance>[0]["tools"],
 ): ReturnType<typeof runConformance> {
   const files = new MemoryFiles("https://vocabulary.example/");
   for (const [path, text] of Object.entries(texts))
@@ -60,6 +61,7 @@ async function inMemory(
     layout: await layout(),
     performers,
     ...(withShapes ? { shapes: await Shapes.read(files, newStore) } : {}),
+    ...(tools === undefined ? {} : { tools }),
   });
 }
 
@@ -207,6 +209,114 @@ function runPlanted(): Promise<Reported> {
   ).then(reportedBy);
 }
 
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+const toolOf = (name: string, kind?: string, tier?: string) => ({
+  name,
+  ...(kind === undefined ? {} : { kind: `${CASCADE}${kind}` }),
+  ...(tier === undefined ? {} : { tier }),
+});
+/** Two tools that are right and one that is wrong in each way Y1 names; the kinds and tiers are the vocabulary's. */
+const OFFERED = [
+  toolOf("ok_read", "ReadingPodsOrTables", "free"),
+  toolOf("ok_write", "WritingToAPod", "ask"),
+  toolOf("wrong_tier", "ReadingPodsOrTables", "ask"),
+  toolOf("never_kind", "DeletingPods", "never"),
+  toolOf("no_kind", undefined, "free"),
+  toolOf("no_tier", "ReadingPodsOrTables"),
+  toolOf("unknown_tier", "ReadingPodsOrTables", "sometimes"),
+  toolOf("unknown_kind", "ReadingTheMind", "free"),
+  toolOf("twice", "ReadingPodsOrTables", "free"),
+  toolOf("twice", "WritingToAPod", "ask"),
+  toolOf("bare"),
+];
+
+const Y1_QUERY = `PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        SELECT DISTINCT ?tool WHERE {
+          GRAPH <urn:cascade:tools> { ?tool rdfs:label ?name }
+          FILTER (NOT EXISTS {
+            GRAPH <urn:cascade:tools> { ?tool cascade:modelToolActKind ?kind ; cascade:consentTier ?tier }
+            GRAPH <urn:cascade:vocabulary> { ?kind skos:inScheme cascade:ModelToolActKinds ; cascade:consentTier ?tier }
+            FILTER (?tier != cascade:ConsentTierNever)
+          } || EXISTS {
+            GRAPH <urn:cascade:tools> { ?tool ?declares ?one , ?other }
+            FILTER (?declares IN (cascade:modelToolActKind, cascade:consentTier) && ?one != ?other)
+          })
+        }`;
+
+/** The vocabulary's consent tiers and three of its kinds, and a feature file that reads the tools a runtime lists. */
+const TOOLS_VOCABULARY = {
+  ...ADA_AND_BOB,
+  "ontologies/cascade.ttl": `@prefix cascade: <${CASCADE}> .
+     @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+     cascade:ConsentTierFree skos:inScheme cascade:ConsentTiers ; skos:notation "free" .
+     cascade:ConsentTierAsk skos:inScheme cascade:ConsentTiers ; skos:notation "ask" .
+     cascade:ConsentTierNever skos:inScheme cascade:ConsentTiers ; skos:notation "never" .
+     cascade:ReadingPodsOrTables skos:inScheme cascade:ModelToolActKinds ; cascade:consentTier cascade:ConsentTierFree .
+     cascade:WritingToAPod skos:inScheme cascade:ModelToolActKinds ; cascade:consentTier cascade:ConsentTierAsk .
+     cascade:DeletingPods skos:inScheme cascade:ModelToolActKinds ; cascade:consentTier cascade:ConsentTierNever .`,
+  "runtime/tools.feature": `Feature: Tools
+  Rule: Z3. A rule
+    Background:
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      When the tools offered a model are listed
+
+    Example: the tools the Y1 query names
+      When the query is:
+        """
+        ${Y1_QUERY}
+        """
+      Then it answers:
+        | tool                           |
+        | <urn:cascade:tool:wrong_tier>  |
+        | <urn:cascade:tool:never_kind>  |
+        | <urn:cascade:tool:no_kind>     |
+        | <urn:cascade:tool:no_tier>     |
+        | <urn:cascade:tool:unknown_tier> |
+        | <urn:cascade:tool:unknown_kind> |
+        | <urn:cascade:tool:twice>       |
+        | <urn:cascade:tool:bare>        |
+
+    Example: the name, kind and tier of a tool as vocabulary terms
+      When the query is:
+        """
+        SELECT ?tool ?name ?kind ?tier WHERE {
+          GRAPH <urn:cascade:tools> { ?tool rdfs:label ?name ; cascade:modelToolActKind ?kind ; cascade:consentTier ?tier }
+          FILTER (STRSTARTS(STR(?tool), "urn:cascade:tool:ok_"))
+        }
+        """
+      Then it answers:
+        | tool                        | name       | kind                        | tier                    |
+        | <urn:cascade:tool:ok_read>  | "ok_read"  | cascade:ReadingPodsOrTables | cascade:ConsentTierFree |
+        | <urn:cascade:tool:ok_write> | "ok_write" | cascade:WritingToAPod       | cascade:ConsentTierAsk  |
+
+    Example: the tools and the vocabulary are outside the default graph
+      When the query is:
+        """
+        SELECT ?term WHERE {
+          { ?term cascade:modelToolActKind ?kind } UNION { ?term cascade:consentTier ?tier }
+        }
+        """
+      Then it answers nothing
+
+    Example: the Y1 query asked of the tools that are right
+      When the query is:
+        """
+        ${Y1_QUERY}
+        """
+      Then it answers nothing
+`,
+};
+
+/** Runs the conformance command, in memory, on a vocabulary whose examples read the tools a runtime lists. */
+function runTools(tools?: typeof OFFERED): Promise<Reported> {
+  return inMemory(
+    TOOLS_VOCABULARY,
+    { creation: PERFORMERS.creation },
+    false,
+    tools,
+  ).then(reportedBy);
+}
+
 /** What a kit whose story has a step no performer is given for reports when the runtime runs it. */
 async function runStuckKit(): Promise<
   Awaited<ReturnType<typeof runConformance>>
@@ -348,6 +458,49 @@ describe("Running a feature's examples and a kit's checks on a runtime · runCon
     });
   });
 
+  describe("given a feature file that lists the tools a runtime offers a model", () => {
+    let reported: Reported;
+
+    before(async () => {
+      reported = await runTools(OFFERED);
+    });
+
+    it("answers a query of the tools' graph with each tool that has no kind or no tier or neither, has two, or has a tier its kind has not, or a kind at never", () => {
+      assert.deepEqual(reported.byName.get("the-tools-the-y1-query-names"), [
+        "passed",
+        "",
+      ]);
+    });
+
+    it("states each tool's name, kind and tier as the vocabulary's terms, a tool that declares neither still stating its name", () => {
+      assert.deepEqual(
+        reported.byName.get(
+          "the-name-kind-and-tier-of-a-tool-as-vocabulary-terms",
+        ),
+        ["passed", ""],
+      );
+    });
+
+    it("keeps the tools and the vocabulary out of the query's default graph", () => {
+      assert.deepEqual(
+        reported.byName.get(
+          "the-tools-and-the-vocabulary-are-outside-the-default-graph",
+        ),
+        ["passed", ""],
+      );
+    });
+
+    it("answers that query nothing for tools that are all right, and for a runtime that offers none", async () => {
+      const queried = "the-y1-query-asked-of-the-tools-that-are-right";
+      for (const tools of [OFFERED.slice(0, 2), undefined])
+        assert.deepEqual((await runTools(tools)).byName.get(queried), [
+          "passed",
+          "",
+        ]);
+      assert.equal(reported.byName.get(queried)?.[0], "failed");
+    });
+  });
+
   describe("given a kit whose story has a step the runtime cannot perform", () => {
     let assertions: Awaited<ReturnType<typeof runConformance>>;
 
@@ -459,6 +612,19 @@ describe("Reporting a conformance run · npm run conformance -- --report <file>"
           `${name}: ${found?.[0]?.why}`,
         );
       }
+    });
+
+    it("lists the tools of `cascade-runtime/tools` to the run, for the examples that read them", async () => {
+      const { stderr } = await promisify(execFile)(process.execPath, [
+        CLI,
+        "conformance",
+        "--feature",
+        "runtime/consent.feature",
+        "--report",
+        join(await mkdtemp(join(tmpdir(), "conformance-")), "earl.nt"),
+      ]);
+      const listed = /the run lists (\d+) tools/.exec(stderr);
+      assert.ok(Number(listed?.[1]) > 0, `the run listed no tools: ${stderr}`);
     });
 
     it("names the commit of the vocabulary it ran", async () => {

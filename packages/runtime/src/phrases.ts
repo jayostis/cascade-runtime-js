@@ -106,6 +106,8 @@ export interface Compiled {
   writer?: number;
   /** The query the last `When the query is:` or `When the query {name} is asked` gave, which the `it answers` steps after it read. */
   query?: string;
+  /** Whether `When the tools offered a model are listed` came before: the pod is then read beside the tools' graphs. */
+  toolsListed?: true;
 }
 
 export interface Compiling {
@@ -1114,6 +1116,12 @@ const DEFINITIONS: Definition[] = [
         receiver,
       );
       compiled.writer = receiver;
+    },
+  ],
+  [
+    "the tools offered a model are listed",
+    (compiled) => {
+      compiled.toolsListed = true;
     },
   ],
   ["the pod is read as it stood after {step}", readAfter],
