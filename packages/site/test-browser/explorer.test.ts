@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -23,6 +29,8 @@ const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const KIT = "tamsin-vale";
 /** A kit whose pod has entries of several records, matcher judgments and a disagreement between records. */
 const JOINED = "priya-natarajan";
+/** The pod the demo is given on: Alex's Penicillin allergy is one entry of three records from two hospitals. */
+const DEMO = "alex-rivera";
 
 /**
  * The explorer's app, run in Chromium over a small kit's pod: no unit test can say whether the page's script opens a node,
@@ -36,6 +44,9 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
   let tab: Page;
   let joined: ExplorerData;
   let servedJoined: Served;
+  let alex: ExplorerData;
+  let alexFolder: string;
+  let servedAlex: Served;
   const folders: string[] = [];
 
   /** A kit's pod built and written out as the site, then served. */
@@ -85,6 +96,11 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
     folders.push(big.folder);
     joined = big.data;
     servedJoined = big.served;
+    const person = await site(DEMO);
+    folders.push(person.folder);
+    alex = person.data;
+    alexFolder = person.folder;
+    servedAlex = person.served;
     browser = await chromium.launch();
     tab = await browser.newPage();
   });
@@ -93,6 +109,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
     await browser?.close();
     await served?.close();
     await servedJoined?.close();
+    await servedAlex?.close();
     for (const each of [folder, ...folders])
       if (each !== undefined) rmSync(each, { recursive: true, force: true });
   });
@@ -1152,6 +1169,529 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
         .click();
       assert.equal(await tab.locator("#ins .hop.hl").count(), 1);
     });
+  });
+
+  /** Alex's pod at an address, the viewport at a width. */
+  async function alexAt(
+    id: string,
+    ready: string,
+    width = 1440,
+  ): Promise<void> {
+    await tab.setViewportSize({ width, height: width < 600 ? 800 : 900 });
+    await tab.goto(`${servedAlex.url}index.html`);
+    await tab.goto(`${servedAlex.url}index.html#${encodeURIComponent(id)}`);
+    await tab.waitForSelector(ready);
+  }
+  const loaded = () =>
+    tab.waitForFunction(
+      () =>
+        !(document.getElementById("body")?.textContent ?? "Loading").startsWith(
+          "Loading",
+        ),
+    );
+  const penicillin = (): ExplorerEntry =>
+    entryWhere(
+      alex,
+      (each) => /penicillin/i.test(each.label) && each.members.length === 3,
+    );
+  /** The short name an entry's table heads a record with: the source and the id it gave, the file's own label past its first two parts. */
+  const sourceOf = (index: number): string =>
+    (alex.files[index]?.label ?? "").split(" · ").slice(2).join(" · ");
+
+  describe("when an entry's records are shown side by side", () => {
+    it("heads each record's column with its source and id, not its path, so that the table fits the inspector or scrolls with its field column fixed", async () => {
+      const entry = penicillin();
+      await alexAt(`p:${entry.id}`, "#ins table.et");
+      const heads = await tab
+        .locator("#ins table.et thead th")
+        .allTextContents();
+      assert.equal(heads.length, 2 + entry.members.length);
+      for (const head of heads)
+        assert.doesNotMatch(head, /records\/|\.ttl/, "a path in a head");
+      for (const member of entry.members)
+        assert.ok(
+          heads.some((head) => head.includes(sourceOf(member))),
+          sourceOf(member),
+        );
+      const shape = await tab.locator("#ins table.et").evaluate((table) => {
+        const box = table.closest(".tw-x");
+        const last = [...table.querySelectorAll("thead th")].at(-1);
+        const field = table.querySelector("tbody td:first-child");
+        if (!box || !last || !field) throw new Error("no table");
+        return {
+          fits:
+            last.getBoundingClientRect().right <=
+            box.getBoundingClientRect().right + 1,
+          sticky: getComputedStyle(field).position === "sticky",
+          wrap: getComputedStyle(field).whiteSpace,
+          line: field.getBoundingClientRect().height,
+        };
+      });
+      assert.ok(
+        shape.fits || shape.sticky,
+        "the last record's column is off screen and the field column scrolls away",
+      );
+      assert.equal(shape.wrap, "nowrap", "a field name wraps");
+      assert.ok(shape.line < 40, `a field name is ${shape.line}px tall`);
+    });
+
+    it("puts the full path of each record in the tooltip of its head", async () => {
+      const entry = penicillin();
+      await alexAt(`p:${entry.id}`, "#ins table.et");
+      const titles = await tab
+        .locator("#ins table.et thead th[title]")
+        .evaluateAll((all) => all.map((each) => each.getAttribute("title")));
+      for (const member of entry.members)
+        assert.ok(
+          titles.some((title) => title?.includes(pathOf(member, alex))),
+          pathOf(member, alex),
+        );
+    });
+  });
+
+  describe("when a table is read at a phone's width", () => {
+    const nodes = (): [string, string][] => {
+      const walk = alexWalk();
+      return [
+        ["p:", "#ins table.dirs"],
+        [`p:${fileOfEntry(penicillin())}`, "#ins table.entries"],
+        [`p:${penicillin().id}`, "#ins table.et"],
+        [`p:${walk.record.path}`, "#ins table.arrivals"],
+        ["q:queries/derivations/entries.rq", "#ins table.derivedby"],
+        ["q:queries/questions/pod/My active allergies.rq", "#ins table.reads"],
+        [`p:${alexTypeIndex()}`, "#ins .hop.hl table"],
+      ];
+    };
+
+    it("sets data-label on every cell of every table, and shows no cell empty", async () => {
+      for (const [id, ready] of nodes()) {
+        await alexAt(id, ready, 390);
+        const cells = await tab
+          .locator("#ins table tbody td")
+          .evaluateAll((all) =>
+            all.map((cell) => ({
+              label: cell.getAttribute("data-label") ?? "",
+              text: (cell.textContent ?? "").trim(),
+            })),
+          );
+        assert.ok(cells.length > 0, id);
+        for (const cell of cells) {
+          assert.notEqual(cell.label, "", `${id}: a cell with no data-label`);
+          assert.notEqual(cell.text, "", `${id}: ${cell.label} is empty`);
+        }
+      }
+    });
+
+    it("labels an entry's cells with the entry and each record's source, so that the entry and a record are told apart", async () => {
+      const entry = penicillin();
+      await alexAt(`p:${entry.id}`, "#ins table.et", 390);
+      const labels = await tab
+        .locator("#ins table.et tbody tr:first-child td")
+        .evaluateAll((all) =>
+          all.map((cell) => cell.getAttribute("data-label")),
+        );
+      assert.deepEqual(labels, [
+        "field",
+        "the entry",
+        ...entry.members.map(sourceOf),
+      ]);
+    });
+
+    it("labels the columns of an answer, and shows an empty value as a dash", async () => {
+      const question = alex.queries.find((each) =>
+        each.path.endsWith("questions/pod/My active allergies.rq"),
+      )?.question;
+      assert.ok(question);
+      writeFileSync(
+        join(alexFolder, "answers.json"),
+        JSON.stringify({
+          [alex.pod.lens]: {
+            [question]: {
+              rows: [{ allergen: { value: "Penicillin" }, reaction: "" }],
+            },
+          },
+        }),
+      );
+      await alexAt(
+        "q:queries/questions/pod/My active allergies.rq",
+        "#ins table.reads",
+        390,
+      );
+      const labels = await tab
+        .locator(
+          "#ins h3:has-text('Answer') ~ .tw-x table tbody tr:first-child td",
+        )
+        .evaluateAll((all) =>
+          all.map((cell) => cell.getAttribute("data-label")),
+        );
+      assert.deepEqual(labels, ["allergen", "reaction"]);
+      assert.equal(
+        await tab
+          .locator("#ins h3:has-text('Answer') ~ .tw-x table tbody td")
+          .last()
+          .textContent(),
+        "—",
+      );
+      rmSync(join(alexFolder, "answers.json"));
+    });
+  });
+
+  describe("when an entry's own statements are shown", () => {
+    it("includes the nodes the view names for each member, which carry a dash after the entry's id", async () => {
+      const entry = penicillin();
+      const file = fileOfEntry(entry);
+      const fragment = entry.id.split("#")[1] ?? "?";
+      const whole = readFileSync(join(alexFolder, "pod", file), "utf8");
+      const nodes = new Set(
+        [...whole.matchAll(/^<([^>]*)>/gm)]
+          .map((match) => match[1] ?? "")
+          .filter((subject) => subject.includes(`#${fragment}-`)),
+      );
+      assert.equal(nodes.size, entry.members.length, "a node for each member");
+      await alexAt(`p:${entry.id}`, "#ins pre.turtle");
+      await loaded();
+      const text = (await tab.locator("#ins pre.turtle").textContent()) ?? "";
+      const shown = new Set(
+        [...text.matchAll(/^<#([0-9a-f]{8})…-([0-9a-f]{8})…>/gm)].map(
+          (match) => match[2],
+        ),
+      );
+      assert.equal(shown.size, nodes.size, "a member's node is missing");
+    });
+  });
+
+  const alexTypeIndex = (): string => {
+    const hop = alex.chain.at(-1);
+    return pathOf(hop?.file, alex);
+  };
+
+  /** The first record whose revision names a document that names its bytes. */
+  const walkOf = (from: ExplorerData) => {
+    for (const record of from.files)
+      for (const arrival of record.arrivals ?? []) {
+        const revision = from.files[arrival.revision];
+        for (const document of revision?.names ?? []) {
+          const bytes = from.files[document]?.names.find(
+            (each) => from.files[each]?.kind === "bytes",
+          );
+          if (from.files[document]?.kind === "document" && bytes !== undefined)
+            return { record, revision: arrival.revision, document, bytes };
+        }
+      }
+    throw new Error("the kit's pod has no record with bytes");
+  };
+  const alexWalk = () => walkOf(alex);
+
+  const demos = [
+    {
+      name: "Alex's pod",
+      data: () => alex,
+      url: () => servedAlex.url,
+      entry: penicillin,
+    },
+    {
+      name: "the joined kit's pod",
+      data: () => joined,
+      url: () => servedJoined.url,
+      entry: () => entryWhere(joined, (each) => each.members.length > 1),
+    },
+  ];
+
+  describe("when the demo's eight stops are walked", () => {
+    const stop = async (
+      demo: (typeof demos)[number],
+      name: string,
+    ): Promise<void> => {
+      await tab.setViewportSize({ width: 1440, height: 900 });
+      await tab.goto(`${demo.url()}index.html`);
+      await tab.waitForSelector(".row", { state: "attached" });
+      await tab
+        .locator(".stop")
+        .filter({ hasText: new RegExp(`^${name}$`) })
+        .click();
+    };
+    const open = async (id: string): Promise<void> => {
+      await tab.fill("#flt", id.slice(2));
+      await tab.locator(`#tree [data-go="${id}"]`).click();
+    };
+    const at = async (): Promise<string> =>
+      decodeURIComponent(new URL(tab.url()).hash.slice(1));
+    const actOf = (from: ExplorerData, type: string): number =>
+      from.log.findIndex((row) => row.type === type);
+
+    for (const demo of demos) {
+      describe(`on ${demo.name}`, () => {
+        it("stop 1, the pod: the flow strip from stored files to the views' folder", async () => {
+          await stop(demo, "Pod");
+          assert.deepEqual(
+            await tab.locator("#ins .flow .cap").allTextContents(),
+            [
+              "stored in the pod",
+              "the lens",
+              "derived state, in no file",
+              "view definitions",
+              "materialized views",
+            ],
+          );
+          assert.equal(
+            (await tab.locator("#ins .flow .box").count()) >= 5,
+            true,
+          );
+        });
+
+        it("stop 2, the log: act 1 shows the files it wrote and the pod as it stood after it", async () => {
+          const data = demo.data();
+          await stop(demo, "Log");
+          await tab.locator('#log .act[data-step="1"]').click();
+          assert.match(
+            (await tab.locator("#ins h1").textContent()) ?? "",
+            /^Act 1 of/,
+          );
+          const wrote = data.log[1]?.wrote.length ?? -1;
+          assert.match(
+            (await tab.locator("#ins .chips .pill.new").textContent()) ?? "",
+            new RegExp(`^\\+${wrote} files?$`),
+          );
+          const visible = data.files.filter(
+            (file) => file.writer === "build" || file.writer <= 1,
+          ).length;
+          assert.match(
+            (await tab.locator("#stepline").textContent()) ?? "",
+            new RegExp(`${visible} of ${data.files.length} files`),
+          );
+        });
+
+        it("stop 3, acts 3 and 6: a hand entry, then a matcher run with its parent snapshot, its judgments and a kit case", async () => {
+          const data = demo.data();
+          await stop(demo, "Log");
+          const hand = actOf(data, "cascade:HandEntrySession");
+          await tab.locator(`#log .act[data-step="${hand}"]`).click();
+          assert.match(
+            (await tab.locator("#ins h1").textContent()) ?? "",
+            new RegExp(`^Act ${hand} of`),
+          );
+          const run = actOf(data, "cascade:MatcherRun");
+          const row = data.log[run];
+          assert.ok(row?.parent !== undefined, "a matcher run has a parent");
+          await tab.locator(`#log .act[data-step="${run}"]`).click();
+          assert.ok(
+            await tab
+              .locator(`#ins dl.kv a[data-step="${row.parent}"]`)
+              .isVisible(),
+            "the parent snapshot's link",
+          );
+          const judged = row.wrote.filter((index) =>
+            pathOf(index, data).startsWith("judgments/"),
+          ).length;
+          assert.ok(judged > 0, "the run wrote judgments");
+          const folders = await tab
+            .locator("#ins details.ex > summary")
+            .allTextContents();
+          const listed = folders
+            .filter((text) => text.startsWith("judgments/"))
+            .reduce((sum, text) => sum + Number(/\+(\d+)/.exec(text)?.[1]), 0);
+          assert.equal(listed, judged, "the judgments the run wrote");
+          const cases =
+            data.kit?.cases.filter((each) => each.row === run) ?? [];
+          assert.ok(cases.length > 0, "a kit case is checked after the run");
+          assert.equal(
+            await tab.locator("#ins details.case").count(),
+            cases.length,
+          );
+          await tab.locator("#ins details.case > summary").first().click();
+          assert.ok(
+            (await tab.locator("#ins details.case[open] ol.steps li").count()) >
+              0,
+          );
+        });
+
+        it("stop 4, records: a record's revision, the document it links first, and the bytes the document links first, each one click from the last", async () => {
+          const data = demo.data();
+          const walk = walkOf(data);
+          await stop(demo, "Records");
+          assert.equal(await at(), `p:${walk.record.path}`);
+          assert.equal(
+            ((await tab.locator(".stop.on").textContent()) ?? "").trim(),
+            "Records",
+          );
+          await tab
+            .locator(
+              `#ins table.arrivals a[data-go="p:${pathOf(walk.revision, data)}"]`,
+            )
+            .click();
+          await tab.waitForSelector("#notes ol.notes li");
+          const toDocument = tab
+            .locator("#notes ol.notes li:first-child a[data-go]")
+            .first();
+          assert.equal(
+            await toDocument.getAttribute("data-go"),
+            `p:${pathOf(walk.document, data)}`,
+            "link 1 of the revision",
+          );
+          await toDocument.click();
+          await tab.waitForSelector("#notes ol.notes li");
+          const toBytes = tab
+            .locator("#notes ol.notes li:first-child a[data-go]")
+            .first();
+          assert.equal(
+            await toBytes.getAttribute("data-go"),
+            `p:${pathOf(walk.bytes, data)}`,
+            "link 1 of the document",
+          );
+          await toBytes.click();
+          assert.equal(await at(), `p:${pathOf(walk.bytes, data)}`);
+          assert.match(pathOf(walk.bytes, data), /^attachments\//);
+        });
+
+        it("stop 5, judgments: a matcher's judgment with its verdict, its rule and the rule's query matched by hash", async () => {
+          const data = demo.data();
+          await stop(demo, "Judgments");
+          assert.match(
+            (await tab.locator("#ins h1").textContent()) ?? "",
+            /judgments\//,
+          );
+          const found = data.files.find(
+            (each) => each.judgment?.by === "matcher",
+          );
+          assert.ok(found?.judgment);
+          await open(`p:${found.path}`);
+          await tab.waitForSelector("#ins .judging");
+          const rule = data.matcherRules[found.judgment.rule ?? -1];
+          const query = data.queries[rule?.query ?? -1];
+          assert.ok(rule && query);
+          const panel =
+            (await tab.locator("#ins .judging").textContent()) ?? "";
+          assert.match(panel, /the matcher/);
+          assert.match(panel, /counts/);
+          assert.ok(panel.includes(rule.hash), "the rule's hash");
+          assert.ok(
+            await tab
+              .locator(`#ins .judging a[data-go="q:${query.path}"]`)
+              .isVisible(),
+            "the rule's query",
+          );
+        });
+
+        it("stop 6, the views: the definitions, then a view file with its entries, and an entry with its records side by side", async () => {
+          const data = demo.data();
+          const entry = demo.entry();
+          await stop(demo, "View definitions");
+          assert.match(
+            (await tab.locator("#ins h1").textContent()) ?? "",
+            /views\//,
+          );
+          await tab
+            .locator(".stop")
+            .filter({ hasText: /^Materialized views$/ })
+            .click();
+          await open(`p:${fileOfEntry(entry)}`);
+          await tab.waitForSelector("#ins table.entries");
+          const view = data.views.find(
+            (each) => each.file === fileOfEntry(entry),
+          );
+          assert.equal(
+            await tab.locator("#ins table.entries tbody tr").count(),
+            view?.entries.length,
+          );
+          await tab
+            .locator(`#ins table.entries a[data-go="p:${entry.id}"]`)
+            .click();
+          await tab.waitForSelector("#ins table.et");
+          assert.equal(
+            await tab.locator("#ins table.et thead th").count(),
+            2 + entry.members.length + (entry.others?.length ?? 0),
+          );
+          assert.equal(
+            await tab.locator("#ins table.et tbody tr.diff").count(),
+            entry.fields.filter((field) => field.disagree).length,
+          );
+        });
+
+        it("stop 7, queries: a derivation with its build step and what it reads, then a question with its view and its answer", async () => {
+          const data = demo.data();
+          const steps = data.queries.filter((each) => each.order !== undefined);
+          const derivation = data.queries.find((each) =>
+            each.path.endsWith("derivations/entries.rq"),
+          );
+          assert.ok(derivation?.order !== undefined);
+          await stop(demo, "Queries");
+          assert.match(
+            (await tab.locator("#ins h1").textContent()) ?? "",
+            /queries\//,
+          );
+          await open(`q:${derivation.path}`);
+          await tab.waitForSelector("#ins details.ex[open] pre.code");
+          assert.match(
+            (await tab.locator("#ins .chips .pill.kit").textContent()) ?? "",
+            new RegExp(
+              `^build step ${derivation.order + 1} of ${steps.length}$`,
+            ),
+          );
+          const before = await tab
+            .locator("#ins table.derivedby td.num")
+            .allTextContents();
+          assert.ok(before.length > 0, "earlier derivations it reads");
+          for (const step of before)
+            assert.ok(Number(step) <= derivation.order, step);
+          const question = data.queries.find((each) =>
+            each.path.endsWith("questions/pod/My active allergies.rq"),
+          );
+          assert.ok(question);
+          await open(`q:${question.path}`);
+          await tab.waitForSelector("#ins table.reads");
+          assert.ok(
+            (await tab.locator("#ins table.reads tbody tr").count()) > 0,
+            "the view it reads",
+          );
+          const rows = await tab
+            .locator("#ins h3:has-text('Answer') ~ .tw-x table tbody tr")
+            .count();
+          const text = (await tab.locator("#ins").textContent()) ?? "";
+          assert.ok(
+            rows > 0 || /does not publish/.test(text),
+            "answer rows or the line that none are published",
+          );
+        });
+
+        it("stop 8, how an app finds things: the four hops from the card to a view, each link the next hop", async () => {
+          const data = demo.data();
+          await stop(demo, "Pod");
+          assert.equal(
+            await tab.locator("#ins .hops .hop").count(),
+            data.chain.length + 1,
+          );
+          await tab
+            .locator(".stop")
+            .filter({ hasText: /^How an app finds things$/ })
+            .click();
+          for (const [index, hop] of data.chain.entries()) {
+            assert.equal(
+              (
+                (await tab.locator("#ins .hop.hl .n").first().textContent()) ??
+                ""
+              ).trim(),
+              String(index + 1),
+            );
+            const next = hop.triples.find((each) => each.go !== undefined)?.go;
+            if (next === undefined) break;
+            await tab
+              .locator(`#ins .hop.hl a[data-go="p:${pathOf(next, data)}"]`)
+              .first()
+              .click();
+            assert.equal(await at(), `p:${pathOf(next, data)}`);
+          }
+          const view = data.chain
+            .at(-1)
+            ?.registrations?.find((each) => each.file !== undefined)?.file;
+          assert.ok(view !== undefined, "the type index registers a view");
+          await tab
+            .locator(`#ins .hop.hl a[data-go="p:${pathOf(view, data)}"]`)
+            .first()
+            .click();
+          assert.equal(await at(), `p:${pathOf(view, data)}`);
+        });
+      });
+    }
   });
 
   describe("on a phone's width", () => {
