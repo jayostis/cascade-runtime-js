@@ -228,6 +228,34 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       assert.ok(data.kit?.handles?.records);
     });
 
+    it("gives each kit step the sentence its Background states, without the label that names it", () => {
+      const { data } = kit;
+      assert.deepEqual(
+        data.log.flatMap(({ kitSteps }) =>
+          kitSteps.map(({ name, text }) => [name, text]),
+        ),
+        [
+          ["E1", "a new pod for Tamsin on 2024-02-01 at 09:00"],
+          ["E2", 'the pull "north-2024-02" is imported on 2024-02-01 at 09:05'],
+          ["J1", 'Tamsin files the judgment "J1" on 2024-02-01 at 09:05:30'],
+          ["E3", 'the pull "north-2025-02" is imported on 2025-02-01 at 09:05'],
+        ],
+      );
+    });
+
+    it("gives each kit case the steps of its example, with the tables they carry", () => {
+      const cases = alex.data.kit?.cases ?? [];
+      const first = cases.find(({ id }) => id === "P1");
+      assert.ok(first?.steps?.length, "P1 has no steps");
+      assert.match(first.steps[0]?.text ?? "", /^these records have/);
+      assert.deepEqual(first.steps[0]?.table?.[0], [
+        "record",
+        "field",
+        "value",
+      ]);
+      assert.ok(cases.every(({ steps }) => steps !== undefined));
+    });
+
     it("lists a record's arrivals in time order, each revision with the version it sets", () => {
       const { data } = kit;
       const handle = Object.keys(data.kit?.handles?.records ?? {}).find(

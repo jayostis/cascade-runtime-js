@@ -11,12 +11,18 @@ import {
   findRoot,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
-import { EXPLORER_FILE, type ExplorerData } from "../src/explorer.js";
+import {
+  EXPLORER_FILE,
+  type ExplorerData,
+  type ExplorerEntry,
+} from "../src/explorer.js";
 import { type Served, servePages } from "../src/node/serve.js";
 import { Site } from "../src/site.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const KIT = "tamsin-vale";
+/** A kit whose pod has entries of several records, matcher judgments and a disagreement between records. */
+const JOINED = "priya-natarajan";
 
 /**
  * The explorer's app, run in Chromium over a small kit's pod: no unit test can say whether the page's script opens a node,
@@ -28,34 +34,57 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
   let browser: Browser;
   let data: ExplorerData;
   let tab: Page;
+  let joined: ExplorerData;
+  let servedJoined: Served;
+  const folders: string[] = [];
 
-  before(async () => {
+  /** A kit's pod built and written out as the site, then served. */
+  async function site(kit: string): Promise<{
+    folder: string;
+    data: ExplorerData;
+    served: Served;
+  }> {
     const vocabulary = await localVocabulary(ROOT);
     const pod = new MemoryFiles("https://pod.example/");
-    await featurePod(vocabulary, `conformance/${KIT}/${KIT}.feature`, pod, {});
-    const site = await Site.build({
-      vocabulary: vocabulary.files,
-      layout: vocabulary.layout,
-      build: vocabulary.build,
-      pod,
-      lens: vocabulary.config.lens,
-      defaultLens: vocabulary.config.lens,
-      newStore: () => new OxigraphStore(),
-      name: KIT,
-      at: "2026-03-03T08:00:00Z",
-      ask: `npm run ask -- ${KIT}`,
-      kit: KIT,
-    });
-    const built = await site.files();
-    folder = mkdtempSync(join(tmpdir(), "explorer-"));
+    await featurePod(vocabulary, `conformance/${kit}/${kit}.feature`, pod, {});
+    const built = await (
+      await Site.build({
+        vocabulary: vocabulary.files,
+        layout: vocabulary.layout,
+        build: vocabulary.build,
+        pod,
+        lens: vocabulary.config.lens,
+        defaultLens: vocabulary.config.lens,
+        newStore: () => new OxigraphStore(),
+        name: kit,
+        at: "2026-03-03T08:00:00Z",
+        ask: `npm run ask -- ${kit}`,
+        kit,
+      })
+    ).files();
+    const folder = mkdtempSync(join(tmpdir(), "explorer-"));
     for (const [path, bytes] of built) {
       mkdirSync(dirname(join(folder, path)), { recursive: true });
       writeFileSync(join(folder, path), bytes);
     }
-    data = JSON.parse(
-      new TextDecoder().decode(built.get(EXPLORER_FILE)),
-    ) as ExplorerData;
-    served = await servePages(folder);
+    return {
+      folder,
+      data: JSON.parse(
+        new TextDecoder().decode(built.get(EXPLORER_FILE)),
+      ) as ExplorerData,
+      served: await servePages(folder),
+    };
+  }
+
+  before(async () => {
+    const small = await site(KIT);
+    folder = small.folder;
+    data = small.data;
+    served = small.served;
+    const big = await site(JOINED);
+    folders.push(big.folder);
+    joined = big.data;
+    servedJoined = big.served;
     browser = await chromium.launch();
     tab = await browser.newPage();
   });
@@ -63,7 +92,9 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
   after(async () => {
     await browser?.close();
     await served?.close();
-    if (folder !== undefined) rmSync(folder, { recursive: true, force: true });
+    await servedJoined?.close();
+    for (const each of [folder, ...folders])
+      if (each !== undefined) rmSync(each, { recursive: true, force: true });
   });
 
   async function opened(width = 1400): Promise<void> {
@@ -708,6 +739,412 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
         (await tab.locator("#ins h1").textContent()) ?? "",
         /queries\/derivations\//,
       );
+    });
+  });
+
+  /** The joined kit's pod, opened. */
+  async function openedJoined(width = 1400): Promise<void> {
+    await tab.setViewportSize({ width, height: width < 600 ? 800 : 900 });
+    await tab.goto(`${servedJoined.url}index.html`);
+    await tab.waitForSelector(".row", { state: "attached" });
+  }
+
+  /** A node of the joined pod, opened from its address. */
+  async function joinedAt(id: string, ready: string): Promise<void> {
+    await openedJoined();
+    await tab.goto(`${servedJoined.url}index.html#${encodeURIComponent(id)}`);
+    await tab.waitForSelector(ready);
+  }
+
+  const pathOf = (index: number | undefined, from = data): string =>
+    from.files[index ?? -1]?.path ?? "";
+
+  const entryWhere = (
+    from: ExplorerData,
+    predicate: (entry: ExplorerEntry) => boolean,
+  ): ExplorerEntry => {
+    for (const view of from.views) {
+      const entry = view.entries.find(predicate);
+      if (entry !== undefined) return entry;
+    }
+    throw new Error("the kit's pod has no such entry");
+  };
+  const fileOfEntry = (entry: ExplorerEntry): string =>
+    entry.id.split("#")[0] ?? "";
+
+  describe("when an act's kit steps and cases are shown", () => {
+    it("gives each kit step the sentence the feature states for it", async () => {
+      await opened();
+      const at = data.log.findIndex((row) => row.kitSteps.length > 0);
+      const step = data.log[at]?.kitSteps[0];
+      assert.ok(step?.text);
+      await tab.locator(`.act[data-step="${at}"]`).click();
+      assert.ok(
+        ((await tab.locator("#ins").textContent()) ?? "").includes(step.text),
+        step.text,
+      );
+    });
+
+    it("opens a kit case to the steps its example states, with their tables", async () => {
+      await openedJoined();
+      const found = joined.kit?.cases.find((each) =>
+        each.steps?.some((step) => step.table !== undefined),
+      );
+      assert.ok(found?.steps, "a case with a table");
+      await tab.locator(`.act[data-step="${found.row}"]`).click();
+      const open = tab.locator("#ins details.case", { hasText: found.example });
+      await open.locator("summary").first().click();
+      const step = found.steps.find((each) => each.table !== undefined);
+      assert.equal(
+        await open.locator("table").first().locator("tbody tr").count(),
+        (step?.table?.length ?? 1) - 1,
+      );
+    });
+  });
+
+  describe("when a materialized view is open", () => {
+    const joiner = () => entryWhere(joined, (each) => each.members.length > 1);
+
+    it("lists its entries in the tree below it, and an entry opens", async () => {
+      await joinedAt(`p:${fileOfEntry(joiner())}`, "#ins table.entries");
+      const entry = joiner();
+      const view = joined.views.find(
+        (each) => each.file === fileOfEntry(entry),
+      );
+      const rows = tab.locator(`#tree .row[data-go^="p:${view?.file}#"]`);
+      assert.equal(await rows.count(), view?.entries.length);
+      await tab.locator(`#tree [data-go="p:${entry.id}"]`).click();
+      assert.ok(await tab.locator("#ins table.et").isVisible());
+    });
+
+    it("lists on the file's panel each entry, the records it joins and the judgments between them", async () => {
+      const entry = joiner();
+      await joinedAt(`p:${fileOfEntry(entry)}`, "#ins table.entries");
+      const row = tab.locator("#ins table.entries tbody tr", {
+        has: tab.locator(`a[data-go="p:${entry.id}"]`),
+      });
+      assert.equal(
+        await row.locator(`a[data-go^="p:records/"]`).count(),
+        entry.members.length,
+      );
+      assert.equal(
+        await row.locator(`a[data-go^="p:judgments/"]`).count(),
+        entry.within.length,
+      );
+    });
+
+    it("opens an entry as one column for each record it joins, the fields they disagree on shaded", async () => {
+      const entry = entryWhere(joined, (each) =>
+        each.fields.some((field) => field.disagree),
+      );
+      await joinedAt(`p:${entry.id}`, "#ins table.et");
+      const table = tab.locator("#ins table.et");
+      assert.equal(
+        await table.locator("thead th").count(),
+        2 + entry.members.length + (entry.others?.length ?? 0),
+        "a column for the field, the entry and each record",
+      );
+      assert.equal(
+        await table.locator("tbody tr.diff").count(),
+        entry.fields.filter((field) => field.disagree).length,
+      );
+      assert.equal(
+        await table.locator("tbody tr").count(),
+        entry.fields.length,
+      );
+    });
+
+    it("names the judgments that join an entry's records, and whether each counts", async () => {
+      const entry = entryWhere(joined, (each) => each.within.length > 0);
+      await joinedAt(`p:${entry.id}`, "#ins table.et");
+      const within = tab.locator("#ins .within li");
+      assert.equal(await within.count(), entry.within.length);
+      for (const index of entry.within) {
+        const counts = joined.files[index]?.judgment?.counts;
+        const row = tab.locator("#ins .within li", {
+          has: tab.locator(`a[data-go="p:${pathOf(index, joined)}"]`),
+        });
+        assert.match(
+          (await row.textContent()) ?? "",
+          counts === false ? /does not count/ : /counts/,
+        );
+      }
+    });
+
+    it("shows an entry's own statements only, not another entry's", async () => {
+      const entry = joiner();
+      await joinedAt(`p:${entry.id}`, "#ins table.et");
+      await tab.waitForFunction(
+        () =>
+          !(
+            document.getElementById("body")?.textContent ?? "Loading"
+          ).startsWith("Loading"),
+      );
+      const turtle = (await tab.locator("#ins pre.turtle").textContent()) ?? "";
+      assert.ok(turtle.includes("mergedFrom"), "the entry's own statements");
+      const siblings = joined.views
+        .flatMap((view) => view.entries)
+        .filter(
+          (each) =>
+            each.id !== entry.id && fileOfEntry(each) === fileOfEntry(entry),
+        );
+      assert.ok(siblings.length > 0);
+      for (const other of siblings)
+        assert.ok(
+          !turtle.includes((other.id.split("#")[1] ?? "?").slice(0, 8)),
+          "another entry's subject",
+        );
+    });
+  });
+
+  describe("when a record is open", () => {
+    const multiple = () => {
+      const record = joined.files.find(
+        (each) => each.kind === "record" && (each.arrivals?.length ?? 0) > 1,
+      );
+      assert.ok(record?.arrivals);
+      return record;
+    };
+
+    it("lists its arrivals in time order: the revision, the version it sets and the act that wrote it", async () => {
+      const record = multiple();
+      await joinedAt(`p:${record.path}`, "#ins table.arrivals tbody tr");
+      const rows = tab.locator("#ins table.arrivals tbody tr");
+      assert.equal(await rows.count(), record.arrivals?.length);
+      const revisions = await rows
+        .locator("td:nth-child(2) a")
+        .evaluateAll((links) =>
+          links.map((link) => link.getAttribute("data-go")),
+        );
+      assert.deepEqual(
+        revisions,
+        record.arrivals?.map(
+          (arrival) => `p:${pathOf(arrival.revision, joined)}`,
+        ),
+      );
+      assert.ok(
+        (await rows.first().locator("td a[data-step]").count()) > 0,
+        "the act that wrote the revision",
+      );
+    });
+
+    it("follows a revision's version to the version file, and links the entry that shows the record", async () => {
+      const record = multiple();
+      const version = record.arrivals?.[0]?.version;
+      assert.ok(version !== undefined);
+      assert.ok(record.entry !== undefined, "the record is in an entry");
+      await joinedAt(`p:${record.path}`, "#ins table.arrivals tbody tr");
+      assert.ok(
+        await tab
+          .locator(`#ins a[data-go="p:${record.entry}"]`)
+          .first()
+          .isVisible(),
+      );
+      await tab
+        .locator(
+          `#ins table.arrivals a[data-go="p:${pathOf(version, joined)}"]`,
+        )
+        .first()
+        .click();
+      assert.match((await tab.locator("#ins h1").textContent()) ?? "", /\.ttl/);
+      assert.ok(
+        (await tab.locator("#ins .crumbs").textContent())?.includes(
+          pathOf(version, joined).split("/")[1] ?? "?",
+        ),
+      );
+    });
+  });
+
+  describe("when a judgment is open", () => {
+    const by = (who: "matcher" | "person") => {
+      const found = joined.files.find((each) => each.judgment?.by === who);
+      assert.ok(found?.judgment, who);
+      return { path: found.path, judgment: found.judgment };
+    };
+
+    it("says what a matcher's judgment decides: its verdict, who made it, whether it counts, and each member", async () => {
+      const { path, judgment } = by("matcher");
+      await joinedAt(`p:${path}`, "#ins .judging");
+      const panel = (await tab.locator("#ins .judging").textContent()) ?? "";
+      assert.match(panel, /the matcher/);
+      assert.match(panel, /same/i);
+      assert.match(
+        panel,
+        judgment.counts === false ? /does not count/ : /counts/,
+      );
+      assert.equal(
+        await tab.locator("#ins .judging .members a[data-go^='p:']").count(),
+        judgment.members.length,
+      );
+    });
+
+    it("names the rule a matcher's judgment was made under, and opens the query the rule's hash finds", async () => {
+      const { path, judgment } = by("matcher");
+      const rule = joined.matcherRules[judgment.rule ?? -1];
+      const query = joined.queries[rule?.query ?? -1];
+      assert.ok(query, "the rule names a query");
+      await joinedAt(`p:${path}`, "#ins .judging");
+      const link = tab.locator(`#ins .judging a[data-go="q:${query.path}"]`);
+      assert.ok(await link.first().isVisible());
+      assert.match(
+        (await tab.locator("#ins .judging").textContent()) ?? "",
+        /hash/,
+      );
+      await link.first().click();
+      assert.ok(
+        (await tab.locator("#ins .crumbs").textContent())?.includes(query.name),
+      );
+    });
+
+    it("says that a person made a person's judgment, and links the lens that decides whether it counts", async () => {
+      const { path } = by("person");
+      await joinedAt(`p:${path}`, "#ins .judging");
+      assert.match(
+        (await tab.locator("#ins .judging").textContent()) ?? "",
+        /a person/,
+      );
+      assert.ok(
+        await tab
+          .locator('#ins .judging a[data-go^="q:queries/lenses/"]')
+          .first()
+          .isVisible(),
+      );
+    });
+  });
+
+  describe("when a query is open", () => {
+    const ordered = () =>
+      joined.queries.filter((each) => each.order !== undefined);
+    const earlier = (each: ExplorerData["queries"][number]) =>
+      ordered().filter(
+        (other) =>
+          (other.order ?? 0) < (each.order ?? 0) &&
+          other.writes.some((term) => each.reads.includes(term)),
+      );
+    const derivation = () => {
+      const found = ordered().find((each) => earlier(each).length > 1);
+      assert.ok(found, "a derivation that reads what earlier ones derived");
+      return found;
+    };
+
+    it("says its step of the build, and lists what it reads from the derivations that ran before it", async () => {
+      const found = derivation();
+      await joinedAt(`q:${found.path}`, "#ins details.ex");
+      assert.match(
+        (await tab.locator("#ins .chips").textContent()) ?? "",
+        new RegExp(`step ${(found.order ?? 0) + 1} of ${ordered().length}`),
+      );
+      const listed = await tab
+        .locator("#ins table.derivedby a[data-go^='q:']")
+        .evaluateAll((links) =>
+          links.map((link) => link.getAttribute("data-go")),
+        );
+      assert.deepEqual(
+        [...listed].sort(),
+        earlier(found)
+          .map((other) => `q:${other.path}`)
+          .sort(),
+      );
+    });
+
+    it("shows the query's text open under its header comment", async () => {
+      const found = derivation();
+      await joinedAt(`q:${found.path}`, "#ins details.ex");
+      const text = tab.locator("#ins details.ex[open] pre.code");
+      await text.first().waitFor();
+      assert.match(
+        (await text.first().textContent()) ?? "",
+        /CONSTRUCT|SELECT/,
+      );
+    });
+
+    it("lists, for a question, the files the build wrote that it reads", async () => {
+      const builtTerms = new Set(
+        joined.files
+          .filter((file) => file.writer === "build")
+          .flatMap((file) => (file.terms ?? []).map((i) => joined.termList[i])),
+      );
+      const question = joined.queries.find(
+        (each) =>
+          each.group.startsWith("questions/") &&
+          each.reads.some((term) => builtTerms.has(term)),
+      );
+      assert.ok(question, "a question that reads a built file");
+      await joinedAt(`q:${question.path}`, "#ins details.ex");
+      const reads = tab.locator("#ins table.reads a[data-go^='p:']");
+      assert.ok((await reads.count()) > 0, "a file it reads");
+      for (const go of await reads.evaluateAll((links) =>
+        links.map((link) => link.getAttribute("data-go")),
+      ))
+        assert.equal(
+          joined.files.find((file) => `p:${file.path}` === go)?.writer,
+          "build",
+          String(go),
+        );
+    });
+  });
+
+  describe("when the Solid chain is shown", () => {
+    it("lays out, on the root, the hops from the card to a view, each file's link opening the file", async () => {
+      await opened();
+      assert.equal(
+        await tab.locator("#ins .hops .hop").count(),
+        data.chain.length + 1,
+      );
+      const first = data.chain[0];
+      assert.ok(first);
+      await tab
+        .locator(`#ins .hops .hop a[data-go="p:${pathOf(first.file)}"]`)
+        .first()
+        .click();
+      assert.match((await tab.locator("#ins h1").textContent()) ?? "", /card/);
+    });
+
+    it("marks, on each file of the chain, which hop it is, and follows each triple's object to the next file", async () => {
+      await opened();
+      for (const [index, hop] of data.chain.entries()) {
+        await tab.goto(
+          `${served.url}index.html#${encodeURIComponent(`p:${pathOf(hop.file)}`)}`,
+        );
+        const marked = tab.locator("#ins .hops .hop.hl");
+        await marked.waitFor();
+        assert.equal(await marked.count(), 1);
+        assert.equal(
+          ((await marked.locator(".n").first().textContent()) ?? "").trim(),
+          String(index + 1),
+        );
+        const next = hop.triples.find((triple) => triple.go !== undefined);
+        if (next?.go !== undefined)
+          assert.ok(
+            await marked
+              .locator(`a[data-go="p:${pathOf(next.go)}"]`)
+              .first()
+              .isVisible(),
+            `the link from hop ${index + 1}`,
+          );
+      }
+    });
+
+    it("lists each registration of the type index with the class it holds and the file it points at", async () => {
+      await opened();
+      const index = data.chain.at(-1);
+      assert.ok(index?.registrations?.length);
+      await tab.goto(
+        `${served.url}index.html#${encodeURIComponent(`p:${pathOf(index.file)}`)}`,
+      );
+      await tab.waitForSelector("#ins .hop.hl table");
+      assert.equal(
+        await tab.locator("#ins .hop.hl table tbody tr").count(),
+        index.registrations.length,
+      );
+    });
+
+    it("opens from the demo's last stop with the card's hop marked", async () => {
+      await opened();
+      await tab
+        .locator(".stop", { hasText: "How an app finds things" })
+        .click();
+      assert.equal(await tab.locator("#ins .hop.hl").count(), 1);
     });
   });
 
