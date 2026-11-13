@@ -27,6 +27,7 @@
     "transpile": "node scripts/transpile.mjs",
     "test:live": "tsc -b && node --test packages/site/dist/test-browser/live.test.js",
     "test:tests-page": "tsc -b && node --test packages/site/dist/test-browser/tests-page.test.js",
+    "test:explorer": "tsc -b && node --test packages/site/dist/test-browser/explorer.test.js",
     "test:walkthrough": "tsc -b && node --test packages/site/dist/test-browser/walkthrough.test.js",
     "test:pod-browser": "tsc -b && node --test packages/cascade-runtime/dist/test-browser/retitle.test.js packages/cascade-runtime/dist/test-browser/argon2.test.js",
     "test:launcher": "tsc -b && node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./packages/cascade-runtime/dist/test-launcher/failure-annotations.js --test-reporter-destination=stdout packages/cascade-runtime/dist/test-launcher/launcher.test.js",

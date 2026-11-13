@@ -607,3 +607,35 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
     });
   });
 });
+
+/**
+ * A pod's index page is the explorer: a page that holds no data of the pod, the one app every pod shares, and its
+ * stylesheet. The page that said how the pod is laid out is still there, as `layout.html`.
+ */
+describe("The pod explorer's page · explorerPage(), Site.files()", () => {
+  const text = (path: string) =>
+    new TextDecoder().decode(kit.built.get(path) ?? new Uint8Array());
+
+  it("loads the app and its stylesheet and names the data object it reads", () => {
+    const page = text("index.html");
+    assert.match(page, /<script src="explorer\.js">/);
+    assert.match(page, /<link rel="stylesheet" href="explorer\.css">/);
+    assert.match(page, /data-data="explorer\.json"/);
+  });
+
+  it("holds no statement of the pod, so that one app serves every pod", () => {
+    assert.ok(!text("explorer.js").includes(kit.site.pod.address));
+    assert.ok(!text("index.html").includes("pod/records/"));
+  });
+
+  it("keeps the pod's layout page under its own name, linked from the explorer's header", () => {
+    assert.ok(kit.built.has("layout.html"));
+    assert.match(text("index.html"), /<a href="layout\.html">/);
+    assert.match(text("layout.html"), /How this pod is laid out/);
+  });
+
+  it("writes an app that parses, with no template placeholder left in it", () => {
+    assert.doesNotThrow(() => new Function(text("explorer.js")));
+    assert.ok(!text("explorer.js").includes("${"));
+  });
+});
