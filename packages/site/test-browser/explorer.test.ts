@@ -44,6 +44,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
   let tab: Page;
   let joined: ExplorerData;
   let servedJoined: Served;
+  let joinedFolder: string;
   let alex: ExplorerData;
   let alexFolder: string;
   let servedAlex: Served;
@@ -96,6 +97,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
     folders.push(big.folder);
     joined = big.data;
     servedJoined = big.served;
+    joinedFolder = big.folder;
     const person = await site(DEMO);
     folders.push(person.folder);
     alex = person.data;
@@ -1312,27 +1314,30 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
           },
         }),
       );
-      await alexAt(
-        "q:queries/questions/pod/My active allergies.rq",
-        "#ins table.reads",
-        390,
-      );
-      const labels = await tab
-        .locator(
-          "#ins h3:has-text('Answer') ~ .tw-x table tbody tr:first-child td",
-        )
-        .evaluateAll((all) =>
-          all.map((cell) => cell.getAttribute("data-label")),
+      try {
+        await alexAt(
+          "q:queries/questions/pod/My active allergies.rq",
+          "#ins table.reads",
+          390,
         );
-      assert.deepEqual(labels, ["allergen", "reaction"]);
-      assert.equal(
-        await tab
-          .locator("#ins h3:has-text('Answer') ~ .tw-x table tbody td")
-          .last()
-          .textContent(),
-        "—",
-      );
-      rmSync(join(alexFolder, "answers.json"));
+        const labels = await tab
+          .locator(
+            "#ins h3:has-text('Answer') ~ .tw-x table tbody tr:first-child td",
+          )
+          .evaluateAll((all) =>
+            all.map((cell) => cell.getAttribute("data-label")),
+          );
+        assert.deepEqual(labels, ["allergen", "reaction"]);
+        assert.equal(
+          await tab
+            .locator("#ins h3:has-text('Answer') ~ .tw-x table tbody td")
+            .last()
+            .textContent(),
+          "—",
+        );
+      } finally {
+        rmSync(join(alexFolder, "answers.json"), { force: true });
+      }
     });
   });
 
@@ -1387,17 +1392,48 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
       name: "Alex's pod",
       data: () => alex,
       url: () => servedAlex.url,
+      folder: () => alexFolder,
       entry: penicillin,
     },
     {
       name: "the joined kit's pod",
       data: () => joined,
       url: () => servedJoined.url,
+      folder: () => joinedFolder,
       entry: () => entryWhere(joined, (each) => each.members.length > 1),
     },
   ];
 
   describe("when the demo's eight stops are walked", () => {
+    const ANSWER = [
+      { allergen: { value: "Penicillin" }, reaction: { value: "Hives" } },
+      { allergen: { value: "Latex" }, reaction: { value: "Rash" } },
+    ];
+    const askedOf = (from: ExplorerData): string => {
+      const question = from.queries.find((each) =>
+        each.path.endsWith("questions/pod/My active allergies.rq"),
+      )?.question;
+      assert.ok(question);
+      return question;
+    };
+
+    before(() => {
+      for (const demo of demos) {
+        const from = demo.data();
+        writeFileSync(
+          join(demo.folder(), "answers.json"),
+          JSON.stringify({
+            [from.pod.lens]: { [askedOf(from)]: { rows: ANSWER } },
+          }),
+        );
+      }
+    });
+
+    after(() => {
+      for (const demo of demos)
+        rmSync(join(demo.folder(), "answers.json"), { force: true });
+    });
+
     const stop = async (
       demo: (typeof demos)[number],
       name: string,
@@ -1459,6 +1495,19 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             (await tab.locator("#stepline").textContent()) ?? "",
             new RegExp(`${visible} of ${data.files.length} files`),
           );
+          const rebuilt = data.files.filter(
+            (file) =>
+              file.writer === "build" &&
+              (file.path.toLowerCase().includes(".") ||
+                (file.label ?? "").toLowerCase().includes(".")),
+          ).length;
+          assert.ok(rebuilt > 0, "the pod has files the build wrote");
+          await tab.fill("#flt", ".");
+          assert.equal(
+            await tab.locator("#tree .row.built").count(),
+            rebuilt,
+            "the files shown as rebuilt",
+          );
         });
 
         it("stop 3, acts 3 and 6: a hand entry, then a matcher run with its parent snapshot, its judgments and a kit case", async () => {
@@ -1484,6 +1533,24 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             pathOf(index, data).startsWith("judgments/"),
           ).length;
           assert.ok(judged > 0, "the run wrote judgments");
+          const wroteKind = (kind: string): number =>
+            data.files.filter(
+              (file) => file.kind === kind && file.writer === run,
+            ).length;
+          assert.ok(
+            wroteKind("judgment") > 0,
+            "the data's judgments of the run",
+          );
+          assert.equal(
+            wroteKind("assertion"),
+            wroteKind("judgment"),
+            "an assertion for each judgment",
+          );
+          assert.equal(
+            wroteKind("judgment") + wroteKind("assertion"),
+            judged,
+            "the files under judgments/ are the run's judgments and their assertions",
+          );
           const folders = await tab
             .locator("#ins details.ex > summary")
             .allTextContents();
@@ -1562,7 +1629,20 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
           const panel =
             (await tab.locator("#ins .judging").textContent()) ?? "";
           assert.match(panel, /the matcher/);
-          assert.match(panel, /counts/);
+          assert.ok(
+            found.judgment.counts !== undefined,
+            "the lens gives a row",
+          );
+          const says = `${found.judgment.counts ? "counts" : "does not count"} under the ${data.pod.lens} lens`;
+          assert.equal(
+            (
+              (await tab
+                .locator("#ins .judging dl.kv dd")
+                .filter({ hasText: /under the .* lens$/ })
+                .textContent()) ?? ""
+            ).trim(),
+            says,
+          );
           assert.ok(panel.includes(rule.hash), "the rule's hash");
           assert.ok(
             await tab
@@ -1584,6 +1664,27 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             .locator(".stop")
             .filter({ hasText: /^Materialized views$/ })
             .click();
+          const folder = `${fileOfEntry(entry).split("/").slice(0, -1).join("/")}/`;
+          assert.equal(await at(), `p:${folder}`, "the stop's landing");
+          assert.equal(
+            ((await tab.locator(".stop.on").textContent()) ?? "").trim(),
+            "Materialized views",
+          );
+          assert.equal(
+            ((await tab.locator("#ins h1").textContent()) ?? "").trim(),
+            folder,
+          );
+          assert.ok(
+            (await tab
+              .locator(`#tree [data-go="p:${fileOfEntry(entry)}"]`)
+              .count()) > 0 ||
+              (await tab
+                .locator("#ins", {
+                  has: tab.locator(`a[data-go="p:${fileOfEntry(entry)}"]`),
+                })
+                .count()) > 0,
+            "the view's file is listed at the landing",
+          );
           await open(`p:${fileOfEntry(entry)}`);
           await tab.waitForSelector("#ins table.entries");
           const view = data.views.find(
@@ -1601,10 +1702,22 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             await tab.locator("#ins table.et thead th").count(),
             2 + entry.members.length + (entry.others?.length ?? 0),
           );
+          const disagreeing = entry.fields.filter((field) => field.disagree);
           assert.equal(
             await tab.locator("#ins table.et tbody tr.diff").count(),
-            entry.fields.filter((field) => field.disagree).length,
+            disagreeing.length,
           );
+          if (data === alex) {
+            const shaded = (
+              await tab
+                .locator("#ins table.et tbody tr.diff td:first-child")
+                .allTextContents()
+            ).map((text) => text.trim());
+            for (const field of ["Allergen", "Allergen Code"])
+              assert.ok(shaded.includes(field), `${field} in ${shaded}`);
+            assert.equal(entry.within.length, 3, "three judgments join them");
+            assert.equal(await tab.locator("#ins .within li").count(), 3);
+          }
         });
 
         it("stop 7, queries: a derivation with its build step and what it reads, then a question with its view and its answer", async () => {
@@ -1627,12 +1740,35 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
               `^build step ${derivation.order + 1} of ${steps.length}$`,
             ),
           );
+          assert.ok(
+            derivation.added?.some(([added]) => added === "cascade:inEntry"),
+            "the data says it adds cascade:inEntry",
+          );
+          assert.ok(
+            (await tab
+              .locator("#ins .card", { hasText: "Writes" })
+              .locator('i.term[data-term="cascade:inEntry"]')
+              .count()) > 0,
+            "the page says it adds cascade:inEntry",
+          );
           const before = await tab
             .locator("#ins table.derivedby td.num")
             .allTextContents();
           assert.ok(before.length > 0, "earlier derivations it reads");
           for (const step of before)
             assert.ok(Number(step) <= derivation.order, step);
+          assert.deepEqual(
+            before.map(Number),
+            steps
+              .filter(
+                (each) =>
+                  (each.order ?? Infinity) < (derivation.order ?? 0) &&
+                  each.writes.some((term) => derivation.reads.includes(term)),
+              )
+              .map((each) => (each.order ?? 0) + 1)
+              .sort((a, b) => a - b),
+            "the derivations whose added terms it reads, by step",
+          );
           const question = data.queries.find((each) =>
             each.path.endsWith("questions/pod/My active allergies.rq"),
           );
@@ -1643,13 +1779,22 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             (await tab.locator("#ins table.reads tbody tr").count()) > 0,
             "the view it reads",
           );
-          const rows = await tab
-            .locator("#ins h3:has-text('Answer') ~ .tw-x table tbody tr")
-            .count();
-          const text = (await tab.locator("#ins").textContent()) ?? "";
-          assert.ok(
-            rows > 0 || /does not publish/.test(text),
-            "answer rows or the line that none are published",
+          const answer = "#ins h3:has-text('Answer') ~ .tw-x table";
+          assert.deepEqual(
+            await tab.locator(`${answer} thead th`).allTextContents(),
+            ["allergen", "reaction"],
+          );
+          assert.deepEqual(
+            await tab
+              .locator(`${answer} tbody tr`)
+              .evaluateAll((all) =>
+                all.map((each) =>
+                  [...each.querySelectorAll("td")].map(
+                    (cell) => cell.textContent,
+                  ),
+                ),
+              ),
+            ANSWER.map((row) => [row.allergen.value, row.reaction.value]),
           );
         });
 
