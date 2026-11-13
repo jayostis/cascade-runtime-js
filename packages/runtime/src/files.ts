@@ -24,8 +24,43 @@ export interface Files {
    * written one by one, and a failure leaves those before it written.
    */
   writeAll?(files: Iterable<readonly [string, Uint8Array]>): Promise<void>;
+  /**
+   * Writes the file only when it holds `holds`, or, when that is undefined, only when there is none; false, writing
+   * nothing, when it holds anything else. Where the host has transactions, the look and the write are one.
+   */
+  replace?(
+    pathOrIri: string,
+    bytes: Uint8Array,
+    holds: Uint8Array | undefined,
+  ): Promise<boolean>;
+  /** Removes each file there is, and each folder that removing one leaves empty; a path with no file is passed over. */
+  remove?(pathsOrIris: readonly string[]): Promise<void>;
   /** The path of every file under the folder, the whole root when it is "", sorted. */
   list(folder: string): Promise<string[]>;
+}
+
+/** Whether two files' bytes are the same, none being the same as none. */
+export function sameBytes(
+  one: Uint8Array | undefined,
+  other: Uint8Array | undefined,
+): boolean {
+  if (one === undefined || other === undefined) return one === other;
+  return (
+    one.length === other.length && one.every((byte, i) => byte === other[i])
+  );
+}
+
+/** `files.replace`, or, where the files have none, a read and a write, which another writer may come between. */
+export async function replaced(
+  files: Files,
+  path: string,
+  bytes: Uint8Array,
+  holds: Uint8Array | undefined,
+): Promise<boolean> {
+  if (files.replace !== undefined) return files.replace(path, bytes, holds);
+  if (!sameBytes(await files.read(path), holds)) return false;
+  await files.write(path, bytes);
+  return true;
 }
 
 /** Writes the files in one `writeAll` where the files have one, else one by one, in the order given. */
@@ -115,6 +150,22 @@ export class MemoryFiles implements Files {
     if (this.#files.has(path)) return false;
     this.#files.set(path, bytes.slice());
     return true;
+  }
+
+  async replace(
+    pathOrIri: string,
+    bytes: Uint8Array,
+    holds: Uint8Array | undefined,
+  ): Promise<boolean> {
+    const path = relative(this, pathOrIri);
+    if (!sameBytes(this.#files.get(path), holds)) return false;
+    this.#files.set(path, bytes.slice());
+    return true;
+  }
+
+  async remove(pathsOrIris: readonly string[]): Promise<void> {
+    for (const pathOrIri of pathsOrIris)
+      this.#files.delete(relative(this, pathOrIri));
   }
 
   async list(folder: string): Promise<string[]> {

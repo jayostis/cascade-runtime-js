@@ -8,8 +8,11 @@ import {
   EncryptedFiles,
   type EncryptedFilesOptions,
   HEADER,
+  madeNewPod,
   newHeader,
   openHeader,
+  SEALED_INDEX,
+  SealedIndex,
   Unopened,
 } from "../src/encryption.js";
 import { type Files, MemoryFiles, relative } from "../src/files.js";
@@ -59,17 +62,26 @@ async function outcomeOf(opening: Promise<unknown>): Promise<string> {
 async function sealedPod(options?: EncryptedFilesOptions) {
   const memory = new MemoryFiles("urn:test:pod/");
   const derive = fastDerive();
-  const { bytes, key } = await newHeader(SECRET, derive);
-  await memory.write(HEADER, bytes);
+  const made = await newHeader(SECRET, derive);
+  const { bytes, key } = made;
+  assert.ok(await madeNewPod(memory, made));
+  const index = await SealedIndex.open(memory, key);
   return {
     memory,
     derive,
+    key,
     header: bytes,
-    files: new EncryptedFiles(memory, key, options),
+    files: new EncryptedFiles(memory, key, { ...options, index }),
   };
 }
 
-/** A sealed pod holding `a.ttl` and `b/c.ttl`, read through files that record the path of each read made of them. */
+/** The sealed files a pod stores, by their keyed names: all but its header and its index. */
+const keyedFiles = async (memory: Files) =>
+  (await memory.list("sealed")).filter(
+    (path) => !path.startsWith(`${SEALED_INDEX}/`),
+  );
+
+/** A sealed pod holding `a.ttl` and `b/c.ttl`, read through files that record the path of each read made of them once opened. */
 async function countingPod() {
   const { memory, files } = await sealedPod();
   await files.writeAll([
@@ -86,15 +98,16 @@ async function countingPod() {
     write: (path, bytes) => memory.write(path, bytes),
     list: (folder) => memory.list(folder),
   };
-  const pod = new EncryptedFiles(
-    counted,
-    await openHeader(
-      (await memory.read(HEADER)) ?? new Uint8Array(),
-      SECRET,
-      fastDerive(),
-    ),
+  const key = await openHeader(
+    (await memory.read(HEADER)) ?? new Uint8Array(),
+    SECRET,
+    fastDerive(),
   );
-  return { pod, reads };
+  const pod = new EncryptedFiles(counted, key, {
+    index: await SealedIndex.open(counted, key),
+  });
+  reads.length = 0;
+  return { pod, reads, memory };
 }
 
 /** The pod's negative vectors, each opened with `derive`, by the outcome it gave. */
@@ -211,16 +224,16 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
   });
 
   describe("newHeader(secret, derive)", () => {
-    it("writes a header of version 1.2 that states `resourceFormat` 2", async () => {
+    it("writes a header of version 1.3 that states `resourceFormat` 3", async () => {
       const { header } = await sealedPod();
       const stated = JSON.parse(text(header)) as Record<string, unknown>;
-      assert.equal(stated.version, "1.2");
-      assert.equal(stated.resourceFormat, 2);
+      assert.equal(stated.version, "1.3");
+      assert.equal(stated.resourceFormat, 3);
     });
   });
 
-  describe("given a 1.2 header whose `resourceFormat` was edited", () => {
-    it("throws Unopened, `malformed`, with no key derived, when it is missing, a string, or written `2.0`", async () => {
+  describe("given a 1.3 header whose `resourceFormat` was edited", () => {
+    it("throws Unopened, `malformed`, with no key derived, when it is missing, a string, written `3.0`, or 2", async () => {
       const { header } = await sealedPod();
       const written = text(header);
       const stated = JSON.parse(written) as Record<string, unknown>;
@@ -229,11 +242,15 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
         ["missing", JSON.stringify({ ...stated, resourceFormat: undefined })],
         [
           "a string",
-          written.replace('"resourceFormat": 2', '"resourceFormat": "2"'),
+          written.replace('"resourceFormat": 3', '"resourceFormat": "3"'),
         ],
         [
-          "written 2.0",
-          written.replace('"resourceFormat": 2', '"resourceFormat": 2.0'),
+          "written 3.0",
+          written.replace('"resourceFormat": 3', '"resourceFormat": 3.0'),
+        ],
+        [
+          "2, a 1.2 pod's",
+          written.replace('"resourceFormat": 3', '"resourceFormat": 2'),
         ],
       ] as const) {
         assert.notEqual(edited, written, `${edit}: the header was not edited`);
@@ -259,40 +276,41 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       assert.equal(text(await files.read("b.ttl")), "<#d> <#e> <#f> .");
     });
 
-    it("throws Refusal, naming the path, for a sealed file copied to another path", async () => {
+    it("throws Unopened, `changed outside the runtime`, naming the path, for two sealed files swapped", async () => {
       const { memory, files } = await sealedPod();
       await files.writeAll([
         ["a.ttl", encoded("<#a> <#b> <#c> .")],
         ["b.ttl", encoded("<#d> <#e> <#f> .")],
       ]);
-      await memory.write(
-        "b.ttl",
-        (await memory.read("a.ttl")) ?? new Uint8Array(),
-      );
-      await assert.rejects(files.read("b.ttl"), (error) => {
-        assert.ok(error instanceof Refusal);
-        assert.match(error.message, /^b\.ttl /);
-        return true;
-      });
+      const [one = "", other = ""] = await keyedFiles(memory);
+      const [first, second] = [
+        await memory.read(one),
+        await memory.read(other),
+      ];
+      await memory.write(one, second ?? new Uint8Array());
+      await memory.write(other, first ?? new Uint8Array());
+      for (const path of ["a.ttl", "b.ttl"])
+        await assert.rejects(files.read(path), (error) => {
+          assert.ok(error instanceof Unopened, path);
+          assert.equal(error.outcome, "changed outside the runtime");
+          assert.match(
+            error.message,
+            new RegExp(`: ${path.replace(".", "\\.")} `),
+          );
+          return true;
+        });
     });
 
     it("throws Refusal for a 1.2 pod's file read under the same header restated as version 1.1", async () => {
-      const { memory, files, header } = await sealedPod();
-      await files.write("a.ttl", encoded("<#a> <#b> <#c> ."));
-      const stated = JSON.parse(text(header)) as Record<string, unknown>;
-      const asUnbound = await openHeader(
-        encoded(
-          JSON.stringify({
-            ...stated,
-            version: "1.1",
-            resourceFormat: undefined,
-          }),
-        ),
-        SECRET,
-        fastDerive(),
+      const memory = new MemoryFiles("urn:test:pod/");
+      const { bytes, key } = await newHeader(SECRET, fastDerive());
+      await memory.write(HEADER, bytes);
+      await new EncryptedFiles(memory, { ...key, version: "1.2" }).write(
+        "a.ttl",
+        encoded("<#a> <#b> <#c> ."),
       );
       await assert.rejects(
-        new EncryptedFiles(memory, asUnbound).read("a.ttl"),
+        new EncryptedFiles(memory, { ...key, version: "1.1" }).read("a.ttl"),
         Refusal,
       );
     });
@@ -306,7 +324,8 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
     it("reads from the pod only the file whose path it is asked for", async () => {
       const { pod, reads } = await countingPod();
       assert.equal(text(await pod.read("b/c.ttl")), "c");
-      assert.deepEqual(reads, ["b/c.ttl"]);
+      assert.equal(reads.length, 1);
+      assert.match(reads[0] ?? "", /^sealed\/[0-9a-f]{2}\/[0-9a-f]{62}$/);
     });
 
     it("rejects a write to the header, as its path is spelled and in another letter case", async () => {
@@ -349,6 +368,7 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
     it("seals nothing for a write it rejects", async () => {
       const { memory, files } = await sealedPod();
       await files.write("a.ttl", encoded("a"));
+      const held = await memory.list("");
       for (const path of [
         HEADER,
         "Settings/Encryption.json",
@@ -357,24 +377,24 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
         "/a.ttl",
       ])
         await assert.rejects(files.write(path, encoded("{}")), Error, path);
-      assert.deepEqual(await memory.list(""), ["a.ttl", HEADER]);
+      assert.deepEqual(await memory.list(""), held);
     });
 
     it("rejects a read of a file whose bytes changed after it was sealed", async () => {
       const { memory, files } = await sealedPod();
       await files.write("a.ttl", encoded("a"));
-      await memory.write("a.ttl", encoded("tampered"));
-      await assert.rejects(
-        files.read("a.ttl"),
-        /does not open under the pod's key/,
-      );
+      const [stored = ""] = await keyedFiles(memory);
+      await memory.write(stored, encoded("tampered"));
+      await assert.rejects(files.read("a.ttl"), /changed outside the runtime/);
     });
 
     it("rejects a write, and a read of a file that no longer opens, once the header in the pod has changed, saying to open the pod again", async () => {
       const { memory, files, header } = await sealedPod();
       await files.write("a.ttl", encoded("a"));
-      await memory.write("a.ttl", encoded("tampered"));
+      const [stored = ""] = await keyedFiles(memory);
+      await memory.write(stored, encoded("tampered"));
       await memory.write(HEADER, new Uint8Array([...header, 0x0a]));
+      const held = await memory.list("");
       const changed =
         /the pod's header changed since it was opened; open it again/;
       await assert.rejects(
@@ -383,13 +403,13 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
         "write",
       );
       await assert.rejects(files.read("a.ttl"), changed, "read");
-      assert.deepEqual(await memory.list(""), ["a.ttl", HEADER]);
+      assert.deepEqual(await memory.list(""), held);
     });
   });
 
   /** `CorePod.create()` writes the pod's first files; a file over `maxBytes` cannot be sealed as one file. */
   describe("given a step that writes a file larger than the sealing limit (`maxBytes`)", () => {
-    it("returns the reason in `refused`, and leaves the pod holding its header alone", async () => {
+    it("returns the reason in `refused`, and leaves the pod holding its header and its empty index alone", async () => {
       const { memory, files } = await sealedPod({ maxBytes: 64 });
       const pod = new CorePod({
         runtime: RUNTIME,
@@ -406,7 +426,7 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       });
       const created = await pod.create();
       assert.match(created.refused ?? "", /too large to seal as one file/);
-      assert.deepEqual(await memory.list(""), [HEADER]);
+      assert.deepEqual(await memory.list(""), [`${SEALED_INDEX}/0`, HEADER]);
     });
   });
 });

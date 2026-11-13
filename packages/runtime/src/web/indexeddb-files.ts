@@ -93,10 +93,49 @@ export class IndexedDbFiles implements Files {
     adding.onerror = (event) => {
       if (adding.error?.name !== "ConstraintError") return;
       event.preventDefault();
+      event.stopPropagation();
       created = false;
     };
     await done(transaction);
     return created;
+  }
+
+  /** Writes the file only when it holds `holds`, none when undefined: the look and the write are one transaction. */
+  async replace(
+    pathOrIri: string,
+    bytes: Uint8Array,
+    holds: Uint8Array | undefined,
+  ): Promise<boolean> {
+    const path = relative(this, pathOrIri);
+    const transaction = this.#database.transaction(STORE, "readwrite");
+    const store = transaction.objectStore(STORE);
+    let written = false;
+    const looking = store.get(path);
+    looking.onsuccess = () => {
+      const held: unknown = looking.result;
+      const current = held instanceof Uint8Array ? held : undefined;
+      if (
+        current === undefined || holds === undefined
+          ? current === holds
+          : current.length === holds.length &&
+            current.every((byte, i) => byte === holds[i])
+      ) {
+        store.put(stored(bytes), path);
+        written = true;
+      }
+    };
+    await done(transaction);
+    return written;
+  }
+
+  /** Removes every file named, in one transaction. */
+  async remove(pathsOrIris: readonly string[]): Promise<void> {
+    if (pathsOrIris.length === 0) return;
+    const transaction = this.#database.transaction(STORE, "readwrite");
+    const store = transaction.objectStore(STORE);
+    for (const pathOrIri of pathsOrIris)
+      store.delete(relative(this, pathOrIri));
+    await done(transaction);
   }
 
   async list(folder: string): Promise<string[]> {

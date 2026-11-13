@@ -9,6 +9,7 @@ import {
   realpath,
   rename,
   rm,
+  rmdir,
   writeFile,
 } from "node:fs/promises";
 import {
@@ -21,7 +22,7 @@ import {
 } from "node:path";
 import { pid } from "node:process";
 import { pathToFileURL } from "node:url";
-import { type Files, relative } from "../files.js";
+import { type Files, relative, sameBytes } from "../files.js";
 import { Refusal } from "../step.js";
 
 /** The name of a file being written, which is no file of the folder until it is renamed over its name. */
@@ -66,11 +67,11 @@ function absent(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR";
 }
 
-/** Renames over a file that may be open: Windows refuses with EPERM or EBUSY while a reader holds it, for a moment. */
-async function renamedOver(from: string, to: string): Promise<void> {
+/** Does what may meet a file that is open: Windows refuses with EPERM or EBUSY while a reader holds it, for a moment. */
+async function retried<T>(doing: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt += 1) {
     try {
-      return await rename(from, to);
+      return await doing();
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (attempt === 50 || (code !== "EPERM" && code !== "EBUSY")) throw error;
@@ -78,6 +79,12 @@ async function renamedOver(from: string, to: string): Promise<void> {
     }
   }
 }
+
+const renamedOver = (from: string, to: string): Promise<void> =>
+  retried(() => rename(from, to));
+
+/** The replaces on each path in this process, one after another, so that no two look at a file at once. */
+const replacing = new Map<string, Promise<unknown>>();
 
 /** The calls a folder that refuses links makes to look at a path, handed in so that a test can count them. */
 export interface LinkChecks {
@@ -313,7 +320,29 @@ export class FolderFiles implements Files {
     }
   }
 
-  async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+  /**
+   * Does a write, again with its folders looked at afresh when it found no folder where one was: another process's
+   * `remove` takes away a folder it left empty, which this one may have looked at already.
+   */
+  async #again<T>(pathOrIri: string, writing: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await writing();
+      } catch (error) {
+        if (attempt === 5 || (error as NodeJS.ErrnoException).code !== "ENOENT")
+          throw error;
+        const parts = this.#parts(pathOrIri);
+        for (let depth = 1; depth < parts.length; depth++)
+          this.#checked.delete(parts.slice(0, depth).join("/"));
+      }
+    }
+  }
+
+  write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+    return this.#again(pathOrIri, () => this.#write(pathOrIri, bytes));
+  }
+
+  async #write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
     const local = this.#local(pathOrIri);
     const at = await this.#writable(pathOrIri);
     const writing = join(
@@ -338,7 +367,11 @@ export class FolderFiles implements Files {
   }
 
   /** Writes the file only when none is at its path, whole or not at all; false when one is. */
-  async writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
+  writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
+    return this.#again(pathOrIri, () => this.#writeNew(pathOrIri, bytes));
+  }
+
+  async #writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
     const at = await this.#writable(pathOrIri);
     const writing = join(
       dirname(at),
@@ -353,6 +386,82 @@ export class FolderFiles implements Files {
       throw error;
     } finally {
       await rm(writing, { force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Writes the file only when it holds `holds`, none when undefined. A look and a write, which no other replace in this
+   * process comes between; another process may.
+   */
+  async replace(
+    pathOrIri: string,
+    bytes: Uint8Array,
+    holds: Uint8Array | undefined,
+  ): Promise<boolean> {
+    const local = this.#local(pathOrIri);
+    const turn = (replacing.get(local) ?? Promise.resolve()).then(async () => {
+      if (!sameBytes(await this.read(pathOrIri), holds)) return false;
+      await this.write(pathOrIri, bytes);
+      return true;
+    });
+    const done = turn.catch(() => undefined);
+    replacing.set(local, done);
+    void done.then(() => {
+      if (replacing.get(local) === done) replacing.delete(local);
+    });
+    return turn;
+  }
+
+  /** Where the file to remove is, its folders looked at as a read's are; none when no file can be there. */
+  async #removable(pathOrIri: string): Promise<string | undefined> {
+    if (!this.#refuse) return this.#local(pathOrIri);
+    const parts = this.#parts(pathOrIri);
+    const root = await this.#resolved(false);
+    if (root === undefined) return undefined;
+    if (!(await this.#isFolder(root, parts.slice(0, -1)))) return undefined;
+    return join(root, ...parts);
+  }
+
+  /**
+   * Removes each file, a link at a file's own path as the link itself, and then each folder that leaves empty, deepest
+   * first, forgetting that it was looked at.
+   */
+  async remove(pathsOrIris: readonly string[]): Promise<void> {
+    const emptied = new Set<string>();
+    await Promise.all(
+      pathsOrIris.map(async (pathOrIri) => {
+        const parts = this.#parts(pathOrIri);
+        const at = await this.#removable(pathOrIri);
+        if (at === undefined) return;
+        const local = this.#local(pathOrIri);
+        const state = await enter(local, () => false, "renames");
+        try {
+          while (state.reads > 0)
+            await new Promise<void>((resolve) => state.changed.push(resolve));
+          await retried(() => rm(at, { force: true }));
+        } finally {
+          state.renames -= 1;
+          settled(local, state);
+        }
+        this.#listed.delete(parts.join("/"));
+        for (let depth = parts.length - 1; depth > 0; depth--)
+          emptied.add(parts.slice(0, depth).join("/"));
+      }),
+    );
+    const root = this.#refuse ? await this.#resolved(false) : this.folder;
+    if (root === undefined) return;
+    const deepestFirst = [...emptied].sort(
+      (one, other) => other.split("/").length - one.split("/").length,
+    );
+    for (const folder of deepestFirst) {
+      try {
+        await rmdir(join(root, ...folder.split("/")));
+      } catch {
+        continue;
+      }
+      for (const key of [...this.#checked.keys()])
+        if (key === folder || key.startsWith(`${folder}/`))
+          this.#checked.delete(key);
     }
   }
 
@@ -385,7 +494,10 @@ export class FolderFiles implements Files {
   }
 }
 
-/** Every file under the folder, its subfolders read in parallel: on Windows a third of a recursive `readdir`'s time. */
+/**
+ * Every file under the folder, its subfolders read in parallel: on Windows a third of a recursive `readdir`'s time. A
+ * subfolder another process removed once it was empty, while this one read, holds nothing.
+ */
 async function filesUnder(
   folder: string,
   seen?: (folder: string) => void,
@@ -395,7 +507,11 @@ async function filesUnder(
   const found = await Promise.all(
     entries.map((entry) => {
       const path = join(folder, entry.name);
-      if (entry.isDirectory()) return filesUnder(path, seen);
+      if (entry.isDirectory())
+        return filesUnder(path, seen).catch((error: unknown) => {
+          if (absent(error)) return [];
+          throw error;
+        });
       return entry.isFile() && !WRITING.test(entry.name) ? [path] : [];
     }),
   );

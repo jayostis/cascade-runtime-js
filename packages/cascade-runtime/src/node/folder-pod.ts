@@ -1,5 +1,5 @@
 import { resolve as absolute } from "node:path";
-import { Refusal } from "@cascade-runtime/runtime";
+import { Refusal, SealedIndex } from "@cascade-runtime/runtime";
 import { headerIn } from "@cascade-runtime/runtime/node";
 import { podKey, secretChecked } from "../encrypted.js";
 import { openPodWith, type Parts, type Pod } from "../pod.js";
@@ -23,21 +23,25 @@ export async function openFolderPod(
     return openPodWith(parts, undefined, rest);
   }
   const { files } = parts.folder(folder);
+  const header = await headerIn(absolute(folder));
+  const listing = header === undefined ? undefined : files.list("");
+  listing?.catch(() => undefined);
   const key = await podKey(
     {
       files,
-      header: await headerIn(absolute(folder)),
+      header,
       reread: () => headerIn(absolute(folder)),
       held: async () => (await files.list("")).length > 0,
     },
     secret,
     parts.derive,
   );
-  return openPodWith(
-    parts,
-    folder,
-    key === undefined ? rest : { ...rest, key },
-  );
+  if (key === undefined) return openPodWith(parts, folder, rest);
+  const index = await SealedIndex.open(files, key, {
+    listing,
+    laidOut: (path) => parts.layout.uses(path),
+  });
+  return openPodWith(parts, folder, { ...rest, key: index.key, index });
 }
 
 /**
