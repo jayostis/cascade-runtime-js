@@ -25,6 +25,7 @@ import {
   type ExplorerFile,
 } from "../src/explorer.js";
 import { Site, type SiteOptions } from "../src/site.js";
+import { COPY } from "../src/terms.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const KIT = "tamsin-vale";
@@ -162,6 +163,33 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       const judgment = data.files.findIndex(({ kind }) => kind === "judgment");
       assert.equal(data.files[judgment]?.writer, 2);
       assert.equal(file(data, "profile/card.ttl").writer, 0);
+    });
+
+    it("copies the manifest into the site naming the snapshot the pod's own manifest names, with prov:used", async () => {
+      const own = await kit.site.options.pod.read(
+        kit.site.options.layout.manifest,
+      );
+      const used = async (bytes: Uint8Array | undefined) =>
+        (
+          await new OxigraphStore().parse(
+            bytes as Uint8Array,
+            "https://pod.example/manifest.ttl",
+          )
+        )
+          .filter(
+            ([, predicate]) =>
+              predicate.value === "http://www.w3.org/ns/prov#used",
+          )
+          .map(([, , snapshot]) => snapshot.value);
+      assert.equal(
+        (await used(own)).length,
+        1,
+        "the pod's manifest names a snapshot",
+      );
+      assert.deepEqual(
+        await used(kit.built.get(`${COPY}${kit.site.options.layout.manifest}`)),
+        await used(own),
+      );
     });
 
     it("gives a person's judgment its verdict, its members and whether it counts", () => {
