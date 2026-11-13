@@ -159,6 +159,7 @@ function treeHtml() {
 function actTitle(r) {
   if (r.how === 'making') return 'The pod’s making';
   if (r.how === 'time') return r.label || 'A person’s judgments';
+  if (r.label && r.type) return termLabel(r.type) + ' · ' + r.label;
   return r.label || (r.type ? termLabel(r.type) : 'An act');
 }
 function logHtml() {
@@ -198,9 +199,11 @@ function writtenBy(f) {
   return actRef(f.writer);
 }
 function section(title, body) { return '<h3>' + title + '</h3>' + body; }
-function three(written, read, named) {
-  return '<div class="cards"><div class="card"><h4>Written by</h4>' + written + '</div><div class="card"><h4>Read by</h4>' + read + '</div><div class="card"><h4>Names and is named by</h4>' + named + '</div></div>';
+function three(titles, a, b, c) {
+  return '<div class="cards">' + [a, b, c].map(function (body, i) { return '<div class="card"><h4>' + titles[i] + '</h4>' + body + '</div>'; }).join('') + '</div>';
 }
+var FILE_CARDS = ['Written by', 'Read by', 'Names and is named by'];
+var QUERY_CARDS = ['Output', 'Reads', 'Writes'];
 function none(text) { return '<span class="lbl">' + text + '</span>'; }
 
 /* inspector */
@@ -217,7 +220,7 @@ function rootPanel() {
   var rows = Array.from(podTree.dirs.values()).sort(byName).map(function (d) {
     var all = allFiles(d).filter(exists);
     if (!all.length) return '';
-    var cls = D.placements.filter(function (p) { return p.folder && p.folder.indexOf(d.id.slice(0)) === 0 && p['class']; }).map(function (p) { return p['class']; });
+    var cls = D.placements.filter(function (p) { return p.folder && p.folder.indexOf(d.id.slice(2)) === 0 && p['class']; }).map(function (p) { return p['class']; });
     cls = cls.filter(function (x, i) { return cls.indexOf(x) === i; });
     var acts = all.map(function (f) { return f.writer; }).filter(function (w, i, a) { return typeof w === 'number' && a.indexOf(w) === i; });
     return '<tr><td>' + ref(d.id, false) + '</td><td>' + cls.slice(0, 5).map(term).join(', ') + (cls.length > 5 ? ' +' + (cls.length - 5) : '') + '</td><td class="num">' + all.length + '</td><td>' + (all.every(function (f) { return f.writer === 'build'; }) ? '<span class="pill built">rebuilt</span>' : plural(acts.length, 'act')) + '</td></tr>';
@@ -227,7 +230,7 @@ function rootPanel() {
     return '<tr' + (file ? '' : ' class="dim"') + '><td>' + ref('q:' + q.path, false) + '</td><td class="arr">→</td><td>' + (file ? ref('p:' + file.path, false) + ' <span class="lbl">' + plural(v.entries.length, 'entry', 'entries') + '</span>' : 'not written: the pod holds nothing of its kind') + '</td></tr>';
   });
   return '<h1>' + esc(D.pod.title) + '</h1><p class="sub mono">' + esc(D.pod.address) + '</p>' +
-    '<p class="gen">' + (state.step === END ? 'As published' : 'After act ' + state.step + ' of ' + END) + ': <b>' + vis.length + '</b> files. <b>' + c('record') + '</b> records, <b>' + c('revision') + '</b> revisions, <b>' + c('version') + '</b> versions, <b>' + c('judgment') + '</b> judgments.' + tag('pod') + '</p>' +
+    '<p class="gen">' + (state.step === END ? 'As published' : 'After act ' + state.step + ' of ' + END) + ': <b>' + vis.length + '</b> files. <b>' + c('record') + '</b> ' + (c('record') === 1 ? 'record' : 'records') + ', <b>' + c('revision') + '</b> ' + (c('revision') === 1 ? 'revision' : 'revisions') + ', <b>' + c('version') + '</b> ' + (c('version') === 1 ? 'version' : 'versions') + ', <b>' + c('judgment') + '</b> ' + (c('judgment') === 1 ? 'judgment' : 'judgments') + '.' + tag('pod') + '</p>' +
     fixed('pod') +
     section('The directory', '<div class="tw-x"><table><thead><tr><th>path</th><th>the layout files here</th><th class="num">files</th><th>written by</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div><p class="gen">What is filed where is stated in <code>runtime/pod-layout.ttl</code>.' + tag('layout') + '</p>' + fixed('twoRoots')) +
     section('Views, both meanings', fixed('views') + '<div class="tw-x"><table class="vmap"><thead><tr><th>definition (vocabulary)</th><th></th><th>file (this pod, last build)</th></tr></thead><tbody>' + views.join('') + '</tbody></table></div>') +
@@ -259,7 +262,7 @@ function dirPanel(id) {
   Array.from(writers.keys()).sort(function (a, b) { return a - b; }).forEach(function (r) { acts.push(actRef(r) + ' <span class="lbl">+' + writers.get(r) + '</span>'); });
   var writtenHtml = (acts.length ? list(acts, 20) : '') + queries.map(function (q) { return '<span class="pill built">rebuilt</span> ' + ref(queryId(q), false); }).join('<br>');
   var inside = Array.from(d.dirs.values()).sort(byName).filter(function (s) { return allFiles(s).some(exists); }).map(function (s) { return ref(s.id, false); });
-  h += three(writtenHtml || none('nothing'), none('Which queries read it is not recorded here; each query lists the terms it reads.'), inside.length ? list(inside, 12) : none('no folders inside'));
+  h += three(FILE_CARDS, writtenHtml || none('nothing'), none('Which queries read it is not recorded here; each query lists the terms it reads.'), inside.length ? list(inside, 12) : none('no folders inside'));
   var files = vis.slice(0, 60).map(function (f) { return ref('p:' + f.path, true); });
   if (files.length) h += section('Files', list(files, 60) + (vis.length > 60 ? '<p class="gen">60 of ' + vis.length + ' shown.</p>' : ''));
   return h;
@@ -274,24 +277,26 @@ function filePanel(f) {
   if (f['class']) h += vocabulary(f['class']) || '<p class="gen">Filed under ' + term(f['class']) + '.' + tag('layout') + '</p>';
   if (f.types.length) h += '<p class="gen">Types: ' + f.types.map(term).join(', ') + tag('pod') + '</p>';
   if (f.writer === 'build') h += fixed('built');
-  var read = [];
-  if (f.view != null) { var v = D.views[f.view]; read.push('Its definition: ' + ref(queryId(v.query), false) + ' <span class="lbl">' + plural(v.entries.length, 'entry', 'entries') + '</span>'); }
-  f.namedBy.forEach(function (n) { read.push(fileRef(n)); });
   var written = writtenBy(f);
-  var names = f.names.map(fileRef);
-  h += three(written, read.length ? list(read, 10) : none('no pod file names it'), names.length ? list(names, 10) : none('names no pod file'));
+  if (f.view != null && f.writtenBy == null) { var v = D.views[f.view]; written += '<br>Its definition: ' + ref(queryId(v.query), false) + ' <span class="lbl">' + plural(v.entries.length, 'entry', 'entries') + '</span>'; }
+  var names = f.names.map(fileRef), namedBy = f.namedBy.map(fileRef);
+  h += three(FILE_CARDS, written, none('Which queries read it is not recorded here; each query lists the terms it reads.'),
+    '<p class="lbl">Names:</p>' + (names.length ? list(names, 10) : none('no pod file')) + '<p class="lbl">Named by:</p>' + (namedBy.length ? list(namedBy, 10) : none('no pod file')));
   if (f.thing) h += '<dl class="kv"><dt>thing</dt><dd class="mono">' + esc(f.thing) + '</dd></dl>';
   h += turtleSection(f);
   return h;
 }
 function termChips(list) { return list.length ? list.map(term).join(' ') : none('none'); }
+function paragraphs(text) {
+  return text.split(/\n[ \t]*\n/).map(function (p) { return p.split('\n').map(function (l) { return l.trim(); }).filter(Boolean).join(' '); }).filter(Boolean).map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('');
+}
 function queryPanel(q) {
   var qi = D.queries.indexOf(q);
   var h = '<h1 class="path">' + esc(q.path.replace(/^queries\//, '')) + '</h1><div class="chips"><span class="pill">' + esc(q.form) + '</span><span class="pill">' + esc(q.group) + '</span>' + (q.order != null ? '<span class="pill kit" title="Place in the build’s order">build step ' + (q.order + 1) + '</span>' : '') + '<span class="pill outside">not in the pod</span></div>';
   h += '<pre class="code" id="head" data-path="' + esc(q.path) + '">Loading…</pre>';
   var written = q.file != null ? ref('p:' + D.files[q.file].path, true) : (q.added ? (q.added.length ? q.added.map(function (a) { return term(a[0]) + ' <b>' + a[1] + '</b>'; }).join('<br>') + '<p class="lbl">statements added to the derived state, which no file holds</p>' : none('adds nothing on this pod')) : none('writes no file'));
-  var rules = (q.rules || []).map(function (r) { var m = D.matcherRules[r]; return termLabel(m.rule) + ' <span class="lbl">' + esc(m.version) + (m.by === 'hash' ? ', found by its hash' : '') + '</span>' + (m.problem ? ' <span class="pill warn">' + esc(m.problem) + '</span>' : ''); });
-  h += three(written, '<p class="lbl">The terms its WHERE names:</p>' + termChips(q.reads), '<p class="lbl">Terms its template writes:</p>' + termChips(q.writes));
+  var rules = (q.rules || []).map(function (r) { var m = D.matcherRules[r]; return esc(termLabel(m.rule)) + ' <span class="lbl">' + esc(m.version) + (m.by === 'hash' ? ', found by its hash' : '') + '</span>' + (m.problem ? ' <span class="pill warn">' + esc(m.problem) + '</span>' : ''); });
+  h += three(QUERY_CARDS, written, '<p class="lbl">The terms its WHERE names:</p>' + termChips(q.reads), '<p class="lbl">The terms its template writes:</p>' + termChips(q.writes));
   if (rules.length) h += section('Matcher rules that name it', list(rules, 10));
   if (q.question) h += section('Answer', answerHtml(q));
   h += '<p class="gen">The query in the vocabulary: ' + (D.pod.vocabularyBlob ? '<a href="' + esc(D.pod.vocabularyBlob + q.path) + '">' + esc(q.path) + '</a>' : '<code>' + esc(q.path) + '</code>') + tag('vocabulary', 'cascade-vocabulary at the commit the site was built against') + '</p>';
@@ -342,7 +347,7 @@ function fillBodies() {
     var lines = t.split('\n'), head = [];
     for (var i = 0; i < lines.length && (lines[i].trim() === '' || lines[i].charAt(0) === '#'); i++) head.push(lines[i].replace(/^#\s?/, ''));
     var text = head.join('\n').trim();
-    h.outerHTML = (text ? '<pre class="code prose">' + esc(text) + '</pre>' : '') + '<details class="ex"><summary>The query’s text</summary><pre class="code">' + esc(t) + '</pre></details>';
+    h.outerHTML = (text ? '<div class="prose">' + paragraphs(text) + '</div>' : '') + '<details class="ex"><summary>The query’s text</summary><pre class="code">' + esc(t) + '</pre></details>';
   }, function () { if (state.sel === now) h.textContent = 'This query is not published beside the page.'; });
 }
 
@@ -372,11 +377,14 @@ function reveal(id) {
   var f = kind === 'p:' ? F.get(id.slice(2)) : null;
   if (f && f.writer !== 'build' && f.writer > state.step) state.step = f.writer;
 }
+function keepAddress() {
+  history.replaceState(null, '', '#' + encodeURIComponent(state.sel) + (state.step === END ? '' : '&step=' + state.step));
+}
 function select(id) {
   state.sel = id;
   reveal(id);
   state.pane = 'ins';
-  history.replaceState(null, '', '#' + encodeURIComponent(id) + (state.step === END ? '' : '&step=' + state.step));
+  keepAddress();
   render();
   document.getElementById('ins').scrollTop = 0;
 }
@@ -384,6 +392,7 @@ function setStep(n) {
   state.step = Math.max(0, Math.min(END, n));
   var f = state.sel.indexOf('p:') === 0 ? F.get(state.sel.slice(2)) : null;
   if (f && !exists(f)) state.sel = 'p:';
+  keepAddress();
   render();
 }
 root.addEventListener('click', function (e) {
@@ -484,8 +493,10 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .kv { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; margin: .5rem 0; }
 #explorer .kv dt { font-weight: 600; } #explorer .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 #explorer pre.code { background: var(--panel); padding: .6rem; border-radius: 4px; overflow: auto; max-height: 28rem; margin: .4rem 0; white-space: pre; }
-#explorer pre.prose { white-space: pre-wrap; overflow-wrap: anywhere; max-height: none; }
+#explorer .prose { margin: .4rem 0; max-width: 46rem; }
+#explorer .prose p { margin: 0 0 .6rem; overflow-wrap: anywhere; }
 #explorer i.term { font-style: normal; font-family: var(--mono); font-size: 12px; border-bottom: 1px dotted var(--quiet); }
+#explorer .card i.term { display: inline-block; margin: 0 .5rem .15rem 0; }
 #explorer .tw-x { overflow-x: auto; }
 #explorer table .num, #explorer th.num { text-align: right; }
 #explorer tr.dim td { color: var(--quiet); }

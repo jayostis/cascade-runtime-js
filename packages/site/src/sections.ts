@@ -23,6 +23,8 @@ export interface Row {
   readonly about?: string;
   /** A second, quieter link on the same line. */
   readonly also?: { readonly href: string; readonly label: string };
+  /** Whom the line is for: the front page's table or `llms.txt`; both when unset. */
+  readonly audience?: "people" | "agents";
 }
 
 /**
@@ -149,6 +151,7 @@ export async function buildTree<Ctx>({
   const rows = new Map<Want, Row[]>();
   for (const { section, rows: listed } of built)
     for (const row of listed) {
+      if (row.audience === "agents") continue;
       const want = row.want ?? section.want;
       rows.set(want, [...(rows.get(want) ?? []), row]);
     }

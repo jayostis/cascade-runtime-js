@@ -31,11 +31,16 @@ import { readPage } from "./page.js";
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 
-/** A kit's site as the Pages pages read it: its home page and the pod's files, which they list and pack. */
+/** A kit's site as the Pages pages read it: its home page, the explorer's data, the layout page and the pod's files, which they list and pack. */
 const standIn = new Map(
-  ["index.html", "pod/manifest.ttl", "pod/a.ttl", "pod/b/c.ttl"].map(
-    (path) => [path, new TextEncoder().encode(path)] as const,
-  ),
+  [
+    "index.html",
+    "explorer.json",
+    "layout.html",
+    "pod/manifest.ttl",
+    "pod/a.ttl",
+    "pod/b/c.ttl",
+  ].map((path) => [path, new TextEncoder().encode(path)] as const),
 );
 
 /** The tree of the Pages pages over the vocabulary's kits, built once for the tests of all of them. */
