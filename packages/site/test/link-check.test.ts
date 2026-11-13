@@ -525,7 +525,7 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       first = await check(
         {
           "index.html": page(
-            `<a href="${origin}/gone">dead</a><a href="${origin}/ok">fine</a><a href="sub.html">in</a>`,
+            `<link rel="preconnect" href="${origin}/preconnected"><link rel="dns-prefetch" href="${origin}/prefetched"><a href="${origin}/gone">dead</a><a href="${origin}/ok">fine</a><a href="sub.html">in</a>`,
           ),
           "sub.html": page(""),
           "site.css": "",
@@ -553,6 +553,12 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       );
       assert.ok(!second.said.includes(`${origin}/ok`), second.said);
       assert.ok(!second.said.includes("sub.html"), second.said);
+    });
+
+    it("leaves a preconnect and a dns-prefetch hint unasked, since each names an origin", () => {
+      assert.equal(askedOf("/preconnected").length, 0);
+      assert.equal(askedOf("/prefetched").length, 0);
+      assert.ok(!second.said.includes("/preconnected"), second.said);
     });
   });
 

@@ -142,7 +142,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visibl
 .summary-bar .duration { color: var(--muted); font: .8rem/1.4 var(--mono); font-variant-numeric: tabular-nums; }
 .controls { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: auto; }
 .controls button { font: 600 .8rem/1.4 var(--sans); padding: .2rem .7rem; border-radius: 6px; cursor: pointer;
-                   color: var(--ink); background: var(--bg, #fff); border: 1px solid var(--rule); }
+                   color: var(--ink); background: #fff; border: 1px solid var(--rule); }
 .controls button:hover { background: var(--rule-soft); }
 .controls button[aria-pressed="true"] { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 .failures-only [data-result="passed"], .failures-only [data-result="skipped"], .failures-only [data-failed="0"] { display: none; }
@@ -189,7 +189,7 @@ h3.package { margin: 0 0 .2rem; display: flex; flex-wrap: wrap; align-items: bas
 .glossary { margin: .6rem 0; border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .8rem; }
 .glossary > summary { font-weight: 600; color: var(--ink); }
 .glossary-filter { display: block; box-sizing: border-box; width: 100%; max-width: 22rem; margin: .5rem 0; padding: .3rem .6rem;
-                   font: inherit; color: var(--ink); background: var(--bg, #fff); border: 1px solid var(--rule); border-radius: 6px; }
+                   font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--rule); border-radius: 6px; }
 .glossary dl { margin: .3rem 0; display: grid; grid-template-columns: minmax(8rem, 14rem) 1fr; gap: .3rem 1.2rem; font-size: .9rem; }
 .glossary dt { font-weight: 600; }
 .glossary dd { margin: 0; max-width: 70ch; overflow-wrap: anywhere; }

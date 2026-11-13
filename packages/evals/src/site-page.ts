@@ -1,4 +1,4 @@
-// A page's frame: the crumbs, the theme button, the stylesheet and script, and the footer; and a link from one page of
+// A page's frame: the crumbs, the stylesheet and script, and the footer; and a link from one page of
 // the site to another by their paths.
 import { posix } from "node:path";
 import { SCRIPT, STYLE } from "./site-style.js";
@@ -17,7 +17,7 @@ export interface Frame {
   /** Each crumb with the path it opens, from the site's root or, ahead of it, beginning with `../`; the last has none. */
   readonly crumbs: readonly (readonly [string, string?])[];
   readonly body: string;
-  /** A page made for paper has no theme button or footer. */
+  /** A page made for paper has no footer. */
   readonly print?: boolean;
 }
 
@@ -49,7 +49,7 @@ export function page(frame: Frame): string {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(frame.title)}</title><style>${STYLE}</style></head>
 <body${frame.print === true ? ` class="printpage"` : ""}><main id="main">
-<div class="top"><div class="crumbs">${crumbs}</div><button id="theme" type="button">Dark</button></div>
+<div class="top"><div class="crumbs">${crumbs}</div></div>
 ${frame.body}
 <div class="foot">Generated from results.json and the case files by <code>npm run evals:report</code>; never edited by hand. <a href="${hrefTo(frame.path, "how_it_works.html")}">How the test works</a>.</div>
 </main><script>${SCRIPT}</script></body></html>`;
