@@ -69,7 +69,10 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
           `<main id="main">`,
           `<footer class="sx-footer">`,
         ].map((marker) => html.indexOf(marker));
-        assert.ok(order.every((at) => at >= 0), `${path} lacks a part`);
+        assert.ok(
+          order.every((at) => at >= 0),
+          `${path} lacks a part`,
+        );
         assert.deepEqual(
           order,
           [...order].sort((a, b) => a - b),
@@ -105,8 +108,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       for (const [path, html] of pages) {
         assert.equal(html.split('<nav class="hub-nav"').length, 2, path);
         assert.ok(
-          html.indexOf('<nav class="hub-nav"') >
-            html.indexOf("</header>"),
+          html.indexOf('<nav class="hub-nav"') > html.indexOf("</header>"),
           path,
         );
       }
@@ -133,13 +135,20 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
 
   describe("with the source of the site", () => {
     it("lets only the chrome write a page's frame, bar the page that redirects", () => {
-      const src = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "src");
+      const src = join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "..",
+        "src",
+      );
       const folders = [src, join(src, "hub")];
       const framed = folders.flatMap((folder) =>
         readdirSync(folder)
           .filter((name) => name.endsWith(".ts"))
           .filter((name) =>
-            readFileSync(join(folder, name), "utf8").includes("<!DOCTYPE html>"),
+            readFileSync(join(folder, name), "utf8").includes(
+              "<!DOCTYPE html>",
+            ),
           )
           .map((name) => name),
       );

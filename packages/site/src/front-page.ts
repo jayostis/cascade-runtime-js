@@ -1,5 +1,5 @@
 import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
-import { type Content, markup } from "./html.js";
+import { type Content, markup, shell } from "./html.js";
 import { FRONT_PAGE, frontPageLink } from "./links.js";
 import { addressOf, type Row, type Rows, type Want } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
@@ -131,18 +131,11 @@ export function examplesPage(
   examples: readonly Example[],
   built: BuiltFrom,
 ): string {
-  return markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cascade example pods</title>
-<link rel="stylesheet" href="${STYLESHEET_FILE}">
-</head>
-<body>
-<nav>${frontPageLink(0)}</nav>
-<main>
-<h1>Cascade example pods</h1>
+  return shell({
+    title: "Cascade example pods",
+    stylesheet: STYLESHEET_FILE,
+    nav: markup`${frontPageLink(0)}\n`,
+    main: markup`<h1>Cascade example pods</h1>
 <p class="prose">These are the example pods the reference runtime, cascade-runtime-js, builds from the conformance kits of
 cascade-vocabulary. Each kit is a person's story, replayed into a pod, and each pod has a site that shows what it holds and
 the questions that read it.</p>
@@ -151,14 +144,12 @@ ${examples.map(
   ({ folder, title }) =>
     markup`<li><a href="${folder}/index.html">${title}</a> <a class="also" href="${folder}/${COPY}${POD_ENTRY}">the pod's files</a></li>\n`,
 )}</ul>
-</main>
 <footer>
 <p class="about">Built at <time datetime="${built.at}">${built.at}</time> from:</p>
 ${ingredients(built.ingredients)}<p class="about">The runtime is configured with:</p>
 ${ingredients(built.configured)}</footer>
-</body>
-</html>
-`.text;
+`,
+  }).text;
 }
 
 /** What the front page and the quick start give a newcomer to start with. */
@@ -252,17 +243,10 @@ ${REPOSITORIES.map(
 function frontPage(kinds: readonly string[], listed: Rows): string {
   const rows = withRepositories(listed);
   checkOnce(rows);
-  return markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cascade pods</title>
-<link rel="stylesheet" href="${STYLESHEET_FILE}">
-</head>
-<body>
-<main>
-<h1>Cascade pods</h1>
+  return shell({
+    title: "Cascade pods",
+    stylesheet: STYLESHEET_FILE,
+    main: markup`<h1>Cascade pods</h1>
 <p class="prose">A pod holds one person's health records as files, and an app reads and writes it through
 <code>cascade-runtime</code>.</p>
 <h2 id="find-your-way-heading">Find your way</h2>
@@ -273,28 +257,19 @@ ${kinds.map((kind) => markup`<li>${kind}</li>\n`)}</ul>
 summary of care as a patient portal hands it out. The matcher joins one record across both. Vital signs, notes and daily
 measurements are not yet held. The reference tables the matcher uses to join records of the same thing are alpha test data,
 so a real export shows fewer automatic joins than the example pods.</p>
-${repositories}</main>
-</body>
-</html>
-`.text;
+${repositories}`,
+  }).text;
 }
 
 export function startPage(
   { command, app, prompt }: Start,
   { title }: Example,
 ): string {
-  return markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Start an app on a Cascade pod</title>
-<link rel="stylesheet" href="${STYLESHEET_FILE}">
-</head>
-<body>
-<nav><a href="${FRONT_PAGE}">Cascade pods</a></nav>
-<main>
-<h1>Start an app on a Cascade pod</h1>
+  return shell({
+    title: "Start an app on a Cascade pod",
+    stylesheet: STYLESHEET_FILE,
+    nav: markup`<a href="${FRONT_PAGE}">Cascade pods</a>\n`,
+    main: markup`<h1>Start an app on a Cascade pod</h1>
 <h2 class="part">1. Make the app</h2>
 <p class="prose">With Node 22 or later, run this in a folder of your choice:</p>
 <pre class="command"><code>${command}</code></pre>
@@ -306,10 +281,8 @@ its last line, <code>My idea: …</code>, replaced by your idea:</p>
 <p class="prose">The agent learns how from the <code>AGENTS.md</code> at the app's root and the full guide that comes with the
 installed package, and loads a pod, such as ${title}'s, when your idea needs one.</p>
 <p class="prose"><a href="${STARTER_TRY}">See an app running in your browser, nothing to install</a></p>
-</main>
-</body>
-</html>
-`.text;
+`,
+  }).text;
 }
 
 /**

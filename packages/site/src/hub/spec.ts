@@ -1,5 +1,5 @@
 import { decisionPages } from "../decisions.js";
-import { markup } from "../html.js";
+import { markup, shell } from "../html.js";
 import { frontPageLink } from "../links.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
@@ -106,18 +106,11 @@ export const specSection: Section<SpecContext> = {
     files.set(
       `${CONFORMANCE_FOLDER}index.html`,
       encoder.encode(
-        markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cascade runtime conformance results</title>
-<link rel="stylesheet" href="../${STYLESHEET_FILE}">
-</head>
-<body>
-<nav>${frontPageLink(1)}</nav>
-<main>
-<h1>Cascade runtime conformance results</h1>
+        shell({
+          title: "Cascade runtime conformance results",
+          stylesheet: `../${STYLESHEET_FILE}`,
+          nav: markup`${frontPageLink(1)}\n`,
+          main: markup`<h1>Cascade runtime conformance results</h1>
 <p class="prose">The reference runtime's latest result on <code>main</code> for every example of cascade-vocabulary's
 features and conformance kits. Each feature links to its page among <a href="${spec}index.html">the rules</a>, which
 shows every example with its result.</p>
@@ -142,16 +135,13 @@ ${
 <ul>
 ${suites.map(({ title, folder }) => markup`<li><a href="${folder}index.html">${folder}</a>: ${title.replace(/^The /, "the ")}.</li>\n`)}</ul>
 `
-}
-</main>
-<footer>
+}<footer>
 <p class="about">Built at <time datetime="${at}">${at}</time> from:</p>
 <ul class="about">
 ${builtFrom.map(({ name, version, href }) => markup`<li><a href="${href}">${name} ${version}</a></li>\n`)}</ul>
 ${ranWithList("The results are of the run with:", report.ranWith)}</footer>
-</body>
-</html>
-`.text,
+`,
+        }).text,
       ),
     );
     return files;

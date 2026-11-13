@@ -9,7 +9,7 @@ import type { Arm } from "./prompts.js";
 import type { ArmSummary, Instance, Results } from "./results.js";
 import { runFolder } from "./results.js";
 import { valid } from "./schemas.js";
-import { hrefTo, page } from "./site-page.js";
+import { type Chrome, hrefTo, page, withChrome } from "./site-page.js";
 import { runPages, whereIs } from "./site-run.js";
 import {
   ARMS,
@@ -290,11 +290,18 @@ export function renderSite(
   return site;
 }
 
-async function write(site: Map<string, string>, out: string): Promise<string> {
+async function write(
+  site: Map<string, string>,
+  out: string,
+  chrome?: Chrome,
+): Promise<string> {
   for (const [path, html] of site) {
     const file = join(out, ...path.split("/"));
     await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, html);
+    await writeFile(
+      file,
+      chrome === undefined ? html : withChrome(html, chrome),
+    );
   }
   return join(out, "index.html");
 }
@@ -307,11 +314,12 @@ async function load(path: string): Promise<Results> {
   );
 }
 
-/** Builds the site of one run's folder, or of every run in history/, with a crumb to `home` when given. Returns the index. */
+/** Builds the site of one run's folder, or of every run in history/, with a crumb to `home` when given and the pages inside `chrome` when given. Returns the index. */
 export async function buildSite(
   from: { run?: string; history?: boolean },
   out?: string,
   home?: string,
+  chrome?: Chrome,
 ): Promise<string> {
   if (from.history !== true) {
     const folder = runFolder(from.run ?? "");
@@ -319,6 +327,7 @@ export async function buildSite(
     return write(
       renderSite([{ name: results.run.id, results }], false, home),
       resolve(out ?? join(folder, "site")),
+      chrome,
     );
   }
   const runs: { name: string; results: Results }[] = [];
@@ -330,5 +339,6 @@ export async function buildSite(
   return write(
     renderSite(runs, true, home),
     resolve(out ?? join(HISTORY, "..", "site")),
+    chrome,
   );
 }

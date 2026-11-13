@@ -21,6 +21,22 @@ export interface Frame {
   readonly print?: boolean;
 }
 
+/** A site's header and footer from outside, each a block of HTML, and what goes in the head to style them. */
+export interface Chrome {
+  readonly head: string;
+  readonly header: string;
+  readonly footer: string;
+}
+
+/** A page of `page()` inside `chrome`; the page made for paper stays as it is. */
+export function withChrome(html: string, chrome: Chrome): string {
+  if (html.includes(`<body class="printpage">`)) return html;
+  return html
+    .replace("</head>", () => `${chrome.head}</head>`)
+    .replace("<main", () => `${chrome.header}<main`)
+    .replace("</main>", () => `</main>\n${chrome.footer}`);
+}
+
 export function page(frame: Frame): string {
   const crumbs = frame.crumbs
     .map(([label, to]) =>
@@ -32,7 +48,7 @@ export function page(frame: Frame): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(frame.title)}</title><style>${STYLE}</style></head>
-<body${frame.print === true ? ` class="printpage"` : ""}><main>
+<body${frame.print === true ? ` class="printpage"` : ""}><main id="main">
 <div class="top"><div class="crumbs">${crumbs}</div><button id="theme" type="button">Dark</button></div>
 ${frame.body}
 <div class="foot">Generated from results.json and the case files by <code>npm run evals:report</code>; never edited by hand. <a href="${hrefTo(frame.path, "how_it_works.html")}">How the test works</a>.</div>

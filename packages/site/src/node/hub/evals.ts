@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FolderFiles } from "@cascade-runtime/runtime/node";
+import { chromeStrings } from "../../html.js";
 import { FRONT_PAGE } from "../../links.js";
 import type { PagesContext } from "../../hub/context.js";
 import type { Section } from "../../sections.js";
@@ -13,6 +14,7 @@ interface Evals {
     from: { history: true },
     out: string,
     home: string,
+    chrome: ReturnType<typeof chromeStrings>,
   ): Promise<string>;
 }
 
@@ -32,7 +34,12 @@ export const evalsSection: Section<PagesContext> = {
     )) as Evals;
     const out = await mkdtemp(join(tmpdir(), "evals-site-"));
     try {
-      await buildSite({ history: true }, out, `../${FRONT_PAGE}`);
+      await buildSite(
+        { history: true },
+        out,
+        `../${FRONT_PAGE}`,
+        chromeStrings(),
+      );
       const folder = new FolderFiles(out);
       const files = new Map<string, Uint8Array>();
       for (const path of await folder.list("")) {

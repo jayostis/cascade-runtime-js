@@ -8,7 +8,7 @@ import {
   repositoryName,
   type Term,
 } from "@cascade-runtime/runtime";
-import { type Content, Html, markup } from "./html.js";
+import { type Content, Html, markup, shell as pageShell } from "./html.js";
 import { noteLinkOf, termHref } from "./links.js";
 import { renderWithHeadings } from "./markdown.js";
 import { STYLESHEET_FILE } from "./site.js";
@@ -318,8 +318,8 @@ export function crateOf(text: string): Crate {
 }
 
 const STYLES = `
-.forms { display: block; color: var(--quiet); font-size: .8rem; }
-.contents { color: var(--quiet); }
+.forms { display: block; color: var(--muted); font-size: .8rem; }
+.contents { color: var(--muted); }
 td.path { max-width: 38rem; }
 `;
 
@@ -340,22 +340,14 @@ const shell = (
   main: Content,
 ): Uint8Array =>
   encoder.encode(
-    markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · Cascade adapters</title>
-<link rel="stylesheet" href="${up}${STYLESHEET_FILE}">
-<style>${new Html(STYLES)}</style>
-</head>
-<body>
-<nav>${nav}</nav>
-<main>
-${main}</main>
-</body>
-</html>
-`.text,
+    pageShell({
+      title: markup`${title} · Cascade adapters`,
+      stylesheet: `${up}${STYLESHEET_FILE}`,
+      head: markup`<style>${new Html(STYLES)}</style>
+`,
+      nav,
+      main,
+    }).text,
   );
 
 const plural = (count: number, one: string, many = `${one}s`): string =>

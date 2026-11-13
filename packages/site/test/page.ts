@@ -102,9 +102,13 @@ function said(markup: string): string {
 
 /**
  * A page of the site as a reader sees it: its heading, its links and anchors, and each block on it. Given the page's
- * path, its local links are read as paths from the site's root.
+ * path, its local links are read as paths from the site's root. The website's header and footer are not the page's.
  */
-export function readPage(markup: string, page?: string): Page {
+export function readPage(whole: string, page?: string): Page {
+  const markup = whole
+    .replace(/<a class="b-skip"[^>]*>[^<]*<\/a>\s*/, "")
+    .replace(/<div class="sx-strip">[\s\S]*?<\/header>\s*/, "")
+    .replace(/<footer class="sx-footer">[\s\S]*?<\/footer>\s*/, "");
   return {
     h1: first(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/, markup),
     said: said(markup),

@@ -1,4 +1,4 @@
-import { type Content, Html, markup } from "./html.js";
+import { type Content, Html, markup, shell } from "./html.js";
 import {
   frontPageLink,
   noteHref,
@@ -24,14 +24,14 @@ const UP = "../";
 
 const DECISION_STYLES = `
 .note { overflow-wrap: anywhere; }
-.note h2 { margin: 2.25rem 0 .5rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+.note h2 { margin: 2.25rem 0 .5rem; padding-top: .5rem; border-top: 1px solid var(--rule-soft); }
 .note h3 { margin: 1.5rem 0 .25rem; }
-.note pre { background: var(--panel); padding: .75rem; overflow-x: auto; border-radius: 4px; }
-.note :not(pre) > code { background: var(--panel); padding: 0 .2rem; border-radius: 3px; }
+.note pre { background: var(--paper); padding: .75rem; overflow-x: auto; border-radius: 4px; }
+.note :not(pre) > code { background: var(--paper); padding: 0 .2rem; border-radius: 3px; }
 .note table { font-size: .9rem; }
 .note tr:target { background: #fff6cc; }
 ul.cited { margin: 0; padding-left: 1.1rem; }
-.none { color: var(--quiet); }
+.none { color: var(--muted); }
 `;
 
 export interface DecisionOptions {
@@ -57,28 +57,18 @@ function page(
   main: Content,
 ): Uint8Array {
   return new TextEncoder().encode(
-    markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · Cascade decision notes</title>
-<link rel="stylesheet" href="${DECISIONS_STYLESHEET_FILE}">
-</head>
-<body>
-<nav>
-${frontPageLink(1)}
+    shell({
+      title: markup`${title} · Cascade decision notes`,
+      stylesheet: DECISIONS_STYLESHEET_FILE,
+      nav: markup`${frontPageLink(1)}
 <a href="${DECISIONS_INDEX}">Decision notes</a>
 <a href="${UP}spec/index.html">The runtime's rules</a>
-</nav>
-<main>
-<p class="kind"><a href="${source.href}">${source.path}</a> on GitHub, at the commit these pages were built from</p>
+`,
+      main: markup`<p class="kind"><a href="${source.href}">${source.path}</a> on GitHub, at the commit these pages were built from</p>
 <div class="note">
 ${main}</div>
-</main>
-</body>
-</html>
-`.text,
+`,
+    }).text,
   );
 }
 

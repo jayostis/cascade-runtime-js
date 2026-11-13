@@ -13,7 +13,7 @@ import {
 } from "@cascade-runtime/runtime";
 import { Marked, type Tokens } from "marked";
 import type { Ingredient } from "./front-page.js";
-import { type Content, escape, Html, markup } from "./html.js";
+import { type Content, escape, Html, markup, shell } from "./html.js";
 import {
   anchorOf,
   frontPageLink,
@@ -868,25 +868,14 @@ class Spec {
 
 function page(spec: Spec, title: string, main: Content): Uint8Array {
   return new TextEncoder().encode(
-    markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · Cascade runtime rules</title>
-<link rel="stylesheet" href="${SPEC_STYLESHEET_FILE}">
-</head>
-<body>
-<nav>
-${frontPageLink(1)}
+    shell({
+      title: markup`${title} · Cascade runtime rules`,
+      stylesheet: SPEC_STYLESHEET_FILE,
+      nav: markup`${frontPageLink(1)}
 <a href="${SPEC_INDEX}">The rules</a>
-${spec.features.map((feature) => markup`<a href="${spec.pageOf(feature.path)}">${feature.name}</a>\n`)}</nav>
-<main>
-${main}
-</main>
-</body>
-</html>
-`.text,
+${spec.features.map((feature) => markup`<a href="${spec.pageOf(feature.path)}">${feature.name}</a>\n`)}`,
+      main: markup`${main}\n`,
+    }).text,
   );
 }
 
@@ -1134,16 +1123,16 @@ const SPEC_STYLES = `
           text-align: center; font: 600 .75rem/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .result.passed { background: #e3f4e8; color: #1d6b35; }
 .result.failed { background: #fbe5e5; color: #a3201f; }
-.result.not-run { background: var(--panel); color: var(--quiet); }
+.result.not-run { background: var(--paper); color: var(--muted); }
 section.rule { margin: 2rem 0 0; padding: 1rem 0 0; border-top: 1px solid var(--rule); }
-.ruled { color: var(--quiet); font-size: .9rem; margin: .25rem 0 .5rem; }
+.ruled { color: var(--muted); font-size: .9rem; margin: .25rem 0 .5rem; }
 blockquote.why { margin: .75rem 0; padding: .1rem 1rem; border-left: 3px solid var(--rule); max-width: 46rem; }
-details.example summary { color: var(--text); }
+details.example summary { color: var(--ink); }
 details.example pre { margin: .25rem 0 .75rem; }
 pre.failure { background: #fdf2f2; white-space: pre-wrap; }
 ol.contents { columns: 2 22rem; font-size: .9rem; }
 ul.warnings { font-size: .9rem; }
-footer { margin-top: 3rem; border-top: 1px solid var(--rule); }
+main footer { margin-top: 3rem; border-top: 1px solid var(--rule); }
 `;
 
 /**
