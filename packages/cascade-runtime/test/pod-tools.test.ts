@@ -12,6 +12,7 @@ import {
   COMPACT_QUESTIONS,
   LEFT_OUT_OF_THE_COMPACT_READ,
   PAGE_CHARACTERS,
+  offeredTools,
   type PodReads,
   TOOLS,
 } from "cascade-runtime/tools";
@@ -386,6 +387,17 @@ describe("Tools a model reads a pod with · TOOLS", () => {
         "reference_table_checks",
         "timeline",
       ]);
+    });
+
+    it("declares for each tool the kind `ReadingPodsOrTables` at the tier `free`, as `offeredTools()` lists it", () => {
+      assert.deepEqual(
+        offeredTools(),
+        TOOLS.map(({ name }) => ({
+          name,
+          kind: "https://ns.cascadeprotocol.org/cascade#ReadingPodsOrTables",
+          tier: "free",
+        })),
+      );
     });
 
     it("calls exactly one function of the host's `PodReads` for each tool", async () => {
