@@ -5,6 +5,9 @@ import {
   Graph,
   iri,
   documentName,
+  enteredRecordName,
+  recordNamedByInputs,
+  comparison,
   QUERIES,
   QUESTIONS,
   RDF,
@@ -132,6 +135,8 @@ export interface ExplorerJudgment {
   readonly description?: string;
   /** The record files it joins or separates. */
   readonly members: readonly number[];
+  /** The IRIs of the members that are no file of the pod (a patient identity, say), ascending; absent when there are none. */
+  readonly others?: readonly string[];
   /** Whether it counts under the site's lens; absent when the vocabulary's question about it gives no row. */
   readonly counts?: boolean;
   /** The row of `matcherRules` it was asserted under, for a matcher judgment. */
@@ -171,8 +176,15 @@ export interface ExplorerAct {
   readonly missing: readonly string[];
   readonly informedBy?: number;
   readonly role?: Curie;
-  /** The names of the kit's steps that fall on this row. */
-  readonly kitSteps: readonly string[];
+  /**
+   * The kit's steps that fall on this row, each with whether the pod holds an act of exactly its time. A step that was
+   * not performed here (the kit's decided E7, E9, M2) is listed `performed: false`; whether the row wrote files is
+   * `wrote`, which a performed step may leave empty.
+   */
+  readonly kitSteps: readonly {
+    readonly name: string;
+    readonly performed: boolean;
+  }[];
 }
 
 export interface ExplorerKit {
@@ -184,8 +196,8 @@ export interface ExplorerKit {
     readonly kind: StepKind;
     /** The row of the log it falls on. */
     readonly row: number;
-    /** Whether the row is an act of exactly that time; false when the step leaves no act of its own. */
-    readonly act: boolean;
+    /** Whether the pod holds an act of exactly that time; false when the step was not performed here and leaves no act of its own. */
+    readonly performed: boolean;
   }[];
   readonly cases: readonly {
     /** `P1`, `T3` and so on, or absent for a rule with no number. */
@@ -207,16 +219,18 @@ export interface ExplorerEntry {
   readonly label: string;
   readonly page?: string;
   readonly members: readonly number[];
+  /** The IRIs of the members that are no file of the pod (the patient identities a profile merges, say), ascending; absent when there are none. */
+  readonly others?: readonly string[];
   readonly lead?: number;
   readonly statusFrom?: number;
-  /** A field: the property, the value on the entry itself, each member's value (in `members` order) and whether they disagree. */
+  /** A field: the property, the value on the entry itself, each member's value (in `members` then `others` order) and whether they disagree. */
   readonly fields: readonly {
     readonly term: Curie;
     readonly entry: string;
     readonly members: readonly string[];
     readonly disagree: boolean;
   }[];
-  /** Judgment files that join two or more of its members, and those that name one of them only. */
+  /** Judgment files that join two or more of its members (files or `others`), and those that name one of them only. */
   readonly within: readonly number[];
   readonly touching: readonly number[];
 }
@@ -434,7 +448,18 @@ async function held(site: Site): Promise<Held[]> {
               return false;
             }
           });
-          return { path, bytes, graph, thing: named ?? pod.address + path };
+          const fragments = [...subjects]
+            .filter((subject) => subject.startsWith(`${pod.address}${path}#`))
+            .sort(compare);
+          const own =
+            fragments.find((subject) => subject.endsWith(`#${stem}`)) ??
+            (fragments.length === 1 ? fragments[0] : undefined);
+          return {
+            path,
+            bytes,
+            graph,
+            thing: named ?? own ?? pod.address + path,
+          };
         }),
       )),
     );
@@ -508,9 +533,7 @@ async function ruleRows(
         ? undefined
         : rows?.objects(row, `${CASCADE}queryPath`)[0]?.value;
     const path =
-      queryPath === undefined
-        ? byHash.get(hash)
-        : new URL(queryPath, `https://v.invalid/${QUERIES}`).pathname.slice(1);
+      queryPath === undefined ? byHash.get(hash) : comparison(queryPath);
     const computed = path === undefined ? undefined : await hashOf(path);
     const listedHash =
       row === undefined
@@ -518,7 +541,9 @@ async function ruleRows(
         : rows?.objects(row, `${CASCADE}queryHash`)[0]?.value;
     const problem =
       path === undefined
-        ? `no query of the vocabulary hashes to ${hash}`
+        ? queryPath === undefined
+          ? `no query of the vocabulary hashes to ${hash}`
+          : `the rule list's queryPath ${queryPath} names no query under ${QUERIES}matcher/`
         : computed === undefined
           ? `${path} is not in the vocabulary`
           : computed !== hash
@@ -707,7 +732,8 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   });
   const manifest = at(layout.manifest);
   const manifestGraph = loaded[manifest]?.graph as Graph;
-  // The build writes the manifest again without the snapshot it names, so the pod's own file is read for it.
+  // A pod made by `featurePod` has its manifest copied into the site without the `prov:used` that names its head, so the
+  // pod's own file (`options.pod`) is read for it; the published example pods' manifests hold it either way.
   const ownManifest = await options.pod.read(layout.manifest);
   const head = (
     ownManifest === undefined
@@ -841,17 +867,18 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
     const times = [making, ...drafts].map(({ time }) =>
       time === undefined ? undefined : Date.parse(time),
     );
-    const rowAt = (when: string): { row: number; act: boolean } => {
+    const rowAt = (when: string): { row: number; performed: boolean } => {
       const time = Date.parse(when);
       const exact = times.indexOf(time);
-      if (exact > 0) return { row: exact, act: true };
+      if (exact > 0) return { row: exact, performed: true };
       const first = times.find((each) => each !== undefined);
-      if (first === undefined || time < first) return { row: 0, act: true };
+      if (first === undefined || time < first)
+        return { row: 0, performed: true };
       let row = 0;
       times.forEach((each, index) => {
         if (each !== undefined && each <= time) row = index;
       });
-      return { row, act: false };
+      return { row, performed: false };
     };
     const { steps } = await featureStory(vocabulary, feature, options.newStore);
     const placed = steps.map((step) => ({ step, ...rowAt(step.when) }));
@@ -861,12 +888,12 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
     kit = {
       name: options.kit,
       feature,
-      steps: placed.map(({ step, row, act }) => ({
+      steps: placed.map(({ step, row, performed }) => ({
         name: step.name,
         when: step.when,
         kind: step.happened.kind,
         row,
-        act,
+        performed,
       })),
       cases: written.rules.flatMap((rule) =>
         rule.examples.map((example) => {
@@ -891,8 +918,10 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       ...(handles === undefined ? {} : { handles }),
     };
   }
-  const kitSteps = (row: number): string[] =>
-    kit?.steps.filter((step) => step.row === row).map(({ name }) => name) ?? [];
+  const kitSteps = (row: number): ExplorerAct["kitSteps"] =>
+    kit?.steps
+      .filter((step) => step.row === row)
+      .map(({ name, performed }) => ({ name, performed })) ?? [];
   const log: ExplorerAct[] = [making, ...drafts].map((draft, row) => {
     const { snapshotParent, ...rest } = draft;
     const parent =
@@ -958,6 +987,9 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       counts.set(judgment.value, counted.value === "true");
   }
   const judgments = new Map<number, ExplorerJudgment>();
+  // a member is its file's index where the pod holds a file for it, and else its IRI
+  const keyOf = (value: string): number | string => fileOf(value) ?? value;
+  const judgedKeys = new Map<number, (number | string)[]>();
   loaded.forEach(({ graph, thing }, file) => {
     if (kinds[file] !== "judgment" || graph === undefined) return;
     const verdict = object(graph, thing, `${CASCADE}verdict`)?.value;
@@ -974,6 +1006,13 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
         ? undefined
         : ruleAt.get(`${version}\n${rule}`);
     const counted = counts.get(thing);
+    const heldOf = graph
+      .objects(iri(thing), `${PROV}hadMember`)
+      .map(({ value }) => value);
+    const others = [
+      ...new Set(heldOf.filter((value) => fileOf(value) === undefined)),
+    ].sort(compare);
+    judgedKeys.set(file, heldOf.map(keyOf));
     judgments.set(file, {
       ...(verdict === undefined ? {} : { verdict: used.curie(verdict) }),
       by: graph
@@ -985,10 +1024,10 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
         ? {}
         : { justification: used.curie(justification) }),
       ...(description === undefined ? {} : { description }),
-      members: graph
-        .objects(iri(thing), `${PROV}hadMember`)
-        .flatMap(({ value }) => fileOf(value) ?? [])
-        .sort((a, b) => a - b),
+      members: [
+        ...new Set(heldOf.flatMap((value) => fileOf(value) ?? [])),
+      ].sort((a, b) => a - b),
+      ...(others.length === 0 ? {} : { others }),
       ...(counted === undefined ? {} : { counts: counted }),
       ...(ruleRow === undefined ? {} : { rule: ruleRow }),
     });
@@ -1021,9 +1060,13 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       for (const subject of new Map(
         subjects.map((each) => [each.value, each]),
       ).values()) {
-        const members = graph
+        const merged = graph
           .objects(subject, `${CASCADE}mergedFrom`)
-          .flatMap(({ value }) => fileOf(value) ?? []);
+          .map(({ value }) => value);
+        const members = merged.flatMap((value) => fileOf(value) ?? []);
+        const others = [
+          ...new Set(merged.filter((value) => fileOf(value) === undefined)),
+        ].sort(compare);
         const lead = fileOf(
           object(graph, subject.value, `${CASCADE}leadMember`)?.value ?? "",
         );
@@ -1036,13 +1079,15 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
         const nodes = graph.objects(subject, `${CASCADE}memberCurrentValues`);
         const nodeOfMember = new Map(
           nodes.flatMap((node) => {
-            const of = fileOf(
-              object(graph, node.value, `${CASCADE}valuesOfMember`)?.value ??
-                "",
-            );
-            return of === undefined ? [] : [[of, node] as const];
+            const of = object(
+              graph,
+              node.value,
+              `${CASCADE}valuesOfMember`,
+            )?.value;
+            return of === undefined ? [] : [[keyOf(of), node] as const];
           }),
         );
+        const memberKeys = [...sorted, ...others];
         const properties = new Set<string>();
         for (const from of [subject, ...nodes])
           for (const [, predicate] of graph.match(from))
@@ -1058,7 +1103,7 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
                 .join(", ");
         const fields = [...properties]
           .map((predicate) => {
-            const each = sorted.map((member) =>
+            const each = memberKeys.map((member) =>
               cell(nodeOfMember.get(member), predicate),
             );
             return {
@@ -1070,17 +1115,18 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
           })
           .sort((a, b) => compare(a.term, b.term));
         const id = `${file}#${subject.value.slice(subject.value.indexOf("#") + 1)}`;
-        const joined = [...judgments].filter(
-          ([, { members: held }]) =>
-            held.filter((member) => sorted.includes(member)).length >= 2,
+        const inEntry = new Set<number | string>(memberKeys);
+        const namedIn = new Map(
+          [...judgedKeys].map(([judged, keys]) => [
+            judged,
+            new Set(keys.filter((key) => inEntry.has(key))).size,
+          ]),
         );
-        const within = joined.map(([judged]) => judged);
-        const touching = [...judgments]
-          .filter(
-            ([judged, { members: held }]) =>
-              !within.includes(judged) &&
-              held.some((member) => sorted.includes(member)),
-          )
+        const within = [...namedIn]
+          .filter(([, count]) => count >= 2)
+          .map(([judged]) => judged);
+        const touching = [...namedIn]
+          .filter(([, count]) => count === 1)
           .map(([judged]) => judged);
         for (const member of sorted) entryOfRecord.set(member, id);
         const entryPage = site.page(subject);
@@ -1089,6 +1135,7 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
           label: site.name(subject),
           ...(entryPage === undefined ? {} : { page: entryPage }),
           members: sorted,
+          ...(others.length === 0 ? {} : { others }),
           ...(lead === undefined ? {} : { lead }),
           ...(status === undefined ? {} : { statusFrom: status }),
           fields,
@@ -1172,28 +1219,32 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   });
   const handleOfRecord = new Map<number, string>();
   if (handles !== undefined) {
-    // a handle of a record the kit names is found by the file's thing, which the handles file gives as a record's name
-    for (const [handle, value] of Object.entries(handles.records ?? {}) as [
-      string,
-      {
-        readonly server?: string;
-        readonly type?: string;
-        readonly id?: string;
-      },
-    ][]) {
-      const url =
-        value.server === undefined
-          ? undefined
-          : `${value.server}/${value.type ?? ""}/${value.id ?? ""}`;
-      if (url === undefined) continue;
-      loaded.forEach(({ graph, thing }, file) => {
-        if (
-          kinds[file] === "record" &&
-          graph !== undefined &&
-          object(graph, thing, `${CASCADE}sourceUrl`)?.value === url
-        )
-          handleOfRecord.set(file, handle);
-      });
+    // the runtime names each record from the handle's inputs as the kit's steps do; the file whose thing is that name is it
+    const recordOfName = new Map<string, number>();
+    const sessions: string[] = [];
+    loaded.forEach(({ thing }, file) => {
+      if (kinds[file] === "record") recordOfName.set(thing, file);
+      if (kinds[file] === "session") sessions.push(thing);
+    });
+    for (const [handle, inputs] of Object.entries(handles.records ?? {})) {
+      const { entry, position } = inputs;
+      const named =
+        typeof entry === "string" && typeof position === "number"
+          ? await Promise.all(
+              sessions.map((session) => enteredRecordName(session, position)),
+            )
+          : [
+              await recordNamedByInputs(
+                vocabulary,
+                `conformance/${options.kit}`,
+                handle,
+                inputs,
+              ),
+            ];
+      for (const name of named) {
+        const file = name === undefined ? undefined : recordOfName.get(name);
+        if (file !== undefined) handleOfRecord.set(file, handle);
+      }
     }
   }
 
@@ -1326,7 +1377,12 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
             lens,
             columns: found.columns,
             rows: found.rows.map((row) =>
-              found.columns.map((column) => row.get(column)?.value ?? ""),
+              found.columns.map((column) => {
+                const cell = row.get(column);
+                return cell?.termType === "NamedNode"
+                  ? used.curie(cell.value)
+                  : (cell?.value ?? "");
+              }),
             ),
           },
         ];

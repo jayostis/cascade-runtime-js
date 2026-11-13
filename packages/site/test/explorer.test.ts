@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { dirname } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { dirname, join } from "node:path";
 import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -34,6 +38,7 @@ let vocabulary: LocalVocabulary;
 let kit: { site: Site; data: ExplorerData; built: Map<string, Uint8Array> };
 let none: ExplorerData;
 let matching: { site: Site; data: ExplorerData };
+let alex: { site: Site; data: ExplorerData };
 
 const optionsFor = (pod: MemoryFiles, name: string): SiteOptions => ({
   vocabulary: vocabulary.files,
@@ -71,6 +76,21 @@ before(async () => {
       EXPLORER_FILE,
     ),
   );
+  const alexPod = new MemoryFiles("https://pod.example/");
+  await featurePod(
+    vocabulary,
+    "conformance/alex-rivera/alex-rivera.feature",
+    alexPod,
+    {},
+  );
+  const alexSite = await Site.build({
+    ...optionsFor(alexPod, "alex-rivera"),
+    kit: "alex-rivera",
+  });
+  alex = {
+    site: alexSite,
+    data: decoded((await alexSite.files()).get(EXPLORER_FILE)),
+  };
   const joined = new MemoryFiles("https://pod.example/");
   await featurePod(vocabulary, MATCHER, joined, {
     example: EXAMPLE,
@@ -167,7 +187,7 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
         ],
       );
       assert.deepEqual(
-        data.log.map(({ kitSteps }) => kitSteps),
+        data.log.map(({ kitSteps }) => kitSteps.map(({ name }) => name)),
         [["E1"], ["E2"], ["J1"], ["E3"]],
       );
       const [first, second] = data.kit?.cases ?? [];
@@ -227,6 +247,65 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
         index.files.some(({ path }) => path.startsWith("queries/")),
         "no query is listed",
       );
+    });
+  });
+
+  describe("given a pod built from the kit with every kind of handle", () => {
+    it("resolves every handle of the kit's records to the one record file the runtime names from its inputs", () => {
+      const { data } = alex;
+      const handles = Object.keys(data.kit?.handles?.records ?? {});
+      assert.ok(handles.length > 20, "the kit gives few handles");
+      for (const handle of handles)
+        assert.equal(
+          data.files.filter((each) => each.handle === handle).length,
+          1,
+          `${handle} names no record file, or several`,
+        );
+      for (const handle of ["APP-ALG-PEANUT", "U-IMM-TDAP"])
+        assert.equal(
+          data.files.find((each) => each.handle === handle)?.kind,
+          "record",
+          handle,
+        );
+    });
+
+    it("keeps the members of an entry that are no file of the pod, and the judgments that name them", () => {
+      const { data } = alex;
+      const profile = data.views
+        .flatMap(({ entries }) => entries)
+        .find(({ id }) => id.startsWith("clinical/patient-profile.ttl#"));
+      assert.ok(profile, "no patient entry");
+      assert.deepEqual(profile.members, []);
+      assert.equal(profile.others?.length, 3);
+      assert.ok(profile.touching.length + profile.within.length > 0);
+      for (const judged of [...profile.within, ...profile.touching])
+        assert.ok(
+          data.files[judged]?.judgment?.others?.some((other) =>
+            profile.others?.includes(other),
+          ),
+          `${data.files[judged]?.path} names none of the entry's members`,
+        );
+      for (const field of profile.fields) assert.equal(field.members.length, 3);
+    });
+
+    it("names the manifest's thing as the manifest, so the pod has its creation time, and types the manifest and the card", () => {
+      const { data } = alex;
+      assert.match(data.pod.created ?? "", /^\d{4}-\d\d-\d\dT/);
+      assert.ok(data.files[data.pod.manifest]?.types.length);
+      assert.ok(data.files[data.pod.card]?.types.length);
+    });
+
+    it("says of each kit step whether it was performed, apart from whether its row wrote files", () => {
+      const { data } = alex;
+      const performed = new Map(
+        data.kit?.steps.map(({ name, performed }) => [name, performed]),
+      );
+      for (const name of ["E7", "E9", "M2"])
+        assert.equal(performed.get(name), false, name);
+      assert.equal(performed.get("E6"), true);
+      for (const row of data.log)
+        for (const step of row.kitSteps)
+          assert.equal(step.performed, performed.get(step.name), step.name);
     });
   });
 
@@ -365,13 +444,59 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       assert.match(reported?.problem ?? "", /hashes to/);
     });
 
+    it("reports a rule list's queryPath that leaves matcher/ as the rule's problem, resolving it as the matcher does", async () => {
+      const { data, site } = matching;
+      const rule = data.matcherRules.find(({ query }) => query !== undefined);
+      assert.ok(rule, "no rule has a query");
+      const listed = `runtime/rule-list/${fileStem(rule.version)}.ttl`;
+      const changed: Files = {
+        iri: vocabulary.files.iri,
+        read: async (name) =>
+          name === listed
+            ? new TextEncoder().encode(
+                `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .\n[] a cascade:RuleListRow ; cascade:matcherRule ${rule.rule} ; cascade:queryPath "../questions/pod/How many judgments count.rq" ; cascade:queryHash <${rule.hash}> .`,
+              )
+            : vocabulary.files.read(name),
+        write: (name, bytes) => vocabulary.files.write(name, bytes),
+        list: (folder) => vocabulary.files.list(folder),
+      };
+      const altered = decoded(
+        (
+          await (
+            await Site.build({ ...site.options, vocabulary: changed })
+          ).files()
+        ).get(EXPLORER_FILE),
+      );
+      const found = altered.matcherRules.find(
+        ({ rule: term }) => term === rule.rule,
+      );
+      assert.equal(found?.by, "path");
+      assert.equal(found?.query, undefined);
+      assert.match(
+        found?.problem ?? "",
+        /names no query under queries\/matcher\//,
+      );
+    });
+
     it("gives each lens's count of the judgments that count, and the order the build runs its derivations", () => {
       const { data, site } = matching;
       assert.ok(data.lenses.some(({ lens }) => lens === site.options.lens));
       for (const { rows, columns } of data.lenses) {
         assert.ok(rows.length > 0);
-        for (const row of rows) assert.equal(row.length, columns.length);
+        for (const row of rows) {
+          assert.equal(row.length, columns.length);
+          for (const cell of row)
+            assert.ok(
+              !cell.startsWith("https://ns.cascadeprotocol.org/"),
+              cell,
+            );
+        }
       }
+      assert.ok(
+        data.lenses.some(({ rows }) =>
+          rows.some((row) => row.some((cell) => cell.startsWith("cascade:"))),
+        ),
+      );
       const steps = site.pipeline.get(site.options.lens) ?? [];
       const ordered = data.queries
         .filter(({ order }) => order !== undefined)
@@ -385,6 +510,89 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
           ordered[index]?.added?.reduce((sum, [, count]) => sum + count, 0),
           step.added.length,
         );
+    });
+  });
+
+  describe("given the check in scripts/explorer-check.mjs over a built pod", () => {
+    const tree = (name: string): string => {
+      const folder = join(tmpdir(), `explorer-check-${process.pid}-${name}`);
+      rmSync(folder, { recursive: true, force: true });
+      for (const [path, bytes] of kit.built) {
+        mkdirSync(dirname(join(folder, "tamsin", path)), { recursive: true });
+        writeFileSync(join(folder, "tamsin", path), bytes);
+      }
+      return folder;
+    };
+    const check = (folder: string) =>
+      spawnSync(
+        process.execPath,
+        [join(ROOT, "scripts/explorer-check.mjs"), "--tree", folder],
+        { encoding: "utf8" },
+      );
+    const rewrite = (
+      folder: string,
+      change: (data: ExplorerData) => ExplorerData,
+    ): void => {
+      const path = join(folder, "tamsin", EXPLORER_FILE);
+      writeFileSync(
+        path,
+        JSON.stringify(change(JSON.parse(readFileSync(path, "utf8")))),
+      );
+    };
+
+    it("passes a pod as built", () => {
+      const folder = tree("whole");
+      const result = check(folder);
+      rmSync(folder, { recursive: true, force: true });
+      assert.equal(result.status, 0, result.stderr);
+    });
+
+    it("fails a file in the pod that the object does not list", () => {
+      const folder = tree("extra");
+      writeFileSync(join(folder, "tamsin/pod/records/extra.ttl"), "");
+      const result = check(folder);
+      rmSync(folder, { recursive: true, force: true });
+      assert.equal(result.status, 1);
+      assert.match(
+        result.stderr,
+        /pod\/records\/extra\.ttl|records\/extra\.ttl/,
+      );
+    });
+
+    it("fails a file the object lists that the pod does not hold", () => {
+      const folder = tree("gone");
+      const gone = [...kit.built.keys()].find((path) =>
+        path.startsWith("pod/records/"),
+      ) as string;
+      rmSync(join(folder, "tamsin", gone));
+      const result = check(folder);
+      rmSync(folder, { recursive: true, force: true });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /records\//);
+    });
+
+    it("fails a record given the build as its writer, which only the files the build rewrites have", () => {
+      const folder = tree("build");
+      rewrite(folder, (data) => {
+        const at = data.files.findIndex(({ kind }) => kind === "record");
+        const record = data.files[at] as ExplorerFile;
+        const row = data.log[record.writer as number];
+        return {
+          ...data,
+          files: data.files.map((each, index) =>
+            index === at ? { ...each, writer: "build" } : each,
+          ),
+          log: data.log.map((each) =>
+            each === row
+              ? { ...each, wrote: each.wrote.filter((index) => index !== at) }
+              : each,
+          ),
+        };
+      });
+      const result = check(folder);
+      rmSync(folder, { recursive: true, force: true });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /the build/);
     });
   });
 });

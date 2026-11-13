@@ -141,6 +141,66 @@ interface Handles {
   readonly judgments?: Record<string, string>;
 }
 
+/**
+ * The record name a handle's inputs give where the kit's files alone decide it: a server's resource, a document's
+ * selector, or a C-CDA document's entry by its id or its class and key or members. Undefined for the inputs that need a
+ * replay (an entry's position, a download).
+ */
+export async function recordNamedByInputs(
+  vocabulary: Files,
+  kit: string,
+  handle: string,
+  inputs: Readonly<Record<string, unknown>>,
+): Promise<string | undefined> {
+  const { server, type, id, document, selector } = inputs;
+  if (
+    typeof server === "string" &&
+    typeof type === "string" &&
+    typeof id === "string"
+  )
+    return recordFromServerName(server, type, id);
+  if (typeof document !== "string") return undefined;
+  const path = `${kit}/${document}`;
+  const bytes = await vocabulary.read(path);
+  if (typeof selector === "string") {
+    if (bytes === undefined)
+      throw new Error(`${vocabulary.iri}${path} does not exist`);
+    return recordFromDocumentName(await documentName(bytes), selector);
+  }
+  const scopes = bytes === undefined ? undefined : scopesOf(bytes);
+  if (scopes === undefined)
+    throw new Error(`${handle} names ${path}, which is no C-CDA document`);
+  if (scopes === null)
+    throw new Error(
+      `${handle} names ${path}, whose custodian has no id that names an organization, or which states not exactly one patient with an id: handles.json gives its selector`,
+    );
+  const { identifier, class: entryClass, key, members } = inputs;
+  const strings = (value: unknown): value is string[] =>
+    Array.isArray(value) && value.every((part) => typeof part === "string");
+  if (typeof identifier === "string") {
+    const colon = identifier.indexOf(":");
+    return recordFromCcdaName({
+      ...scopes,
+      entry:
+        colon === -1
+          ? { root: identifier }
+          : {
+              root: identifier.slice(0, colon),
+              extension: identifier.slice(colon + 1),
+            },
+    });
+  }
+  if (typeof entryClass === "string" && (strings(key) || strings(members)))
+    return recordFromCcdaWithoutIdName({
+      ...scopes,
+      entryClass: `${CASCADE}${entryClass}`,
+      ...(strings(key)
+        ? { keyFingerprint: await fingerprint(key) }
+        : { membersFingerprint: await fingerprint(members as string[]) }),
+    });
+  throw new Error(`handles.json gives ${handle} no name inputs`);
+}
+
 /** Splits a list of things in words, joined by `,`, `and` or `or`, outside quotes. */
 export function listed(words: string): string[] {
   const parts: string[] = [];
@@ -285,21 +345,14 @@ export class Words {
     const inputs =
       this.#handles?.records?.[handle] ?? this.#handles?.profiles?.[handle];
     if (inputs === undefined) return undefined;
-    const { server, type, id, document, selector, entry, position, download } =
-      inputs;
-    if (
-      typeof server === "string" &&
-      typeof type === "string" &&
-      typeof id === "string"
-    )
-      return recordFromServerName(server, type, id);
-    if (typeof document === "string" && typeof selector === "string")
-      return recordFromDocumentName(
-        await this.#document(`${this.#kit}/${document}`),
-        selector,
-      );
-    if (typeof document === "string")
-      return this.#ccdaRecord(handle, document, inputs);
+    const { entry, position, download } = inputs;
+    const named = await recordNamedByInputs(
+      this.#vocabulary,
+      this.#kit,
+      handle,
+      inputs,
+    );
+    if (named !== undefined) return named;
     if (typeof entry === "string" && typeof position === "number") {
       const file = entry.slice(entry.lastIndexOf("/entries/") + 1);
       const step = this.#replayed.steps.find(
@@ -324,48 +377,6 @@ export class Words {
         "record",
       );
     }
-    throw new Error(`handles.json gives ${handle} no name inputs`);
-  }
-
-  /** A C-CDA record a handle names by its document's scopes and its entry's id, or its class and key or members. */
-  async #ccdaRecord(
-    handle: string,
-    document: string,
-    inputs: Readonly<Record<string, unknown>>,
-  ): Promise<string> {
-    const path = `${this.#kit}/${document}`;
-    const bytes = await this.#vocabulary.read(path);
-    const scopes = bytes === undefined ? undefined : scopesOf(bytes);
-    if (scopes === undefined)
-      throw new Error(`${handle} names ${path}, which is no C-CDA document`);
-    if (scopes === null)
-      throw new Error(
-        `${handle} names ${path}, whose custodian has no id that names an organization, or which states not exactly one patient with an id: handles.json gives its selector`,
-      );
-    const { identifier, class: entryClass, key, members } = inputs;
-    const strings = (value: unknown): value is string[] =>
-      Array.isArray(value) && value.every((part) => typeof part === "string");
-    if (typeof identifier === "string") {
-      const colon = identifier.indexOf(":");
-      return recordFromCcdaName({
-        ...scopes,
-        entry:
-          colon === -1
-            ? { root: identifier }
-            : {
-                root: identifier.slice(0, colon),
-                extension: identifier.slice(colon + 1),
-              },
-      });
-    }
-    if (typeof entryClass === "string" && (strings(key) || strings(members)))
-      return recordFromCcdaWithoutIdName({
-        ...scopes,
-        entryClass: `${CASCADE}${entryClass}`,
-        ...(strings(key)
-          ? { keyFingerprint: await fingerprint(key) }
-          : { membersFingerprint: await fingerprint(members as string[]) }),
-      });
     throw new Error(`handles.json gives ${handle} no name inputs`);
   }
 

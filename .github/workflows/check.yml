@@ -685,6 +685,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           # llms.txt links absolutely under the address the deploy serves; the pull request's artifact leaves it unset.
           PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
+      # The check `docs site` runs on a pull request, over the tree this job deploys.
+      - name: Every pod's explorer data holds together
+        run: node scripts/explorer-check.mjs --tree build/pages
       - name: Drop half-written row files before they are saved
         if: ${{ !cancelled() }}
         shell: bash

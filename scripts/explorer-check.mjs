@@ -3,7 +3,9 @@
 //   node scripts/explorer-check.mjs --tree <folder>
 //
 // Reads <folder>/<pod>/explorer.json of each folder that holds one and exits 1, naming the pod and the fault, when:
-//   - a file of the pod is no node with a writer, or its writer's row does not list it;
+//   - a file under <pod>/pod/ is no node of the object, or a node is no file there;
+//   - a node has no writer, its writer's row does not list it, or the build is its writer and it is no view, built file,
+//     manifest or type index;
 //   - an act's file is not among the files, or its snapshot names a file the pod does not hold;
 //   - a view file does not name its definition, or the definition's query is not written under queries/;
 //   - a label is empty or reads "undefined";
@@ -31,12 +33,41 @@ const badLabel = (label) =>
   label.trim() === "" ||
   /\bundefined\b|\[object /.test(label);
 
+/** The kinds of file the build writes at every build. */
+const REWRITTEN = new Set(["view", "built", "manifest", "typeindex"]);
+
+/** The paths of the pod's files under `folder`, not its `files.json`, which lists them. */
+function podFiles(folder, base = "") {
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? podFiles(join(folder, entry.name), `${base}${entry.name}/`)
+      : base === "" && entry.name === "files.json"
+        ? []
+        : [`${base}${entry.name}`],
+  );
+}
+
 /** The faults of one data object, `folder` being where its page is. */
 function faultsOf(data, folder) {
   const faults = [];
   const { files, log, views, queries } = data;
+  const held = new Set(podFiles(join(folder, "pod")));
+  const listed = new Set(files.map(({ path }) => path));
+  for (const path of held)
+    if (!listed.has(path))
+      faults.push(`${path} is in the pod and is no file of the object`);
+  for (const path of listed)
+    if (!held.has(path))
+      faults.push(`${path} is a file of the object and is not in the pod`);
   files.forEach((file, index) => {
-    if (file.writer === "build") return;
+    if (file.writer === "build") {
+      if (!REWRITTEN.has(file.kind))
+        faults.push(
+          `${file.path} is a ${file.kind} and has the build as its writer, which only a view, a built file, the manifest and the type index have`,
+        );
+      return;
+    }
     if (!Number.isInteger(file.writer) || log[file.writer] === undefined)
       faults.push(`${file.path} has no writer`);
     else if (!log[file.writer].wrote.includes(index))
