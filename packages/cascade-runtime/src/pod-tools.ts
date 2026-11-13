@@ -376,15 +376,30 @@ export interface Door {
 export type ToolInput = Readonly<Record<string, unknown>>;
 
 /**
- * A tool: `tier` the person's consent (every one here is `free`, a read); `ofPod` when it takes the pod's name in
- * `input.pod`, which `inputSchema` leaves out (`withPod` adds it); `findings`, on `find_changes`, its answer with the
- * lab changes and their rows beside it.
+ * The kinds of act, as `cascade:ModelToolActKinds` names them by their local name, that a tool may take: those whose
+ * tier is `free` or `ask`. A kind at `never` is taken by no tool, so none is named here.
+ */
+export type ToolKind =
+  | "ReadingPodsOrTables"
+  | "MovingTheAppsView"
+  | "WritingToAPod"
+  | "MakingAPodThatIsNotEncrypted"
+  | "ChangingTheAppsTablesOrSettings";
+
+/** The tiers a tool declares: its kind's `cascade:consentTier`, by the tier's `skos:notation`. */
+export type ToolTier = "free" | "ask";
+
+/**
+ * A tool: `kind` the one kind of act it takes and `tier` the person's consent to it, its kind's (every one here
+ * reads, at `free`); `ofPod` when it takes the pod's name in `input.pod`, which `inputSchema` leaves out (`withPod` adds
+ * it); `findings`, on `find_changes`, its answer with the lab changes and their rows beside it.
  */
 export interface PodTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: InputSchema;
-  readonly tier: "free";
+  readonly kind: ToolKind;
+  readonly tier: ToolTier;
   readonly ofPod?: true;
   /** @throws Refusal when the input is bad, or names a pod, a medication or a test there is not. */
   run(reads: PodReads, input: ToolInput, door?: Door): Promise<unknown>;
@@ -485,7 +500,7 @@ async function findings(
 }
 
 /**
- * Every tool, each `{ name, description, inputSchema, tier, ofPod, run(reads, input, door) }`. `run` calls only
+ * Every tool, each `{ name, description, inputSchema, kind, tier, ofPod, run(reads, input, door) }`. `run` calls only
  * `reads`; with `door.address.trend`, each lab change of `find_changes` carries `view`, the address of the page that
  * draws its results.
  */
@@ -499,6 +514,7 @@ export const TOOLS: readonly PodTool[] = (
         properties: {},
         additionalProperties: false,
       },
+      kind: "ReadingPodsOrTables",
       tier: "free",
       run: async (reads) => (await reads.pods({})).pods.map(({ name }) => name),
     },
@@ -506,6 +522,7 @@ export const TOOLS: readonly PodTool[] = (
       tool.name === "find_changes"
         ? {
             ...tool,
+            kind: "ReadingPodsOrTables",
             tier: "free",
             ofPod: true,
             findings,
@@ -514,6 +531,7 @@ export const TOOLS: readonly PodTool[] = (
           }
         : {
             ...tool,
+            kind: "ReadingPodsOrTables",
             tier: "free",
             ofPod: true,
             run: async (reads, { pod, ...input }) =>
@@ -565,6 +583,7 @@ export const TOOLS: readonly PodTool[] = (
         },
         additionalProperties: false,
       },
+      kind: "ReadingPodsOrTables",
       tier: "free",
       ofPod: true,
       run: async (reads, input) => {
@@ -638,9 +657,25 @@ export const TOOLS: readonly PodTool[] = (
         properties: {},
         additionalProperties: false,
       },
+      kind: "ReadingPodsOrTables",
       tier: "free",
       ofPod: true,
       run: tableChecks,
     },
   ] satisfies PodTool[]
 ).map(checked);
+
+/** A tool as the conformance run lists it: its name, the IRI of its kind of act and the tier it declares. */
+export interface OfferedTool {
+  readonly name: string;
+  readonly kind: string;
+  readonly tier: string;
+}
+
+/** Every tool of `TOOLS` as the conformance run lists the tools offered a model. */
+export const offeredTools = (): OfferedTool[] =>
+  TOOLS.map(({ name, kind, tier }) => ({
+    name,
+    kind: `https://ns.cascadeprotocol.org/cascade#${kind}`,
+    tier,
+  }));

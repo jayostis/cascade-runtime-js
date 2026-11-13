@@ -13,6 +13,7 @@ import {
   type Assertion,
   earl,
   featureStory,
+  type OfferedTool,
   runConformance,
   type TestedWith,
 } from "../conformance.js";
@@ -75,6 +76,25 @@ function testedWith(resolved: Resolved): TestedWith {
   };
 }
 
+/**
+ * The tools `cascade-runtime/tools` offers a model. That package is built on this one, so this one imports nothing of
+ * it: the command loads it when it runs, by a name TypeScript does not follow.
+ */
+async function toolsOffered(): Promise<readonly OfferedTool[]> {
+  const name = "cascade-runtime/tools";
+  try {
+    const { offeredTools } = (await import(name)) as {
+      offeredTools: () => OfferedTool[];
+    };
+    return offeredTools();
+  } catch (error) {
+    throw new Error(
+      `${name} lists the tools the examples read, and did not load (tsc -b packages/cascade-runtime builds it)`,
+      { cause: error },
+    );
+  }
+}
+
 async function conformance(args: string[]): Promise<number> {
   const { values } = parseArgs({
     args,
@@ -111,6 +131,7 @@ async function conformance(args: string[]): Promise<number> {
     importers: importersNamed(config.importers),
     layout,
     derive: await vocabularyDerive(files, layout),
+    tools: await toolsOffered(),
     shapes: await Shapes.read(files, () => new OxigraphStore()),
     ...(values.feature === undefined ? {} : { features: values.feature }),
   });
