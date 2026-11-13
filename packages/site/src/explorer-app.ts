@@ -44,7 +44,7 @@ ${front !== undefined && markup`<a href="${front}">Cascade pods</a>`}
 export const EXPLORER_SCRIPT = String.raw`'use strict';
 (function () {
 var root = document.getElementById('explorer');
-var D, F, Q, END, answers;
+var D, F, Q, END, answers, byThing, labels, viewDir;
 var state = { sel: 'p:', step: 0, open: { 'p:': 1, 'q:': 1 }, pane: 'ins', filter: '' };
 var KIND = { bytes: 'source bytes', revision: 'revision', version: 'version', record: 'record', judgment: 'judgment', assertion: 'matcher assertion', retraction: 'retraction', import: 'import', session: 'hand-entry session', matcherrun: 'matcher run', act: 'act', document: 'document', series: 'reference series', subject: 'subject', profile: 'profile', preferences: 'preferences', typeindex: 'type index', manifest: 'manifest', view: 'materialized view', built: 'built file', other: 'file' };
 var FIXED = {
@@ -54,11 +54,23 @@ var FIXED = {
   step: 'Pick an act to see the pod after it. Files written later are hidden; files the act wrote are marked.',
   built: 'The build writes this file after every act, from the pod’s other files. It is never a source: deleting it loses nothing.',
   views: 'A view is two things. Its definition is a CONSTRUCT query in the vocabulary. Its file is what that query wrote the last time the build ran. An app reads the file; the runtime runs the definition.',
-  shard: 'Files in this folder sit in two-character folders named from the start of the file’s name. They only spread the files out; the tree shows them as a prefix of the name.'
+  shard: 'Files in this folder sit in two-character folders named from the start of the file’s name. They only spread the files out; the tree shows them as a prefix of the name.',
+  logTime: 'A person’s judgment is named by no snapshot. It carries its own time, and is placed in the log by it.',
+  logNone: 'These files are named by no act and carry no time: they were there when the pod was made.',
+  pipeline: 'The build loads the pod’s stored files, then runs the derivations in a fixed order. Each is a CONSTRUCT that adds statements to the derived state, which the next can read; that state is never written to the pod. The view definitions then read it and write the files of the views’ folder. Click a box.',
+  readBy: 'Approximate: the queries whose WHERE names a term that the files here use, the most terms in common first. A trace of the run would be exact.'
+};
+var TAGS = {
+  pod: 'What the pod’s own files say',
+  vocabulary: 'The label or comment the vocabulary gives a term',
+  query: 'Rows an answer returned, or a query’s own text',
+  layout: 'What the vocabulary’s layout file says of where files go',
+  kit: 'What the kit’s feature file says',
+  fixed: 'The same words on every pod'
 };
 
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-function tag(kind, why) { return '<span class="src ' + kind + '" title="' + esc(why || '') + '">' + kind + '</span>'; }
+function tag(kind, why) { return '<span class="src ' + kind + '" title="' + esc(why || TAGS[kind] || '') + '">' + kind + '</span>'; }
 function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many || one + 's'); }
 function termLabel(c) { var t = D.terms[c]; return (t && t.label) || String(c).split(':').pop().replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase(); }
 function term(c) { return '<i class="term" data-term="' + esc(c) + '" title="' + esc(c) + '">' + esc(termLabel(c)) + '</i>'; }
@@ -81,8 +93,15 @@ function vocabulary(c) {
 }
 function fixed(k) { return '<p class="fx">' + esc(FIXED[k]) + tag('fixed', 'The same words on every pod') + '</p>'; }
 
+function svg(d, cls) { return '<svg class="' + cls + '" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">' + d + '</svg>'; }
+var SHEET = '<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3"/>';
 var ICON = {
-  dir: '▤', file: '□', built: '▣', bytes: '▥', rq: '◇'
+  dir: svg('<path d="M1.5 4.2c0-.6.4-1 1-1h3.2l1.4 1.5h6.4c.6 0 1 .4 1 1v6.8c0 .6-.4 1-1 1h-11c-.6 0-1-.4-1-1z" fill="currentColor" fill-opacity=".22"/>', 'folder closed'),
+  open: svg('<path d="M1.5 12.5V4.2c0-.6.4-1 1-1h3.2l1.4 1.5h5.4c.6 0 1 .4 1 1V7"/><path d="M1.5 12.5 3.3 7.6c.1-.4.5-.6.9-.6h9.9c.6 0 1 .6.8 1.2l-1.4 3.7c-.1.4-.5.6-.9.6z" fill="currentColor" fill-opacity=".22"/>', 'folder open'),
+  file: svg(SHEET + '<path d="M5.5 8h5M5.5 10.5h5" stroke-width="1"/>', 'doc'),
+  built: svg('<path d="M3.5 1.5h6l3 3v10h-9z" fill="currentColor" fill-opacity=".14"/><path d="M9.5 1.5v3h3"/><path d="M5.8 10.2a2.3 2.3 0 1 0 .5-2.5M5.5 6.8v1.3h1.3" stroke-width="1.1"/>', 'doc built'),
+  bytes: svg(SHEET + '<path d="M5.8 8.5v3M8 8.5v3M10.2 8.5v3" stroke-width="1.1"/>', 'doc bytes'),
+  rq: svg(SHEET + '<path d="M6.5 8 5 9.7l1.5 1.7M9.5 8l1.5 1.7-1.5 1.7" stroke-width="1.1"/>', 'doc query')
 };
 function iconOf(f) { return f.kind === 'bytes' ? ICON.bytes : f.writer === 'build' ? ICON.built : ICON.file; }
 
@@ -129,7 +148,7 @@ function treeHtml() {
       var vis = isQuery ? allFiles(sub) : allFiles(sub).filter(exists);
       if (!vis.length) return;
       var fresh = !isQuery && vis.some(isNew), open = state.open[sub.id];
-      out.push(row(sub.id, depth, 'dir', open ? '▾' : '▸', ICON.dir, esc(sub.name) + '/', '', (fresh ? '<span class="dot" title="The selected act wrote here"></span>' : '') + '<span class="ct">' + vis.length + '</span>'));
+      out.push(row(sub.id, depth, 'dir', open ? '▾' : '▸', open ? ICON.open : ICON.dir, esc(sub.name) + '/', '', (fresh ? '<span class="dot" title="The selected act wrote here"></span>' : '') + '<span class="ct">' + vis.length + '</span>'));
       if (open) walk(sub, depth + 1, isQuery);
     });
     d.files.slice().sort(function (a, b) { var x = (a.shard || '') + a.base, y = (b.shard || '') + b.base; return x < y ? -1 : x > y ? 1 : 0; }).forEach(function (x) {
@@ -169,7 +188,7 @@ function logHtml() {
     return '<div class="act' + (i === state.step ? ' cur' : '') + (i > state.step ? ' later' : '') + '" data-step="' + i + '">' +
       '<div class="n">' + i + '</div><div><div class="when">' + (r.time ? fmt(r.time) : '—') + (r.how === 'snapshot' ? ' <span class="chainmark" title="Leaves a snapshot">◆</span>' : '') + '</div>' +
       '<div class="what">' + esc(actTitle(r)) + '</div>' +
-      '<div class="meta"><span class="pill new">+' + plural(r.wrote.length, 'file') + '</span>' + kit + (cases.length ? '<span class="pill" title="Kit cases checked after this row">' + cases.map(function (c) { return esc(c.id || c.rule); }).filter(function (x, j, all) { return all.indexOf(x) === j; }).join(' ') + '</span>' : '') + '</div></div></div>';
+      '<div class="meta"><span class="pill new">+' + plural(r.wrote.length, 'file') + '</span>' + (r.missing.length ? '<span class="pill warn" title="Files the snapshot names that the pod does not hold">' + r.missing.length + ' missing</span>' : '') + kit + (cases.length ? '<span class="pill" title="Kit cases checked after this row">' + cases.map(function (c) { return esc(c.id || c.rule); }).filter(function (x, j, all) { return all.indexOf(x) === j; }).join(' ') + '</span>' : '') + '</div></div></div>';
   }).join('');
 }
 
@@ -203,17 +222,54 @@ function three(titles, a, b, c) {
   return '<div class="cards">' + [a, b, c].map(function (body, i) { return '<div class="card"><h4>' + titles[i] + '</h4>' + body + '</div>'; }).join('') + '</div>';
 }
 var FILE_CARDS = ['Written by', 'Read by', 'Names and is named by'];
+var DIR_CARDS = ['Written by', 'Read by', 'Contains'];
 var QUERY_CARDS = ['Output', 'Reads', 'Writes'];
 function none(text) { return '<span class="lbl">' + text + '</span>'; }
 
+/* the queries whose WHERE names a term the files use: approximate, as nothing records which query read which file */
+function readByHtml(files) {
+  var have = new Set(), found = [];
+  files.forEach(function (f) { (f.terms || []).forEach(function (i) { have.add(D.termList[i]); }); });
+  D.queries.forEach(function (q, qi) {
+    var shared = q.reads.filter(function (t) { return have.has(t); });
+    if (shared.length) found.push({ qi: qi, shared: shared });
+  });
+  found.sort(function (a, b) { return b.shared.length - a.shared.length || (D.queries[a.qi].path < D.queries[b.qi].path ? -1 : 1); });
+  var note = '<p class="lbl">' + esc(FIXED.readBy) + tag('fixed') + '</p>';
+  if (!found.length) return none('No query’s WHERE names a term used here.') + note;
+  return list(found.map(function (x) {
+    return '<a class="ref" data-go="' + esc(queryId(x.qi)) + '" title="' + esc(x.shared.join(', ')) + '">' + esc(D.queries[x.qi].path.replace(/^queries\//, '')) + '</a> <span class="lbl" title="Terms it shares">' + x.shared.length + '</span>';
+  }), 8) + note;
+}
+
 /* inspector */
 function crumbs(id) {
+  if (id === '~log') return '<nav class="crumbs"><a data-go="p:">the pod</a> / log / <b>act ' + state.step + '</b></nav>';
   var kind = id.slice(0, 2), path = id.slice(2), parts = path.split('/').filter(Boolean), acc = kind, out = ['<a data-go="' + kind + '">' + (kind === 'p:' ? 'the pod' : 'cascade-vocabulary') + '</a>'];
   parts.forEach(function (p, i) {
     acc += p + (i < parts.length - 1 || path.slice(-1) === '/' ? '/' : '');
     out.push(i === parts.length - 1 ? '<b>' + esc(shortName(p)) + '</b>' : '<a data-go="' + esc(acc) + '">' + esc(p) + '</a>');
   });
   return '<nav class="crumbs">' + out.join(' / ') + '</nav>';
+}
+/* stored files, the lens, the derivations, the view definitions, the views' folder: each box opens its folder */
+function flowHtml() {
+  var n = function (p) { return D.files.filter(function (f) { return f.path.indexOf(p) === 0 && exists(f); }).length; };
+  var made = D.files.filter(function (f) { return f.kind === 'view'; });
+  var viewDir = made.length ? made[0].path.split('/')[0] + '/' : null;
+  var der = D.queries.filter(function (q) { return q.group === 'derivations' && q.order != null; });
+  var vq = D.queries.filter(function (q) { return q.group === 'views'; });
+  var box = function (id, cls, pre, name, text) { return '<div class="box ' + cls + '" data-go="' + esc(id) + '" role="link" tabindex="0"><b>' + (pre ? '<small>' + pre + '</small>' : '') + esc(name) + '</b><span>' + text + '</span></div>'; };
+  var col = function (cap, inner) { return inner ? '<div class="col"><div class="cap">' + cap + '</div>' + inner + '</div>' : ''; };
+  var stored = [['records/', ': records, revisions and versions'], ['judgments/', ''], ['references/', '']].filter(function (s) { return dirs.has('p:' + s[0]); }).map(function (s) { return box('p:' + s[0], '', '', s[0], plural(n(s[0]), 'file') + s[1]); }).join('');
+  var cols = [
+    col('stored in the pod', stored),
+    col('the lens', dirs.has('q:queries/lenses/') ? box('q:queries/lenses/', 'q', 'queries/', 'lenses/', 'in use: <b>' + esc(D.pod.lens) + '</b>. Decides which judgments count') : ''),
+    col('derived state, in no file', dirs.has('q:queries/derivations/') ? box('q:queries/derivations/', 'q', 'queries/', 'derivations/', plural(der.length, 'CONSTRUCT') + ' in a fixed order; ' + der.filter(function (q) { return q.added && q.added.length; }).length + ' of them added statements on this pod') : ''),
+    col('view definitions', dirs.has('q:queries/views/') ? box('q:queries/views/', 'q', 'queries/', 'views/', plural(vq.length, 'CONSTRUCT') + '; ' + vq.filter(function (q) { return q.file != null; }).length + ' of them wrote a file on this pod') : ''),
+    col('materialized views', viewDir && dirs.has('p:' + viewDir) ? box('p:' + viewDir, 'built', '', viewDir, plural(made.length, 'file') + ', ' + plural(D.views.reduce(function (t, v) { return t + v.entries.length; }, 0), 'entry', 'entries') + ', rebuilt after every act. What an app reads') : '')
+  ].filter(Boolean);
+  return '<div class="flow">' + cols.join('<div class="arr">→</div>') + '</div>';
 }
 function rootPanel() {
   var vis = D.files.filter(exists), c = function (k) { return vis.filter(function (f) { return f.kind === k; }).length; };
@@ -232,6 +288,7 @@ function rootPanel() {
   return '<h1>' + esc(D.pod.title) + '</h1><p class="sub mono">' + esc(D.pod.address) + '</p>' +
     '<p class="gen">' + (state.step === END ? 'As published' : 'After act ' + state.step + ' of ' + END) + ': <b>' + vis.length + '</b> files. <b>' + c('record') + '</b> ' + (c('record') === 1 ? 'record' : 'records') + ', <b>' + c('revision') + '</b> ' + (c('revision') === 1 ? 'revision' : 'revisions') + ', <b>' + c('version') + '</b> ' + (c('version') === 1 ? 'version' : 'versions') + ', <b>' + c('judgment') + '</b> ' + (c('judgment') === 1 ? 'judgment' : 'judgments') + '.' + tag('pod') + '</p>' +
     fixed('pod') +
+    section('How it fits together <span>· click a box</span>', flowHtml() + fixed('pipeline')) +
     section('The directory', '<div class="tw-x"><table><thead><tr><th>path</th><th>the layout files here</th><th class="num">files</th><th>written by</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div><p class="gen">What is filed where is stated in <code>runtime/pod-layout.ttl</code>.' + tag('layout') + '</p>' + fixed('twoRoots')) +
     section('Views, both meanings', fixed('views') + '<div class="tw-x"><table class="vmap"><thead><tr><th>definition (vocabulary)</th><th></th><th>file (this pod, last build)</th></tr></thead><tbody>' + views.join('') + '</tbody></table></div>') +
     section('This build', '<dl class="kv"><dt>manifest</dt><dd>' + fileRef(D.pod.manifest) + (D.pod.created ? ' · created ' + esc(fmt(D.pod.created)) : '') + '</dd><dt>lens</dt><dd>' + esc(D.pod.lens) + '</dd>' + (D.pod.runtime ? '<dt>runtime</dt><dd>' + esc(D.pod.runtime) + '</dd>' : '') + (D.pod.head ? '<dt>latest snapshot</dt><dd class="mono">' + esc(D.pod.head) + '</dd>' : '') + (D.pod.brokenAt ? '<dt>broken at</dt><dd class="mono">' + esc(D.pod.brokenAt) + '</dd>' : '') + '</dl>' + pageLinks());
@@ -262,13 +319,14 @@ function dirPanel(id) {
   Array.from(writers.keys()).sort(function (a, b) { return a - b; }).forEach(function (r) { acts.push(actRef(r) + ' <span class="lbl">+' + writers.get(r) + '</span>'); });
   var writtenHtml = (acts.length ? list(acts, 20) : '') + queries.map(function (q) { return '<span class="pill built">rebuilt</span> ' + ref(queryId(q), false); }).join('<br>');
   var inside = Array.from(d.dirs.values()).sort(byName).filter(function (s) { return allFiles(s).some(exists); }).map(function (s) { return ref(s.id, false); });
-  h += three(FILE_CARDS, writtenHtml || none('nothing'), none('Which queries read it is not recorded here; each query lists the terms it reads.'), inside.length ? list(inside, 12) : none('no folders inside'));
+  var direct = d.files.filter(function (x) { return exists(x.it); }).length;
+  h += three(DIR_CARDS, writtenHtml || none('nothing'), readByHtml(vis), (inside.length ? list(inside, 12) : '') + (direct ? '<p class="lbl">' + plural(direct, 'file') + ' directly here</p>' : '') || none('nothing'));
   var files = vis.slice(0, 60).map(function (f) { return ref('p:' + f.path, true); });
   if (files.length) h += section('Files', list(files, 60) + (vis.length > 60 ? '<p class="gen">60 of ' + vis.length + ' shown.</p>' : ''));
   return h;
 }
 function turtleSection(f) {
-  return '<h3>Turtle</h3><pre class="code" id="body" data-path="' + esc(f.path) + '">Loading…</pre>';
+  return '<h3>Turtle <span>· grouped by subject, with prefixes</span></h3><pre class="code turtle" id="body" data-path="' + esc(f.path) + '">Loading…</pre><div id="notes"></div>';
 }
 function filePanel(f) {
   var i = D.files.indexOf(f);
@@ -280,7 +338,7 @@ function filePanel(f) {
   var written = writtenBy(f);
   if (f.view != null && f.writtenBy == null) { var v = D.views[f.view]; written += '<br>Its definition: ' + ref(queryId(v.query), false) + ' <span class="lbl">' + plural(v.entries.length, 'entry', 'entries') + '</span>'; }
   var names = f.names.map(fileRef), namedBy = f.namedBy.map(fileRef);
-  h += three(FILE_CARDS, written, none('Which queries read it is not recorded here; each query lists the terms it reads.'),
+  h += three(FILE_CARDS, written, readByHtml([f]),
     '<p class="lbl">Names:</p>' + (names.length ? list(names, 10) : none('no pod file')) + '<p class="lbl">Named by:</p>' + (namedBy.length ? list(namedBy, 10) : none('no pod file')));
   if (f.thing) h += '<dl class="kv"><dt>thing</dt><dd class="mono">' + esc(f.thing) + '</dd></dl>';
   h += turtleSection(f);
@@ -312,6 +370,7 @@ function answerHtml(q) {
 }
 function inspectorHtml() {
   var id = state.sel, h = crumbs(id), path = id.slice(2);
+  if (id === '~log') return h + actPanel();
   if (id === 'p:') return h + rootPanel();
   if (id === 'q:') return h + '<h1 class="path">queries/</h1><p class="fx">Every query a runtime runs over a pod: the lenses and derivations that work out the derived state, the view definitions that write clinical/, the matcher’s rules, and the questions that read the result.' + tag('fixed') + '</p>' + queryList(D.queries) + '';
   if (id.slice(-1) === '/') {
@@ -329,6 +388,147 @@ function queryList(qs) {
   return '<div class="tw-x"><table><thead><tr><th class="num">build step</th><th>query</th><th>kind</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' + (qs.length > 200 ? '<p class="gen">200 of ' + qs.length + ' shown.</p>' : '');
 }
 
+/* the act's panel: one row of the log opened */
+function placeOf(path) {
+  var parts = path.split('/'), base = parts.pop();
+  if (parts.length && /^[0-9a-f]{2}$/.test(parts[parts.length - 1]) && base.indexOf(parts[parts.length - 1]) === 0) parts.pop();
+  return parts.length ? parts.join('/') + '/' : '';
+}
+function actPanel() {
+  var i = state.step, r = D.log[i], byFolder = new Map();
+  r.wrote.forEach(function (fi) { var dir = placeOf(D.files[fi].path); if (!byFolder.has(dir)) byFolder.set(dir, []); byFolder.get(dir).push(fi); });
+  var cases = D.kit ? D.kit.cases.filter(function (c) { return c.row === i; }) : [];
+  var h = '<h1>Act ' + i + ' of ' + END + ': ' + esc(actTitle(r)) + '</h1><p class="sub">' + (r.time ? esc(fmt(r.time)) : 'no time of its own') + '</p>' +
+    '<div class="chips"><span class="pill new">+' + plural(r.wrote.length, 'file') + '</span><span class="pill">' + plural(D.files.filter(exists).length, 'file') + ' in the pod after it</span>' + (r.how === 'snapshot' ? '<span class="pill">leaves a snapshot</span>' : '') +
+    (i > 0 ? '<a class="pill" data-step="' + (i - 1) + '">← previous</a>' : '') + (i < END ? '<a class="pill" data-step="' + (i + 1) + '">next →</a><a class="pill warn back" data-step="' + END + '">back to the last act</a>' : '<span class="pill">the last act</span>') + '</div>';
+  if (r.type) h += vocabulary(r.type);
+  h += fixed(r.how === 'snapshot' ? 'log' : r.how === 'time' ? 'logTime' : 'logNone');
+  if (r.missing.length) h += '<div class="missing" role="alert"><b>' + plural(r.missing.length, 'file') + ' the snapshot names ' + (r.missing.length === 1 ? 'is' : 'are') + ' not in the pod</b>' + tag('pod') + '<ul class="list">' + r.missing.map(function (m) { return '<li class="mono">' + esc(m) + '</li>'; }).join('') + '</ul></div>';
+  if (r.how === 'snapshot') {
+    var firstSnap = D.log.findIndex(function (x) { return x.how === 'snapshot'; });
+    var parent = r.parent != null ? '<span class="mono">' + esc(D.log[r.parent].snapshot) + '</span> → ' + actRef(r.parent) : (i === firstSnap && D.pod.brokenAt ? '<span class="mono">' + esc(D.pod.brokenAt) + '</span> <span class="pill warn">not in the pod</span>' : 'none: the first snapshot');
+    h += '<dl class="kv"><dt>the act’s file</dt><dd>' + (r.act != null ? fileRef(r.act) : none('none')) + '</dd><dt>snapshot</dt><dd class="mono">' + esc(r.snapshot) + '</dd><dt>parent snapshot</dt><dd>' + parent + '</dd><dt>set hash</dt><dd class="mono">' + esc(r.setHash) + '</dd>' + (r.informedBy != null ? '<dt>informed by</dt><dd>' + fileRef(r.informedBy) + '</dd>' : '') + '</dl>' + tag('pod');
+  }
+  h += '<h3>Files this act wrote <span>· ' + r.wrote.length + (r.how === 'snapshot' ? ' · named by its snapshot' : '') + '</span></h3>';
+  if (!r.wrote.length) h += '<p class="gen">None.</p>';
+  h += Array.from(byFolder.keys()).sort().map(function (dir) {
+    var fs = byFolder.get(dir);
+    return '<details class="ex"' + (byFolder.size <= 4 || fs.length <= 4 ? ' open' : '') + '><summary>' + (dir ? ref('p:' + dir, false) : 'the pod’s root') + ' <span class="pill new">+' + fs.length + '</span></summary>' + list(fs.map(fileRef), 60) + '</details>';
+  }).join('');
+  if (r.kitSteps.length) h += '<h3>The kit’s steps here' + (D.kit ? ' <span>· ' + esc(D.kit.name) + '</span>' : '') + '</h3><ul class="list">' + r.kitSteps.map(function (k) { return '<li><span class="pill kit' + (k.performed ? '' : ' warn') + '">' + esc(k.name) + '</span> ' + (k.performed ? 'performed: the pod holds an act at its time' : 'the kit does this step; the pod holds no act at its time') + '</li>'; }).join('') + '</ul>' + tag('kit');
+  if (D.kit) h += '<h3>Kit cases checked after this row <span>· ' + cases.length + '</span></h3>' + (cases.length ? '<ul class="list">' + cases.map(function (c) { return '<li>' + (c.id ? '<b>' + esc(c.id) + '</b> ' : '') + esc(c.rule) + ' <span class="lbl">' + esc(c.example) + '</span>' + (c.after ? ' <span class="pill kit">after ' + esc(c.after) + '</span>' : '') + (c.lens ? ' <span class="pill">' + esc(c.lens) + ' lens</span>' : '') + '</li>'; }).join('') + '</ul>' + tag('kit') : '<p class="gen">None.</p>');
+  return h + '<p class="fx">The views are not shown as they stood at this act: the site publishes one build, made after the last act.' + tag('fixed') + '</p>';
+}
+
+/* a file's N-Triples as Turtle: prefixes, one block per subject with the thing's label, and a numbered link wherever an IRI names another file of the pod */
+var NT = /^(<[^>]*>|_:\S+)\s+(<[^>]*>)\s+(<[^>]*>|_:\S+|"(?:[^"\\]|\\.)*"(?:\^\^<[^>]*>|@[A-Za-z][A-Za-z0-9-]*)?)\s*\.$/;
+var RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+var LOCAL_NAME = /^[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;
+var UUID = /[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/g;
+var HEX = /[0-9a-f]{12,}/g;
+var MAX_OBJECTS = 10;
+function curieOf(iri, used) {
+  for (var p in D.prefixes) {
+    var ns = D.prefixes[p];
+    if (iri.indexOf(ns) === 0 && LOCAL_NAME.test(iri.slice(ns.length))) { used[p] = 1; return p + ':' + iri.slice(ns.length); }
+  }
+  return null;
+}
+function fileOfIri(iri) {
+  var i = byThing.get(iri);
+  if (i == null) i = byThing.get(iri.replace(/#.*$/, ''));
+  if (i == null && iri.indexOf(D.pod.address) === 0) i = F.has(iri.slice(D.pod.address.length).replace(/#.*$/, '')) ? D.files.indexOf(F.get(iri.slice(D.pod.address.length).replace(/#.*$/, ''))) : null;
+  return i;
+}
+function turtle(text, f) {
+  var triples = [], lines = text.split('\n');
+  for (var k = 0; k < lines.length; k++) {
+    if (lines[k].trim() === '') continue;
+    var m = NT.exec(lines[k].trim());
+    if (!m) return null;
+    triples.push([m[1], m[2], m[3]]);
+  }
+  if (!triples.length) return null;
+  var self = D.files.indexOf(f), base = D.pod.address + f.path, used = {}, notes = new Map();
+  function absolute(raw) {
+    var v = raw.slice(1, -1);
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(v)) return v;
+    if (v.charAt(0) === '#') return base + v;
+    try { return new URL(v, base).href; } catch (e) { return v; }
+  }
+  function brief(a) {
+    return (a.indexOf(base + '#') === 0 ? a.slice(base.length) : a).replace(UUID, function (u) { return u.slice(0, 8) + '…'; }).replace(HEX, function (x) { return x.slice(0, 8) + '…'; });
+  }
+  function note(pred, path, label) {
+    if (!notes.has(pred)) notes.set(pred, { n: notes.size + 1, targets: new Map() });
+    notes.get(pred).targets.set(path, label);
+  }
+  function linked(shown, a, pred, title) {
+    var idx = fileOfIri(a);
+    if (idx == null || idx === self || !pred) return shown;
+    var g = D.files[idx];
+    note(pred, g.path, g.label || shortPath(g.path));
+    return '<a data-go="' + esc('p:' + g.path) + '" title="' + esc(title || a) + '">' + shown + '</a>';
+  }
+  function iriHtml(raw, pred) {
+    var a = absolute(raw), c = curieOf(a, used), shown = c ? esc(c) : '&lt;' + esc(brief(a)) + '&gt;';
+    return linked(shown, a, pred, a);
+  }
+  function objectHtml(raw, pred) {
+    if (raw.charAt(0) === '<') return iriHtml(raw, pred);
+    if (raw.charAt(0) !== '"') return esc(raw);
+    var l = /^"((?:[^"\\]|\\.)*)"(.*)$/.exec(raw), lex = l[1], rest = l[2], suffix = '';
+    if (rest.indexOf('^^<') === 0) {
+      var dt = rest.slice(3, -1), dc = curieOf(dt, used);
+      if (dt !== 'http://www.w3.org/2001/XMLSchema#string') suffix = '^^' + (dc ? esc(dc) : '&lt;' + esc(dt) + '&gt;');
+    } else suffix = esc(rest);
+    var lit = '<span class="l">"' + esc(lex.length > 160 ? lex.slice(0, 157) + '…' : lex) + '"</span>' + suffix;
+    if (pred && F.has(lex) && lex !== f.path) { var g = F.get(lex); note(pred, g.path, g.label || shortPath(g.path)); return '<a data-go="' + esc('p:' + g.path) + '" title="' + esc(g.path) + '">' + lit + '</a>'; }
+    return lit;
+  }
+  var by = new Map(), order = [];
+  triples.forEach(function (t) {
+    if (!by.has(t[0])) { by.set(t[0], new Map()); order.push(t[0]); }
+    var pm = by.get(t[0]);
+    if (!pm.has(t[1])) pm.set(t[1], []);
+    pm.get(t[1]).push(t[2]);
+  });
+  var primary = function (s) { return s.charAt(0) === '<' && absolute(s) === f.thing; };
+  order = order.filter(primary).concat(order.filter(function (s) { return !primary(s); }));
+  var blocks = order.map(function (s) {
+    var sa = s.charAt(0) === '<' ? absolute(s) : null, lab = sa && labels.get(sa);
+    var out = [(sa ? iriHtml(s, null) : esc(s)) + (lab ? '  <span class="c"># ' + esc(lab) + '</span>' : '')];
+    var preds = Array.from(by.get(s).keys()).sort(function (a, b) {
+      var x = a.slice(1, -1) === RDF_TYPE ? '' : a, y = b.slice(1, -1) === RDF_TYPE ? '' : b;
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+    preds.forEach(function (p, pi) {
+      var os = by.get(s).get(p), pa = absolute(p), before = notes.has(pa), isType = pa === RDF_TYPE;
+      var pc = isType ? null : curieOf(pa, used), vt = pc && D.terms[pc];
+      var pn = isType ? 'a' : (vt && vt.label ? '<span title="' + esc(vt.label) + '">' : '<span>') + (pc ? esc(pc) : '&lt;' + esc(brief(pa)) + '&gt;') + '</span>';
+      var shown = os.length > MAX_OBJECTS ? os.slice(0, MAX_OBJECTS - 1) : os;
+      var rendered = shown.map(function (o) { return objectHtml(o, isType ? null : pa); });
+      os.slice(shown.length).forEach(function (o) { objectHtml(o, isType ? null : pa); });
+      var mark = notes.has(pa) && !before ? ' <b class="num">' + notes.get(pa).n + '</b>' : '';
+      var end = pi === preds.length - 1 ? ' .' : ' ;', more = os.length > shown.length ? ' <span class="c"># … and ' + (os.length - shown.length) + ' more</span>' : '';
+      if (rendered.length === 1) {
+        var ol = shown[0].charAt(0) === '<' && labels.get(absolute(shown[0]));
+        out.push('    ' + pn + ' ' + rendered[0] + end + mark + (ol ? '  <span class="c"># ' + esc(ol) + '</span>' : '') + more);
+      } else {
+        out.push('    ' + pn + mark);
+        rendered.forEach(function (r, ri) { out.push('        ' + r + (ri === rendered.length - 1 ? end + more : ' ,')); });
+      }
+    });
+    return out.join('\n');
+  });
+  var head = Object.keys(D.prefixes).filter(function (p) { return used[p]; }).map(function (p) { return '<span class="c">@prefix ' + esc(p) + ': &lt;' + esc(D.prefixes[p]) + '&gt; .</span>'; }).join('\n');
+  var items = Array.from(notes.entries()).map(function (e) {
+    var c = curieOf(e[0], {}), v = c && D.terms[c], targets = Array.from(e[1].targets.entries());
+    return '<li><b class="num">' + e[1].n + '</b><div>' + (c ? term(c) : esc(e[0])) + ' → ' + targets.slice(0, 4).map(function (t) { return '<a data-go="' + esc('p:' + t[0]) + '">' + esc(t[1]) + '</a>'; }).join('; ') + (targets.length > 4 ? ' and ' + (targets.length - 4) + ' more' : '') + (v && v.comment ? '<span class="vc">' + esc(first(v.comment)) + tag('vocabulary') + '</span>' : '') + '</div></li>';
+  });
+  return { html: head + (head ? '\n\n' : '') + blocks.join('\n\n'), notes: items.length ? '<p class="gen">Numbered: the properties that point at another file of the pod. Each link opens the file.</p><ol class="notes">' + items.join('') + '</ol>' : '' };
+}
+
 /* bodies */
 var cache = new Map();
 function body(path) {
@@ -340,7 +540,16 @@ function fillBodies() {
   if (b) {
     var f = F.get(b.dataset.path);
     if (f && f.kind === 'bytes' && f.bytes > 20000) { b.textContent = 'Source bytes, ' + f.bytes + ' bytes: not shown.'; return; }
-    body('pod/' + b.dataset.path).then(function (t) { if (state.sel === now) b.textContent = t.length > 60000 ? t.slice(0, 60000) + '\n… ' + (t.length - 60000) + ' more characters' : t; }, function () { if (state.sel === now) b.textContent = 'This file is not published beside the page.'; });
+    body('pod/' + b.dataset.path).then(function (whole) {
+      if (state.sel !== now) return;
+      var cut = whole.length > 60000 ? whole.lastIndexOf('\n', 60000) : -1, t = whole.length > 60000 ? whole.slice(0, cut > 0 ? cut : 60000) : whole;
+      var rest = whole.length - t.length, tail = rest ? '… ' + rest + ' more characters' : '';
+      var ttl = f ? turtle(t, f) : null;
+      if (ttl) {
+        b.innerHTML = ttl.html + (tail ? '\n\n<span class="c"># ' + esc(tail) + '</span>' : '');
+        document.getElementById('notes').innerHTML = ttl.notes;
+      } else b.textContent = t + (tail ? '\n' + tail : '');
+    }, function () { if (state.sel === now) b.textContent = 'This file is not published beside the page.'; });
   }
   if (h) body(h.dataset.path).then(function (t) {
     if (state.sel !== now) return;
@@ -352,23 +561,35 @@ function fillBodies() {
 }
 
 /* page */
+var STOPS = [['Pod', 'p:'], ['Log', '~log'], ['Records', 'p:records/'], ['Judgments', 'p:judgments/'], ['View definitions', 'q:queries/views/'], ['Materialized views', null], ['Queries', 'q:queries/'], ['How an app finds things', null]];
+function stopTarget(s) {
+  if (s[1]) return s[1];
+  return s[0] === 'How an app finds things' ? 'p:' + D.files[D.pod.card].path : 'p:' + (viewDir || 'clinical/');
+}
+function known(id) { return id === 'p:' || id === 'q:' || id === '~log' || dirs.has(id) || F.has(id.slice(2)) || Q.has(id.slice(2)); }
 function frame() {
-  root.innerHTML = '<div class="app"><div class="tabs"><button data-pane="tree">Files</button><button data-pane="ins">Selected</button><button data-pane="log">Log</button></div>' +
+  var legend = ['pod', 'vocabulary', 'query', 'layout', 'kit', 'fixed'].map(function (k) { return tag(k); }).join('');
+  root.innerHTML = '<header class="top"><span class="brand">Pod explorer</span><span class="who">' + esc(D.pod.title) + '</span><span class="addr">' + esc(D.pod.address) + '</span><span class="legend">every label says where it is from: ' + legend + '</span></header>' +
+    '<div class="bar"><div class="stops" aria-label="Stops of the demo">' + STOPS.map(function (s) { var id = stopTarget(s); return '<button class="stop" data-go="' + esc(id) + '"' + (known(id) ? '' : ' disabled title="This pod has none"') + '>' + esc(s[0]) + '</button>'; }).join('') + '</div><div class="stepline" id="stepline"></div></div>' +
+    '<div class="app"><div class="tabs"><button data-pane="tree">Files</button><button data-pane="ins">Selected</button><button data-pane="log">Log</button></div>' +
     '<div class="panes"><section class="pane" data-p="tree"><h2>The pod <span>and the queries run over it</span></h2><div class="filter"><input id="flt" type="search" placeholder="Filter files and queries" aria-label="Filter files and queries"></div><div class="scroll tree" id="tree"></div></section>' +
     '<section class="pane" data-p="ins"><h2>Selected</h2><div class="scroll insp" id="ins"></div></section>' +
-    '<section class="pane" data-p="log"><h2>Log <span>the pod’s own history</span></h2><div class="logctl"><button data-stepby="-1" aria-label="Previous act">◀</button><input type="range" id="rng" min="0" max="' + END + '" step="1" aria-label="Act"><button data-stepby="1" aria-label="Next act">▶</button></div><div class="stepline" id="stepline"></div><div class="scroll" id="log"></div></section></div></div>';
+    '<section class="pane" data-p="log"><h2>Log <span>the pod’s own history</span></h2><div class="logctl"><button data-stepby="-1" aria-label="Previous act">◀</button><input type="range" id="rng" min="0" max="' + END + '" step="1" aria-label="Act"><button data-stepby="1" aria-label="Next act">▶</button></div><div class="scroll" id="log"></div></section></div></div>';
 }
 function render() {
   document.getElementById('tree').innerHTML = treeHtml();
   document.getElementById('log').innerHTML = logHtml();
   document.getElementById('ins').innerHTML = inspectorHtml();
   document.getElementById('rng').value = state.step;
-  document.getElementById('stepline').innerHTML = state.step === END ? 'The pod as published, after act ' + END + '. ' + esc(FIXED.step) : 'The pod after act ' + state.step + ' of ' + END + ': ' + D.files.filter(exists).length + ' of ' + D.files.length + ' files.';
+  var at = D.log[state.step];
+  document.getElementById('stepline').innerHTML = 'Showing the pod after <b>act ' + state.step + ' of ' + END + '</b>' + (at.time ? ' · ' + esc(fmt(at.time)) : '') + ' · ' + esc(actTitle(at)) + ' · ' + D.files.filter(exists).length + ' of ' + D.files.length + ' files' + (state.step === END ? ' <span class="pill">as published</span>' : ' <a class="pill warn back" data-step="' + END + '">back to the last act</a>');
+  Array.prototype.forEach.call(root.querySelectorAll('.stop'), function (b) { b.classList.toggle('on', b.dataset.go === state.sel); });
   Array.prototype.forEach.call(root.querySelectorAll('.tabs button'), function (b) { b.classList.toggle('on', b.dataset.pane === state.pane); });
   Array.prototype.forEach.call(root.querySelectorAll('.pane'), function (p) { p.classList.toggle('on', p.dataset.p === state.pane); });
   fillBodies();
 }
 function reveal(id) {
+  if (id === '~log') return;
   var kind = id.slice(0, 2), parts = id.slice(2).split('/');
   parts.pop();
   var acc = kind;
@@ -388,6 +609,14 @@ function select(id) {
   render();
   document.getElementById('ins').scrollTop = 0;
 }
+function showAct(n) {
+  state.step = Math.max(0, Math.min(END, n));
+  state.sel = '~log';
+  state.pane = 'ins';
+  keepAddress();
+  render();
+  document.getElementById('ins').scrollTop = 0;
+}
 function setStep(n) {
   state.step = Math.max(0, Math.min(END, n));
   var f = state.sel.indexOf('p:') === 0 ? F.get(state.sel.slice(2)) : null;
@@ -401,13 +630,17 @@ root.addEventListener('click', function (e) {
   var tw = t.closest('[data-tw]');
   if (tw) { var k = tw.dataset.tw; state.open[k] = state.open[k] ? 0 : 1; render(); return; }
   var step = t.closest('[data-step]');
-  if (step) { setStep(Number(step.dataset.step)); return; }
+  if (step) { e.preventDefault(); showAct(Number(step.dataset.step)); return; }
   var by = t.closest('[data-stepby]');
   if (by) { setStep(state.step + Number(by.dataset.stepby)); return; }
   var pane = t.closest('[data-pane]');
   if (pane) { state.pane = pane.dataset.pane; render(); return; }
   var go = t.closest('[data-go]');
   if (go) { e.preventDefault(); select(go.dataset.go); }
+});
+root.addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (e.key === 'Enter' && t instanceof Element && t.getAttribute('role') === 'link') { e.preventDefault(); t.click(); }
 });
 root.addEventListener('input', function (e) {
   var t = e.target;
@@ -420,13 +653,19 @@ function start(data, kept) {
   F = new Map(D.files.map(function (f) { return [f.path, f]; }));
   Q = new Map(D.queries.map(function (q) { return [q.path, q]; }));
   END = D.log.length - 1; state.step = END;
+  byThing = new Map(D.files.map(function (f, i) { return [f.thing, i]; }));
+  labels = new Map();
+  D.files.forEach(function (f) { if (f.label) { labels.set(f.thing, f.label); labels.set(D.pod.address + f.path, f.label); } });
+  D.views.forEach(function (v) { v.entries.forEach(function (en) { labels.set(D.pod.address + en.id, en.label); }); });
+  var made = D.files.filter(function (f) { return f.kind === 'view'; });
+  viewDir = made.length ? made[0].path.split('/')[0] + '/' : null;
   podTree = makeTree(D.files, function (f) { return f.path; }, 'p:');
   queryTree = makeTree(D.queries, function (q) { return q.path; }, 'q:');
   indexDirs(podTree); indexDirs(queryTree);
   frame();
   var m = decodeURIComponent(location.hash.slice(1)).split('&step=');
   if (m[1] != null && Number(m[1]) >= 0 && Number(m[1]) <= END) state.step = Number(m[1]);
-  if (m[0] && (F.has(m[0].slice(2)) || dirs.has(m[0]) || Q.has(m[0].slice(2)))) { state.sel = m[0]; reveal(m[0]); }
+  if (m[0] && known(m[0]) && m[0].length > 2) { state.sel = m[0]; reveal(m[0]); }
   render();
 }
 fetch(root.dataset.data).then(function (r) { return r.json(); }).then(function (data) {
@@ -441,7 +680,20 @@ body.explorer main { margin: 0; }
 body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padding: .75rem 1rem 1.25rem; border-top: 1px solid var(--rule); font-size: .9rem; }
 :root { --pencil: #b4410c; --new: #1f7a4d; --new-bg: #e6f3ec; --built: #6b4fa0; --built-bg: #f0ecf7; --sel: #dcebf1; --warn-bg: #fbf3e2; --amber: #8a5a0d; --mono: ui-monospace, SFMono-Regular, Consolas, monospace; }
 #explorer { font-size: 14px; line-height: 1.45; }
-#explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 9rem); height: calc(100dvh - 9rem); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+#explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 14rem); height: calc(100dvh - 14rem); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+#explorer .top { display: flex; align-items: center; gap: 6px 14px; padding: 8px 14px; background: var(--text); color: #fff; min-width: 0; }
+#explorer .top .brand { font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #ffb38a; white-space: nowrap; }
+#explorer .top .who { font-size: 1.15rem; white-space: nowrap; }
+#explorer .top .addr { font: 12.5px var(--mono); color: #c9d1d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+#explorer .top .legend { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11.5px; color: #c9d1d6; }
+#explorer .top .src { margin-left: 0; color: #c9d1d6; border-color: #5b6475; }
+#explorer .bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 6px 14px; border-bottom: 1px solid var(--rule); background: var(--panel); }
+#explorer .stops { display: flex; flex-wrap: wrap; gap: 4px; }
+#explorer .stop { border: 1px solid var(--rule); background: #fff; border-radius: 3px; padding: 3px 9px; font: 12.5px system-ui, sans-serif; cursor: pointer; }
+#explorer .stop:hover:not(:disabled), #explorer .stop.on { border-color: var(--pencil); }
+#explorer .stop.on { background: var(--sel); }
+#explorer .stop:disabled { color: var(--quiet); cursor: default; border-style: dashed; }
+#explorer .bar .stepline { margin-left: auto; border: 0; padding: 0; font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 #explorer .tabs { display: none; }
 #explorer .panes { display: grid; grid-template-columns: 330px minmax(0, 1fr) 330px; min-height: 0; }
 #explorer .pane { min-height: 0; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--rule); }
@@ -456,6 +708,9 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .root-h small { font-weight: 400; color: var(--quiet); font-family: system-ui, sans-serif; margin-left: auto; white-space: nowrap; }
 #explorer .root-h .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 #explorer .root-h.sel, #explorer .row.sel { background: var(--sel); }
+#explorer .ic { display: inline-flex; align-items: center; }
+#explorer .ic svg { display: block; }
+#explorer .row.dir .ic { color: #8a6a1c; }
 #explorer .row { display: flex; align-items: center; gap: 5px; height: 24px; padding-right: 8px; cursor: pointer; white-space: nowrap; min-width: 0; }
 #explorer .row:hover { background: var(--panel); }
 #explorer .tw { width: 12px; flex: none; color: var(--quiet); text-align: center; }
@@ -493,6 +748,29 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .kv { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; margin: .5rem 0; }
 #explorer .kv dt { font-weight: 600; } #explorer .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 #explorer pre.code { background: var(--panel); padding: .6rem; border-radius: 4px; overflow: auto; max-height: 28rem; margin: .4rem 0; white-space: pre; }
+#explorer pre.turtle { white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 var(--mono); }
+#explorer pre .c { color: var(--quiet); }
+#explorer pre .l { color: #1f5f7a; }
+#explorer pre a { color: var(--pencil); text-decoration: underline dotted; cursor: pointer; }
+#explorer b.num { display: inline-block; min-width: 1.25em; text-align: center; font: 600 11px/1.4 var(--mono); color: #fff; background: var(--pencil); border-radius: 8px; padding: 0 3px; vertical-align: 1px; }
+#explorer ol.notes { list-style: none; padding: 0; margin: 6px 0; }
+#explorer ol.notes li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 6px; padding: 3px 0; overflow-wrap: anywhere; }
+#explorer ol.notes .vc { display: block; color: var(--quiet); font-size: 12px; }
+#explorer .missing { margin: .6rem 0; padding: .5rem .75rem; border: 2px solid #b3261e; border-radius: 4px; background: #fdecea; color: #6b1410; }
+#explorer .missing ul { margin: .25rem 0 0; }
+#explorer details.ex { margin: .3rem 0; }
+#explorer details.ex > summary { cursor: pointer; }
+#explorer .flow { display: grid; grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 1fr) auto minmax(0, 1.2fr) auto minmax(0, 1fr) auto minmax(0, 1.1fr); margin: 10px 0; align-items: stretch; }
+#explorer .flow .col { display: grid; gap: 4px; min-width: 0; align-content: start; }
+#explorer .flow .box { border: 1px solid var(--quiet); border-radius: 3px; padding: 5px 8px; background: #fff; min-width: 0; cursor: pointer; overflow-wrap: anywhere; }
+#explorer .flow .box:hover, #explorer .flow .box:focus-visible { border-color: var(--pencil); }
+#explorer .flow .box.q { border-style: dashed; background: var(--panel); }
+#explorer .flow .box.built { border-color: var(--built); background: var(--built-bg); }
+#explorer .flow .box b { display: block; font: 500 12.5px var(--mono); }
+#explorer .flow .box b small { display: block; font-size: 11px; color: var(--quiet); font-weight: 400; }
+#explorer .flow .box span { display: block; font-size: 12px; color: var(--quiet); line-height: 1.35; }
+#explorer .flow .cap { font: 600 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
+#explorer .flow .arr { display: flex; align-items: center; padding: 0 5px; color: var(--pencil); font: 600 15px var(--mono); }
 #explorer .prose { margin: .4rem 0; max-width: 46rem; }
 #explorer .prose p { margin: 0 0 .6rem; overflow-wrap: anywhere; }
 #explorer i.term { font-style: normal; font-family: var(--mono); font-size: 12px; border-bottom: 1px dotted var(--quiet); }
@@ -517,6 +795,11 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .loading { padding: 1rem; }
 @media (max-width: 1180px) { #explorer .panes { grid-template-columns: 270px minmax(0, 1fr) 280px; } }
 @media (max-width: 900px) {
+  #explorer .top { flex-wrap: wrap; }
+  #explorer .top .addr { flex-basis: 100%; }
+  #explorer .bar .stepline { margin-left: 0; flex-basis: 100%; }
+  #explorer .flow { grid-template-columns: minmax(0, 1fr); }
+  #explorer .flow .arr { justify-content: center; transform: rotate(90deg); padding: 0; height: 18px; }
   #explorer .app { height: auto; min-height: 0; border: 0; }
   #explorer .tabs { display: flex; border-bottom: 1px solid var(--rule); position: sticky; top: 0; background: #fff; z-index: 2; }
   #explorer .tabs button { flex: 1; padding: 8px 0; border: 0; border-bottom: 3px solid transparent; background: none; font: 600 13px system-ui, sans-serif; }
