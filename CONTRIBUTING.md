@@ -43,26 +43,35 @@ check, so run it when you change a rule:
 npm run conformance
 ```
 
+To repeat a random-order run, transpile, then run the script on the package with the seed from the log, which it passes
+to node:
+
+```sh
+node scripts/transpile.mjs
+node scripts/random-order.mjs cascade-runtime --test-random-seed=N
+```
+
 ## What a pull request must pass
 
-CI runs on every pull request, and a red check is a reason not to merge. The required check is **`compatibility`**,
-which reports the result of these jobs:
+CI runs on every pull request, and a red check is a reason not to merge. Two checks are required, **`compatibility`**
+and **`ready-to-merge`**. `compatibility` reports the result of the first three jobs below (and `runtime tests` on the
+nightly run); `ready-to-merge` is its own check.
 
 - **`tests and conformance`**: the conformance command over the vocabulary and the adapters, the type check, the lint,
   and the test files each package's `test/spec.json` lists as `randomOrder`, run in a random order (a test that needs
-  another to run first fails here; the seed is in the log, and `--test-random-seed=N` repeats it). Then the suite, and the
-  check that its results read as a specification: every test sits under a capability heading listed in its package's
+  another to run first fails here; the seed is in the log). Then the suite, and the check that its results read as a
+  specification: every test in a file a package lists as `shaped` sits under a capability heading listed in its
   `test/spec.json`, word for word. That check runs in CI, not in `npm test`, so a new capability needs its heading added to
   `spec.json` by hand.
 - **`docs site`**: builds the package and the pages, and runs the browser tests in Chromium.
-- **`starter-kit`**: this pull request's package, packed, is run under the
-  [starter kit](https://github.com/jayostis/cascade-starter-kit)'s tests, so a change that breaks the app a person
-  starts from is seen before it merges.
+- **`starter-kit (...)`**: four jobs (`suites`, `browser`, `app`, and `app, chat,mcp`) in which this pull request's
+  package, packed, is run under the [starter kit](https://github.com/jayostis/cascade-starter-kit)'s tests, so a change
+  that breaks the app a person starts from is seen before it merges.
 - **`ready-to-merge`**: holds a pull request until every pull request it depends on can merge (see "A change that spans
   two repositories").
 
-Other jobs run too: `starter (<system>)` makes an app on each system the package supports, `package` packs and installs
-the package, and `external links` checks the links of the built pages.
+Other jobs run too: `starter (<system>)` makes an app on each system the package supports, `package` packs the package,
+`package-install (<system>)` installs it, and `external links` checks the links of the built pages.
 
 ## Commits and pull requests
 
