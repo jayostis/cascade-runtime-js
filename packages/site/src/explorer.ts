@@ -89,7 +89,7 @@ export interface ExplorerFile {
   readonly kind: FileKind;
   /** The IRI of the thing the file is named for; the file's own IRI where it is named for none. */
   readonly thing: string;
-  /** The label the pod gives the thing, or its `rdfs:label`, `dct:title` or the layout's title; absent when there is none. */
+  /** The label the pod gives the thing, or its `rdfs:label`, `dct:title` or the layout's title; a stored document's bytes have their document's; absent when there is none. */
   readonly label?: string;
   readonly types: readonly Curie[];
   readonly writer: Writer;
@@ -1284,28 +1284,31 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       ...(filed === undefined ? {} : { filedWith: filed }),
     };
   };
+  const labelOf = (file: number): string | undefined => {
+    const { path, graph, thing } = loaded[file] as Held;
+    const labelled = site.name(iri(thing));
+    return labelled !== thing
+      ? labelled
+      : graph === undefined
+        ? undefined
+        : (object(graph, thing, `${RDFS}label`)?.value ??
+          object(graph, thing, `${DCT}title`)?.value ??
+          layout.placements.find((each) => each.file === path)?.title);
+  };
   const files: ExplorerFile[] = loaded.map(
     ({ path, bytes, graph, thing }, file) => {
       const kind = kinds[file] as FileKind;
       const typeIris =
         graph?.objects(iri(thing), TYPE).map(({ value }) => value) ?? [];
       const placed = placementOf(path, kind, typeIris);
-      const labelled = site.name(iri(thing));
-      const label =
-        labelled !== thing
-          ? labelled
-          : graph === undefined
-            ? undefined
-            : (object(graph, thing, `${RDFS}label`)?.value ??
-              object(graph, thing, `${DCT}title`)?.value ??
-              layout.placements.find((each) => each.file === path)?.title);
+      const documentFile = documentOfBytes.get(file);
+      const label = labelOf(documentFile ?? file);
       const page = site.page(iri(thing)) ?? site.page(iri(pod.address + path));
       const arrived = arrivals.get(file);
       const entry = entryOfRecord.get(file);
       const record =
         kind === "revision" || kind === "version" ? recordOf(file) : undefined;
       const judgment = judgments.get(file);
-      const documentFile = documentOfBytes.get(file);
       const view = viewOf.get(file);
       const writtenBy = builtAt.get(path);
       const handle = handleOfRecord.get(file);

@@ -288,6 +288,17 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       for (const field of profile.fields) assert.equal(field.members.length, 3);
     });
 
+    it("labels a stored document's bytes with the label of the document that names them", () => {
+      const { data } = alex;
+      const stored = data.files.filter(({ kind }) => kind === "bytes");
+      assert.ok(stored.length > 0, "no bytes are stored");
+      for (const node of stored) {
+        const named = data.files[node.document ?? -1];
+        assert.ok(named?.label, `${node.path} has no document with a label`);
+        assert.equal(node.label, named.label, node.path);
+      }
+    });
+
     it("names the manifest's thing as the manifest, so the pod has its creation time, and types the manifest and the card", () => {
       const { data } = alex;
       assert.match(data.pod.created ?? "", /^\d{4}-\d\d-\d\dT/);
