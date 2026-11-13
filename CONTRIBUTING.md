@@ -34,8 +34,7 @@ npm test
 formatting check in `npm run lint` finds. The suite runs in seconds. While you work, pass node's own test flags through
 it, for example `npm test -- --test-name-pattern="<words from a test name>"`.
 
-The tests read the vocabulary and the adapters from a checkout beside this one, as [`cascade-runtime.json`](cascade-runtime.json)
-says. CI checks them out for you; the `conformance` command below does the same on your machine.
+The runtime reads the vocabulary and the adapters at the repositories and versions [`cascade-runtime.json`](cascade-runtime.json) names; CI checks them out beside this repository for you.
 
 The conformance command runs every example of the vocabulary's feature files against this runtime. It is the slower
 check, so run it when you change a rule:
