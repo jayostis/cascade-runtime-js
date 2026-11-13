@@ -138,6 +138,25 @@ describe("Building a site from sections · buildTree()", () => {
       );
     });
 
+    it("leaves a link for agents off the front page", async () => {
+      const walk = await buildOf([
+        inMemory("a", "build", {
+          build: async () =>
+            new Map([
+              ["a.html", text("A")],
+              ["data.json", text("{}")],
+            ]),
+          rows: async () => [
+            { href: "a.html", label: "For people", audience: "people" },
+            { href: "data.json", label: "For agents", audience: "agents" },
+          ],
+        }),
+      ]);
+      const page = readPage(read(walk.tree, FRONT_PAGE));
+      assert.ok(page.hrefs.includes("a.html"));
+      assert.ok(!page.hrefs.includes("data.json"));
+    });
+
     it("refuses a second link to a file nothing writes", async () => {
       await assert.rejects(
         buildOf([

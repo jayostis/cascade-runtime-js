@@ -114,10 +114,10 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
     });
   });
 
-  describe("with `index.html`", () => {
+  describe("with `layout.html`", () => {
     it("shows each folder of the pod that holds a record", () => {
       const folders = blockOf(
-        page("index.html"),
+        page("layout.html"),
         "What each folder holds",
       ).rows.map((row) => row.get("folder")?.value);
       const filed = vocabulary.layout.recordPlacements.filter(({ folder }) =>
@@ -131,7 +131,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
     it("shows which view lists each kind of record, with every view of the pod", () => {
       assert.deepEqual(
         new Set(
-          blockOf(page("index.html"), "Which view lists each kind").rows.map(
+          blockOf(page("layout.html"), "Which view lists each kind").rows.map(
             (row) => row.get("view")?.value,
           ),
         ),
@@ -305,7 +305,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
         await Site.build({ ...options, lens: other, defaultLens: fallback })
       ).files();
       run = readPage(
-        new TextDecoder().decode(built.get("index.html")),
+        new TextDecoder().decode(built.get("layout.html")),
       ).blocks.filter(({ said }) => said.includes("Run it yourself"));
       assert.ok(run.length > 0);
     });
@@ -323,7 +323,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
 
   describe("with the default lens", () => {
     it("names no lens in a command", () => {
-      for (const { title, said } of page("index.html").blocks)
+      for (const { title, said } of page("layout.html").blocks)
         assert.ok(!said.includes("--lens"), title);
     });
   });
@@ -421,7 +421,7 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
       );
       assert.ok(first);
       assert.ok(
-        page("index.html").blocks.some(
+        page("layout.html").blocks.some(
           ({ path, hrefs }) =>
             path === block.query.path &&
             hrefs.includes(termHref(first, "../terms/")),

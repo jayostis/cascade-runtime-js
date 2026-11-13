@@ -16,7 +16,7 @@ export interface Target {
 }
 
 const kit = (folder: string, name: string): Target[] => [
-  { href: `${folder}/index.html`, title: `How the pod is laid out · ${name}` },
+  { href: `${folder}/index.html`, title: `Explorer · ${name}` },
   {
     href: `${folder}/pod/manifest.ttl`,
     text: `<https://pod.${folder}.example/manifest.ttl`,

@@ -14,6 +14,7 @@
     "The pages of a pod · Site.build(), Site.files()",
     "Where a pod's pages link · Site.files(), Site.page(), viewRules()",
     "The pod explorer's data · explorerData(), Site.files()",
+    "The pod explorer's page · explorerPage(), Site.files()",
     "Text, times and codes as a page shows them · markup, shown(), code(), codePage()",
     "Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md",
     "Linking a vocabulary term, a rule or a decision note · termHref(), ruleHref(), noteHref(), noteLinkOf()",

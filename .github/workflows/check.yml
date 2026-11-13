@@ -221,6 +221,10 @@ jobs:
       - name: Run the tests page's script
         if: ${{ !cancelled() }}
         run: npm run test:tests-page
+      # The pod explorer's app, run in a browser: a node opens, the log's slider hides later files, a phone's width has no sideways scroll.
+      - name: Run the pod explorer
+        if: ${{ !cancelled() }}
+        run: npm run test:explorer
       # The packed browser build opens a pod over IndexedDB in Chromium, retitles it and opens it again, and checks the
       # secrets of known-answer 1.2 pods through its Argon2id worker.
       - name: Retitle a pod and check a secret in a browser

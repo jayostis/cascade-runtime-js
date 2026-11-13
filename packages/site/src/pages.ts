@@ -147,6 +147,20 @@ function question(site: Site, answer: Answer, lensed = false): Html {
   ]);
 }
 
+/** The links at the head of every page of the site. */
+export function navOf(site: Site): Html {
+  return markup`<nav>
+${
+  site.options.front !== undefined &&
+  markup`<a href="${site.options.front}">Cascade pods</a>
+`
+}<a href="index.html">The explorer</a>
+<a href="layout.html">How the pod is laid out</a>
+<a href="pipeline.html">How a view is built</a>
+<a href="not-shown.html">Not shown</a>
+</nav>`;
+}
+
 function layout(site: Site, title: string, main: Content): Html {
   return markup`<!DOCTYPE html>
 <html lang="en">
@@ -157,15 +171,7 @@ function layout(site: Site, title: string, main: Content): Html {
 <link rel="stylesheet" href="site.css">
 </head>
 <body>
-<nav>
-${
-  site.options.front !== undefined &&
-  markup`<a href="${site.options.front}">Cascade pods</a>
-`
-}<a href="index.html">How the pod is laid out</a>
-<a href="pipeline.html">How a view is built</a>
-<a href="not-shown.html">Not shown</a>
-</nav>
+${navOf(site)}
 <main>
 ${main}
 </main>
@@ -416,7 +422,7 @@ ${things.map(
 /** Every page of the site, by its path. */
 export function pages(site: Site): Map<string, Html> {
   const found = new Map<string, Html>([
-    ["index.html", home(site)],
+    ["layout.html", home(site)],
     ["pipeline.html", pipeline(site)],
     ["not-shown.html", notShown(site)],
   ]);

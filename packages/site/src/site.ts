@@ -25,8 +25,15 @@ import {
 } from "@cascade-runtime/runtime";
 import { Answer } from "./answer.js";
 import { explorerFiles } from "./explorer.js";
+import {
+  EXPLORER_SCRIPT,
+  EXPLORER_SCRIPT_FILE,
+  EXPLORER_STYLE,
+  EXPLORER_STYLE_FILE,
+  explorerPage,
+} from "./explorer-app.js";
 import { addressesOf } from "./links.js";
-import { pages } from "./pages.js";
+import { navOf, pages } from "./pages.js";
 import { numberOf } from "./spec.js";
 import { STYLESHEET } from "./stylesheet.js";
 import { CALLED, COPY, STATED, terms } from "./terms.js";
@@ -382,6 +389,12 @@ export class Site {
     for (const [path, page] of pages(this))
       files.set(path, encoder.encode(page.text));
     files.set(STYLESHEET_FILE, encoder.encode(STYLESHEET));
+    files.set(
+      "index.html",
+      encoder.encode(explorerPage(this, navOf(this)).text),
+    );
+    files.set(EXPLORER_SCRIPT_FILE, encoder.encode(EXPLORER_SCRIPT));
+    files.set(EXPLORER_STYLE_FILE, encoder.encode(EXPLORER_STYLE));
     for (const [path, bytes] of await explorerFiles(this))
       files.set(path, bytes);
     for (const path of this.pod.files) {
