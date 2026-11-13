@@ -186,6 +186,8 @@ export interface ExplorerAct {
   readonly kitSteps: readonly {
     readonly name: string;
     readonly performed: boolean;
+    /** The sentence the feature's Background states for the step, without the label that names it. */
+    readonly text?: string;
   }[];
 }
 
@@ -211,6 +213,11 @@ export interface ExplorerKit {
     readonly lens?: string;
     /** The row it is checked after: its step's, or the last for an example that names none. */
     readonly row: number;
+    /** The example's own steps, as the feature states them, each with the table it carries. */
+    readonly steps?: readonly {
+      readonly text: string;
+      readonly table?: readonly (readonly string[])[];
+    }[];
   }[];
   readonly handles?: Handles;
 }
@@ -364,6 +371,8 @@ interface Held {
   readonly thing: string;
 }
 
+/** The label a step of a feature carries at the end of its sentence, naming it. */
+const LABEL = / \([A-Za-z0-9][\w-]*\)$/;
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const byTime = (a: string, b: string): number => Date.parse(a) - Date.parse(b);
 
@@ -860,6 +869,7 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   let kit: ExplorerKit | undefined;
   let handles: Handles | undefined;
   const kitRows = new Map<string, number>();
+  const sentences = new Map<string, string>();
   if (options.kit !== undefined) {
     const feature = `conformance/${options.kit}/${options.kit}.feature`;
     const times = [making, ...drafts].map(({ time }) =>
@@ -878,7 +888,18 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       });
       return { row, performed: false };
     };
-    const { steps } = await featureStory(vocabulary, feature, options.newStore);
+    const { steps, feature: story } = await featureStory(
+      vocabulary,
+      feature,
+      options.newStore,
+    );
+    for (const step of steps) {
+      const stated =
+        story.background.find(({ text }) => text.endsWith(` (${step.name})`)) ??
+        story.background.find(({ text }) => text.includes(`"${step.name}"`));
+      if (stated !== undefined)
+        sentences.set(step.name, stated.text.replace(LABEL, ""));
+    }
     const placed = steps.map((step) => ({ step, ...rowAt(step.when) }));
     for (const { step, row } of placed) kitRows.set(step.name, row);
     const written = await readWrittenFeature(vocabulary, feature);
@@ -898,6 +919,9 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
           const after = /as it stood after "(\w+)"/.exec(example.text)?.[1];
           const lens = /under the (\w+) lens/.exec(example.text)?.[1];
           const id = numberOf(rule);
+          const own = story.examples
+            .find(({ name }) => name === example.name)
+            ?.steps.slice(story.background.length);
           return {
             ...(id === undefined ? {} : { id }),
             rule:
@@ -910,6 +934,10 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
             row:
               (after === undefined ? undefined : kitRows.get(after)) ??
               drafts.length,
+            steps: (own ?? []).map(({ text, table }) => ({
+              text,
+              ...(table === undefined ? {} : { table }),
+            })),
           };
         }),
       ),
@@ -919,7 +947,10 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   const kitSteps = (row: number): ExplorerAct["kitSteps"] =>
     kit?.steps
       .filter((step) => step.row === row)
-      .map(({ name, performed }) => ({ name, performed })) ?? [];
+      .map(({ name, performed }) => {
+        const text = sentences.get(name);
+        return { name, performed, ...(text === undefined ? {} : { text }) };
+      }) ?? [];
   const log: ExplorerAct[] = [making, ...drafts].map((draft, row) => {
     const { snapshotParent, ...rest } = draft;
     const parent =

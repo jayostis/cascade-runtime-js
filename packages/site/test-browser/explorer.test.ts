@@ -872,7 +872,13 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
     });
 
     it("shows an entry's own statements only, not another entry's", async () => {
-      const entry = joiner();
+      const entry = entryWhere(
+        joined,
+        (each) =>
+          each.members.length > 1 &&
+          (joined.views.find((view) => view.file === fileOfEntry(each))?.entries
+            .length ?? 0) > 1,
+      );
       await joinedAt(`p:${entry.id}`, "#ins table.et");
       await tab.waitForFunction(
         () =>
