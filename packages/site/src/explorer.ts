@@ -732,18 +732,7 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   });
   const manifest = at(layout.manifest);
   const manifestGraph = loaded[manifest]?.graph as Graph;
-  // A pod made by `featurePod` has its manifest copied into the site without the `prov:used` that names its head, so the
-  // pod's own file (`options.pod`) is read for it; the published example pods' manifests hold it either way.
-  const ownManifest = await options.pod.read(layout.manifest);
-  const head = (
-    ownManifest === undefined
-      ? manifestGraph
-      : new Graph(
-          await options
-            .newStore()
-            .parse(ownManifest, pod.address + layout.manifest),
-        )
-  )
+  const head = manifestGraph
     .match(undefined, `${PROV}used`)
     .map(([, , target]) => target.value)
     .find((value) => snapshots.has(value));
