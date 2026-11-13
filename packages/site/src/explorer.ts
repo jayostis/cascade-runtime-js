@@ -943,7 +943,8 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
 
   // judgments
   const counts = new Map<string, boolean>();
-  for (const row of site.question("judgment/Whether it counts").rows) {
+  for (const row of site.questions.get("judgment/Whether it counts")?.rows ??
+    []) {
     const [judgment, counted, happened] = [
       row.get("judgment"),
       row.get("counts"),
@@ -1085,10 +1086,7 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
         const entryPage = site.page(subject);
         entries.push({
           id,
-          label:
-            site.name(subject) === subject.value
-              ? subject.value
-              : site.name(subject),
+          label: site.name(subject),
           ...(entryPage === undefined ? {} : { page: entryPage }),
           members: sorted,
           ...(lead === undefined ? {} : { lead }),
