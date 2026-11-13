@@ -306,7 +306,7 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       assert.ok(data.files[data.pod.card]?.types.length);
     });
 
-    it("says of each kit step whether it was performed, apart from whether its row wrote files", () => {
+    it("tells whether each kit step was performed, apart from whether its row wrote files", () => {
       const { data } = alex;
       const performed = new Map(
         data.kit?.steps.map(({ name, performed }) => [name, performed]),
