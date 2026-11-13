@@ -229,6 +229,13 @@ var FILE_CARDS = ['Written by', 'Read by', 'Names and is named by'];
 var DIR_CARDS = ['Written by', 'Read by', 'Contains'];
 var QUERY_CARDS = ['Output', 'Reads', 'Writes'];
 function none(text) { return '<span class="lbl">' + text + '</span>'; }
+/* a table cell names its column for the stacked tables of a phone, where the head is hidden, and shows a dash for no value, as the stacked table hides an empty cell */
+function td(label, html, cls) { return '<td data-label="' + esc(label) + '"' + (cls ? ' class="' + cls + '"' : '') + '>' + (html == null || html === '' ? '—' : html) + '</td>'; }
+/* the short head of a record's column: where the record came from and the id the source gave it, the whole path in the tooltip */
+function recordHead(m) {
+  var f = D.files[m], parts = (f.label || '').split(' · '), id = shortName(f.path.split('/').pop().replace(/\.ttl$/, ''));
+  return (parts.length >= 3 ? parts.slice(2).join(' · ') : id);
+}
 
 /* the queries whose WHERE names a term the files use: approximate, as nothing records which query read which file. A built file is read only by the questions and the labels query, a matcher or tables query reads none, a file's own writer does not read it, and a term that many files use says nothing of one. */
 function topFolder(f) { var i = f.path.indexOf('/'); return i < 0 ? '' : f.path.slice(0, i); }
@@ -305,11 +312,11 @@ function rootPanel() {
     var cls = D.placements.filter(function (p) { return p.folder && p.folder.indexOf(d.id.slice(2)) === 0 && p['class']; }).map(function (p) { return p['class']; });
     cls = cls.filter(function (x, i) { return cls.indexOf(x) === i; });
     var acts = all.map(function (f) { return f.writer; }).filter(function (w, i, a) { return typeof w === 'number' && a.indexOf(w) === i; });
-    return '<tr><td>' + ref(d.id, false) + '</td><td>' + cls.slice(0, 5).map(term).join(', ') + (cls.length > 5 ? ' +' + (cls.length - 5) : '') + '</td><td class="num">' + all.length + '</td><td>' + (all.every(function (f) { return f.writer === 'build'; }) ? '<span class="pill built">rebuilt</span>' : plural(acts.length, 'act')) + '</td></tr>';
+    return '<tr>' + td('path', ref(d.id, false)) + td('the layout files here', cls.slice(0, 5).map(term).join(', ') + (cls.length > 5 ? ' +' + (cls.length - 5) : '')) + td('files', String(all.length), 'num') + td('written by', all.every(function (f) { return f.writer === 'build'; }) ? '<span class="pill built">rebuilt</span>' : plural(acts.length, 'act')) + '</tr>';
   });
   var views = D.views.map(function (v) {
     var q = D.queries[v.query], file = v.fileIndex != null ? D.files[v.fileIndex] : null;
-    return '<tr' + (file ? '' : ' class="dim"') + '><td>' + ref('q:' + q.path, false) + '</td><td class="arr">→</td><td>' + (file ? ref('p:' + file.path, false) + ' <span class="lbl">' + plural(v.entries.length, 'entry', 'entries') + '</span>' : 'not written: the pod holds nothing of its kind') + '</td></tr>';
+    return '<tr' + (file ? '' : ' class="dim"') + '>' + td('definition (vocabulary)', ref('q:' + q.path, false)) + td('writes', '→', 'arr') + td('file (this pod, last build)', file ? ref('p:' + file.path, false) + ' <span class="lbl">' + plural(v.entries.length, 'entry', 'entries') + '</span>' : 'not written: the pod holds nothing of its kind') + '</tr>';
   });
   return '<h1>' + esc(D.pod.title) + '</h1><p class="sub mono">' + esc(D.pod.address) + '</p>' +
     '<p class="gen">' + (state.step === END ? 'As published' : 'After act ' + state.step + ' of ' + END) + ': <b>' + vis.length + '</b> files. <b>' + c('record') + '</b> ' + (c('record') === 1 ? 'record' : 'records') + ', <b>' + c('revision') + '</b> ' + (c('revision') === 1 ? 'revision' : 'revisions') + ', <b>' + c('version') + '</b> ' + (c('version') === 1 ? 'version' : 'versions') + ', <b>' + c('judgment') + '</b> ' + (c('judgment') === 1 ? 'judgment' : 'judgments') + '.' + tag('pod') + '</p>' +
@@ -387,7 +394,7 @@ function hopsHtml(hl) {
     if (hop.registrations) {
       body += '<div class="tw-x"><table><thead><tr><th>registered as</th><th>holds</th><th>points at</th><th>view definition</th></tr></thead><tbody>' + hop.registrations.map(function (r) {
         if (r.file != null && !seen[r.file]) { seen[r.file] = 1; views.push(r.file); }
-        return '<tr><td>' + esc(r.title || '') + '</td><td>' + (r['class'] ? term(r['class']) : '') + '</td><td>' + (r.file != null ? fileRef(r.file) : dirs.has('p:' + r.target) ? ref('p:' + r.target, false) : '<span class="mono">' + esc(r.target) + '</span>') + '</td><td>' + (r.query != null ? ref(queryId(r.query), false) : '') + '</td></tr>';
+        return '<tr>' + td('registered as', esc(r.title || '')) + td('holds', r['class'] ? term(r['class']) : '') + td('points at', r.file != null ? fileRef(r.file) : dirs.has('p:' + r.target) ? ref('p:' + r.target, false) : '<span class="mono">' + esc(r.target) + '</span>') + td('view definition', r.query != null ? ref(queryId(r.query), false) : '') + '</tr>';
       }).join('') + '</tbody></table></div>';
     }
     return hopHtml(k + 1, hop.file === hl, body);
@@ -396,7 +403,7 @@ function hopsHtml(hl) {
   return '<div class="hops">' + out.join('') + '</div>';
 }
 function tableOf(rows) {
-  return '<div class="tw-x"><table><thead><tr>' + rows[0].map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.slice(1).map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+  return '<div class="tw-x"><table><thead><tr>' + rows[0].map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.slice(1).map(function (r) { return '<tr>' + r.map(function (c, k) { return td(rows[0][k], esc(c)); }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
 }
 function countsText(j) { return j.counts === true ? 'counts under the ' + esc(D.pod.lens) + ' lens' : j.counts === false ? 'does not count under the ' + esc(D.pod.lens) + ' lens' : 'whether it counts: the lens gives no row for it'; }
 function judgmentLine(i) {
@@ -420,21 +427,22 @@ function judgingHtml(f) {
 function arrivalsHtml(f) {
   return '<h3>Arrivals <span>· each revision, the version it sets, and the act that wrote it</span></h3><div class="tw-x"><table class="arrivals"><thead><tr><th>time</th><th>revision</th><th>version</th><th>written by</th></tr></thead><tbody>' + f.arrivals.map(function (a) {
     var rv = D.files[a.revision], later = typeof rv.writer === 'number' && rv.writer > state.step;
-    return '<tr' + (later ? ' class="dim"' : '') + '><td>' + esc(fmt(a.time)) + '</td><td>' + fileRef(a.revision) + '</td><td>' + (a.version != null ? fileRef(a.version) : none('none')) + '</td><td>' + (typeof rv.writer === 'number' ? actRef(rv.writer) : 'the build') + '</td></tr>';
+    return '<tr' + (later ? ' class="dim"' : '') + '>' + td('time', esc(fmt(a.time))) + td('revision', fileRef(a.revision)) + td('version', a.version != null ? fileRef(a.version) : none('none')) + td('written by', typeof rv.writer === 'number' ? actRef(rv.writer) : 'the build') + '</tr>';
   }).join('') + '</tbody></table></div>' + tag('pod');
 }
 function entriesHtml(v) {
   return '<h3>Entries <span>· ' + v.entries.length + '</span></h3><div class="tw-x"><table class="entries"><thead><tr><th>entry</th><th>records it joins</th><th>judgments between them</th><th>touching</th></tr></thead><tbody>' + v.entries.map(function (en) {
-    return '<tr><td><a class="ref" data-go="' + esc('p:' + en.id) + '">' + esc(en.label) + '</a></td><td>' + (en.members.length ? en.members.map(function (m) { return fileRef(m); }).join('<br>') : none('none')) + (en.others && en.others.length ? '<br><span class="lbl">and ' + plural(en.others.length, 'other') + '</span>' : '') + '</td><td>' + (en.within.length ? en.within.map(function (j) { return fileRef(j); }).join('<br>') : none('none')) + '</td><td class="num">' + en.touching.length + '</td></tr>';
+    return '<tr>' + td('entry', '<a class="ref" data-go="' + esc('p:' + en.id) + '">' + esc(en.label) + '</a>') + td('records it joins', (en.members.length ? en.members.map(function (m) { return fileRef(m); }).join('<br>') : none('none')) + (en.others && en.others.length ? '<br><span class="lbl">and ' + plural(en.others.length, 'other') + '</span>' : '')) + td('judgments between them', en.within.length ? en.within.map(function (j) { return fileRef(j); }).join('<br>') : none('none')) + td('touching', String(en.touching.length), 'num') + '</tr>';
   }).join('') + '</tbody></table></div>';
 }
 function entryPanel(x) {
   var en = x.en, v = x.view, vf = D.files[v.fileIndex];
-  var heads = en.members.map(function (m) { return '<th>' + fileRef(m) + (m === en.lead ? ' <span class="pill kit" title="The record whose values lead the entry">lead</span>' : '') + '</th>'; }).concat((en.others || []).map(function (o) { return '<th class="mono">' + esc(o) + '</th>'; }));
+  var heads = en.members.map(function (m) { var f = D.files[m]; return '<th title="' + esc(f.path + (f.label ? ' · ' + f.label : '')) + '"><a class="ref" data-go="' + esc('p:' + f.path) + '">' + esc(recordHead(m)) + '</a>' + (m === en.lead ? ' <span class="pill kit" title="The record whose values lead the entry">lead</span>' : '') + '<small class="lbl">' + esc(shortName(f.path.split('/').pop().replace(/\.ttl$/, ''))) + '</small></th>'; }).concat((en.others || []).map(function (o) { return '<th class="mono" title="' + esc(o) + '">' + esc(o.replace(/^.*[/#]/, '') || o) + '</th>'; }));
+  var heading = ['field', 'the entry'].concat(en.members.map(function (m) { return recordHead(m); }), (en.others || []).map(function (o) { return o.replace(/^.*[/#]/, '') || o; }));
   var h = '<h1>' + esc(en.label) + '</h1><p class="sub">an entry of ' + ref('p:' + vf.path, false) + '</p><div class="chips"><span class="pill">' + plural(en.members.length + (en.others || []).length, 'record') + '</span><span class="pill">' + plural(en.within.length, 'judgment') + ' between them</span>' + (en.page ? '<a class="pill" href="' + esc(en.page) + '">its page</a>' : '') + '</div>';
   h += fixed('entry');
   h += '<h3>The records side by side <span>· a shaded row is where they disagree</span></h3><div class="tw-x"><table class="et"><thead><tr><th>field</th><th>the entry</th>' + heads.join('') + '</tr></thead><tbody>' + en.fields.map(function (fl) {
-    return '<tr' + (fl.disagree ? ' class="diff"' : '') + '><td>' + term(fl.term) + '</td><td>' + esc(fl.entry) + '</td>' + fl.members.map(function (m) { return '<td>' + esc(m) + '</td>'; }).join('') + '</tr>';
+    return '<tr' + (fl.disagree ? ' class="diff"' : '') + '>' + td('field', term(fl.term)) + td('the entry', esc(fl.entry)) + fl.members.map(function (m, k) { return td(heading[k + 2], esc(m)); }).join('') + '</tr>';
   }).join('') + '</tbody></table></div>' + tag('pod');
   h += '<h3>Judgments between its records <span>· ' + en.within.length + '</span></h3>' + (en.within.length ? '<ul class="list within">' + en.within.map(function (j) { return '<li>' + judgmentLine(j) + '</li>'; }).join('') + '</ul>' : '<p class="gen">None: the records are joined by no judgment of their own.</p>');
   if (en.touching.length) h += '<h3>Judgments that name one of them only <span>· ' + en.touching.length + '</span></h3><ul class="list touching">' + en.touching.map(function (j) { return '<li>' + judgmentLine(j) + '</li>'; }).join('') + '</ul>';
@@ -470,7 +478,7 @@ function derivedByHtml(q) {
   var lead = q.order != null ? 'The derivations that ran before step ' + (q.order + 1) + ' and added a term its WHERE names' : 'The derivations whose added terms its WHERE names';
   if (!found.length) return section('Reads from earlier derivations', '<p class="gen">' + lead + ': none.' + tag('query') + '</p>');
   return section('Reads from earlier derivations <span>· ' + found.length + '</span>', '<p class="gen">' + lead + '.' + tag('query') + '</p><div class="tw-x"><table class="derivedby"><thead><tr><th class="num">step</th><th>derivation</th><th>terms it supplies</th></tr></thead><tbody>' + found.map(function (x) {
-    return '<tr><td class="num">' + (x.q.order + 1) + '</td><td>' + ref(queryId(D.queries.indexOf(x.q)), false) + '</td><td>' + x.shared.map(term).join(' ') + '</td></tr>';
+    return '<tr>' + td('step', String(x.q.order + 1), 'num') + td('derivation', ref(queryId(D.queries.indexOf(x.q)), false)) + td('terms it supplies', x.shared.map(term).join(' ')) + '</tr>';
   }).join('') + '</tbody></table></div>');
 }
 /* the files the build wrote whose terms a question's WHERE names: approximate, as for every Read by */
@@ -484,7 +492,7 @@ function readsHtml(q) {
   if (!found.length) return section('The view it reads', '<p class="gen">No file the build wrote uses a term its WHERE names.</p>');
   found.sort(function (a, b) { return b.shared.length - a.shared.length || (D.files[a.i].path < D.files[b.i].path ? -1 : 1); });
   return section('The view it reads <span>· files the build wrote</span>', '<p class="lbl">' + esc(FIXED.readBy) + tag('fixed') + '</p><div class="tw-x"><table class="reads"><thead><tr><th>file</th><th>terms in common</th></tr></thead><tbody>' + found.slice(0, 30).map(function (x) {
-    return '<tr><td>' + fileRef(x.i) + '</td><td>' + x.shared.slice(0, 8).map(term).join(' ') + (x.shared.length > 8 ? ' <span class="lbl">+' + (x.shared.length - 8) + '</span>' : '') + '</td></tr>';
+    return '<tr>' + td('file', fileRef(x.i)) + td('terms in common', x.shared.slice(0, 8).map(term).join(' ') + (x.shared.length > 8 ? ' <span class="lbl">+' + (x.shared.length - 8) + '</span>' : '')) + '</tr>';
   }).join('') + '</tbody></table></div>' + (found.length > 30 ? '<p class="gen">30 of ' + found.length + ' shown.</p>' : ''));
 }
 function answerHtml(q) {
@@ -493,7 +501,7 @@ function answerHtml(q) {
   if (!a) return '<p class="gen">No answer is kept for this question under the ' + esc(D.pod.lens) + ' lens.</p>';
   if (!a.rows.length) return '<p class="gen">No rows for this pod.</p>';
   var cols = Object.keys(a.rows[0]), shown = a.rows.slice(0, 40);
-  return '<div class="tw-x"><table><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + shown.map(function (r) { return '<tr>' + cols.map(function (c) { return '<td>' + esc(r[c] && typeof r[c] === 'object' ? r[c].value : r[c]) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (a.rows.length > shown.length ? '<p class="gen">' + shown.length + ' of ' + a.rows.length + ' rows shown.' + tag('query') + '</p>' : '');
+  return '<div class="tw-x"><table><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + shown.map(function (r) { return '<tr>' + cols.map(function (c) { return td(c, esc(r[c] && typeof r[c] === 'object' ? r[c].value : r[c])); }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (a.rows.length > shown.length ? '<p class="gen">' + shown.length + ' of ' + a.rows.length + ' rows shown.' + tag('query') + '</p>' : '');
 }
 function inspectorHtml() {
   var id = state.sel, h = crumbs(id), path = id.slice(2);
@@ -511,7 +519,7 @@ function inspectorHtml() {
 }
 function queryList(qs) {
   var rows = qs.slice().sort(function (a, b) { return a.path < b.path ? -1 : 1; }).slice(0, 200).map(function (q) {
-    return '<tr><td class="num">' + (q.order != null ? q.order + 1 : '') + '</td><td>' + ref('q:' + q.path, false) + '</td><td>' + esc(q.group) + '</td></tr>';
+    return '<tr>' + td('build step', q.order != null ? String(q.order + 1) : '', 'num') + td('query', ref('q:' + q.path, false)) + td('kind', esc(q.group)) + '</tr>';
   });
   return '<div class="tw-x"><table><thead><tr><th class="num">build step</th><th>query</th><th>kind</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' + (qs.length > 200 ? '<p class="gen">200 of ' + qs.length + ' shown.</p>' : '');
 }
@@ -596,9 +604,9 @@ function turtle(text, f, only) {
     if (v.charAt(0) === '#') return base + v;
     try { return new URL(v, base).href; } catch (e) { return v; }
   }
-  /* an entry's own statements: its subject, and the subjects named under it */
+  /* an entry's own statements: its subject, and the subjects named under it, a view's per-member nodes with a dash and others with a slash */
   if (only) {
-    triples = triples.filter(function (t) { var a = t[0].charAt(0) === '<' ? absolute(t[0]) : ''; return a === only || a.indexOf(only + '/') === 0; });
+    triples = triples.filter(function (t) { var a = t[0].charAt(0) === '<' ? absolute(t[0]) : ''; return a === only || a.indexOf(only + '/') === 0 || a.indexOf(only + '-') === 0; });
     if (!triples.length) return null;
   }
   function brief(a) {
@@ -721,7 +729,17 @@ function fillBodies() {
 
 /* page */
 var STOPS = [['Pod', 'p:'], ['Log', '~log'], ['Records', 'p:records/'], ['Judgments', 'p:judgments/'], ['View definitions', 'q:queries/views/'], ['Materialized views', null], ['Queries', 'q:queries/'], ['How an app finds things', null]];
+/* the first record whose revision names a document that names its bytes: where the walk record, revision, document, bytes can be clicked from */
+function walkRecord() {
+  var hit = D.files.find(function (f) {
+    return f.kind === 'record' && (f.arrivals || []).some(function (a) {
+      return D.files[a.revision].names.some(function (d) { return D.files[d].kind === 'document' && D.files[d].names.some(function (b) { return D.files[b].kind === 'bytes'; }); });
+    });
+  });
+  return hit ? 'p:' + hit.path : 'p:records/';
+}
 function stopTarget(s) {
+  if (s[0] === 'Records') return walkRecord();
   if (s[1]) return s[1];
   return s[0] === 'How an app finds things' ? 'p:' + D.files[D.pod.card].path : 'p:' + (viewDir || 'clinical/');
 }
@@ -969,6 +987,10 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer i.term { font-style: normal; font-family: var(--mono); font-size: 12px; border-bottom: 1px dotted var(--quiet); }
 #explorer .card i.term { display: inline-block; margin: 0 .5rem .15rem 0; }
 #explorer .tw-x { overflow-x: auto; }
+#explorer table.et td:first-child, #explorer table.et th:first-child { white-space: nowrap; position: sticky; left: 0; background: var(--bg, #fff); }
+#explorer table.et th:not(:first-child) { white-space: normal; min-width: 7.5rem; max-width: 12rem; overflow-wrap: anywhere; font-weight: 500; font-size: .8rem; }
+#explorer table.et th a { display: inline-block; }
+#explorer table.et th small { display: block; }
 #explorer table .num, #explorer th.num { text-align: right; }
 #explorer table.dirs td:first-child { white-space: nowrap; }
 #explorer tr.dim td { color: var(--quiet); }
