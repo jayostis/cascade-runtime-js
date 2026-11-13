@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { build, type Metafile } from "esbuild";
+import * as oxigraph from "oxigraph";
 import { type Pod, type Row, Unopened } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
 import {
@@ -14,8 +15,14 @@ import {
   PAGE_CHARACTERS,
   offeredTools,
   type PodReads,
+  TIER_OF_KIND,
   TOOLS,
 } from "cascade-runtime/tools";
+import {
+  findRoot,
+  readConfig,
+  resolveVocabulary,
+} from "@cascade-runtime/runtime/node";
 import { podReads, podsIn } from "cascade-runtime/tools/node";
 
 const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
@@ -397,6 +404,40 @@ describe("Tools a model reads a pod with · TOOLS", () => {
           kind: "https://ns.cascadeprotocol.org/cascade#ReadingPodsOrTables",
           tier: "free",
         })),
+      );
+    });
+
+    it("exports for each of the vocabulary's kinds of act, and for no other, the notation of the tier it has there", async () => {
+      const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+      const { folder } = await resolveVocabulary(root, await readConfig(root));
+      const triples = oxigraph.parse(
+        await readFile(join(folder, "ontologies", "cascade.ttl"), "utf8"),
+        { format: "text/turtle", base_iri: "urn:vocabulary:" },
+      );
+      const objects = (predicate: string, subject?: string) =>
+        triples
+          .filter(
+            (it) =>
+              it.predicate.value === predicate &&
+              (subject === undefined || it.subject.value === subject),
+          )
+          .map((it) => [it.subject.value, it.object.value] as const);
+      const notation = new Map(
+        objects("http://www.w3.org/2004/02/skos/core#notation"),
+      );
+      const inScheme = objects("http://www.w3.org/2004/02/skos/core#inScheme")
+        .filter(([, scheme]) => scheme === `${CASCADE}ModelToolActKinds`)
+        .map(([kind]) => kind);
+      assert.deepEqual(
+        Object.fromEntries(
+          inScheme
+            .map((kind) => [
+              kind.slice(CASCADE.length),
+              notation.get(objects(`${CASCADE}consentTier`, kind)[0]![1]),
+            ])
+            .sort(),
+        ),
+        Object.fromEntries(Object.entries(TIER_OF_KIND).sort()),
       );
     });
 

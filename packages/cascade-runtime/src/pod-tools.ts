@@ -389,14 +389,25 @@ export type ToolKind =
 /** The tiers a tool declares: its kind's `cascade:consentTier`, by the tier's `skos:notation`. */
 export type ToolTier = "free" | "ask";
 
-/** Each kind's `cascade:consentTier`; a tool's `tier` is read from here, so it cannot differ from its kind's. */
-const TIER_OF: Readonly<Record<ToolKind, ToolTier>> = {
+/**
+ * Every kind in `cascade:ModelToolActKinds`, by its local name, with its `cascade:consentTier` by the tier's
+ * `skos:notation`: the five a tool may take and the four at `never`, which no tool takes, so an app can name what no
+ * tool does by the kind of act. A test holds it to the vocabulary's.
+ */
+export const TIER_OF_KIND = {
   ReadingPodsOrTables: "free",
   MovingTheAppsView: "free",
   WritingToAPod: "ask",
   MakingAPodThatIsNotEncrypted: "ask",
   ChangingTheAppsTablesOrSettings: "ask",
-};
+  MakingUnlockingOrLockingAnEncryptedPod: "never",
+  SigningInAtASource: "never",
+  ImportingRecordsFromASource: "never",
+  DeletingPods: "never",
+} as const;
+
+/** A tool's `tier` is read from the table, so it cannot differ from its kind's. */
+const TIER_OF: Readonly<Record<ToolKind, ToolTier>> = TIER_OF_KIND;
 
 /**
  * A tool: `kind` the one kind of act it takes and `tier` the person's consent to it, its kind's (every one here
