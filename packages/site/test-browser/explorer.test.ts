@@ -122,6 +122,19 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
       );
     });
 
+    it("keeps each path of the directory table whole at a desktop width", async () => {
+      await opened(1440);
+      const wraps = await tab
+        .locator("#ins table")
+        .first()
+        .locator("tbody tr td:first-child")
+        .evaluateAll((cells) =>
+          cells.map((cell) => getComputedStyle(cell).whiteSpace),
+        );
+      assert.ok(wraps.length > 0);
+      for (const wrap of wraps) assert.equal(wrap, "nowrap");
+    });
+
     it("says 'judgments', 'records', 'revisions' and 'versions' in the singular for a count of one", async () => {
       await opened();
       for (let step = 0; step < data.log.length; step += 1) {
@@ -271,6 +284,429 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
       assert.equal(
         await tab.locator(".act.cur").getAttribute("data-step"),
         String(last),
+      );
+    });
+  });
+
+  describe("when a row of the log is picked", () => {
+    const picked = () => {
+      const at = data.log.findIndex(
+        (row) => row.how === "snapshot" && row.act !== undefined,
+      );
+      assert.ok(at >= 0, "the kit's pod has an act that left a snapshot");
+      return { at, row: data.log[at] as ExplorerData["log"][number] };
+    };
+
+    it("opens the act: its snapshot, its parent, its set hash, its file, and the files it wrote by folder", async () => {
+      await opened();
+      const { at, row } = picked();
+      await tab.locator(`.act[data-step="${at}"]`).click();
+      const panel = (await tab.locator("#ins").textContent()) ?? "";
+      assert.ok(panel.includes(row.snapshot ?? "?"), "the snapshot");
+      assert.ok(panel.includes(row.setHash ?? "?"), "the set hash");
+      assert.ok(
+        await tab
+          .locator(`#ins a[data-go="p:${data.files[row.act ?? 0]?.path}"]`)
+          .first()
+          .isVisible(),
+        "the act's file is a link",
+      );
+      if (row.parent !== undefined)
+        assert.ok(
+          panel.includes(data.log[row.parent]?.snapshot ?? "?"),
+          "the parent snapshot",
+        );
+      assert.ok(row.wrote.length > 0, "the act wrote files");
+      assert.equal(
+        await tab.locator("#ins details.ex li a[data-go^='p:']").count(),
+        row.wrote.length,
+        "each file it wrote is listed once, under its folder",
+      );
+    });
+
+    it("lists the kit's steps that fall there, performed or not, and the cases checked after it", async () => {
+      await opened();
+      const kit = data.kit;
+      assert.ok(kit);
+      const at = data.log.findIndex(
+        (row, index) =>
+          row.kitSteps.length > 0 &&
+          kit.cases.some((each) => each.row === index),
+      );
+      assert.ok(at >= 0, "a row with a kit step and a case");
+      await tab.locator(`.act[data-step="${at}"]`).click();
+      const panel = (await tab.locator("#ins").textContent()) ?? "";
+      for (const step of data.log[at]?.kitSteps ?? [])
+        assert.ok(panel.includes(step.name), step.name);
+      for (const each of kit.cases.filter((one) => one.row === at))
+        assert.ok(panel.includes(each.rule), each.rule);
+    });
+
+    it("shows loudly a file its snapshot names that the pod does not hold", async () => {
+      await tab.route("**/explorer.json", async (route) => {
+        const response = await route.fetch();
+        const changed = (await response.json()) as ExplorerData;
+        const rows = changed.log.map((row, index) =>
+          index === 1 ? { ...row, missing: ["records/gone.ttl"] } : row,
+        );
+        await route.fulfill({ response, json: { ...changed, log: rows } });
+      });
+      try {
+        await opened();
+        await tab.locator('.act[data-step="1"]').click();
+        const alarm = tab.locator("#ins .missing");
+        assert.ok(await alarm.isVisible());
+        assert.match((await alarm.textContent()) ?? "", /records\/gone\.ttl/);
+      } finally {
+        await tab.unroute("**/explorer.json");
+      }
+    });
+
+    it("has a control that returns to the last act, and a copied address opens the act", async () => {
+      await opened();
+      const last = data.log.length - 1;
+      await tab.locator('.act[data-step="0"]').click();
+      assert.equal(
+        await tab.locator(".act.cur").getAttribute("data-step"),
+        "0",
+      );
+      assert.match(decodeURIComponent(new URL(tab.url()).hash), /~log/);
+      for (const control of ["#ins .back", "#stepline .back"]) {
+        await tab.locator('.act[data-step="0"]').click();
+        await tab.locator(control).click();
+        assert.equal(
+          await tab.locator(".act.cur").getAttribute("data-step"),
+          String(last),
+          control,
+        );
+      }
+      await tab.goto(`${served.url}index.html#%7Elog&step=0`);
+      await tab.reload();
+      await tab.waitForSelector(".row", { state: "attached" });
+      assert.match((await tab.locator("#ins h1").textContent()) ?? "", /Act 0/);
+    });
+
+    it("scrolls the log so that the selected act is in view, from the slider and from an address", async () => {
+      await tab.route("**/explorer.json", async (route) => {
+        const response = await route.fetch();
+        const changed = (await response.json()) as ExplorerData;
+        const last = changed.log.at(-1) as ExplorerData["log"][number];
+        await route.fulfill({
+          response,
+          json: {
+            ...changed,
+            log: [...changed.log, ...Array.from({ length: 30 }, () => last)],
+          },
+        });
+      });
+      try {
+        await opened();
+        const inView = () =>
+          tab.evaluate(() => {
+            const pane = document
+              .getElementById("log")
+              ?.getBoundingClientRect();
+            const row = document
+              .querySelector(".act.cur")
+              ?.getBoundingClientRect();
+            return (
+              pane !== undefined &&
+              row !== undefined &&
+              row.top >= pane.top - 1 &&
+              row.bottom <= pane.bottom + 1
+            );
+          });
+        await tab.fill("#rng", "25");
+        assert.ok(await inView(), "act 25 is out of view after the slider");
+        await tab.locator('.act[data-step="4"]').scrollIntoViewIfNeeded();
+        await tab.locator('.act[data-step="4"]').click();
+        assert.ok(await inView(), "act 4 is out of view after a click");
+        await tab.goto(`${served.url}index.html#%7Elog&step=30`);
+        await tab.reload();
+        await tab.waitForSelector(".row", { state: "attached" });
+        assert.ok(
+          await inView(),
+          "act 30 is out of view when opened by address",
+        );
+      } finally {
+        await tab.unroute("**/explorer.json");
+      }
+    });
+
+    it("moves to the selected pane on a phone", async () => {
+      await opened(390);
+      await tab.click('[data-pane="log"]');
+      await tab.locator('.act[data-step="0"]').click();
+      assert.equal(await tab.locator(".pane.on").getAttribute("data-p"), "ins");
+    });
+  });
+
+  describe("when a file of the pod is open", () => {
+    const open = async (kind: string) => {
+      const target = data.files.find((file) => file.kind === kind);
+      assert.ok(target, kind);
+      return openFile(target);
+    };
+    const openFile = async (target: ExplorerData["files"][number]) => {
+      await opened();
+      await tab.fill("#flt", target.path.split("/").at(-1) ?? "");
+      await tab.locator(`#tree [data-go="p:${target.path}"]`).click();
+      await tab.waitForFunction(
+        () =>
+          !(
+            document.getElementById("body")?.textContent ?? "Loading"
+          ).startsWith("Loading"),
+      );
+      return target;
+    };
+
+    it("shows its statements as Turtle, with prefixes and grouped subjects, and no line a screen cannot hold", async () => {
+      await open("record");
+      const text = (await tab.locator("#body").textContent()) ?? "";
+      assert.match(
+        text,
+        /^@prefix cascade: <https:\/\/ns\.cascadeprotocol\.org\/cascade#> \./m,
+      );
+      assert.doesNotMatch(
+        text,
+        /^(?!@prefix).*<https:\/\/ns\.cascadeprotocol\.org\/cascade#/m,
+      );
+      assert.match(text, /^ {4}a /m);
+      assert.ok(
+        text.split("\n").every((line) => line.length < 120),
+        "a line is longer than 120 characters",
+      );
+      const [wide, shown] = await tab
+        .locator("#body")
+        .evaluate((pre) => [pre.scrollWidth, pre.clientWidth]);
+      assert.ok((wide ?? 0) <= (shown ?? 0), `${wide} > ${shown}`);
+    });
+
+    it("makes each IRI that names another file of the pod a numbered link that opens it", async () => {
+      await open("revision");
+      const links = tab.locator("#body a[data-go^='p:']");
+      assert.ok((await links.count()) > 0, "no link in the Turtle");
+      assert.ok((await tab.locator("#body .num").count()) > 0);
+      const go = (await links.first().getAttribute("data-go")) ?? "";
+      await links.first().click();
+      assert.equal(
+        await tab.locator("#ins .crumbs b").textContent(),
+        go
+          .slice(2)
+          .split("/")
+          .at(-1)
+          ?.replace(/^([0-9a-f]{8})[0-9a-f-]{20,}/, "$1…"),
+      );
+    });
+
+    it("lists the queries whose WHERE uses its terms under 'Read by', marked as approximate", async () => {
+      const target = await open("record");
+      const terms = (target.terms ?? []).map((index) => data.termList[index]);
+      const readers = data.queries.filter((query) =>
+        query.reads.some((term) => terms.includes(term)),
+      );
+      assert.ok(readers.length > 0, "a query reads a term of a record");
+      const read = tab.locator("#ins .card", { hasText: "Read by" });
+      assert.ok((await read.locator("a[data-go^='q:']").count()) > 0);
+      assert.match((await read.textContent()) ?? "", /approximate/i);
+    });
+
+    it("lists under 'Read by' for a materialized view only the questions and the labels query, never its writer, a derivation or a matcher", async () => {
+      const target = await open("view");
+      const read = tab.locator("#ins .card", { hasText: "Read by" });
+      const paths = await read
+        .locator("a[data-go^='q:']")
+        .evaluateAll((links) =>
+          links.map((link) => link.getAttribute("data-go")?.slice(2) ?? ""),
+        );
+      assert.ok(paths.length > 0, "no query reads the view");
+      const writer = data.queries[target.writtenBy ?? -1]?.path;
+      assert.ok(writer, "the view has a writer");
+      for (const path of paths) {
+        const query = data.queries.find((each) => each.path === path);
+        assert.ok(query, path);
+        assert.ok(
+          query.group.startsWith("questions/") || path === "queries/labels.rq",
+          `${path} (${query.group}) is listed as reading a built file`,
+        );
+        assert.notEqual(path, writer, "the view's writer is listed");
+      }
+    });
+
+    it("makes a document's subject, which is the hash of its bytes, a link to the bytes", async () => {
+      const bytes = data.files.find(
+        (each) => each.kind === "bytes" && each.document !== undefined,
+      );
+      assert.ok(bytes, "the pod stores bytes under a document");
+      const document = data.files[bytes.document ?? -1];
+      assert.ok(document);
+      await openFile(document);
+      assert.ok(
+        (await tab.locator(`#body a[data-go="p:${bytes.path}"]`).count()) > 0,
+        "the Turtle does not link the bytes",
+      );
+      assert.ok(
+        (await tab
+          .locator("#ins .card", { hasText: "Names and is named by" })
+          .locator(`a[data-go="p:${bytes.path}"]`)
+          .count()) > 0,
+        "the card for names does not list the bytes",
+      );
+    });
+
+    it("prints an entry before the members whose names extend its own", async () => {
+      let pairs = 0;
+      for (const view of data.files.filter((each) => each.kind === "view")) {
+        await openFile(view);
+        const subjects = ((await tab.locator("#body").textContent()) ?? "")
+          .split("\n")
+          .flatMap((line) => /^<(#[^>]*)>/.exec(line)?.[1] ?? []);
+        subjects.forEach((later, at) => {
+          const earlier = subjects.findIndex(
+            (each) => each !== later && later.startsWith(each),
+          );
+          if (earlier < 0) return;
+          pairs += 1;
+          assert.ok(earlier < at, `${later} is before ${subjects[earlier]}`);
+        });
+      }
+      assert.ok(pairs > 0, "no view of the pod has an entry with members");
+    });
+
+    it("hangs a wrapped line of the Turtle under its own start on a phone", async () => {
+      const target = data.files.find((each) => each.kind === "revision");
+      assert.ok(target);
+      await tab.setViewportSize({ width: 390, height: 800 });
+      await tab.goto(`${served.url}index.html`);
+      await tab.waitForSelector(".row", { state: "attached" });
+      await tab.click('[data-pane="tree"]');
+      await tab.fill("#flt", target.path.split("/").at(-1) ?? "");
+      await tab.locator(`#tree [data-go="p:${target.path}"]`).click();
+      await tab.waitForFunction(
+        () =>
+          !(
+            document.getElementById("body")?.textContent ?? "Loading"
+          ).startsWith("Loading"),
+      );
+      const wrapped = await tab.locator("#body .ln").evaluateAll((lines) =>
+        lines.flatMap((line) => {
+          const range = document.createRange();
+          range.selectNodeContents(line);
+          const rects = [...range.getClientRects()].filter(
+            (rect) => rect.width > 0,
+          );
+          const tops = [...new Set(rects.map((rect) => Math.round(rect.top)))];
+          if (tops.length < 2) return [];
+          const left = (top: number) =>
+            Math.min(
+              ...rects
+                .filter((rect) => Math.round(rect.top) === top)
+                .map((rect) => rect.left),
+            );
+          return [[left(tops[0] ?? 0), left(tops[1] ?? 0)]];
+        }),
+      );
+      assert.ok(wrapped.length > 0, "no line of the Turtle wraps at 390 px");
+      for (const [first, next] of wrapped)
+        assert.ok((next ?? 0) > (first ?? 0), `${next} is not under ${first}`);
+    });
+  });
+
+  describe("when a folder of the pod is open", () => {
+    it("labels the third card 'Contains', and lists the queries that read what it holds", async () => {
+      await opened();
+      const folder = data.files.find((file) => file.kind === "record");
+      assert.ok(folder);
+      const path = `${folder.path.split("/")[0]}/`;
+      await tab.locator(`#tree [data-go="p:${path}"]`).click();
+      const titles = await tab.locator("#ins .card h4").allTextContents();
+      assert.deepEqual(titles, ["Written by", "Read by", "Contains"]);
+      const read = tab.locator("#ins .card", { hasText: "Read by" });
+      assert.ok((await read.locator("a[data-go^='q:']").count()) > 0);
+    });
+  });
+
+  describe("when the explorer is drawn", () => {
+    it("draws the tree as a directory: a folder icon, open or closed, and a file icon on each row", async () => {
+      await opened();
+      const dirs = tab.locator("#tree .row.dir .ic svg");
+      assert.ok((await dirs.count()) > 0, "no folder icon");
+      assert.ok((await tab.locator("#tree .row.file .ic svg").count()) > 0);
+      const closed = await dirs.first().getAttribute("class");
+      const first = tab.locator("#tree .row.dir").first();
+      await first.locator(".tw").click();
+      const after = await tab
+        .locator("#tree .row.dir")
+        .first()
+        .locator(".ic svg")
+        .getAttribute("class");
+      assert.notEqual(after, closed, "open and closed look the same");
+    });
+
+    it("has a top bar with the pod's name and address, the legend of the source tags and the eight stops of the demo", async () => {
+      await opened();
+      const bar = tab.locator("header.top");
+      const text = (await bar.textContent()) ?? "";
+      assert.ok(text.includes(data.pod.title));
+      assert.ok(text.includes(data.pod.address));
+      for (const kind of ["pod", "vocabulary", "layout", "fixed"])
+        assert.ok(
+          (await bar.locator(`.legend .src.${kind}`).count()) === 1,
+          kind,
+        );
+      const stops = await tab.locator(".stops .stop").allTextContents();
+      assert.deepEqual(stops, [
+        "Pod",
+        "Log",
+        "Records",
+        "Judgments",
+        "View definitions",
+        "Materialized views",
+        "Queries",
+        "How an app finds things",
+      ]);
+      await tab.locator(".stops .stop", { hasText: "Queries" }).click();
+      assert.match(
+        (await tab.locator("#ins h1").textContent()) ?? "",
+        /queries/,
+      );
+      await tab.locator(".stops .stop", { hasText: "Records" }).click();
+      assert.match(
+        (await tab.locator("#ins h1").textContent()) ?? "",
+        /records/,
+      );
+      await tab.locator(".stops .stop", { hasText: "Log" }).click();
+      assert.match((await tab.locator("#ins h1").textContent()) ?? "", /Act/);
+    });
+
+    it("gives each source its own colour in the legend, the same on every label tag", async () => {
+      await opened();
+      const kinds = ["pod", "vocabulary", "query", "layout", "kit", "fixed"];
+      const colour = (selector: string) =>
+        tab
+          .locator(selector)
+          .first()
+          .evaluate((tag) => getComputedStyle(tag).color);
+      const legend = await Promise.all(
+        kinds.map((kind) => colour(`header.top .legend .src.${kind}`)),
+      );
+      assert.equal(new Set(legend).size, kinds.length, legend.join(" "));
+      for (const kind of ["pod", "layout", "fixed"])
+        assert.equal(
+          await colour(`#ins .src.${kind}`),
+          await colour(`header.top .legend .src.${kind}`),
+          kind,
+        );
+    });
+
+    it("draws, on the root, how it fits together, each box opening its folder", async () => {
+      await opened();
+      const boxes = tab.locator("#ins .flow .box");
+      assert.ok((await boxes.count()) >= 5, "the strip's five stages");
+      await tab.locator("#ins .flow .box", { hasText: "derivations/" }).click();
+      assert.match(
+        (await tab.locator("#ins h1").textContent()) ?? "",
+        /queries\/derivations\//,
       );
     });
   });

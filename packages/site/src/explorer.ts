@@ -20,7 +20,7 @@ import {
 } from "@cascade-runtime/runtime";
 import type { Site } from "./site.js";
 import { numberOf } from "./spec.js";
-import { code, expanded, prefixed, shown, terms } from "./terms.js";
+import { code, expanded, PREFIXES, prefixed, shown, terms } from "./terms.js";
 
 /** The data object of a pod's explorer, written beside the pod's page. */
 export const EXPLORER_FILE = "explorer.json";
@@ -101,6 +101,8 @@ export interface ExplorerFile {
   /** File indexes of the pod files its statements name, and of those whose statements name it, each ascending. */
   readonly names: readonly number[];
   readonly namedBy: readonly number[];
+  /** Indices into `termList` of the predicates and classes its statements use, ascending; absent when it uses none. */
+  readonly terms?: readonly number[];
   /** The handle the kit's `expected/handles.json` gives the record. */
   readonly handle?: string;
   /** A record: its revisions in time order, each with the version it sets. */
@@ -333,6 +335,10 @@ export interface ExplorerData {
   readonly terms: Readonly<
     Record<Curie, { readonly label?: string; readonly comment?: string }>
   >;
+  /** The prefixes the explorer prints IRIs with: `prefix` to namespace. */
+  readonly prefixes: Readonly<Record<string, string>>;
+  /** The terms the pod's files use that a query's WHERE can name (no `rdf:type`, no `rdfs:label`), sorted; a file's `terms` index it. */
+  readonly termList: readonly Curie[];
   readonly placements: readonly ExplorerPlacement[];
   readonly files: readonly ExplorerFile[];
   readonly log: readonly ExplorerAct[];
@@ -383,6 +389,9 @@ function codeOf(text: string): string {
 
 const TERM_IN_QUERY =
   /(?<![\w:])(cascade|prov|pav|dct|rdfs|solid|foaf|pim|dcat|oa|bridge):([A-Za-z][\w-]*)/g;
+const QUERY_PREFIXES = new Set(
+  "cascade prov pav dct rdfs solid foaf pim dcat oa bridge".split(" "),
+);
 const GENERIC = new Set(["rdfs:label", "rdf:type"]);
 
 function termsIn(text: string): string[] {
@@ -1150,13 +1159,29 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   // names between files
   const names: Set<number>[] = loaded.map(() => new Set());
   const namedBy: Set<number>[] = loaded.map(() => new Set());
-  loaded.forEach(({ graph }, file) => {
-    if (
-      graph === undefined ||
-      kinds[file] === "view" ||
-      kinds[file] === "built"
-    )
-      return;
+  // a document's subject is the hash of its bytes, so it names the bytes the pod stores under that hash
+  const bytesOfHash = new Map<string, number>();
+  loaded.forEach(({ path }, file) => {
+    const stem = path.slice(path.lastIndexOf("/") + 1);
+    if (kinds[file] === "bytes" && /^[0-9a-f]{64}$/.test(stem))
+      bytesOfHash.set(stem, file);
+  });
+  const bytesOfSubject = (value: string): number | undefined => {
+    const hash = /^ni:\/\/\/sha-256;([A-Za-z0-9_-]{43})$/.exec(value)?.[1];
+    if (hash === undefined) return undefined;
+    const hex = [...atob(hash.replace(/-/g, "+").replace(/_/g, "/") + "=")]
+      .map((char) => char.charCodeAt(0).toString(16).padStart(2, "0"))
+      .join("");
+    return bytesOfHash.get(hex);
+  };
+  loaded.forEach(({ graph, thing }, file) => {
+    if (graph === undefined) return;
+    const bytes =
+      kinds[file] === "document" ? bytesOfSubject(thing) : undefined;
+    if (bytes !== undefined) {
+      names[file]?.add(bytes);
+      namedBy[bytes]?.add(file);
+    }
     for (const [, , target] of graph.triples) {
       const found =
         target.termType === "NamedNode"
@@ -1284,9 +1309,33 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
           object(graph, thing, `${DCT}title`)?.value ??
           layout.placements.find((each) => each.file === path)?.title);
   };
+  // the terms each file's statements use, the ones a query's WHERE can name
+  const termsOf = loaded.map(({ graph }) => {
+    const found = new Set<string>();
+    for (const [, predicate, object] of graph?.triples ?? [])
+      for (const value of predicate.value === TYPE
+        ? [object.value]
+        : [predicate.value]) {
+        const curie = prefixed(value);
+        if (
+          curie !== undefined &&
+          QUERY_PREFIXES.has(curie.slice(0, curie.indexOf(":"))) &&
+          !GENERIC.has(curie)
+        )
+          found.add(curie);
+      }
+    return found;
+  });
+  const termList = [...new Set(termsOf.flatMap((each) => [...each]))].sort(
+    compare,
+  );
+  const termIndex = new Map(termList.map((curie, index) => [curie, index]));
   const files: ExplorerFile[] = loaded.map(
     ({ path, bytes, graph, thing }, file) => {
       const kind = kinds[file] as FileKind;
+      const fileTerms = [...(termsOf[file] ?? [])]
+        .map((curie) => termIndex.get(curie) as number)
+        .sort((a, b) => a - b);
       const typeIris =
         graph?.objects(iri(thing), TYPE).map(({ value }) => value) ?? [];
       const placed = placementOf(path, kind, typeIris);
@@ -1313,6 +1362,7 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
         ...(page === undefined ? {} : { page }),
         names: [...(names[file] ?? [])].sort((a, b) => a - b),
         namedBy: [...(namedBy[file] ?? [])].sort((a, b) => a - b),
+        ...(fileTerms.length === 0 ? {} : { terms: fileTerms }),
         ...(handle === undefined ? {} : { handle }),
         ...(arrived === undefined
           ? {}
@@ -1494,6 +1544,8 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       },
     },
     terms: described,
+    prefixes: PREFIXES,
+    termList,
     placements,
     files,
     log,

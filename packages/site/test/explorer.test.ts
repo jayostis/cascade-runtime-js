@@ -20,6 +20,7 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { agentFiles } from "../src/agents.js";
 import {
+  EXPLORER_BUDGET,
   EXPLORER_FILE,
   type ExplorerData,
   type ExplorerFile,
@@ -258,6 +259,41 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
             assert.ok(data.terms[type], `${type} is used but not described`);
     });
 
+    it("gives each file the terms its statements use, as indices into one list, and the prefixes that shorten them", () => {
+      const { data } = kit;
+      assert.equal(
+        data.prefixes.cascade,
+        "https://ns.cascadeprotocol.org/cascade#",
+      );
+      assert.deepEqual(
+        data.termList,
+        [...new Set(data.termList)].sort(),
+        "the term list is sorted and holds each term once",
+      );
+      assert.ok(
+        !data.termList.includes("rdf:type"),
+        "rdf:type reads as everything",
+      );
+      for (const node of data.files)
+        for (const index of node.terms ?? [])
+          assert.ok(
+            data.termList[index] !== undefined,
+            `${node.path}: ${index}`,
+          );
+      const revision = data.files.find(({ kind }) => kind === "revision");
+      assert.ok(revision);
+      const used = (revision.terms ?? []).map((index) => data.termList[index]);
+      assert.ok(used.includes("cascade:revisionOf"), used.join(" "));
+      const record = data.files.find(({ kind }) => kind === "record");
+      assert.ok(record);
+      assert.ok(
+        (record.terms ?? []).some((index) =>
+          (data.termList[index] ?? "").startsWith("cascade:"),
+        ),
+        "a record's class is among its terms",
+      );
+    });
+
     it("is listed in index.json beside the page, with the queries", async () => {
       const tree = new Map(
         [...kit.built].filter(([path]) => !path.startsWith("pod/")),
@@ -324,6 +360,38 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
         const named = data.files[node.document ?? -1];
         assert.ok(named?.label, `${node.path} has no document with a label`);
         assert.equal(node.label, named.label, node.path);
+      }
+    });
+
+    it("gives a materialized view the files its statements name, so that its card agrees with its Turtle", () => {
+      const { data } = alex;
+      const view = file(data, "clinical/allergies.ttl");
+      assert.equal(view.kind, "view");
+      assert.ok(view.names.length > 0, "the view names no file");
+      for (const named of view.names)
+        assert.ok(
+          data.files[named]?.namedBy.includes(data.files.indexOf(view)),
+          `${data.files[named]?.path} is not named by the view`,
+        );
+      assert.ok(
+        JSON.stringify(data).length <= EXPLORER_BUDGET,
+        "the object is over its budget",
+      );
+    });
+
+    it("has each stored document name the bytes whose hash is its subject", () => {
+      const { data } = alex;
+      const stored = data.files.filter(({ kind }) => kind === "bytes");
+      assert.ok(stored.length > 0, "no bytes are stored");
+      for (const bytes of stored) {
+        const at = data.files.indexOf(bytes);
+        const document = data.files[bytes.document ?? -1];
+        assert.ok(document, `${bytes.path} has no document`);
+        assert.ok(
+          document.names.includes(at),
+          `${document.path} does not name ${bytes.path}`,
+        );
+        assert.ok(bytes.namedBy.includes(bytes.document ?? -1), bytes.path);
       }
     });
 
