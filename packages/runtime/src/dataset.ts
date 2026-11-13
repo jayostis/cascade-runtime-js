@@ -9,6 +9,7 @@ import { type Dataset, type Store, Union } from "./store.js";
 export const STEPS_GRAPH = "urn:cascade:steps";
 export const STEP = "urn:cascade:step:";
 const GENERATED = "http://www.w3.org/ns/prov#generated";
+const USED = "http://www.w3.org/ns/prov#used";
 const STORAGE = "http://www.w3.org/ns/pim/space#storage";
 const DCT = "http://purl.org/dc/terms/";
 /** The files `podFiles` reads at once: a pod of many revisions read all at once runs out of file descriptors. */
@@ -151,11 +152,12 @@ function valueOf(
   return triples?.find(([, p]) => p.value === predicate)?.[2];
 }
 
-/** What a pod's own files say of it: the address its owner's profile names, and its manifest's title and time. */
+/** What a pod's own files say of it: the address its owner's profile names, and its manifest's title, time and snapshot. */
 export interface PodStated {
   readonly address: string;
   readonly title?: string;
   readonly at?: string;
+  readonly snapshot?: string;
 }
 
 export async function podStated(
@@ -169,10 +171,12 @@ export async function podStated(
   const manifest = await triplesOf(pod, layout.manifest, store);
   const title = valueOf(manifest, `${DCT}title`)?.value;
   const at = valueOf(manifest, `${DCT}created`)?.value;
+  const snapshot = valueOf(manifest, USED)?.value;
   return {
     address: storage.value,
     ...(title === undefined ? {} : { title }),
     ...(at === undefined ? {} : { at }),
+    ...(snapshot === undefined ? {} : { snapshot }),
   };
 }
 
@@ -235,7 +239,12 @@ export async function podDataset(
   const union = new Union(store);
   const held = await podFiles(pod, layout, address, union);
   const derived = await build.derivations.derive(union, lens, samesStillJoined);
-  const built = await build.files(union, { address, at, title });
+  const built = await build.files(union, {
+    address,
+    at,
+    title,
+    ...(stated.snapshot === undefined ? {} : { snapshot: stated.snapshot }),
+  });
   await addLayout(union, layout, address);
   return {
     address,
