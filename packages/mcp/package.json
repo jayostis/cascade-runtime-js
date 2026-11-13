@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "An MCP server on stdio over a folder of Cascade pods: the read-only tools of cascade-runtime/tools.",
+  "description": "An MCP server on stdio over a folder of Cascade pods: the tools of cascade-runtime/tools, those that propose a write only to a client that can ask the person.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22"

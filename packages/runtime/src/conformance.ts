@@ -30,11 +30,17 @@ import {
   written,
 } from "./rdf.js";
 import { referenceIndex, References } from "./references.js";
-import { type Performers, Replay, type Replayed, titleOf } from "./replay.js";
+import {
+  type Performers,
+  type Proposer,
+  Replay,
+  type Replayed,
+  titleOf,
+} from "./replay.js";
 import type { Shapes } from "./shapes.js";
 import { Refusal, CASCADE } from "./step.js";
 import type { Dataset, StoreFactory, Union } from "./store.js";
-import type { Step } from "./story.js";
+import type { Step, ToolsDoor } from "./story.js";
 import { peopleOf, type Person, Words } from "./words.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
@@ -148,8 +154,14 @@ export interface ConformanceOptions {
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
   readonly derive?: Derive;
-  /** The tools the runtime offers a model, which `When the tools offered a model are listed` lists; none when not given. */
-  readonly tools?: readonly OfferedTool[];
+  /**
+   * The tools the runtime offers a model, which `When the tools offered a model are listed` lists, or those it offers
+   * through a door that can ask the person, or cannot; none when not given.
+   */
+  readonly tools?:
+    readonly OfferedTool[] | ((door: ToolsDoor) => readonly OfferedTool[]);
+  /** Performs what a model proposes, which `When a model proposes` steps do; without it, a runtime cannot perform them. */
+  readonly proposer?: Proposer;
   /** The vocabulary's layout, when already read. */
   readonly layout?: Layout;
   /** The vocabulary's shapes, which a kit's check 3 reads; without them, no kit's checks are run. */
@@ -382,10 +394,12 @@ class Run {
     lens: string,
     names?: readonly string[],
     folder?: string,
-    tools = false,
+    tools?: ToolsDoor,
   ): Promise<Dataset> {
     const key = JSON.stringify(
-      tools ? [lens, names, folder, tools] : [lens, names, folder],
+      tools === undefined
+        ? [lens, names, folder]
+        : [lens, names, folder, tools],
     );
     let found = node.datasets.get(key);
     if (found === undefined) {
@@ -429,7 +443,7 @@ class Run {
                 );
                 if (tables !== undefined)
                   await addTables(union, tables, rowsOf(tables), added);
-                if (tools) await this.#addTools(union);
+                if (tools !== undefined) await this.#addTools(union, tools);
                 return union;
               })();
       found.catch(() => undefined);
@@ -443,8 +457,10 @@ class Run {
    * by its name and labelled with it, with the kind it declares and the tier whose notation it declares, where it
    * declares one the vocabulary has.
    */
-  async #addTools(union: Union): Promise<void> {
-    const { vocabulary, newStore, tools = [] } = this.#options;
+  async #addTools(union: Union, door: ToolsDoor): Promise<void> {
+    const { vocabulary, newStore } = this.#options;
+    const given = this.#options.tools ?? [];
+    const tools = typeof given === "function" ? given(door) : given;
     this.#ontology ??= readText(vocabulary, ONTOLOGY).then((text) =>
       newStore().parse(text, vocabulary.iri + ONTOLOGY),
     );
@@ -538,6 +554,9 @@ class Run {
           ...(options.performers === undefined
             ? {}
             : { performers: options.performers }),
+          ...(options.proposer === undefined
+            ? {}
+            : { proposer: options.proposer }),
         }),
       );
     }
@@ -558,7 +577,7 @@ class Run {
         lens,
         replayed.steps.map(({ step }) => step.name),
         person.folder,
-        compiled.toolsListed === true,
+        compiled.toolsListed,
       ),
     );
     let handles = this.#handles.get(feature.folder);

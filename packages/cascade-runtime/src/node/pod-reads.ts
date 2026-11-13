@@ -1,7 +1,7 @@
 // `cascade-runtime/tools/node`: the reads `cascade-runtime/tools` runs over, for the pods of a folder on disk.
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { Refusal, Unopened } from "@cascade-runtime/runtime";
+import { randomId, Refusal, Unopened } from "@cascade-runtime/runtime";
 import { changeTools, findChanges } from "../changes.js";
 import { checkInput } from "../check.js";
 import { compactRead } from "../compact-read.js";
@@ -12,9 +12,12 @@ import {
   CHANGE_TOOLS,
   citedLabChange,
   type PodReads,
+  proposedTurtle,
   type TableLookups,
   unknownChangeTool,
 } from "../pod-tools.js";
+
+export { proposer } from "./proposer.js";
 
 /** Where the pods are: their names, each opened by name, and the reference tables they are opened with. */
 export interface PodsHost {
@@ -122,6 +125,33 @@ export function podReads(
       );
       const found = await findChanges(pod, input);
       return { value: found.map(citedLabChange), found };
+    },
+    async write({ pod: name, proposal, model }) {
+      const pod = await podNamed(name);
+      const turtle = proposedTurtle(proposal, {
+        model,
+        owner: pod.owner,
+        session: randomId(),
+      });
+      if (proposal.kind === "entry") {
+        const { refused, activity } = await pod.enter(turtle);
+        return {
+          ...(refused === undefined ? {} : { refused }),
+          ...(activity === undefined ? {} : { id: activity }),
+        };
+      }
+      let filed;
+      try {
+        filed = await pod.judge(turtle);
+      } catch (error) {
+        throw new Refusal(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      return {
+        ...(filed.refused === undefined ? {} : { refused: filed.refused }),
+        ...(filed.judgment === undefined ? {} : { id: filed.judgment }),
+      };
     },
     ...(options.tables === true &&
       host.tables !== undefined && {

@@ -267,11 +267,14 @@ describe("Asking the person before a write · elicitation", () => {
     let folder: string;
     let client: Client;
     let said: "accept" | "decline" = "accept";
+    let subject: string;
 
     before(
       async () => {
         folder = await mkdtemp(join(tmpdir(), "cascade-mcp-ask-"));
-        await (await openPod(join(folder, "p"))).close();
+        const made = await openPod(join(folder, "p"));
+        subject = made.subject;
+        await made.close();
         client = new Client(
           { name: "stdio-client", version: "3.1.4" },
           { capabilities: { elicitation: {} } },
@@ -315,20 +318,40 @@ describe("Asking the person before a write · elicitation", () => {
       assert.equal(await conditions(), before);
     });
 
-    it("writes the entry to the pod when the person accepts, and the record shows in the pod's history", async () => {
+    it("writes the entry, then a judgment of its record, then the judgment's retraction, when the person accepts each", async () => {
       said = "accept";
       const before = await conditions();
-      const { value } = await call(
-        client,
-        "propose_entry",
-        PROPOSALS.propose_entry!,
-      );
-      assert.equal(
-        (value as { written: boolean }).written,
-        true,
-        JSON.stringify(value),
-      );
+      const entry = await call(client, "propose_entry", {
+        pod: "p",
+        turtle: ASTHMA.replace(/<urn:uuid:[^>]*>/, `<${subject}>`),
+      });
+      assert.equal((entry.value as { written: boolean }).written, true);
       assert.equal(await conditions(), before + 1);
+      const { rows } = (
+        await call(client, "ask", {
+          pod: "p",
+          question: "entry/Where it came from",
+        })
+      ).value as { rows: { record: string }[] };
+      const judged = await call(client, "propose_judgment", {
+        pod: "p",
+        verdict: "erroneous",
+        members: [rows[0]!.record],
+      });
+      const { id } = judged.value as { written: boolean; id: string };
+      assert.equal((judged.value as { written: boolean }).written, true);
+      assert.match(id, /^urn:uuid:/);
+      assert.equal(await conditions(), before, "the judgment sets it aside");
+      const retracted = await call(client, "propose_retraction", {
+        pod: "p",
+        judgment: id,
+      });
+      assert.equal((retracted.value as { written: boolean }).written, true);
+      assert.equal(
+        await conditions(),
+        before + 1,
+        "the retraction restores it",
+      );
     });
   });
 });

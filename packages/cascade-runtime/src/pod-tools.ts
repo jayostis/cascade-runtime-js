@@ -1,5 +1,6 @@
-// `cascade-runtime/tools`: the tools a model reads pods by, their input schemas and their answers, over the reads a
-// host gives (`PodReads`), in Node and in a page alike. Every tool reads; none writes, moves an app or opens an encrypted
+// `cascade-runtime/tools`: the tools a model uses on pods, their input schemas and their answers, over the reads and the
+// write a host gives (`PodReads`), in Node and in a page alike. A tool at `free` reads; a tool at `ask` proposes a write,
+// which the person must say yes to, through a door that can ask them (`Door`). None moves an app or opens an encrypted
 // pod. The reads over a folder of pods are Node's, from `cascade-runtime/tools/node`.
 import { Refusal } from "@cascade-runtime/runtime/refusal";
 import {
@@ -10,6 +11,16 @@ import {
 } from "./changes.js";
 import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
+import {
+  checkIri,
+  describeProposal,
+  type Answer,
+  type Model,
+  type Proposal,
+  VERDICTS,
+  type Verdict,
+  type Written,
+} from "./proposals.js";
 import {
   HISTORY_QUESTION,
   medicationsNotChecked,
@@ -27,6 +38,20 @@ import {
 import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
 
 export * from "./table-checks.js";
+export {
+  describeProposal,
+  proposedTurtle,
+  THIS_JUDGMENT,
+  VERDICTS,
+} from "./proposals.js";
+export type {
+  Answer,
+  Model,
+  Proposal,
+  Recording,
+  Verdict,
+  Written,
+} from "./proposals.js";
 
 // ---- The compact read's names: its handles and its shapes. The read itself is Node's (`compact-read.ts`, behind `podReads`). ----
 
@@ -233,6 +258,15 @@ export interface PodReads {
   }): Promise<{ value: unknown; found?: readonly LabChange[] }>;
   /** What the reference tables and the pod's verdicts against them answer for the pod; absent, or none, when the tables are off. */
   tables?(input: { pod: string }): Promise<TableLookups | undefined>;
+  /**
+   * Files a write the person said yes to, as `proposedTurtle` records it, naming `model` as its proposer and the pod's
+   * owner as the person who said yes; absent when the host writes nothing, which a tool at ask then refuses.
+   */
+  write?(input: {
+    pod: string;
+    proposal: Proposal;
+    model: Model;
+  }): Promise<Written>;
 }
 
 /** What `reference_table_checks` asks of the reference tables, and of the pod against them. */
@@ -362,7 +396,12 @@ async function tableChecks(
   };
 }
 
-/** What a door gives the tools: `address.trend(pod, { test, medication })`, the page that draws a lab change's results, where it has one. */
+/**
+ * What a door gives the tools: `address.trend(pod, { test, medication })`, the page that draws a lab change's results,
+ * where it has one; `ask(question)`, which shows the person the question and gives their answer, where it can, and
+ * which a tool at `ask` calls once for each call; and `model`, the model it is serving. A door that cannot ask the
+ * person gives no `ask`, and is offered no tool at `ask`.
+ */
 export interface Door {
   readonly address?: {
     readonly trend?: (
@@ -370,6 +409,8 @@ export interface Door {
       trend: { test: string; medication?: string },
     ) => string;
   };
+  readonly ask?: (question: string) => Promise<Answer>;
+  readonly model?: Model;
 }
 
 /** A tool's input, as its door checked it against the tool's schema: `pod` beside it for a tool with `ofPod`. */
@@ -410,8 +451,8 @@ export const TIER_OF_KIND = {
 const TIER_OF: Readonly<Record<ToolKind, ToolTier>> = TIER_OF_KIND;
 
 /**
- * A tool: `kind` the one kind of act it takes and `tier` the person's consent to it, its kind's (every one here
- * reads, at `free`); `ofPod` when it takes the pod's name in `input.pod`, which `inputSchema` leaves out (`withPod` adds
+ * A tool: `kind` the one kind of act it takes and `tier` the person's consent to it, its kind's (a tool that reads is
+ * at `free`, one that proposes a write at `ask`); `ofPod` when it takes the pod's name in `input.pod`, which `inputSchema` leaves out (`withPod` adds
  * it); `findings`, on `find_changes`, its answer with the lab changes and their rows beside it.
  */
 export interface PodTool {
@@ -481,18 +522,69 @@ export function unknownChangeTool(called: string): void {
 /** A tool as declared: all but its `tier`, which `checked` gives it from its kind. */
 type DeclaredTool = Omit<PodTool, "tier">;
 
+/** `members` as a judgment of `verdict` takes them: IRIs, at least two for a verdict that compares and one for one that does not. */
+function membersOf(verdict: Verdict, members: unknown): string[] {
+  const named = members as unknown[];
+  const least = verdict === "erroneous" ? 1 : 2;
+  if (named.length < least)
+    throw new Refusal(
+      `a judgment that records are ${verdict} names at least ${least} of them`,
+    );
+  named.forEach((member, at) => checkIri(member, `members[${at}]`));
+  return named as string[];
+}
+
+/**
+ * The `run` of a tool that proposes a write: it makes the proposal from the input, shows the person it through the
+ * door and asks once, and files it through the host's `write` only on their yes, naming the door's model as its proposer.
+ * A no, a dismissed question or no answer files nothing, and says so.
+ *
+ * @throws Refusal when the door cannot ask, or names no model, or the host writes nothing, or the input is no proposal.
+ */
+function proposing(
+  proposalOf: (input: ToolInput) => Proposal,
+): DeclaredTool["run"] {
+  return async (reads, input, door) => {
+    const proposal = proposalOf(input);
+    if (door?.ask === undefined)
+      throw new Refusal(
+        "this door cannot ask the person, and a write is made only when they say yes",
+      );
+    if (door.model === undefined)
+      throw new Refusal(
+        "this door names no model, so what it writes could not say who proposed it",
+      );
+    if (reads.write === undefined)
+      throw new Refusal("this host writes to no pod");
+    const pod = input.pod as string;
+    const said = await door.ask(describeProposal(pod, proposal, door.model));
+    if (said !== "yes") return { written: false, said };
+    const { refused, id } = await reads.write({
+      pod,
+      proposal,
+      model: door.model,
+    });
+    return refused === undefined
+      ? { written: true, ...(id === undefined ? {} : { id }) }
+      : { written: false, refused };
+  };
+}
+
+const PROPOSAL_ANSWERS =
+  "It asks the person, through the client, to say yes to this one call, and writes nothing without it: the answer is { written: true, id }, or { written: false, said } when they said no, dismissed the question or left it unanswered, or { written: false, refused } when the pod's rules refuse it. The pod records that you proposed it and that the person said yes, so give no author, session or time.";
+
 /** A tool that checks its whole input against its schema before it runs, at its kind's tier. */
 function checked(tool: DeclaredTool): PodTool {
   const check = (input: ToolInput) => checkInput(schemaOf(tool), input);
   return {
     ...tool,
     tier: TIER_OF[tool.kind],
-    run(reads, input, door) {
+    async run(reads, input, door) {
       check(input);
       return tool.run(reads, input, door);
     },
     ...(tool.findings && {
-      findings(reads, input, door) {
+      async findings(reads, input, door) {
         check(input);
         return tool.findings!(reads, input, door);
       },
@@ -682,6 +774,80 @@ export const TOOLS: readonly PodTool[] = (
       ofPod: true,
       run: tableChecks,
     },
+    {
+      name: "propose_entry",
+      description: `Proposes adding an entry to a pod: one or more records the person has told you of, as Turtle. Each draft is <urn:cascade:output-0>, <urn:cascade:output-1> and so on, typed with its class (for example cascade:ProblemOrDiagnosis or cascade:AllergyOrIntolerance), and has a version <urn:cascade:output-0-version> that is a prov:specializationOf it and states what is entered (cascade:conditionName, cascade:clinicalStatus, cascade:allergen and so on) and cascade:patient, the person the pod is about. ${PROPOSAL_ANSWERS}`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          turtle: {
+            type: "string",
+            description:
+              "The entry's drafts and their versions, as Turtle with its prefixes declared.",
+          },
+        },
+        required: ["turtle"],
+        additionalProperties: false,
+      },
+      kind: "WritingToAPod",
+      ofPod: true,
+      run: proposing(({ turtle }) => {
+        if ((turtle as string).trim() === "")
+          throw new Refusal("turtle holds no entry");
+        return { kind: "entry", turtle: turtle as string };
+      }),
+    },
+    {
+      name: "propose_judgment",
+      description: `Proposes a judgment of records the pod holds, in the person's name: that records are the same thing, different things, or entered in error. A record is named by its IRI, as ask's rows give it (a row names its entry, and ${PROVENANCE_QUESTION} gives its records). ${PROPOSAL_ANSWERS}`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          verdict: {
+            type: "string",
+            description:
+              "same: the records are one thing; different: they are not, although they may look alike; erroneous: the record was entered in error.",
+            enum: [...VERDICTS],
+          },
+          members: {
+            type: "array",
+            description:
+              "The records' IRIs: at least two for same and different, one for erroneous.",
+            items: { type: "string" },
+          },
+        },
+        required: ["verdict", "members"],
+        additionalProperties: false,
+      },
+      kind: "WritingToAPod",
+      ofPod: true,
+      run: proposing(({ verdict, members }) => ({
+        kind: "judgment",
+        verdict: verdict as Verdict,
+        members: membersOf(verdict as Verdict, members),
+      })),
+    },
+    {
+      name: "propose_retraction",
+      description: `Proposes retracting a judgment of the person's, which sets aside what it said. The judgment is named by its IRI. ${PROPOSAL_ANSWERS}`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          judgment: {
+            type: "string",
+            description: "The IRI of the judgment to retract.",
+          },
+        },
+        required: ["judgment"],
+        additionalProperties: false,
+      },
+      kind: "WritingToAPod",
+      ofPod: true,
+      run: proposing(({ judgment }) => {
+        checkIri(judgment, "judgment");
+        return { kind: "retraction", judgment };
+      }),
+    },
   ] satisfies DeclaredTool[]
 ).map(checked);
 
@@ -692,10 +858,15 @@ export interface OfferedTool {
   readonly tier: string;
 }
 
-/** Every tool of `TOOLS` as the conformance run lists the tools offered a model. */
-export const offeredTools = (): OfferedTool[] =>
-  TOOLS.map(({ name, kind, tier }) => ({
-    name,
-    kind: `https://ns.cascadeprotocol.org/cascade#${kind}`,
-    tier,
-  }));
+/**
+ * The tools a door offers a model, as the conformance run lists them: every tool of `TOOLS` for a door that can ask the
+ * person, and, for one that cannot, only those at `free`: a tool at `ask` is offered only where the person can be asked.
+ */
+export const offeredTools = ({ canAsk = true } = {}): OfferedTool[] =>
+  TOOLS.filter(({ tier }) => canAsk || tier === "free").map(
+    ({ name, kind, tier }) => ({
+      name,
+      kind: `https://ns.cascadeprotocol.org/cascade#${kind}`,
+      tier,
+    }),
+  );

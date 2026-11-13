@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, describe, it } from "node:test";
 import * as oxigraph from "oxigraph";
+import { openPod } from "cascade-runtime";
+import { podReads, podsIn } from "cascade-runtime/tools/node";
 import {
   type Answer,
   type Door,
@@ -366,4 +371,103 @@ describe("Recording a write a model proposed · proposedTurtle()", () => {
       ),
     );
   });
+});
+
+/**
+ * Over a folder of pods, `podReads(...).write` files each proposal in the pod, and the files of the act that wrote it
+ * hold what Y3 names, alone: the model and the owner, each typed, in their roles.
+ * @rule runtime/consent.feature Y3
+ */
+describe("Recording a write a model proposed in a pod's files · podReads().write", () => {
+  const FILED_BY = { iri: MODEL.iri, label: MODEL.label };
+  let folder: string;
+  let reads: ReturnType<typeof podReads>;
+  const files = new Map<string, string>();
+
+  /** The text of the one file of the pod that names `id` and says a model proposed it. */
+  const actOf = async (id: string) => {
+    const found = [...files].filter(
+      ([, text]) =>
+        statements(text).some((line) =>
+          line.startsWith(`${id} ${RDF_TYPE} `),
+        ) && text.includes("ModelProposerRole"),
+    );
+    assert.equal(found.length, 1, `${found.length} files hold ${id}`);
+    return found[0]![1];
+  };
+
+  before(async () => {
+    folder = await mkdtemp(join(tmpdir(), "proposals-"));
+    const made = await openPod(join(folder, "p"));
+    const subject = made.subject;
+    await made.close();
+    reads = podReads(podsIn(folder));
+    const entry = await reads.write!({
+      pod: "p",
+      model: FILED_BY,
+      proposal: {
+        kind: "entry",
+        turtle: ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${subject}>`),
+      },
+    });
+    const { rows } = await reads.ask({
+      pod: "p",
+      question: "entry/Where it came from",
+    });
+    const judgment = await reads.write!({
+      pod: "p",
+      model: FILED_BY,
+      proposal: {
+        kind: "judgment",
+        verdict: "erroneous",
+        members: [rows[0]!.record!],
+      },
+    });
+    const retraction = await reads.write!({
+      pod: "p",
+      model: FILED_BY,
+      proposal: { kind: "retraction", judgment: judgment.id! },
+    });
+    ids = {
+      entry: entry.id!,
+      judgment: judgment.id!,
+      retraction: retraction.id!,
+    };
+    await reads.close();
+    for (const name of await readdir(join(folder, "p"), { recursive: true }))
+      if (name.endsWith(".ttl"))
+        files.set(name, await readFile(join(folder, "p", name), "utf8"));
+  });
+
+  let ids: { entry: string; judgment: string; retraction: string };
+
+  after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
+
+  for (const kind of ["entry", "judgment", "retraction"] as const)
+    it(`types the model and the owner in the file of the ${kind}'s act, and associates the model only in its role`, async () => {
+      const lines = statements(await actOf(ids[kind]));
+      assert.ok(
+        lines.includes(`${MODEL.iri} ${RDF_TYPE} ${PROV}SoftwareAgent`),
+      );
+      assert.ok(
+        lines.some(
+          (line) =>
+            line.endsWith(` ${RDF_TYPE} ${PROV}Person`) &&
+            line.includes("/profile/card.ttl#me"),
+        ),
+      );
+      assert.ok(
+        !lines.some(
+          (line) =>
+            line.includes(`${PROV}wasAssociatedWith`) &&
+            line.endsWith(` ${MODEL.iri}`),
+        ),
+        "the model is no unqualified association",
+      );
+      assert.equal(
+        lines.filter((line) => line.endsWith(` ${CASCADE}ModelProposerRole`))
+          .length,
+        1,
+      );
+    });
 });

@@ -17,9 +17,11 @@ under the base, with the import map that loads it. `terms`, from each entry and 
 `cascade-runtime/terms` with nothing of the runtime behind it, holds the IRIs the starter
 names, keyed by the term's local name in the vocabulary's one namespace, and `codeStems`
 each code system's IRI stem, keyed by the system's local name. `cascade-runtime/tools`
-is the tools a model reads pods by (`TOOLS`), each with its input schema, in Node and in a
-page; `cascade-runtime/tools/node` is the reads they run over a folder of pods
-(`podReads(podsIn(folder))`); every row they give names its entry, and none writes or opens an
+is the tools a model uses on pods (`TOOLS`), each with its input schema, in Node and in a
+page; `cascade-runtime/tools/node` is the reads and the write they run over a folder of pods
+(`podReads(podsIn(folder))`); every row they give names its entry. The tools at `free` read; those at `ask`
+(`propose_entry`, `propose_judgment`, `propose_retraction`) write only when the `door` they are called through asks
+the person and the person says yes, and a door that cannot ask is offered none. None opens an
 encrypted pod. `cascade-mcp` serves them over MCP.
 
 `replySchema` is the contract for a model's reply about a person's records (an answer, a short form, and items whose

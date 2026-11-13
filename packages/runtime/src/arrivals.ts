@@ -64,6 +64,7 @@ const CURRENT_REVISIONS = `${QUERIES}derivations/current-revisions.rq`;
 const LADDER_LENS = "everyday";
 const SERVER = `${CASCADE}Server`;
 const DOCUMENT_IMPORT = `${CASCADE}DocumentImport`;
+const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
 const HAND_ENTRY_SESSION = `${CASCADE}HandEntrySession`;
 const SERVER_BASE_URL = `${CASCADE}serverBaseUrl`;
 const OA = "http://www.w3.org/ns/oa#";
@@ -1349,16 +1350,39 @@ export async function fileEntry(
     );
   }
   await revisions.write(context.writes);
+  const act = graph.closure(session);
   context.writes.act({
     name: session.value,
     path: sessions.path(session.value),
-    triples: typedAs(
-      typedAs(graph.closure(session), session, `${PROV}Activity`),
-      session,
-      HAND_ENTRY_SESSION,
-    ),
+    triples: [
+      ...typedAs(
+        typedAs(act, session, `${PROV}Activity`),
+        session,
+        HAND_ENTRY_SESSION,
+      ),
+      ...agentsDescribed(graph, act),
+    ],
   });
   return session.value;
+}
+
+/**
+ * What `graph` says of each agent the associations in `act` name by an IRI: its types and its label, which the act's file
+ * holds so that it can be read alone.
+ */
+function agentsDescribed(graph: Graph, act: readonly Triple[]): Triple[] {
+  const agents = new Map(
+    act
+      .filter(
+        ([, p, o]) => p.value === `${PROV}agent` && o.termType === "NamedNode",
+      )
+      .map(([, , o]) => [o.value, o] as const),
+  );
+  return [...agents.values()].flatMap((agent) =>
+    graph
+      .match(agent)
+      .filter(([, p]) => p.value === TYPE || p.value === RDFS_LABEL),
+  );
 }
 
 /** The version property each fact a connect reports is held as (A16). */
