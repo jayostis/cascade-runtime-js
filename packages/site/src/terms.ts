@@ -14,7 +14,7 @@ export const STATED = "pod/Which file states each thing";
 export const CALLED = "pod/What everything is called";
 const TYPE = `${RDF}type`;
 
-const PREFIXES: Readonly<Record<string, string>> = {
+export const PREFIXES: Readonly<Record<string, string>> = {
   bridge: "https://ns.cascadeprotocol.org/bridge/v1-draft#",
   cascade: "https://ns.cascadeprotocol.org/cascade#",
   dcat: "http://www.w3.org/ns/dcat#",

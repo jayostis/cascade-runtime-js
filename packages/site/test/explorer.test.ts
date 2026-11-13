@@ -258,6 +258,41 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
             assert.ok(data.terms[type], `${type} is used but not described`);
     });
 
+    it("gives each file the terms its statements use, as indices into one list, and the prefixes that shorten them", () => {
+      const { data } = kit;
+      assert.equal(
+        data.prefixes.cascade,
+        "https://ns.cascadeprotocol.org/cascade#",
+      );
+      assert.deepEqual(
+        data.termList,
+        [...new Set(data.termList)].sort(),
+        "the term list is sorted and holds each term once",
+      );
+      assert.ok(
+        !data.termList.includes("rdf:type"),
+        "rdf:type reads as everything",
+      );
+      for (const node of data.files)
+        for (const index of node.terms ?? [])
+          assert.ok(
+            data.termList[index] !== undefined,
+            `${node.path}: ${index}`,
+          );
+      const revision = data.files.find(({ kind }) => kind === "revision");
+      assert.ok(revision);
+      const used = (revision.terms ?? []).map((index) => data.termList[index]);
+      assert.ok(used.includes("cascade:revisionOf"), used.join(" "));
+      const record = data.files.find(({ kind }) => kind === "record");
+      assert.ok(record);
+      assert.ok(
+        (record.terms ?? []).some((index) =>
+          (data.termList[index] ?? "").startsWith("cascade:"),
+        ),
+        "a record's class is among its terms",
+      );
+    });
+
     it("is listed in index.json beside the page, with the queries", async () => {
       const tree = new Map(
         [...kit.built].filter(([path]) => !path.startsWith("pod/")),
