@@ -1087,6 +1087,33 @@ describe("Publishing the report · renderSite(), buildSite()", () => {
     it("returns the path of the `index.html` it wrote", () => {
       assert.equal(index, join(out, "index.html"));
     });
+
+    it("puts each page inside the header and footer it is given, but not a page made for paper", async () => {
+      const chrome = {
+        head: "<style>.given{}</style>",
+        header: "<header>given header</header>",
+        footer: "<footer>given footer</footer>",
+      };
+      const inside = join(folder, "inside");
+      await buildSite({ run: join(folder, "run") }, inside, undefined, chrome);
+      let paper = 0;
+      for (const path of one.keys()) {
+        const html = await readFile(join(inside, ...path.split("/")), "utf8");
+        if (html.includes(`<body class="printpage">`)) {
+          paper += 1;
+          assert.ok(!html.includes("given"), path);
+          continue;
+        }
+        const main = html.indexOf(`<main id="main">`);
+        assert.ok(html.indexOf(chrome.head) < html.indexOf("</head>"), path);
+        assert.ok(html.indexOf(chrome.head) > 0, path);
+        assert.ok(html.indexOf(chrome.header) > html.indexOf("<body"), path);
+        assert.ok(html.indexOf(chrome.header) < main, path);
+        assert.ok(html.indexOf(chrome.footer) > html.indexOf("</main>"), path);
+        assert.ok(html.indexOf(chrome.footer) > 0, path);
+      }
+      assert.ok(paper > 0, "the fixture has a page made for paper");
+    });
   });
 
   describe("renderSite(runs, history, home)", () => {

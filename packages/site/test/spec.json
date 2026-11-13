@@ -3,6 +3,7 @@
   "capabilities": [
     "Building a site from sections · buildTree()",
     "The front page · hubFiles()",
+    "Every hub page carries the website's header, footer and tokens",
     "A newcomer's first pages · startSection, examplesSection, trySection",
     "The API page · apiSection",
     "The term reference · termReference(), termsSection",
