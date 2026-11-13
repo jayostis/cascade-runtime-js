@@ -198,6 +198,11 @@ jobs:
           --checkout jayostis/cascade-vocabulary=../cascade-vocabulary
           --checkout jayostis/cascade-bridge-adapter-fhir-r4=../cascade-bridge-adapter-fhir-r4
           --checkout jayostis/cascade-bridge-adapter-ccda=../cascade-bridge-adapter-ccda
+      # Each example pod's explorer data holds together: every file a node with a writer, every act's files there, every
+      # view file naming its definition, no label undefined, and the object within its budget of 400 KB.
+      - name: Every pod's explorer data holds together
+        if: ${{ !cancelled() }}
+        run: node scripts/explorer-check.mjs --tree build/pages
       # The browser the `live` job caches on main; a pull request reads it.
       - id: playwright
         if: ${{ !cancelled() }}

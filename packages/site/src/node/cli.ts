@@ -4,9 +4,11 @@ import { readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve as absolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
+import { gzipSync } from "node:zlib";
 import {
   clock,
   type Followed,
+  kitsOf,
   OxigraphStore,
   podDataset,
   questions,
@@ -49,6 +51,7 @@ import type {
   SuiteRun,
 } from "../hub/context.js";
 import { nameOf, suitesOf } from "../hub/tests.js";
+import { EXPLORER_BUDGET, EXPLORER_FILE } from "../explorer.js";
 import { buildTree } from "../sections.js";
 import { Site, type SiteOptions } from "../site.js";
 import { readSpecReport, type SpecReport, specPages } from "../spec.js";
@@ -86,6 +89,8 @@ interface Target {
   readonly pod: FolderFiles;
   /** The arguments that name this pod to `npm run ask`. */
   readonly named: string;
+  /** Whether the pod is one the caller named, not the example's own. */
+  readonly own: boolean;
 }
 
 function target(name: string | undefined, pod: string | undefined): Target {
@@ -97,7 +102,7 @@ function target(name: string | undefined, pod: string | undefined): Target {
     pod === undefined
       ? name
       : `${name} --pod ${relative(ROOT, folder).split("\\").join("/")}`;
-  return { name, pod: new FolderFiles(folder), named };
+  return { name, pod: new FolderFiles(folder), named, own: pod !== undefined };
 }
 
 /** Where a kit's site, in a folder of the hub, finds the hub's pages it links: those a section of the hub writes. */
@@ -128,25 +133,20 @@ async function buildExampleSite(
       lens: { type: "string" },
     },
   });
-  const { name, pod, named } = target(positionals[0], values.pod);
+  const found = target(positionals[0], values.pod);
   const vocabulary = await localVocabulary(ROOT, log);
-  return writeSite(
-    vocabulary,
-    { name, pod, named },
-    values.out,
-    values.lens,
-    hub,
-  );
+  return writeSite(vocabulary, found, values.out, values.lens, hub);
 }
 
 async function writeSite(
   vocabulary: LocalVocabulary,
-  { name, pod, named }: Target,
+  { name, pod, named, own }: Target,
   outFolder: string | undefined,
   lens: string | undefined,
   hub: Pick<SiteOptions, "front" | "terms" | "spec">,
 ): Promise<number> {
   const { iri } = vocabulary.resolved;
+  const kit = `conformance/${name}`;
   const out = absolute(outFolder ?? join(ROOT, "build", name, "site"));
   const site = await Site.build({
     vocabulary: vocabulary.files,
@@ -159,10 +159,20 @@ async function writeSite(
     name,
     at: clock.now(),
     ask: `npm run ask -- ${named}`,
+    ...(!own &&
+      (await kitsOf(vocabulary.files)).includes(kit) && { kit: name }),
     ...(iri.includes("/tree/") && { blob: iri.replace("/tree/", "/blob/") }),
     ...hub,
   });
   const files = await site.files();
+  const explorer = files.get(EXPLORER_FILE) as Uint8Array;
+  console.error(
+    `${name}: ${EXPLORER_FILE} is ${explorer.length} bytes, ${gzipSync(explorer).length} gzipped`,
+  );
+  if (explorer.length > EXPLORER_BUDGET)
+    throw new Error(
+      `${name}: ${EXPLORER_FILE} is ${explorer.length} bytes, over its budget of ${EXPLORER_BUDGET}`,
+    );
   if (outFolder === undefined) await rm(out, { recursive: true, force: true });
   const folder = new FolderFiles(out);
   for (const [path, bytes] of files) await folder.write(path, bytes);

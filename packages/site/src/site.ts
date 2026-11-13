@@ -24,6 +24,7 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import { Answer } from "./answer.js";
+import { explorerFiles } from "./explorer.js";
 import { addressesOf } from "./links.js";
 import { pages } from "./pages.js";
 import { numberOf } from "./spec.js";
@@ -57,6 +58,8 @@ export interface SiteOptions {
   readonly front?: string;
   /** The spec's pages' folder from the site's root, with its slash; without one, a view names no rule. */
   readonly spec?: string;
+  /** The vocabulary's conformance kit the pod was built from, `conformance/<kit>/<kit>.feature`; a pod built from none, or a person's own, has none. */
+  readonly kit?: string;
 }
 
 /** A step of the build and what it added. */
@@ -143,6 +146,8 @@ export class Site {
     readonly pipeline: ReadonlyMap<string, readonly PipelineStep[]>,
     /** Each term of the vocabulary's own, labelled. */
     readonly labels: ReadonlyMap<string, string>,
+    /** The comment of each term of the vocabulary's own that has one. */
+    readonly comments: ReadonlyMap<string, string>,
     /** The code systems the vocabulary registers, which label a code. */
     readonly codeSystems: readonly CodeSystem[],
     things: ReadonlyMap<string, readonly Term[]>,
@@ -291,12 +296,18 @@ export class Site {
         ).size,
       });
     }
+    const { labels, comments } = await vocabularyLabels(
+      vocabulary,
+      options.newStore,
+      asked.get(CALLED),
+    );
     return new Site(
       options,
       pod,
       answers,
       pipeline,
-      await vocabularyLabels(vocabulary, options.newStore, asked.get(CALLED)),
+      labels,
+      comments,
       (await tableTerms(vocabulary, options.newStore)).codeSystems,
       things,
       pages,
@@ -371,6 +382,8 @@ export class Site {
     for (const [path, page] of pages(this))
       files.set(path, encoder.encode(page.text));
     files.set(STYLESHEET_FILE, encoder.encode(STYLESHEET));
+    for (const [path, bytes] of await explorerFiles(this))
+      files.set(path, bytes);
     for (const path of this.pod.files) {
       const rebuilt = this.pod.built.get(path);
       const bytes =
@@ -417,12 +430,15 @@ interface CrateEntity {
   readonly about?: { readonly "@id"?: string };
 }
 
-/** The labels the vocabulary's own ontologies give their terms, read with the question that names everything. */
+/** The labels the vocabulary's own ontologies give their terms, read with the question that names everything, and their comments. */
 async function vocabularyLabels(
   vocabulary: Files,
   newStore: StoreFactory,
   called: VocabularyQuery | undefined,
-): Promise<Map<string, string>> {
+): Promise<{
+  labels: Map<string, string>;
+  comments: Map<string, string>;
+}> {
   if (called === undefined)
     throw new Error(`the vocabulary has no question ${CALLED}`);
   const { "@graph": graph } = JSON.parse(await readText(vocabulary, CRATE)) as {
@@ -455,5 +471,19 @@ async function vocabularyLabels(
     )
       labels.set(thing.value, label.value);
   }
-  return labels;
+  const comments = new Map<string, string>();
+  const { rows: commented } = await ontologies.select(
+    `SELECT ?thing ?comment WHERE { ?thing <http://www.w3.org/2000/01/rdf-schema#comment> ?comment }`,
+  );
+  for (const row of commented) {
+    const [thing, comment] = [row.get("thing"), row.get("comment")];
+    if (
+      thing !== undefined &&
+      comment !== undefined &&
+      !ontologyIris.has(thing.value) &&
+      !comments.has(thing.value)
+    )
+      comments.set(thing.value, comment.value);
+  }
+  return { labels, comments };
 }
