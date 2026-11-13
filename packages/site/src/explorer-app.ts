@@ -755,6 +755,7 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer b.num { display: inline-block; min-width: 1.25em; text-align: center; font: 600 11px/1.4 var(--mono); color: #fff; background: var(--pencil); border-radius: 8px; padding: 0 3px; vertical-align: 1px; }
 #explorer ol.notes { list-style: none; padding: 0; margin: 6px 0; }
 #explorer ol.notes li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 6px; padding: 3px 0; overflow-wrap: anywhere; }
+#explorer ol.notes .num { align-self: start; justify-self: start; }
 #explorer ol.notes .vc { display: block; color: var(--quiet); font-size: 12px; }
 #explorer .missing { margin: .6rem 0; padding: .5rem .75rem; border: 2px solid #b3261e; border-radius: 4px; background: #fdecea; color: #6b1410; }
 #explorer .missing ul { margin: .25rem 0 0; }
@@ -769,6 +770,7 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
 #explorer .flow .box b { display: block; font: 500 12.5px var(--mono); }
 #explorer .flow .box b small { display: block; font-size: 11px; color: var(--quiet); font-weight: 400; }
 #explorer .flow .box span { display: block; font-size: 12px; color: var(--quiet); line-height: 1.35; }
+#explorer .flow .box span b { display: inline; font: 600 12px system-ui, sans-serif; color: var(--text); }
 #explorer .flow .cap { font: 600 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
 #explorer .flow .arr { display: flex; align-items: center; padding: 0 5px; color: var(--pencil); font: 600 15px var(--mono); }
 #explorer .prose { margin: .4rem 0; max-width: 46rem; }
