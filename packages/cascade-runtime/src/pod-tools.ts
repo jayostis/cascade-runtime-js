@@ -389,6 +389,15 @@ export type ToolKind =
 /** The tiers a tool declares: its kind's `cascade:consentTier`, by the tier's `skos:notation`. */
 export type ToolTier = "free" | "ask";
 
+/** Each kind's `cascade:consentTier`; a tool's `tier` is read from here, so it cannot differ from its kind's. */
+const TIER_OF: Readonly<Record<ToolKind, ToolTier>> = {
+  ReadingPodsOrTables: "free",
+  MovingTheAppsView: "free",
+  WritingToAPod: "ask",
+  MakingAPodThatIsNotEncrypted: "ask",
+  ChangingTheAppsTablesOrSettings: "ask",
+};
+
 /**
  * A tool: `kind` the one kind of act it takes and `tier` the person's consent to it, its kind's (every one here
  * reads, at `free`); `ofPod` when it takes the pod's name in `input.pod`, which `inputSchema` leaves out (`withPod` adds
@@ -427,8 +436,9 @@ export function withPod(schema: InputSchema): InputSchema {
 }
 
 /** The schema a tool's whole input is checked against. */
-export const schemaOf = (tool: PodTool): InputSchema =>
-  tool.ofPod ? withPod(tool.inputSchema) : tool.inputSchema;
+export const schemaOf = (
+  tool: Pick<PodTool, "ofPod" | "inputSchema">,
+): InputSchema => (tool.ofPod ? withPod(tool.inputSchema) : tool.inputSchema);
 
 /** The test and medication codes of the trend a lab change is about, the medication's name where it has no code. */
 export function trendOf({
@@ -457,11 +467,15 @@ export function unknownChangeTool(called: string): void {
     throw new Refusal(`no tool ${called}; the tools are ${names.join(", ")}`);
 }
 
-/** A tool that checks its whole input against its schema before it runs. */
-function checked(tool: PodTool): PodTool {
+/** A tool as declared: all but its `tier`, which `checked` gives it from its kind. */
+type DeclaredTool = Omit<PodTool, "tier">;
+
+/** A tool that checks its whole input against its schema before it runs, at its kind's tier. */
+function checked(tool: DeclaredTool): PodTool {
   const check = (input: ToolInput) => checkInput(schemaOf(tool), input);
   return {
     ...tool,
+    tier: TIER_OF[tool.kind],
     run(reads, input, door) {
       check(input);
       return tool.run(reads, input, door);
@@ -500,7 +514,7 @@ async function findings(
 }
 
 /**
- * Every tool, each `{ name, description, inputSchema, kind, tier, ofPod, run(reads, input, door) }`. `run` calls only
+ * Every tool, each `{ name, description, inputSchema, kind, tier (its kind's), ofPod, run(reads, input, door) }`. `run` calls only
  * `reads`; with `door.address.trend`, each lab change of `find_changes` carries `view`, the address of the page that
  * draws its results.
  */
@@ -515,15 +529,13 @@ export const TOOLS: readonly PodTool[] = (
         additionalProperties: false,
       },
       kind: "ReadingPodsOrTables",
-      tier: "free",
       run: async (reads) => (await reads.pods({})).pods.map(({ name }) => name),
     },
-    ...CHANGE_TOOLS.map((tool): PodTool =>
+    ...CHANGE_TOOLS.map((tool): DeclaredTool =>
       tool.name === "find_changes"
         ? {
             ...tool,
             kind: "ReadingPodsOrTables",
-            tier: "free",
             ofPod: true,
             findings,
             run: async (reads, input, door) =>
@@ -532,7 +544,6 @@ export const TOOLS: readonly PodTool[] = (
         : {
             ...tool,
             kind: "ReadingPodsOrTables",
-            tier: "free",
             ofPod: true,
             run: async (reads, { pod, ...input }) =>
               (
@@ -584,7 +595,6 @@ export const TOOLS: readonly PodTool[] = (
         additionalProperties: false,
       },
       kind: "ReadingPodsOrTables",
-      tier: "free",
       ofPod: true,
       run: async (reads, input) => {
         const { pod, question, limit, offset, entries } = input as {
@@ -658,11 +668,10 @@ export const TOOLS: readonly PodTool[] = (
         additionalProperties: false,
       },
       kind: "ReadingPodsOrTables",
-      tier: "free",
       ofPod: true,
       run: tableChecks,
     },
-  ] satisfies PodTool[]
+  ] satisfies DeclaredTool[]
 ).map(checked);
 
 /** A tool as the conformance run lists it: its name, the IRI of its kind of act and the tier it declares. */

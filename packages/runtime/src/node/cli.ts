@@ -82,17 +82,22 @@ function testedWith(resolved: Resolved): TestedWith {
  */
 async function toolsOffered(): Promise<readonly OfferedTool[]> {
   const name = "cascade-runtime/tools";
+  let built: { offeredTools?: () => OfferedTool[] };
   try {
-    const { offeredTools } = (await import(name)) as {
-      offeredTools: () => OfferedTool[];
-    };
-    return offeredTools();
+    built = (await import(name)) as typeof built;
   } catch (error) {
     throw new Error(
       `${name} lists the tools the examples read, and did not load (tsc -b packages/cascade-runtime builds it)`,
       { cause: error },
     );
   }
+  if (built.offeredTools === undefined)
+    throw new Error(
+      `${name} loaded but lists no \`offeredTools\`: its build is stale (tsc -b packages/cascade-runtime builds it)`,
+    );
+  const tools = built.offeredTools();
+  log(`the run lists ${tools.length} tools`);
+  return tools;
 }
 
 async function conformance(args: string[]): Promise<number> {

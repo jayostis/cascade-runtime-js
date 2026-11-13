@@ -354,9 +354,9 @@ class Run {
   readonly #handles = new Map<string, ReturnType<typeof Words.handlesOf>>();
   /** Each folder of tables a story holds, read once. */
   readonly #held = new Map<string, Promise<References | undefined>>();
-  /** Each version's rows, by the tables that hold it, read once. */
   /** The vocabulary's terms, read once for the examples that list the tools. */
   #ontology: Promise<Triple[]> | undefined;
+  /** Each version's rows, by the tables that hold it, read once. */
   readonly #versions = new WeakMap<
     References,
     Map<string, Promise<readonly Triple[]>>

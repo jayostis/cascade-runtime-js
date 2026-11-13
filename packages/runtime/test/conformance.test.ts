@@ -614,6 +614,19 @@ describe("Reporting a conformance run · npm run conformance -- --report <file>"
       }
     });
 
+    it("lists the tools of `cascade-runtime/tools` to the run, for the examples that read them", async () => {
+      const { stderr } = await promisify(execFile)(process.execPath, [
+        CLI,
+        "conformance",
+        "--feature",
+        "runtime/consent.feature",
+        "--report",
+        join(await mkdtemp(join(tmpdir(), "conformance-")), "earl.nt"),
+      ]);
+      const listed = /the run lists (\d+) tools/.exec(stderr);
+      assert.ok(Number(listed?.[1]) > 0, `the run listed no tools: ${stderr}`);
+    });
+
     it("names the commit of the vocabulary it ran", async () => {
       assert.equal(
         requires.get("cascade-vocabulary"),
