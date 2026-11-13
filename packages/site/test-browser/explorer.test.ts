@@ -1634,13 +1634,10 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             "the lens gives a row",
           );
           const says = `${found.judgment.counts ? "counts" : "does not count"} under the ${data.pod.lens} lens`;
-          assert.equal(
-            (
-              (await tab
-                .locator("#ins .judging dl.kv dd")
-                .filter({ hasText: /under the .* lens$/ })
-                .textContent()) ?? ""
-            ).trim(),
+          assert.ok(
+            (await tab.locator("#ins .judging dl.kv dd").allTextContents())
+              .map((text) => text.trim())
+              .includes(says),
             says,
           );
           assert.ok(panel.includes(rule.hash), "the rule's hash");
@@ -1744,13 +1741,16 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             derivation.added?.some(([added]) => added === "cascade:inEntry"),
             "the data says it adds cascade:inEntry",
           );
-          assert.ok(
-            (await tab
-              .locator("#ins .card", { hasText: "Writes" })
-              .locator('i.term[data-term="cascade:inEntry"]')
-              .count()) > 0,
-            "the page says it adds cascade:inEntry",
-          );
+          for (const card of ["Output", "Writes"])
+            assert.ok(
+              (await tab
+                .locator("#ins .card", {
+                  has: tab.locator("h4", { hasText: card }),
+                })
+                .locator('i.term[data-term="cascade:inEntry"]')
+                .count()) > 0,
+              `the ${card} card says it adds cascade:inEntry`,
+            );
           const before = await tab
             .locator("#ins table.derivedby td.num")
             .allTextContents();
