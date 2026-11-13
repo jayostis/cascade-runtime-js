@@ -79,7 +79,7 @@ function taken(record: TakenRecord, takes: Takes): boolean {
 }
 
 /** The path a rule's query names under `queries/`, when it resolves inside `matcher/` and holds no backslash. */
-function comparison(query: string): string | undefined {
+export function comparison(query: string): string | undefined {
   if (query.includes("\\") || /^(\/|[a-z][a-z0-9+.-]*:)/i.test(query))
     return undefined;
   const parts = QUERIES.split("/").filter((part) => part !== "");

@@ -147,6 +147,13 @@ built from any pod folder: `--pod <folder>` reads another, `--out <folder>`
 writes elsewhere and `--lens <lens>` builds it under another lens. Every
 question on the site says how to ask it yourself:
 
+Beside the page the site writes `explorer.json`, the data of the pod's explorer:
+the pod's files with what wrote each, its log, its views and their entries, the
+queries that define them, and, for a kit's pod, the kit's steps and cases. It
+leaves out the files' bodies, the queries' text and the answers' rows, which are
+read from `pod/`, `queries/` (every query of the vocabulary) and `answers.json`.
+Its type is `ExplorerData` in `packages/site/src/explorer.ts`.
+
 ```sh
 npm run ask -- <name> "<question>"            # one question's rows, under the runtime's lens
 npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the pod and its questions
