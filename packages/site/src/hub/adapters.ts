@@ -11,6 +11,7 @@ import {
   README_FILE,
   readAccounting,
 } from "../adapters.js";
+import { oneFactView, readOneFact } from "../one-fact.js";
 import type { Section } from "../sections.js";
 import { declaredTerms } from "../term-reference.js";
 import type { AdapterRead, PagesContext } from "./context.js";
@@ -99,7 +100,9 @@ export const adaptersSection: Section<AdaptersContext> = {
         listed.push({ repository: adapter.repository, unavailable });
       }
     }
-    written.set(ADAPTERS_PAGE, adaptersIndex(listed, ctx.chrome));
+    const { files } = await ctx.vocabulary();
+    const fact = oneFactView(files, await readOneFact(files));
+    written.set(ADAPTERS_PAGE, adaptersIndex(listed, ctx.chrome, fact));
     return written;
   },
   async rows() {

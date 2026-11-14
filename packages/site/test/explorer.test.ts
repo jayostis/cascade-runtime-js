@@ -230,6 +230,23 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       assert.ok(data.kit?.handles?.records);
     });
 
+    it("gives each example pod's kit its introduction, the first paragraph of its feature file as written, and a pod of no kit none", async () => {
+      for (const { data } of [kit, alex]) {
+        const written = new TextDecoder().decode(
+          await vocabulary.files.read(data.kit?.feature ?? ""),
+        );
+        const paragraph = /^Feature:.*\r?\n((?:[ \t]+\S.*\r?\n)+)\r?\n/.exec(
+          written,
+        )?.[1];
+        assert.ok(paragraph, `${data.kit?.feature} has no first paragraph`);
+        assert.equal(
+          data.kit?.introduction,
+          paragraph.trim().replace(/\s*\r?\n\s*/g, " "),
+        );
+      }
+      assert.equal(none.kit, undefined);
+    });
+
     it("gives each kit step the sentence its Background states, without the label that names it", () => {
       const { data } = kit;
       assert.deepEqual(

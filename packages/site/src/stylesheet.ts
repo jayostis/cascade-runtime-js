@@ -116,6 +116,32 @@ p code, dd code, dt code, td code { overflow-wrap: anywhere; }
 section.query, section.term { margin: 1.5rem 0; padding: 1rem 0 0; border-top: 1px solid var(--rule); }
 .prose { margin: 0 0 .5rem; max-width: 46rem; }
 .about, .count, .lens { color: var(--muted); font-size: .9rem; margin: .25rem 0; }
+.lede { font-size: 1.15rem; max-width: 46rem; margin: 0 0 1rem; }
+.reasons { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+           gap: .75rem 1.5rem; }
+.reasons li { border-top: 2px solid var(--ink); padding-top: .4rem; }
+.reasons strong { display: block; font: 600 1rem/1.3 var(--sans); }
+.fact .forms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fact .form, .fact .record { border: 1px solid var(--rule); background: var(--paper); padding: .6rem .8rem; margin: 0 .5rem; }
+.fact .form h3, .fact .record h3 { margin: 0; }
+.fact dl { margin: .4rem 0 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: .1rem 0; font-size: .85rem; }
+.fact dt { color: var(--muted); font: .78rem var(--mono); overflow-wrap: normal; overflow-x: auto; }
+.fact dd { margin: 0 0 .3rem; overflow-wrap: anywhere; }
+.fact .join { position: relative; height: 2.5rem; margin: 0 16.667%; }
+.fact .join::before { content: ""; position: absolute; inset: 0 0 50% 0; border: 2px solid var(--link); border-top: 0; }
+.fact .join::after { content: ""; position: absolute; left: calc(50% - 1px); top: 0; bottom: 0; border-left: 2px solid var(--link); }
+.fact .record { border-color: var(--link); }
+.cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+         gap: 1rem; }
+.cards li { border: 1px solid var(--rule); padding: .6rem .8rem; }
+.cards h3 { margin: 0 0 .25rem; }
+.cards p { margin: .25rem 0; }
+@media (max-width: 40rem) {
+  .fact .forms { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+  .fact .form, .fact .record { margin: 0; }
+  .fact .join { height: 1.5rem; margin: 0; }
+  .fact .join::before { display: none; }
+}
 .answer { overflow-x: auto; }
 .lenses { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0 2rem; }
 .also { font-size: .8rem; }
