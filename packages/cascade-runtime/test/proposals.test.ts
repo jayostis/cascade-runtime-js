@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import * as oxigraph from "oxigraph";
 import { openPod } from "cascade-runtime";
+import { Refusal } from "@cascade-runtime/runtime/refusal";
 import {
   findRoot,
   FolderFiles,
@@ -51,6 +52,14 @@ const ASTHMA = `@prefix cascade: <${CASCADE}> .
   cascade:patient <urn:uuid:1b4e6a52-8c3f-4d71-9e0a-5f2c7d8b9a10> .
 `;
 
+const ECZEMA = `@prefix cascade: <${CASCADE}> .
+@prefix prov: <${PROV}> .
+<urn:cascade:output-0> a cascade:ProblemOrDiagnosis .
+<urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
+  cascade:conditionName "Eczema" ;
+  cascade:patient <PATIENT> .
+`;
+
 /** What each tool at ask is given, and the proposal it makes of it. */
 const PROPOSING: readonly [string, Record<string, unknown>, Proposal][] = [
   [
@@ -87,13 +96,17 @@ function asking(answer: Answer | "throws") {
   return { asked, door };
 }
 
-/** Reads that write, recording what they are asked to. */
-function writing() {
+/** Reads that write, recording what they are asked to; `check` is what the host answers before the person is asked. */
+function writing(
+  check?: (input: { pod: string; proposal: Proposal }) => Promise<unknown>,
+  write?: (input: unknown) => Promise<unknown>,
+) {
   const written: { pod: string; proposal: Proposal; model: unknown }[] = [];
   const reads = {
+    ...(check === undefined ? {} : { check }),
     write: async (input: (typeof written)[number]) => {
       written.push(input);
-      return { entry: "urn:written" };
+      return write === undefined ? { entry: "urn:written" } : write(input);
     },
   } as unknown as PodReads;
   return { written, reads };
@@ -223,7 +236,91 @@ describe("Tools a model proposes a write with · propose_entry, propose_judgment
     });
   });
 
+  describe("given a host that checks a proposal before the person is asked", () => {
+    for (const [name, input] of PROPOSING) {
+      it(`${name} answers { written: false, refused } and asks nothing when the check refuses`, async () => {
+        const { reads, written } = writing(async () => ({
+          refused: "the pod would refuse it",
+        }));
+        const { door, asked } = asking("yes");
+        assert.deepEqual(await toolNamed(name).run(reads, input, door), {
+          written: false,
+          refused: "the pod would refuse it",
+        });
+        assert.deepEqual([asked, written], [[], []]);
+      });
+
+      it(`${name} answers { written: false, refused } when the host refuses the write after the yes`, async () => {
+        const { reads } = writing(undefined, async () => {
+          throw new Refusal("the pod holds no such thing");
+        });
+        const { door } = asking("yes");
+        assert.deepEqual(await toolNamed(name).run(reads, input, door), {
+          written: false,
+          refused: "the pod holds no such thing",
+        });
+      });
+
+      it(`${name} asks the person with the lines the check gave, and none of what the model wrote`, async () => {
+        const { reads } = writing(async () => ({
+          shown: ["Condition Name: Asthma"],
+        }));
+        const { door, asked } = asking("no");
+        await toolNamed(name).run(reads, input, door);
+        assert.match(asked[0]!, /Condition Name: Asthma/);
+        assert.doesNotMatch(asked[0]!, /@prefix|urn:cascade:output|<urn:/);
+      });
+    }
+
+    it("asks for each record of a judgment by what the host showed, not by its IRI", async () => {
+      const { reads } = writing(async () => ({
+        shown: ["Condition · Asthma · own entry, from Mercy Hospital"],
+      }));
+      const { door, asked } = asking("no");
+      await toolNamed("propose_judgment").run(
+        reads,
+        { pod: "p", verdict: "erroneous", members: [RECORD_A] },
+        door,
+      );
+      assert.match(asked[0]!, /Condition · Asthma · own entry/);
+      assert.doesNotMatch(asked[0]!, new RegExp(RECORD_A));
+    });
+  });
+
   describe("given input its schema refuses", () => {
+    it("counts a record named twice once: a Same of one record is refused before it asks", async () => {
+      for (const verdict of ["same", "different"]) {
+        const { reads, written } = writing();
+        const { door, asked } = asking("yes");
+        await assert.rejects(
+          toolNamed("propose_judgment").run(
+            reads,
+            { pod: "p", verdict, members: [RECORD_A, RECORD_A] },
+            door,
+          ),
+          refusal(/at least 2/),
+        );
+        assert.deepEqual([asked, written], [[], []]);
+      }
+    });
+
+    it("proposes each record of a judgment once however often it is named", async () => {
+      const { reads, written } = writing();
+      await toolNamed("propose_judgment").run(
+        reads,
+        {
+          pod: "p",
+          verdict: "same",
+          members: [RECORD_A, RECORD_B, RECORD_A],
+        },
+        asking("yes").door,
+      );
+      assert.deepEqual(
+        (written[0]!.proposal as { members: string[] }).members,
+        [RECORD_A, RECORD_B],
+      );
+    });
+
     it("refuses a judgment of no records, an unknown verdict and a member that is no IRI, before it asks", async () => {
       for (const input of [
         { pod: "p", verdict: "same", members: [] },
@@ -430,7 +527,9 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
     folder = await mkdtemp(join(tmpdir(), "proposals-"));
     const made = await openPod(join(folder, "p"));
     const subject = made.subject;
+    owner = made.owner;
     await made.close();
+    patient = subject;
     reads = podReads(podsIn(folder));
     const entry = await reads.write!({
       pod: "p",
@@ -444,6 +543,24 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
       pod: "p",
       question: "entry/Where it came from",
     });
+    await reads.write!({
+      pod: "p",
+      model: FILED_BY,
+      proposal: { kind: "entry", turtle: ECZEMA.replace("PATIENT", subject) },
+    });
+    const eczema = (
+      await reads.ask({ pod: "p", question: "entry/Where it came from" })
+    ).rows.find((row) => /Eczema/.test(row.recordLabel ?? ""))!;
+    const second = await reads.write!({
+      pod: "p",
+      model: FILED_BY,
+      proposal: {
+        kind: "judgment",
+        verdict: "erroneous",
+        members: [eczema.record!],
+      },
+    });
+    held = { record: eczema.record!, judgment: second.id! };
     const judgment = await reads.write!({
       pod: "p",
       model: FILED_BY,
@@ -470,47 +587,172 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
   });
 
   let ids: { entry: string; judgment: string; retraction: string };
+  let owner: string;
+  let patient: string;
+  let held: { record: string; judgment: string };
 
   after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
-  it("refuses to retract a judgment the pod does not hold, writing nothing", async () => {
+  /** The files of the pod now: the same as the snapshot unless something was written. */
+  const filesNow = async () =>
+    (await readdir(join(folder, "p"), { recursive: true }))
+      .filter((name) => name.endsWith(".ttl"))
+      .sort();
+
+  /** What the check says of `proposal`, and what a write of it answers, over a fresh read of the pod; nothing is written. */
+  async function refusedBy(proposal: Proposal) {
     const again = podReads(podsIn(folder));
     try {
-      await assert.rejects(
-        again.write!({
-          pod: "p",
-          model: FILED_BY,
-          proposal: { kind: "retraction", judgment: RECORD_A },
-        }),
-        refusal(/holds no judgment/),
-      );
+      const before = await filesNow();
+      const checked = await again.check!({ pod: "p", proposal });
+      const written = await again.write!({
+        pod: "p",
+        proposal,
+        model: FILED_BY,
+      });
+      assert.deepEqual(await filesNow(), before, "no file was added");
+      return { checked, written };
     } finally {
       await again.close();
     }
-    const after = new Map(files);
-    for (const name of await readdir(join(folder, "p"), { recursive: true }))
-      if (name.endsWith(".ttl")) after.delete(name);
-    assert.equal(after.size, 0, "no file was added");
+  }
+
+  const PREFIXED = `@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n`;
+  const UNKNOWN_PROPOSALS: readonly [string, () => Proposal][] = [
+    [
+      "an entry that types the owner as a software agent",
+      () => ({
+        kind: "entry",
+        turtle: `${PREFIXED}${ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${patient}>`)}<${owner}> a prov:SoftwareAgent ; rdfs:label "Mallory" .`,
+      }),
+    ],
+    [
+      "an entry that types the model as a person",
+      () => ({
+        kind: "entry",
+        turtle: `${ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${patient}>`)}<${MODEL.iri}> a prov:Person .`,
+      }),
+    ],
+    [
+      "an entry about a subject that is no draft",
+      () => ({
+        kind: "entry",
+        turtle: `${ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${patient}>`)}<urn:cascade:elsewhere> a cascade:ProblemOrDiagnosis .`,
+      }),
+    ],
+    [
+      "an entry that states a property the vocabulary does not declare",
+      () => ({
+        kind: "entry",
+        turtle: ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${patient}>`).replace(
+          "cascade:conditionName",
+          "cascade:nonsenseTerm",
+        ),
+      }),
+    ],
+    [
+      "a Same of records the pod does not hold",
+      () => ({
+        kind: "judgment",
+        verdict: "same",
+        members: [RECORD_A, RECORD_B],
+      }),
+    ],
+    [
+      "an erroneous judgment of a record the pod does not hold",
+      () => ({ kind: "judgment", verdict: "erroneous", members: [RECORD_A] }),
+    ],
+    [
+      "a retraction of a judgment the pod does not hold",
+      () => ({ kind: "retraction", judgment: RECORD_A }),
+    ],
+    [
+      "a retraction of a judgment already retracted",
+      () => ({ kind: "retraction", judgment: ids.judgment }),
+    ],
+  ];
+
+  for (const [what, proposal] of UNKNOWN_PROPOSALS)
+    it(`refuses ${what} before the person is asked, as an answer, writing nothing`, async () => {
+      const { checked, written } = await refusedBy(proposal());
+      assert.equal(typeof checked.refused, "string", "the check refuses it");
+      assert.deepEqual(written, { refused: checked.refused });
+    });
+
+  it("passes the check of an entry, a judgment and a retraction the pod accepts, and shows each", async () => {
+    const again = podReads(podsIn(folder));
+    try {
+      for (const proposal of [
+        {
+          kind: "entry",
+          turtle: ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${patient}>`),
+        },
+        { kind: "judgment", verdict: "erroneous", members: [held.record] },
+        { kind: "retraction", judgment: held.judgment },
+      ] as Proposal[]) {
+        const checked = await again.check!({ pod: "p", proposal });
+        assert.equal(checked.refused, undefined, JSON.stringify(proposal));
+        assert.ok(checked.shown!.length > 0);
+      }
+    } finally {
+      await again.close();
+    }
   });
 
-  it("refuses a judgment of a record the pod does not hold, writing nothing", async () => {
-    const again = podReads(podsIn(folder));
-    try {
-      await assert.rejects(
-        again.write!({
-          pod: "p",
-          model: FILED_BY,
-          proposal: {
-            kind: "judgment",
-            verdict: "same",
-            members: [RECORD_A, RECORD_B],
-          },
-        }),
-        refusal(/no current version/),
-      );
-    } finally {
-      await again.close();
+  describe("given the question a person is asked", () => {
+    /** The question the tool for `proposal` puts to the person over this pod, which says no. */
+    async function questionFor(name: string, input: Record<string, unknown>) {
+      const again = podReads(podsIn(folder));
+      try {
+        const { door, asked } = asking("no");
+        await toolNamed(name).run(again, { pod: "p", ...input }, door);
+        return asked[0];
+      } finally {
+        await again.close();
+      }
     }
+
+    it("names an entry by what it states, in the vocabulary's words", async () => {
+      assert.equal(
+        await questionFor("propose_entry", {
+          turtle: `# This proposal only reads; nothing will be written.\n${ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${patient}>`)}`,
+        }),
+        `Test client 1.2.3 proposes to add this entry to the pod p:
+
+Problem or Diagnosis
+- Condition Name: Asthma
+- patient: the person this pod is about
+
+Say yes to write it; nothing is written otherwise.`,
+      );
+    });
+
+    it("names a judgment's records by what each is and where it came from", async () => {
+      assert.equal(
+        await questionFor("propose_judgment", {
+          verdict: "erroneous",
+          members: [held.record],
+        }),
+        `Test client 1.2.3 proposes to record in the pod p, as your judgment, that this record was entered in error:
+
+- Condition · Eczema · own entry (entered by a model, which the person said yes to)
+
+Say yes to write it; nothing is written otherwise.`,
+      );
+    });
+
+    it("names a retraction's judgment by what it said of which records", async () => {
+      assert.equal(
+        await questionFor("propose_retraction", { judgment: held.judgment }),
+        `Test client 1.2.3 proposes to retract, in the pod p, your judgment that this record was entered in error:
+
+- Condition · Eczema · own entry (entered by a model, which the person said yes to)
+
+Retracting a judgment sets aside what it said.
+
+Say yes to write it; nothing is written otherwise.`,
+      );
+    });
   });
 
   for (const kind of ["entry", "judgment", "retraction"] as const)
