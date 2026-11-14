@@ -14,7 +14,6 @@ import { evalsSection } from "./evals.js";
 /** The hub's sections in the order their rows read on the front page. A new section is one module and one line here. */
 export const SECTIONS: readonly Section<PagesContext>[] = [
   startSection,
-  trySection,
   apiSection,
   termsSection,
   examplesSection,
@@ -22,6 +21,7 @@ export const SECTIONS: readonly Section<PagesContext>[] = [
   adaptersSection,
   testsSection,
   evalsSection,
+  trySection,
 ];
 
 /** What reads the tree once it is written: `llms.txt` and `index.json`, which cover every page a section above writes. */

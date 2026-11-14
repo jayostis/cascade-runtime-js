@@ -94,12 +94,15 @@ describe("The front page · hubFiles()", () => {
       assert.match(html, /<h1>Cascade Protocol reference<\/h1>/);
     });
 
-    it("leads \"see it work\" with the example pods, and links the in-browser try page after them", () => {
+    it('leads "see it work" with the example pods, and links the in-browser try page after them', () => {
       const links = rowsOf(html).get("want-see") ?? [];
       assert.equal(links[0], "examples.html");
       assert.equal(links.at(-1), STARTER_TRY);
       const before = html.slice(0, html.indexOf('<tr id="want-see">'));
-      assert.ok(!before.includes(STARTER_TRY), "no earlier row links the try page");
+      assert.ok(
+        !before.includes(STARTER_TRY),
+        "no earlier row links the try page",
+      );
     });
 
     it("lists a row for each thing a reader came for, in the table's order, each with its links", () => {
