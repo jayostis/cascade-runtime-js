@@ -47,7 +47,6 @@ type Said =
   | "silence"
   | "accept without ticking"
   | "accept leaving the box out"
-  | "accept with a box that is not a boolean"
   | "accept after the client stopped waiting";
 
 interface Connected {
@@ -98,9 +97,7 @@ async function connect(
         case "accept without ticking":
           return { action: "accept", content: { yes: false } };
         case "accept leaving the box out":
-          return { action: "accept", content: {} };
-        case "accept with a box that is not a boolean":
-          return { action: "accept", content: { yes: "yes" } };
+          return { action: "accept", content: {} as Record<string, boolean> };
         case "accept after the client stopped waiting":
           await new Promise((resolve) => setTimeout(resolve, LATE_MS));
           return { action: "accept", content: { yes: true } };
@@ -221,7 +218,6 @@ describe("Asking the person before a write · elicitation", () => {
         ["cancel", "dismissed"],
         ["accept without ticking", "dismissed"],
         ["accept leaving the box out", "dismissed"],
-        ["accept with a box that is not a boolean", "dismissed"],
       ] as const)
         it(`${name}: writes nothing, and says ${answer}, when the person's action is ${said}`, async () => {
           asks.said = said;

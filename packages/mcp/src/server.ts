@@ -90,8 +90,8 @@ function canAsk(capabilities: ClientCapabilities | undefined): boolean {
 
 /**
  * Asks the person through the client, with a form of one box to tick, and what they did as the answer: accepting with the
- * box ticked is a yes; accepting without it, or declining, a no; cancelling, a dismissed question; and no answer within
- * `waitMs`, an unanswered one. A failure to reach the client is thrown, so nothing is written on it.
+ * box ticked is a yes; declining, a no; cancelling, or accepting without the box ticked, a dismissed question; and no
+ * answer within `waitMs`, or once the client has cancelled the call, an unanswered one. A failure to reach the client is thrown, so nothing is written on it.
  */
 async function elicit(
   { mcpReq }: ServerContext,
@@ -109,26 +109,29 @@ async function elicit(
           properties: {
             yes: {
               type: "boolean",
-              title: "Write this",
+              title: "Yes, write this",
               description:
-                "Tick it and accept to say yes to this one call; decline, or accept without it, to say no.",
+                "Tick this box, then accept, to have this one proposal written. To say no, decline. Accepting without the box ticked writes nothing and counts as no answer.",
               default: false,
             },
           },
-          required: ["yes"],
         },
       },
-      { timeout: waitMs },
+      { timeout: waitMs, signal: mcpReq.signal },
     );
   } catch (error) {
-    if (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout)
+    if (
+      mcpReq.signal.aborted ||
+      (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout)
+    )
       return "unanswered";
     throw error;
   }
-  if (result.action === "cancel") return "dismissed";
+  if (mcpReq.signal.aborted) return "unanswered";
+  if (result.action === "decline") return "no";
   return result.action === "accept" && result.content?.yes === true
     ? "yes"
-    : "no";
+    : "dismissed";
 }
 
 /** What a server is made with, beyond the pods it reaches. */
