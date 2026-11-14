@@ -12,6 +12,7 @@
     "Warnings about rules and decision notes · specPages().warnings, rulesNamedIn(), filesNamed()",
     "Conformance results on the specification · readSpecReport(), specSection",
     "The adapters page and an adapter's crosswalk · adaptersSection",
+    "The adapters page says what an adapter is on one screen · adaptersIndex()",
     "The pages of a pod · Site.build(), Site.files()",
     "Where a pod's pages link · Site.files(), Site.page(), viewRules()",
     "The pod explorer's data · explorerData(), Site.files()",
