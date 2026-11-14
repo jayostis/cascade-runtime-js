@@ -11,6 +11,8 @@ import {
   README_FILE,
   readAccounting,
 } from "../adapters.js";
+import type { Html } from "../html.js";
+import { oneFactView, readOneFact } from "../one-fact.js";
 import type { Section } from "../sections.js";
 import { declaredTerms } from "../term-reference.js";
 import type { AdapterRead, PagesContext } from "./context.js";
@@ -99,7 +101,16 @@ export const adaptersSection: Section<AdaptersContext> = {
         listed.push({ repository: adapter.repository, unavailable });
       }
     }
-    written.set(ADAPTERS_PAGE, adaptersIndex(listed, ctx.chrome));
+    let fact: Html | undefined;
+    try {
+      const { files } = await ctx.vocabulary();
+      fact = oneFactView(files, await readOneFact(files));
+    } catch (error) {
+      ctx.log(
+        `adapters: the one-fact view is left out: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    written.set(ADAPTERS_PAGE, adaptersIndex(listed, ctx.chrome, fact));
     return written;
   },
   async rows() {

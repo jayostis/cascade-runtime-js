@@ -584,7 +584,8 @@ describe("The adapters page says what an adapter is on one screen · adaptersInd
     });
 
     it("links each source file and the record's file on GitHub at the vocabulary's commit", () => {
-      const base = "https://github.com/jayostis/cascade-vocabulary/blob/abc123/";
+      const base =
+        "https://github.com/jayostis/cascade-vocabulary/blob/abc123/";
       for (const path of [FHIR_ALLERGY, KESTREL, FERNHILL, RECORD])
         assert.ok(page.hrefs.includes(base + path), path);
     });
@@ -604,7 +605,11 @@ describe("The adapters page says what an adapter is on one screen · adaptersInd
   describe("with the reasons", () => {
     it("gives four, and says an adapter takes no new engine, is tested alike, accounts for every path, and there will be many", () => {
       const reasons = part("reasons");
-      assert.equal(markup.split(' id="reasons"')[1]?.split("</ol>")[0]?.match(/<li>/g)?.length, 4);
+      assert.equal(
+        markup.split(' id="reasons"')[1]?.split("</ol>")[0]?.match(/<li>/g)
+          ?.length,
+        4,
+      );
       assert.match(reasons, /no new engine/i);
       assert.match(reasons, /tested the same way/i);
       assert.match(reasons, /every source path/i);
@@ -617,7 +622,7 @@ describe("The adapters page says what an adapter is on one screen · adaptersInd
     it("links an adapter's card to its page, with its name and a sentence", () => {
       const cards = part("adapters");
       assert.ok(cards.includes("FHIR R4 JSON"));
-      assert.ok(page.hrefs.includes("fhir-r4/index.html"));
+      assert.ok(page.hrefs.includes(FHIR_PAGE));
     });
 
     it("says an adapter that could not be fetched is not available, and why, with no link", () => {
@@ -625,7 +630,7 @@ describe("The adapters page says what an adapter is on one screen · adaptersInd
       assert.match(cards, /cascade-bridge-adapter-ccda/);
       assert.match(cards, /not available/i);
       assert.ok(cards.includes("the fetch failed"));
-      assert.ok(!page.hrefs.some((href) => href.startsWith("ccda")));
+      assert.ok(!page.hrefs.some((href) => href.startsWith("adapters/ccda")));
     });
   });
 
@@ -638,7 +643,10 @@ describe("The adapters page says what an adapter is on one screen · adaptersInd
 
   describe("with figures", () => {
     it("gives no exact count of paths, cases or passes", () => {
-      assert.doesNotMatch(page.said, /\d[\d,]*\s+(?:source\s+)?(?:paths?|cases?|passed|tests?)\b/i);
+      assert.doesNotMatch(
+        page.said,
+        /\d[\d,]*\s+(?:source\s+)?(?:paths?|cases?|passed|tests?)\b/i,
+      );
       assert.doesNotMatch(page.said, /\b(?:paths?|cases?|passed)\s*:?\s*\d/i);
     });
   });
