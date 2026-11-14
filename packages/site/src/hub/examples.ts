@@ -6,6 +6,7 @@ import {
   POD_PACK,
   podOf,
 } from "../front-page.js";
+import { EXPLORER_FILE } from "../explorer.js";
 import type { Section } from "../sections.js";
 import { COPY } from "../terms.js";
 import type { PagesContext } from "./context.js";
@@ -44,17 +45,36 @@ export const examplesSection: Section<PagesContext> = {
   },
   async rows(ctx) {
     return [
-      ...(await ctx.examples()).map(({ folder, title }) => ({
-        href: `${folder}/index.html`,
-        label: `Browse ${title}'s pod`,
-        want: "pods" as const,
-        about:
-          "its records, its views, and every question with its SPARQL query.",
-        also: {
-          href: `${folder}/${COPY}${POD_ENTRY}`,
-          label: "The pod's files",
+      ...(await ctx.examples()).flatMap(({ folder, title }) => [
+        {
+          href: `${folder}/index.html`,
+          label: `Browse ${title}'s pod`,
+          want: "pods" as const,
+          about:
+            "its records, its views, and every question with its SPARQL query.",
+          also: {
+            href: `${folder}/${COPY}${POD_ENTRY}`,
+            label: "The pod's files",
+          },
+          audience: "people" as const,
         },
-      })),
+        {
+          href: `${folder}/${EXPLORER_FILE}`,
+          label: `${title}'s pod as data`,
+          want: "pods" as const,
+          about:
+            "every file, query, act and view of the pod in one JSON object; the explorer page is a script that reads it.",
+          audience: "agents" as const,
+        },
+        {
+          href: `${folder}/layout.html`,
+          label: `How ${title}'s pod is laid out`,
+          want: "pods" as const,
+          about:
+            "the pod's folders and what each holds, on a page that reads without script.",
+          audience: "agents" as const,
+        },
+      ]),
       {
         href: EXAMPLES_PAGE,
         label: "Every example pod, and what built these pages",

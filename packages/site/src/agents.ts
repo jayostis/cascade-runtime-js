@@ -179,8 +179,11 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
       named || section.about === undefined
         ? []
         : [{ href: section.path, label: section.title, about: section.about }];
-    for (const { href, label, about, want = section.want } of [...rows, ...own])
-      if (once(href)) {
+    for (const { href, label, about, want = section.want, audience } of [
+      ...rows,
+      ...own,
+    ])
+      if (audience !== "people" && once(href)) {
         const lines =
           section.optional === true ? optional : (wanted.get(want) ?? []);
         lines.push(item(label, at(href), about));

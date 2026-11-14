@@ -9,17 +9,22 @@ import {
   findRoot,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
-import { chromeStrings } from "../src/html.js";
+import { type Chrome, chromeStrings } from "../src/html.js";
 import { Site } from "../src/site.js";
 import { STYLESHEET } from "../src/stylesheet.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const WEBSITE = "https://cascadeprotocol.org";
 
-let pages: Map<string, string>;
+type Pages = Map<string, string>;
+
+let pages: Pages;
+let off: Pages;
 let stylesheet: string;
 
-before(async () => {
+const BUILT = "2026-10-02";
+
+async function built(chrome: Chrome): Promise<{ pages: Pages; css: string }> {
   const vocabulary = await localVocabulary(ROOT);
   const pod = new MemoryFiles("https://pod.example/");
   await featurePod(vocabulary, "runtime/matcher.feature", pod, {
@@ -42,15 +47,25 @@ before(async () => {
     terms: "../terms/",
     spec: "../spec/",
     front: "../index.html",
+    chrome,
   });
   const files = await site.files();
   const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
-  pages = new Map(
-    [...files]
-      .filter(([path]) => path.endsWith(".html"))
-      .map(([path, bytes]) => [path, text(bytes)]),
-  );
-  stylesheet = text(files.get("site.css") ?? new Uint8Array());
+  return {
+    pages: new Map(
+      [...files]
+        .filter(([path]) => path.endsWith(".html"))
+        .map(([path, bytes]) => [path, text(bytes)]),
+    ),
+    css: text(files.get("site.css") ?? new Uint8Array()),
+  };
+}
+
+before(async () => {
+  const on = await built({ website: true, built: BUILT });
+  pages = on.pages;
+  stylesheet = on.css;
+  off = (await built({ website: false, built: BUILT })).pages;
 });
 
 /** The attributes of each `<a>` of a block of HTML. */
@@ -81,7 +96,37 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       }
     });
 
-    it("links the website by absolute address and marks the nav's reference as the page it is on", () => {
+    it("shows the approved strip and nav, the nav's reference marked as the page it is on", () => {
+      for (const [path, html] of pages) {
+        assert.ok(
+          html.includes(
+            `<div class="sx-strip">An open standard in progress, in alpha. <a href="${WEBSITE}/community/status/">See what works today →</a> · <a href="${WEBSITE}/contribute/">Help shape it →</a></div>`,
+          ),
+          path,
+        );
+        const header = html.slice(
+          html.indexOf(`<header class="sx-header">`),
+          html.indexOf("</header>"),
+        );
+        const nav = header.slice(
+          header.indexOf(`<nav class="sx-nav"`),
+          header.indexOf("</nav>"),
+        );
+        assert.deepEqual(
+          [...nav.matchAll(/<a [^>]*>([^<]*)<\/a>/g)].map(([, label]) => label),
+          ["Understand", "Build", "Standards", "Contribute", "Reference ↗"],
+          path,
+        );
+        assert.match(
+          header,
+          /<a href="[^"]*" aria-current="page">Reference ↗<\/a>/,
+          path,
+        );
+        assert.equal(header.split("aria-current").length, 2, path);
+      }
+    });
+
+    it("links the website by absolute address from the header and the footer", () => {
       for (const [path, html] of pages) {
         const header = html.slice(
           html.indexOf(`<header class="sx-header">`),
@@ -94,14 +139,51 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
             /href="https:\/\//,
             `${path}: ${attributes} is not absolute`,
           );
-        assert.match(
-          header,
-          /<a href="[^"]*" aria-current="page">Reference ↗<\/a>/,
+        assert.ok(footer.includes(`href="${WEBSITE}/contribute/"`), path);
+        assert.ok(footer.includes("Talk with us"), path);
+        assert.ok(footer.includes("§ Working toward a standard"), path);
+        assert.ok(!footer.includes("Talk with Jed and Jay"), path);
+        assert.ok(!footer.includes("§ Alpha"), path);
+      }
+    });
+
+    it("links nothing at the website with the switch off: the strip is text and the footer is its legal line", () => {
+      assert.ok(off.size > 4);
+      for (const [path, html] of off) {
+        const chrome =
+          html.slice(
+            html.indexOf(`<div class="sx-strip">`),
+            html.indexOf(`<main id="main">`),
+          ) + html.slice(html.indexOf(`<footer class="sx-footer">`));
+        assert.ok(!chrome.includes(WEBSITE), `${path} links the website`);
+        assert.ok(
+          html.includes(
+            `<div class="sx-strip">An open standard in progress, in alpha.</div>`,
+          ),
           path,
         );
-        assert.equal(header.split("aria-current").length, 2, path);
-        assert.ok(footer.includes(`href="${WEBSITE}/contribute/"`), path);
+        const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
+        assert.deepEqual(links(footer), [], path);
+        assert.ok(!footer.includes("<h2>"), `${path} has a column`);
+        assert.ok(footer.includes("is a trademark of Cascade Agentic Labs"), path);
+        const header = html.slice(
+          html.indexOf(`<header class="sx-header">`),
+          html.indexOf("</header>"),
+        );
+        assert.match(
+          header,
+          /<a href="https:\/\/jayostis\.github\.io\/cascade-runtime-js\/" aria-current="page">Reference ↗<\/a>/,
+          path,
+        );
       }
+    });
+
+    it("writes the build date it was given in the footer, on every page, with the switch on or off", () => {
+      for (const group of [pages, off])
+        for (const [path, html] of group) {
+          const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
+          assert.ok(footer.includes(`Built on ${BUILT}.`), path);
+        }
     });
 
     it("keeps the pod's own links in a nav of their own, under the header", () => {
@@ -158,12 +240,17 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
 
   describe("with the chrome for a page of another package", () => {
     it("scopes the tokens to the wrappers it puts around the header and footer", () => {
-      const { head, header, footer } = chromeStrings();
+      const { head, header, footer } = chromeStrings({
+        website: false,
+        built: BUILT,
+      });
       assert.ok(head.includes(".sx-scope {"));
       assert.ok(!head.includes(":root"));
       assert.ok(header.startsWith(`<div class="sx-scope">`));
       assert.ok(footer.startsWith(`<div class="sx-scope">`));
       assert.ok(header.includes(`<a class="b-skip" href="#main">`));
+      assert.ok(footer.includes(`Built on ${BUILT}.`));
+      assert.ok(!header.includes(WEBSITE) && !footer.includes(WEBSITE));
     });
   });
 });

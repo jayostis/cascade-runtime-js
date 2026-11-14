@@ -6,7 +6,7 @@ import {
   featuresOf,
   readFeature,
 } from "./features.js";
-import { type Files, folderOf } from "./files.js";
+import { type Files, folderOf, readText } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Importer } from "./importer.js";
 import { keptMatcherJudgments } from "./kept.js";
@@ -41,6 +41,22 @@ const EARL = "http://www.w3.org/ns/earl#";
 const DOAP = "http://usefulinc.com/ns/doap#";
 const DCT = "http://purl.org/dc/terms/";
 const REFERENCES_GRAPH = "urn:cascade:references";
+const TOOLS_GRAPH = "urn:cascade:tools";
+const VOCABULARY_GRAPH = "urn:cascade:vocabulary";
+const TOOL = "urn:cascade:tool:";
+const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+const SKOS = "http://www.w3.org/2004/02/skos/core#";
+const ONTOLOGY = "ontologies/cascade.ttl";
+
+/**
+ * A tool the runtime offers a model, as it declares itself: `kind` the IRI of the kind of act it takes, and `tier` the
+ * `skos:notation` of the tier it declares. A tool that declares none leaves it out.
+ */
+export interface OfferedTool {
+  readonly name: string;
+  readonly kind?: string;
+  readonly tier?: string;
+}
 
 /**
  * Adds the tables to the pod as a `Then` reads it: the rows of each series' version current then as a graph named by
@@ -132,6 +148,8 @@ export interface ConformanceOptions {
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
   readonly derive?: Derive;
+  /** The tools the runtime offers a model, which `When the tools offered a model are listed` lists; none when not given. */
+  readonly tools?: readonly OfferedTool[];
   /** The vocabulary's layout, when already read. */
   readonly layout?: Layout;
   /** The vocabulary's shapes, which a kit's check 3 reads; without them, no kit's checks are run. */
@@ -336,6 +354,8 @@ class Run {
   readonly #handles = new Map<string, ReturnType<typeof Words.handlesOf>>();
   /** Each folder of tables a story holds, read once. */
   readonly #held = new Map<string, Promise<References | undefined>>();
+  /** The vocabulary's terms, read once for the examples that list the tools. */
+  #ontology: Promise<Triple[]> | undefined;
   /** Each version's rows, by the tables that hold it, read once. */
   readonly #versions = new WeakMap<
     References,
@@ -362,8 +382,11 @@ class Run {
     lens: string,
     names?: readonly string[],
     folder?: string,
+    tools = false,
   ): Promise<Dataset> {
-    const key = JSON.stringify([lens, names, folder]);
+    const key = JSON.stringify(
+      tools ? [lens, names, folder, tools] : [lens, names, folder],
+    );
     let found = node.datasets.get(key);
     if (found === undefined) {
       const replayed = named(node.replayed, names);
@@ -406,12 +429,48 @@ class Run {
                 );
                 if (tables !== undefined)
                   await addTables(union, tables, rowsOf(tables), added);
+                if (tools) await this.#addTools(union);
                 return union;
               })();
       found.catch(() => undefined);
       node.datasets.set(key, found);
     }
     return found;
+  }
+
+  /**
+   * The tools the runtime offers a model, and the vocabulary, as two graphs outside the default graph: each tool named
+   * by its name and labelled with it, with the kind it declares and the tier whose notation it declares, where it
+   * declares one the vocabulary has.
+   */
+  async #addTools(union: Union): Promise<void> {
+    const { vocabulary, newStore, tools = [] } = this.#options;
+    this.#ontology ??= readText(vocabulary, ONTOLOGY).then((text) =>
+      newStore().parse(text, vocabulary.iri + ONTOLOGY),
+    );
+    const ontology = await this.#ontology;
+    const held = new Graph(ontology);
+    const tiers = new Map(
+      held
+        .subjects(`${SKOS}inScheme`, iri(`${CASCADE}ConsentTiers`))
+        .flatMap((tier) =>
+          held
+            .objects(tier, `${SKOS}notation`)
+            .map((notation) => [notation.value, tier] as const),
+        ),
+    );
+    const listed: Triple[] = [];
+    for (const { name, kind, tier } of tools) {
+      const tool = iri(`${TOOL}${encodeURIComponent(name)}`);
+      listed.push([tool, iri(RDFS_LABEL), literal(name)]);
+      if (kind !== undefined)
+        listed.push([tool, iri(`${CASCADE}modelToolActKind`), iri(kind)]);
+      const declared = tier === undefined ? undefined : tiers.get(tier);
+      if (declared !== undefined)
+        listed.push([tool, iri(`${CASCADE}consentTier`), declared]);
+    }
+    await union.store.add(listed, { graph: TOOLS_GRAPH });
+    await union.store.add(ontology, { graph: VOCABULARY_GRAPH });
   }
 
   #rows(tables: References, version: string): Promise<readonly Triple[]> {
@@ -499,6 +558,7 @@ class Run {
         lens,
         replayed.steps.map(({ step }) => step.name),
         person.folder,
+        compiled.toolsListed === true,
       ),
     );
     let handles = this.#handles.get(feature.folder);

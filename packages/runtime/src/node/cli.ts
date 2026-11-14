@@ -13,6 +13,7 @@ import {
   type Assertion,
   earl,
   featureStory,
+  type OfferedTool,
   runConformance,
   type TestedWith,
 } from "../conformance.js";
@@ -75,6 +76,30 @@ function testedWith(resolved: Resolved): TestedWith {
   };
 }
 
+/**
+ * The tools `cascade-runtime/tools` offers a model. That package is built on this one, so this one imports nothing of
+ * it: the command loads it when it runs, by a name TypeScript does not follow.
+ */
+async function toolsOffered(): Promise<readonly OfferedTool[]> {
+  const name = "cascade-runtime/tools";
+  let built: { offeredTools?: () => OfferedTool[] };
+  try {
+    built = (await import(name)) as typeof built;
+  } catch (error) {
+    throw new Error(
+      `${name} lists the tools the examples read, and did not load (tsc -b packages/cascade-runtime builds it)`,
+      { cause: error },
+    );
+  }
+  if (built.offeredTools === undefined)
+    throw new Error(
+      `${name} loaded but lists no \`offeredTools\`: its build is stale (tsc -b packages/cascade-runtime builds it)`,
+    );
+  const tools = built.offeredTools();
+  log(`the run lists ${tools.length} tools`);
+  return tools;
+}
+
 async function conformance(args: string[]): Promise<number> {
   const { values } = parseArgs({
     args,
@@ -111,6 +136,7 @@ async function conformance(args: string[]): Promise<number> {
     importers: importersNamed(config.importers),
     layout,
     derive: await vocabularyDerive(files, layout),
+    tools: await toolsOffered(),
     shapes: await Shapes.read(files, () => new OxigraphStore()),
     ...(values.feature === undefined ? {} : { features: values.feature }),
   });

@@ -175,12 +175,27 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
           made(
             "a/index.html",
             "Section A",
-            { "a/index.html": page("A"), "a/one (two).html": page("x") },
+            {
+              "a/index.html": page("A"),
+              "a/one (two).html": page("x"),
+              "a/data.json": text("{}"),
+              "a/read.html": page("Read"),
+            },
             {
               want: "build",
               about: "what A is",
               rows: async () => [
                 { href: "a/", label: "Open A", about: "its first line" },
+                {
+                  href: "a/read.html",
+                  label: "For people",
+                  audience: "people",
+                },
+                {
+                  href: "a/data.json",
+                  label: "For agents",
+                  audience: "agents",
+                },
                 { href: "a/index.html", label: "Open A again" },
                 { href: "https://example.org/x", label: "Elsewhere" },
                 { href: "llms.txt", label: "The llms.txt itself" },
@@ -225,6 +240,11 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
       assert.ok(!llms.includes("Open A again"));
     });
 
+    it("lists a link meant for agents and leaves out one meant for people", () => {
+      assert.ok(llms.includes("- [For agents](a/data.json)"));
+      assert.ok(!llms.includes("a/read.html"));
+    });
+
     it("keeps a link to another site", () => {
       assert.ok(llms.includes("(https://example.org/x)"));
     });
@@ -252,7 +272,7 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
     it("lists nothing more than those links and the repositories", () => {
       assert.equal(
         llms.split("\n- [").length - 1,
-        5 +
+        6 +
           REPOSITORIES.length +
           REPOSITORIES.filter(({ site }) => site).length,
       );
@@ -440,7 +460,7 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
     });
 
     it("lists the front page, `llms.txt` and itself", () => {
-      assert.equal(by.get(FRONT_PAGE)?.title, "Cascade pods");
+      assert.equal(by.get(FRONT_PAGE)?.title, "Cascade Protocol reference");
       assert.equal(by.get(LLMS_FILE)?.kind, "document");
       assert.equal(by.get(INDEX_FILE)?.kind, "data");
     });

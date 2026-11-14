@@ -1130,7 +1130,7 @@ describe("Publishing the report · renderSite(), buildSite()", () => {
       for (const [path, html] of history) {
         const up = "../".repeat(path.split("/").length - 1);
         assert.ok(
-          html.includes(`<a href="${up}../index.html">Cascade pods</a>`),
+          html.includes(`<a href="${up}../index.html">Cascade Protocol reference</a>`),
           `${path} links the page above the report`,
         );
       }
@@ -1140,7 +1140,7 @@ describe("Publishing the report · renderSite(), buildSite()", () => {
   describe("with no `home`", () => {
     it("gives no page that breadcrumb", () => {
       for (const [path, html] of one)
-        assert.ok(!html.includes("Cascade pods"), path);
+        assert.ok(!html.includes("Cascade Protocol reference"), path);
     });
   });
 });
