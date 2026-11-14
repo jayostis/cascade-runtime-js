@@ -17,7 +17,8 @@ import { Site } from "../src/site.js";
 import { STYLESHEET } from "../src/stylesheet.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
-const WEBSITE = "https://cascadeprotocol.org";
+const WEBSITE = "https://website.example";
+const HUB = "https://jayostis.github.io/cascade-runtime-js/";
 
 type Pages = Map<string, string>;
 
@@ -65,10 +66,10 @@ async function built(chrome: Chrome): Promise<{ pages: Pages; css: string }> {
 }
 
 before(async () => {
-  const on = await built({ website: true, built: BUILT });
+  const on = await built({ website: WEBSITE, built: BUILT });
   pages = on.pages;
   stylesheet = on.css;
-  off = (await built({ website: false, built: BUILT })).pages;
+  off = (await built({ built: BUILT })).pages;
 });
 
 /** The attributes of each `<a>` of a block of HTML. */
@@ -117,7 +118,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         );
         assert.deepEqual(
           [...nav.matchAll(/<a [^>]*>([^<]*)<\/a>/g)].map(([, label]) => label),
-          ["Understand", "Build", "Standards", "Contribute", "Reference ↗"],
+          ["Understand", "Build", "Contribute", "Reference ↗"],
           path,
         );
         assert.match(
@@ -129,19 +130,39 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       }
     });
 
-    it("links the website by absolute address from the header and the footer", () => {
+    it("builds every link of the chrome from the website address it was given, bar the hub's own", () => {
       for (const [path, html] of pages) {
-        const header = html.slice(
-          html.indexOf(`<header class="sx-header">`),
-          html.indexOf("</header>"),
+        const chrome =
+          html.slice(
+            html.indexOf(`<div class="sx-strip">`),
+            html.indexOf("</header>"),
+          ) + html.slice(html.indexOf(`<footer class="sx-footer">`));
+        assert.ok(!chrome.includes("cascadeprotocol.org"), path);
+        const hrefs = links(chrome).map(
+          (attributes) => /href="([^"]*)"/.exec(attributes)?.[1] ?? "",
         );
-        const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
-        for (const attributes of [...links(header), ...links(footer)])
-          assert.match(
-            attributes,
-            /href="https:\/\//,
-            `${path}: ${attributes} is not absolute`,
+        assert.ok(hrefs.length > 20, path);
+        for (const href of hrefs)
+          assert.ok(
+            href.startsWith(`${WEBSITE}/`) || href === HUB,
+            `${path}: ${href} is neither under the website address nor the hub`,
           );
+        const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
+        assert.ok(
+          footer.includes(`href="${WEBSITE}/contribute/#repos">GitHub<`),
+          path,
+        );
+        assert.ok(
+          footer.includes(
+            `href="${WEBSITE}/community/status/">How we know it works<`,
+          ),
+          path,
+        );
+        assert.ok(
+          footer.includes(`href="${WEBSITE}/v0/">Previous version<`),
+          path,
+        );
+        assert.ok(!footer.includes("(previous version)"), path);
         assert.ok(footer.includes(`href="${WEBSITE}/contribute/"`), path);
         assert.ok(footer.includes("Talk with us"), path);
         assert.ok(footer.includes("§ Working toward a standard"), path);
@@ -150,7 +171,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       }
     });
 
-    it("links nothing at the website with the switch off: the strip is text and the footer is its legal line", () => {
+    it("links nothing at the website with no website address: the strip is text and the footer is its legal line", () => {
       assert.ok(off.size > 4);
       for (const [path, html] of off) {
         const chrome =
@@ -159,6 +180,8 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
             html.indexOf(`<main id="main">`),
           ) + html.slice(html.indexOf(`<footer class="sx-footer">`));
         assert.ok(!chrome.includes(WEBSITE), `${path} links the website`);
+        assert.ok(!chrome.includes("cascadeprotocol.org"), path);
+        assert.ok(!chrome.includes("/understand/"), path);
         assert.ok(
           html.includes(
             `<div class="sx-strip">An open standard in progress, in alpha.</div>`,
@@ -184,7 +207,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       }
     });
 
-    it("writes the build date it was given in the footer, on every page, with the switch on or off", () => {
+    it("writes the build date it was given in the footer, on every page, with or without a website address", () => {
       for (const group of [pages, off])
         for (const [path, html] of group) {
           const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
@@ -197,10 +220,10 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         new TextDecoder().decode(
           hubFiles(["Records"], new Map(), chrome).get("index.html"),
         );
-      const on = front({ website: true, built: BUILT });
+      const on = front({ website: WEBSITE, built: BUILT });
       assert.ok(on.includes(`Built on ${BUILT}.`));
       assert.ok(on.includes(`href="${WEBSITE}/contribute/"`));
-      const plain = front({ website: false, built: BUILT });
+      const plain = front({ built: BUILT });
       assert.ok(plain.includes(`Built on ${BUILT}.`));
       assert.ok(!plain.includes(WEBSITE));
     });
@@ -308,16 +331,40 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       }
     });
 
-    it("links the website from the footer of its pages with --website-links", () => {
-      const { run, out } = spec("--built", BUILT, "--website-links");
+    it("builds the links to the website of its pages from the address of --website, a trailing slash dropped", () => {
+      const { run, out } = spec("--built", BUILT, "--website", `${WEBSITE}/`);
       try {
         assert.equal(run.status, 0, run.stderr);
         const page = readFileSync(join(out, "index.html"), "utf8");
         const footer = page.slice(page.indexOf(`<footer class="sx-footer">`));
         assert.ok(footer.includes(`href="${WEBSITE}/contribute/"`));
+        assert.ok(page.includes(`<a class="sx-logo" href="${WEBSITE}/">`));
+        assert.ok(!page.includes("cascadeprotocol.org"));
       } finally {
         rmSync(out, { recursive: true, force: true });
       }
+    });
+
+    it("links no page of the website when --website is not given", () => {
+      const { run, out } = spec("--built", BUILT);
+      try {
+        assert.equal(run.status, 0, run.stderr);
+        const page = readFileSync(join(out, "index.html"), "utf8");
+        assert.ok(page.includes(`<span class="sx-logo">`));
+        assert.ok(!page.includes("/contribute/"));
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a --website that is not an http(s) address", () => {
+      const { run, out } = spec("--website", "cascadeprotocol.org");
+      rmSync(out, { recursive: true, force: true });
+      assert.equal(run.status, 1);
+      assert.match(
+        run.stderr,
+        /--website is cascadeprotocol\.org, not an http/,
+      );
     });
 
     it("refuses a --built that is not a date as YYYY-MM-DD", () => {
@@ -330,10 +377,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
 
   describe("with the chrome for a page of another package", () => {
     it("scopes the tokens to the wrappers it puts around the header and footer", () => {
-      const { head, header, footer } = chromeStrings({
-        website: false,
-        built: BUILT,
-      });
+      const { head, header, footer } = chromeStrings({ built: BUILT });
       assert.ok(head.includes(".sx-scope {"));
       assert.ok(!head.includes(":root"));
       assert.ok(header.startsWith(`<div class="sx-scope">`));

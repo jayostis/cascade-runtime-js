@@ -13,11 +13,25 @@ export type Happened =
       /** The name each earlier step is performed under, by the name the story gives it, where the two differ. */
       readonly steps?: Readonly<Record<string, string>>;
     }
+  | {
+      readonly kind: "proposal";
+      readonly file: string;
+      /** What the person answers the door's question: yes, no, a dismissed question, or none before the door stops waiting. */
+      readonly answer: ProposalAnswer;
+    }
   | { readonly kind: "reference"; readonly name: string }
   | { readonly kind: "matcher"; readonly takes?: string }
   | { readonly kind: "open"; readonly tables: string }
   | { readonly kind: "writer" }
   | { readonly kind: "sync"; readonly from: number };
+
+/** What a person answers to the question a door asks them about a write a model proposes. */
+export type ProposalAnswer = "yes" | "no" | "dismissed" | "unanswered";
+
+/** A door's answer to what it can do: whether it can ask the person, which decides the tools it offers a model. */
+export interface ToolsDoor {
+  readonly canAsk: boolean;
+}
 
 export type StepKind = Happened["kind"];
 

@@ -1,8 +1,11 @@
 # cascade-mcp
 
 An [MCP](https://modelcontextprotocol.io) server on stdio over a folder of Cascade pods, for Claude Desktop, VS Code or
-any MCP client to start. It offers the tools of `cascade-runtime/tools`, and every one of them reads: it never writes a
-pod, and never opens an encrypted one.
+any MCP client to start. It offers the tools of `cascade-runtime/tools`: those that read, to every client, and
+those that propose a write (`propose_entry`, `propose_judgment`, `propose_retraction`) only to a client that declares at
+initialisation that it can show the person a question (MCP elicitation). Each call to one of those asks the person, and writes
+only if they say yes to that call: a no, a dismissed question or no answer writes nothing. A write the person said yes to
+records that a model proposed it and that the person said yes. It never opens an encrypted pod.
 
 Install it with the cascade-runtime tarball of the same build, both in one `npm install`
 (cascade-mcp names the runtime by that build's version, which no registry holds), then run
