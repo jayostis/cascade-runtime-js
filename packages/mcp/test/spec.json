@@ -1,7 +1,8 @@
 {
-  "about": "cascade-mcp, a command that serves a folder of pods to an MCP client, such as Claude Desktop or VS Code, over its standard input and output. It offers the tools of cascade-runtime/tools, which only read.",
+  "about": "cascade-mcp, a command that serves a folder of pods to an MCP client, such as Claude Desktop or VS Code, over its standard input and output. It offers the tools of cascade-runtime/tools: those that read to any client, and those that propose a write only to a client that can ask the person, who must say yes to each.",
   "capabilities": [
     "Serving a folder of pods to an MCP client · cascade-mcp --pods, --check-tables",
+    "Asking the person before a write · elicitation",
     "Starting cascade-mcp · --pods, --help"
   ],
   "glossary": [

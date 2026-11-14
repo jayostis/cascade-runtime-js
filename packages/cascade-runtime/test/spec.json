@@ -33,6 +33,8 @@
     "Finding lab changes after a medication starts or stops · findChanges(), changesIn(), compact(), timelineIn()",
     "Tools a model reads a pod with · TOOLS",
     "Reading a folder of pods for the tools · podReads()",
+    "Tools a model proposes a write with · propose_entry, propose_judgment, propose_retraction",
+    "Recording a write a model proposed · proposedTurtle()",
     "Reading a whole pod in pages · ask tool",
     "Checking a pod against the reference tables · reference_table_checks tool",
     "Offering tools to a model in a web page · toolRegistry()",

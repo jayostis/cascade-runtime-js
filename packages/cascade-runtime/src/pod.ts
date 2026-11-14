@@ -9,11 +9,9 @@ import {
   type Importer,
   type ImportProgress,
   type IndexEntry,
-  iri,
   type Layout,
   LAYOUT_FILE,
   lenses,
-  literal,
   type Loaded,
   QUERIES,
   ofMediaType,
@@ -23,7 +21,6 @@ import {
   exportedNames,
   ExportedFiles,
   MemoryFiles,
-  ntriples,
   podRevision,
   type PodKey,
   SealedIndex,
@@ -41,7 +38,6 @@ import {
   Union,
   type VocabularyBuild,
   type VocabularyQuery,
-  XSD,
 } from "@cascade-runtime/runtime";
 import {
   answerKey,
@@ -49,6 +45,8 @@ import {
   type AnswerStore,
   type Described,
 } from "./answers.js";
+import { checkJudgment, judged } from "./judging.js";
+import { THIS_JUDGMENT } from "./proposals.js";
 import { currentOf, shipped, type Tables } from "./tables.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
@@ -56,17 +54,7 @@ const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
-const USED = `${PROV}used`;
-const DERIVED_FROM = `${PROV}wasDerivedFrom`;
-const GENERATED_AT = `${PROV}generatedAtTime`;
-const STARTED_AT = `${PROV}startedAtTime`;
 const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
-/** What an app names the judgment it hands to `judge`, which the package names in its place. */
-const THIS_JUDGMENT = "urn:cascade:this-judgment";
-/** The verdicts that say something of their members' versions, which name each version they saw. */
-const SEEN = new Set(
-  ["Same", "Different", "Erroneous"].map((v) => CASCADE + v),
-);
 const UUID = "urn:uuid:";
 
 /** A name as a person reads it, its runs of white space one space. */
@@ -127,7 +115,18 @@ export interface Pod {
    */
   connect(saved: Exported, options?: { match?: boolean }): Promise<Done>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
+  /**
+   * What `enter` would say to the entry, writing nothing: `refused` with why when the vocabulary refuses it or it states
+   * a property the vocabulary does not declare, else its `statements` and the `labels` the vocabulary gives its terms.
+   */
+  checkEntry(turtle: string): Promise<{
+    refused?: string;
+    statements?: readonly Triple[];
+    labels?: ReadonlyMap<string, string>;
+  }>;
   judge(turtle: string): Promise<Done>;
+  /** Why `judge` would fail on the Turtle before the pod's rules are asked, or nothing, writing nothing. */
+  checkJudgment(turtle: string): Promise<string | undefined>;
   match(activity?: string): Promise<Done>;
   ask(
     question: string | { query: string },
@@ -651,8 +650,33 @@ class OpenPod implements Pod {
     });
   }
 
+  checkEntry(turtle: string) {
+    return this.#next(async () => {
+      const checked = await this.#core.checkEntry({
+        bytes: new TextEncoder().encode(turtle),
+        base: this.address,
+        name: "the entry",
+      });
+      return checked;
+    });
+  }
+
   judge(turtle: string): Promise<Done> {
     return this.#next(() => this.#judge(turtle));
+  }
+
+  checkJudgment(turtle: string): Promise<string | undefined> {
+    return this.#next(() =>
+      checkJudgment(
+        {
+          core: this.#core,
+          newStore: this.#parts.newStore,
+          address: this.address,
+          time: clock,
+        },
+        turtle,
+      ),
+    );
   }
 
   match(activity?: string): Promise<Done> {
@@ -886,117 +910,15 @@ class OpenPod implements Pod {
     return rows.flatMap((row) => row.get("profile")?.value ?? []);
   }
 
-  async #judge(turtle: string): Promise<Done> {
-    let stated: Triple[];
-    try {
-      stated = await this.#parts.newStore().parse(turtle, this.address);
-    } catch (error) {
-      throw new Error(`the judgment is no Turtle: ${failure(error)}`, {
-        cause: error,
-      });
-    }
-    const judgments = stated
-      .filter(
-        ([, p, o]) => p.value === TYPE && o.value === `${CASCADE}Judgment`,
-      )
-      .map(([s]) => s.value);
-    const retractions = stated
-      .filter(([, p]) => p.value === `${PROV}invalidated`)
-      .map(([s]) => s.value);
-    const found = [...new Set([...judgments, ...retractions])];
-    if (found.length !== 1 || found[0] !== THIS_JUDGMENT)
-      throw new Error(
-        `the judgment's Turtle holds ${found.length === 0 ? "no judgment or retraction" : found.join(", ")}; it holds one judgment or one retraction, named <${THIS_JUDGMENT}>`,
-      );
-    const retracting = retractions.length > 0;
-    const name = randomId();
-    const judgment = iri(name);
-    const named = stated
-      .map(
-        (triple) =>
-          triple.map((term) =>
-            term.termType === "NamedNode" && term.value === THIS_JUDGMENT
-              ? judgment
-              : term,
-          ) as unknown as Triple,
-      )
-      .filter(
-        ([s, p]) =>
-          !(
-            s.value === name &&
-            (p.value === USED ||
-              p.value === DERIVED_FROM ||
-              p.value === GENERATED_AT ||
-              p.value === STARTED_AT)
-          ),
-      );
-    const of = (predicate: string): string[] =>
-      named.flatMap(([s, p, o]) =>
-        s.value === name && p.value === predicate && o.termType === "NamedNode"
-          ? [o.value]
-          : [],
-      );
-    const used: Triple[] = [];
-    const verdicts = of(`${CASCADE}verdict`);
-    const members = of(`${PROV}hadMember`);
-    const [only] = members;
-    const overFinding =
-      verdicts.length === 1 &&
-      verdicts[0] === `${CASCADE}Same` &&
-      members.length === 1 &&
-      only !== undefined &&
-      (await this.#isFinding(only));
-    if (!overFinding && verdicts.some((verdict) => SEEN.has(verdict))) {
-      const current = await this.#currentVersions(members);
-      for (const member of members) {
-        const version = current.get(member);
-        if (version === undefined)
-          throw new Error(
-            `${member} has no current version in the pod: it names no record or revision`,
-          );
-        used.push([judgment, iri(DERIVED_FROM), iri(version)]);
-      }
-    }
-    const filed = await this.#core.judge({
-      bytes: ntriples([
-        ...named,
-        ...used,
-        [
-          judgment,
-          iri(retracting ? STARTED_AT : GENERATED_AT),
-          literal(clock.now(), `${XSD}dateTime`),
-        ],
-      ]),
-      base: this.address,
-      name: "the judgment",
-    });
-    return filed.refused === undefined ? { ...filed, judgment: name } : filed;
-  }
-
-  /** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
-  async #isFinding(thing: string): Promise<boolean> {
-    const { rows } = await this.#core.select(`${PREFIXES}
-      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
-    return rows.length > 0;
-  }
-
-  /** Each record's current version, under the everyday lens, and each revision's version, by the member. */
-  async #currentVersions(
-    records: readonly string[],
-  ): Promise<Map<string, string>> {
-    if (records.length === 0) return new Map();
-    const { rows } = await this.#core.select(`${PREFIXES}
-      SELECT ?record ?version WHERE {
-        VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
-        { ?record pav:hasCurrentVersion ?version } UNION { ?record cascade:version ?version }
-      }`);
-    return new Map(
-      rows.flatMap((row) => {
-        const [record, version] = [row.get("record"), row.get("version")];
-        return record === undefined || version === undefined
-          ? []
-          : [[record.value, version.value] as const];
-      }),
+  #judge(turtle: string): Promise<Done> {
+    return judged(
+      {
+        core: this.#core,
+        newStore: this.#parts.newStore,
+        address: this.address,
+        time: clock,
+      },
+      turtle,
     );
   }
 

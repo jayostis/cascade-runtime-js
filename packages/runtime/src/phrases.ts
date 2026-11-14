@@ -34,7 +34,7 @@ import { versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { type Row, selected, type Dataset } from "./store.js";
 import { CASCADE } from "./step.js";
-import type { Happened, Step } from "./story.js";
+import type { Happened, ProposalAnswer, Step, ToolsDoor } from "./story.js";
 import {
   JUSTIFICATIONS,
   KINDS,
@@ -106,8 +106,8 @@ export interface Compiled {
   writer?: number;
   /** The query the last `When the query is:` or `When the query {name} is asked` gave, which the `it answers` steps after it read. */
   query?: string;
-  /** Whether `When the tools offered a model are listed` came before: the pod is then read beside the tools' graphs. */
-  toolsListed?: true;
+  /** Whether `When the tools offered a model are listed` came before, and for what door: the pod is then read beside the tools' graphs. */
+  toolsListed?: ToolsDoor;
 }
 
 export interface Compiling {
@@ -976,6 +976,17 @@ const importDownloaded: Act = (
   });
 };
 
+/** A model's proposal `proposals/<name>.ttl` makes, which the person answers so. */
+const proposes =
+  (answer: ProposalAnswer): Act =>
+  (compiled, [name, , when], _stated, _compiling, label) => {
+    happen(compiled, label, name as string, when as string, {
+      kind: "proposal",
+      file: `proposals/${String(name)}.ttl`,
+      answer,
+    });
+  };
+
 const DEFINITIONS: Definition[] = [
   // Given and When: what happened.
   [
@@ -1121,8 +1132,24 @@ const DEFINITIONS: Definition[] = [
   [
     "the tools offered a model are listed",
     (compiled) => {
-      compiled.toolsListed = true;
+      compiled.toolsListed = { canAsk: true };
     },
+  ],
+  [
+    "the tools offered a model through a door that cannot ask are listed",
+    (compiled) => {
+      compiled.toolsListed = { canAsk: false };
+    },
+  ],
+  ["a model proposes {name} and {person} says yes on {time}", proposes("yes")],
+  ["a model proposes {name} and {person} says no on {time}", proposes("no")],
+  [
+    "a model proposes {name} and {person} dismisses the question on {time}",
+    proposes("dismissed"),
+  ],
+  [
+    "a model proposes {name} and {person} leaves the question unanswered on {time}",
+    proposes("unanswered"),
   ],
   ["the pod is read as it stood after {step}", readAfter],
   [

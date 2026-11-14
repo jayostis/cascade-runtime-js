@@ -18,6 +18,7 @@ import {
   type TestedWith,
 } from "../conformance.js";
 import { repositoryName } from "../config.js";
+import type { Proposer } from "../replay.js";
 import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
 import { Layout } from "../layout.js";
@@ -76,13 +77,30 @@ function testedWith(resolved: Resolved): TestedWith {
   };
 }
 
+/** What `cascade-runtime/tools/node` performs a model's proposal with, loaded as `toolsOffered` loads its tools. */
+async function proposerOf(): Promise<Proposer> {
+  const name = "cascade-runtime/tools/node";
+  try {
+    return ((await import(name)) as { proposer: Proposer }).proposer;
+  } catch (error) {
+    throw new Error(
+      `${name} performs a model's proposals, and did not load (tsc -b packages/cascade-runtime builds it)`,
+      { cause: error },
+    );
+  }
+}
+
 /**
  * The tools `cascade-runtime/tools` offers a model. That package is built on this one, so this one imports nothing of
  * it: the command loads it when it runs, by a name TypeScript does not follow.
  */
-async function toolsOffered(): Promise<readonly OfferedTool[]> {
-  const name = "cascade-runtime/tools";
-  let built: { offeredTools?: () => OfferedTool[] };
+async function toolsOffered(): Promise<
+  (door: { canAsk: boolean }) => readonly OfferedTool[]
+> {
+  const name = "cascade-runtime/tools/propose";
+  let built: {
+    offeredToolsOf?: (door: { canAsk: boolean }) => OfferedTool[];
+  };
   try {
     built = (await import(name)) as typeof built;
   } catch (error) {
@@ -91,13 +109,15 @@ async function toolsOffered(): Promise<readonly OfferedTool[]> {
       { cause: error },
     );
   }
-  if (built.offeredTools === undefined)
+  if (built.offeredToolsOf === undefined)
     throw new Error(
-      `${name} loaded but lists no \`offeredTools\`: its build is stale (tsc -b packages/cascade-runtime builds it)`,
+      `${name} loaded but lists no \`offeredToolsOf\`: its build is stale (tsc -b packages/cascade-runtime builds it)`,
     );
-  const tools = built.offeredTools();
-  log(`the run lists ${tools.length} tools`);
-  return tools;
+  const { offeredToolsOf } = built;
+  log(
+    `the run lists ${offeredToolsOf({ canAsk: true }).length} tools, ${offeredToolsOf({ canAsk: false }).length} through a door that cannot ask`,
+  );
+  return offeredToolsOf;
 }
 
 async function conformance(args: string[]): Promise<number> {
@@ -136,8 +156,10 @@ async function conformance(args: string[]): Promise<number> {
     importers: importersNamed(config.importers),
     layout,
     derive: await vocabularyDerive(files, layout),
-    tools: await toolsOffered(),
+    // Read before the tools load: the other way round, Node 22's V8 crashed in the deoptimizer inside this read (vocabulary#397).
     shapes: await Shapes.read(files, () => new OxigraphStore()),
+    tools: await toolsOffered(),
+    proposer: await proposerOf(),
     ...(values.feature === undefined ? {} : { features: values.feature }),
   });
   await mkdir(dirname(report), { recursive: true });

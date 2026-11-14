@@ -1,6 +1,7 @@
 // `cascade-runtime/tools`: the tools a model reads pods by, their input schemas and their answers, over the reads a
-// host gives (`PodReads`), in Node and in a page alike. Every tool reads; none writes, moves an app or opens an encrypted
-// pod. The reads over a folder of pods are Node's, from `cascade-runtime/tools/node`.
+// host gives (`PodReads`), in Node and in a page alike. Every tool here reads; none writes, moves an app or opens an encrypted
+// pod. The tools that propose a write are `cascade-runtime/tools/propose`'s, which a door that can ask the person offers
+// (`Door`). The reads over a folder of pods are Node's, from `cascade-runtime/tools/node`.
 import { Refusal } from "@cascade-runtime/runtime/refusal";
 import {
   changeTools,
@@ -10,6 +11,13 @@ import {
 } from "./changes.js";
 import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
+import type {
+  Answer,
+  ProposalCheck,
+  Model,
+  Proposal,
+  Written,
+} from "./proposals.js";
 import {
   HISTORY_QUESTION,
   medicationsNotChecked,
@@ -27,6 +35,15 @@ import {
 import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
 
 export * from "./table-checks.js";
+export type {
+  Answer,
+  ProposalCheck,
+  Model,
+  Proposal,
+  Recording,
+  Verdict,
+  Written,
+} from "./proposals.js";
 
 // ---- The compact read's names: its handles and its shapes. The read itself is Node's (`compact-read.ts`, behind `podReads`). ----
 
@@ -233,6 +250,21 @@ export interface PodReads {
   }): Promise<{ value: unknown; found?: readonly LabChange[] }>;
   /** What the reference tables and the pod's verdicts against them answer for the pod; absent, or none, when the tables are off. */
   tables?(input: { pod: string }): Promise<TableLookups | undefined>;
+  /**
+   * What the pod would say to a write, found before the person is asked and writing nothing: why it would refuse it, and
+   * what the person is shown of it, read from the pod. Absent, the tool asks without having checked, and shows what it
+   * can of the proposal alone.
+   */
+  check?(input: { pod: string; proposal: Proposal }): Promise<ProposalCheck>;
+  /**
+   * Files a write the person said yes to, as `proposedTurtle` records it, naming `model` as its proposer and the pod's
+   * owner as the person who said yes; absent when the host writes nothing, which a tool at ask then refuses.
+   */
+  write?(input: {
+    pod: string;
+    proposal: Proposal;
+    model: Model;
+  }): Promise<Written>;
 }
 
 /** What `reference_table_checks` asks of the reference tables, and of the pod against them. */
@@ -362,7 +394,12 @@ async function tableChecks(
   };
 }
 
-/** What a door gives the tools: `address.trend(pod, { test, medication })`, the page that draws a lab change's results, where it has one. */
+/**
+ * What a door gives the tools: `address.trend(pod, { test, medication })`, the page that draws a lab change's results,
+ * where it has one; `ask(question)`, which shows the person the question and gives their answer, where it can, and
+ * which a tool at `ask` calls once for each call; and `model`, the model it is serving. A door that cannot ask the
+ * person gives no `ask`, and is offered no tool at `ask`.
+ */
 export interface Door {
   readonly address?: {
     readonly trend?: (
@@ -370,6 +407,8 @@ export interface Door {
       trend: { test: string; medication?: string },
     ) => string;
   };
+  readonly ask?: (question: string) => Promise<Answer>;
+  readonly model?: Model;
 }
 
 /** A tool's input, as its door checked it against the tool's schema: `pod` beside it for a tool with `ofPod`. */
@@ -410,8 +449,8 @@ export const TIER_OF_KIND = {
 const TIER_OF: Readonly<Record<ToolKind, ToolTier>> = TIER_OF_KIND;
 
 /**
- * A tool: `kind` the one kind of act it takes and `tier` the person's consent to it, its kind's (every one here
- * reads, at `free`); `ofPod` when it takes the pod's name in `input.pod`, which `inputSchema` leaves out (`withPod` adds
+ * A tool: `kind` the one kind of act it takes and `tier` the person's consent to it, its kind's (a tool that reads is
+ * at `free`, one that proposes a write at `ask`); `ofPod` when it takes the pod's name in `input.pod`, which `inputSchema` leaves out (`withPod` adds
  * it); `findings`, on `find_changes`, its answer with the lab changes and their rows beside it.
  */
 export interface PodTool {
@@ -479,20 +518,20 @@ export function unknownChangeTool(called: string): void {
 }
 
 /** A tool as declared: all but its `tier`, which `checked` gives it from its kind. */
-type DeclaredTool = Omit<PodTool, "tier">;
+export type DeclaredTool = Omit<PodTool, "tier">;
 
 /** A tool that checks its whole input against its schema before it runs, at its kind's tier. */
-function checked(tool: DeclaredTool): PodTool {
+export function checked(tool: DeclaredTool): PodTool {
   const check = (input: ToolInput) => checkInput(schemaOf(tool), input);
   return {
     ...tool,
     tier: TIER_OF[tool.kind],
-    run(reads, input, door) {
+    async run(reads, input, door) {
       check(input);
       return tool.run(reads, input, door);
     },
     ...(tool.findings && {
-      findings(reads, input, door) {
+      async findings(reads, input, door) {
         check(input);
         return tool.findings!(reads, input, door);
       },

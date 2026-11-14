@@ -43,6 +43,10 @@
       "types": "./dist/src/pod-tools.d.ts",
       "default": "./dist/src/pod-tools.js"
     },
+    "./tools/propose": {
+      "types": "./dist/src/propose-tools.d.ts",
+      "default": "./dist/src/propose-tools.js"
+    },
     "./tools/node": {
       "types": "./dist/src/node/pod-reads.d.ts",
       "default": "./dist/src/node/pod-reads.js"
