@@ -552,6 +552,8 @@ jobs:
       - run: npm run --silent bridge
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # The search test builds the hub, whose adapter explorers need Python and rdflib.
+      - run: python3 -m pip install rdflib==7.6.0
       # npm test transpiles its own sources, so it needs no build first.
       - name: The runtime's tests
         shell: bash
