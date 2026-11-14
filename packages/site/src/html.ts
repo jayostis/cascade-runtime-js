@@ -39,9 +39,7 @@ export function markup(
   );
 }
 
-const WEBSITE = "https://cascadeprotocol.org";
 const HUB = "https://jayostis.github.io/cascade-runtime-js";
-const ORG = "https://github.com/the-cascade-protocol";
 
 const FONTS =
   "https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap";
@@ -52,21 +50,21 @@ const MARK = new Html(
 
 /** What a page's chrome is built with. */
 export interface Chrome {
-  /** Whether the logo, nav, strip and footer link to cascadeprotocol.org; off until the website answers at the addresses they name. */
-  readonly website: boolean;
+  /** The website's address, with no trailing slash, that the logo, nav, strip and footer link under; none links no page of the website. */
+  readonly website?: string;
   /** The date the pages were built, `YYYY-MM-DD`, from the commit they are built from; none writes no date. */
   readonly built?: string;
 }
 
 /** No link to the website and no build date. */
-export const PLAIN: Chrome = { website: false };
+export const PLAIN: Chrome = {};
 
-const NAV: readonly (readonly [string, string])[] = [
-  ["Understand", `${WEBSITE}/understand/`],
-  ["Build", `${WEBSITE}/build/`],
-  ["Standards", `${WEBSITE}/standards/`],
-  ["Contribute", `${WEBSITE}/contribute/`],
-  ["Reference ↗", `${HUB}/`],
+/** A website page's path, or the hub's address, per nav item. */
+const NAV: readonly (readonly [string, string | null])[] = [
+  ["Understand", "/understand/"],
+  ["Build", "/build/"],
+  ["Contribute", "/contribute/"],
+  ["Reference ↗", null],
 ];
 
 /** The website's head links: its fonts. */
@@ -76,25 +74,26 @@ export const chromeHead = markup`<link rel="preconnect" href="https://fonts.goog
 `;
 
 const navLinks = (chrome: Chrome, current: boolean) =>
-  NAV.map(([label, href]) =>
-    href.startsWith(WEBSITE) && !chrome.website
+  NAV.map(([label, path]) =>
+    path !== null && chrome.website === undefined
       ? markup`<span>${label}</span>
 `
-      : markup`<a href="${href}"${current && href === `${HUB}/` ? new Html(' aria-current="page"') : ""}>${label}</a>
+      : markup`<a href="${path === null ? `${HUB}/` : chrome.website + path}"${current && path === null ? new Html(' aria-current="page"') : ""}>${label}</a>
 `,
   );
 
 /** The website's strip and header, the hub being the nav's "Reference". */
 export function chromeHeader(chrome: Chrome): Html {
+  const { website } = chrome;
   return markup`<div class="sx-strip">An open standard in progress, in alpha.${
-    chrome.website &&
-    markup` <a href="${WEBSITE}/community/status/">See what works today →</a> · <a href="${WEBSITE}/contribute/">Help shape it →</a>`
+    website !== undefined &&
+    markup` <a href="${website}/community/status/">See what works today →</a> · <a href="${website}/contribute/">Help shape it →</a>`
   }</div>
 <header class="sx-header">
 <div class="sx-bar">
 ${
-  chrome.website
-    ? markup`<a class="sx-logo" href="${WEBSITE}/">${MARK}<span>Cascade Protocol™</span></a>`
+  website !== undefined
+    ? markup`<a class="sx-logo" href="${website}/">${MARK}<span>Cascade Protocol™</span></a>`
     : markup`<span class="sx-logo">${MARK}<span>Cascade Protocol™</span></span>`
 }
 <nav class="sx-nav" aria-label="Main">
@@ -110,56 +109,53 @@ ${navLinks(chrome, false)}</nav>
 }
 
 const column = (
+  website: string,
   heading: string,
   links: readonly (readonly [string, string])[],
 ) =>
   markup`<div><h2>§ ${heading}</h2><ul>
 ${links.map(
-  ([
-    label,
-    href,
-  ]) => markup`<li><a href="${href.startsWith("https://") ? href : WEBSITE + href}">${label}</a></li>
+  ([label, path]) => markup`<li><a href="${website + path}">${label}</a></li>
 `,
 )}</ul></div>
 `;
 
 /** The website's footer; with no link to the website, its legal line alone. */
 export function chromeFooter(chrome: Chrome): Html {
+  const { website } = chrome;
   return markup`<footer class="sx-footer">
 <div class="sx-footer-wrap"><div class="sx-footer-inner">
 ${
-  chrome.website &&
+  website !== undefined &&
   markup`<div class="sx-footer-cols">
-${column("Protocol", [
+${column(website, "Protocol", [
   ["Understand Cascade", "/understand/"],
   ["How it's built", "/how-its-built/"],
-  ["How we know it works", "/how-we-know/"],
+  ["How we know it works", "/community/status/"],
   ["Cascade in use", "/understand/apps/"],
-  ["Security and privacy (previous version)", "/v0/docs/security/"],
-  ["Compared with FHIR and others (previous version)", "/v0/docs/comparison/"],
-])}${column("Build", [
+])}${column(website, "Build", [
     ["Start building", "/build/"],
-    ["Guides, playground and reference (previous version)", "/v0/"],
-  ])}${column("Community", [
+    ["Previous version", "/v0/"],
+  ])}${column(website, "Community", [
     ["Help shape it", "/contribute/"],
     ["Become a partner", "/community/partners/"],
     ["Talk with us", "/community/"],
     ["Status", "/community/status/"],
     ["Build notes", "/blog/"],
-    ["GitHub ↗", ORG],
+    ["GitHub", "/contribute/#repos"],
   ])}<div><h2>§ Working toward a standard</h2>
 <p>Cascade is an open standard in progress. We build on existing standards, extend them only where they stop, and we're looking for people to build it with us.</p>
-<p><a href="${WEBSITE}/contribute/" style="color: var(--link)">Help shape it →</a></p>
+<p><a href="${website}/contribute/" style="color: var(--link)">Help shape it →</a></p>
 </div>
 </div>
 `
 }<div class="sx-footer-legal">
 <span>Cascade Protocol™ is a trademark of Cascade Agentic Labs LLC. Spec CC BY 4.0 · code Apache 2.0.</span>
 ${
-  chrome.website &&
-  markup`<a href="${WEBSITE}/legal/trademarks.html">Trademark policy</a>
-<a href="${WEBSITE}/legal/privacy.html">POTS Check privacy</a>
-<a href="${WEBSITE}/legal/terms.html">POTS Check terms</a>
+  website !== undefined &&
+  markup`<a href="${website}/legal/trademarks.html">Trademark policy</a>
+<a href="${website}/legal/privacy.html">POTS Check privacy</a>
+<a href="${website}/legal/terms.html">POTS Check terms</a>
 `
 }</div>
 ${

@@ -107,24 +107,26 @@ function target(name: string | undefined, pod: string | undefined): Target {
 }
 
 /**
- * The options that set the chrome of every page: the switch for the links to cascadeprotocol.org, off until the website
- * answers at the addresses they name, and the build date, which the caller reads from the commit and the build never from
- * the clock.
+ * The options that set the chrome of every page: the website's address, which every link of the chrome to the website is
+ * built from (none, or an empty one, links no page of it), and the build date, which the caller reads from the commit and
+ * the build never from the clock.
  */
 const CHROME_OPTIONS = {
-  "website-links": { type: "boolean" },
+  website: { type: "string" },
   built: { type: "string" },
 } as const;
 
 function chromeOf(values: {
-  readonly "website-links"?: boolean | undefined;
+  readonly website?: string | undefined;
   readonly built?: string | undefined;
 }): Chrome {
-  const { built } = values;
+  const { built, website } = values;
   if (built !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(built))
     throw new Error(`--built is ${built}, not a date as YYYY-MM-DD`);
+  if (website && !/^https?:\/\/[^/\s]+(\/\S*)?$/.test(website))
+    throw new Error(`--website is ${website}, not an http(s) address`);
   return {
-    website: values["website-links"] === true,
+    ...(website && { website: website.replace(/\/+$/, "") }),
     ...(built !== undefined && { built }),
   };
 }
