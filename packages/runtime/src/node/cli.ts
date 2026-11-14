@@ -156,9 +156,10 @@ async function conformance(args: string[]): Promise<number> {
     importers: importersNamed(config.importers),
     layout,
     derive: await vocabularyDerive(files, layout),
+    // Read before the tools load: the other way round, Node 22's V8 crashed in the deoptimizer inside this read (vocabulary#397).
+    shapes: await Shapes.read(files, () => new OxigraphStore()),
     tools: await toolsOffered(),
     proposer: await proposerOf(),
-    shapes: await Shapes.read(files, () => new OxigraphStore()),
     ...(values.feature === undefined ? {} : { features: values.feature }),
   });
   await mkdir(dirname(report), { recursive: true });
