@@ -19,6 +19,7 @@
     "Text, times and codes as a page shows them · markup, shown(), code(), codePage()",
     "Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md",
     "Searching the hub · search.json, search.js, the search box of shell()",
+    "Searching the hub in a browser · a click, the arrows, Enter, Escape, no script",
     "Linking a vocabulary term, a rule or a decision note · termHref(), ruleHref(), noteHref(), noteLinkOf()",
     "An address for each page of a pod's site · addressesOf(), sharedPageOf()",
     "Rendering Markdown as a page · renderMarkdown()",

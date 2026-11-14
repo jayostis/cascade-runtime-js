@@ -96,18 +96,20 @@ export const SEARCH_SCRIPT_FILE = "search.js";
 export interface SearchRow {
   readonly path: string;
   readonly title: string;
-  readonly kind: "page" | "term" | "rule" | "decision";
+  readonly kind: "page" | "term" | "rule" | "decision" | "eval";
   /** What a term is called in words, beside its name. */
   readonly label?: string;
 }
 
 const TERM_ANCHOR =
-  /<h3 id="(cascade:[^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h3>/g;
+  /<h3 id="([a-z][a-z0-9-]*:[^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h3>/g;
 const RULE_ANCHOR =
   /<section class="rule" id="([^"]+)">\s*<h2>([\s\S]*?)<\/h2>/g;
 const NOTE_FOLDER = "decisions/";
 const RULES_FOLDER = "spec/";
-const SITE_NAME = / · Cascade [^·]*$/;
+const EVALS_FOLDER = "evals/";
+const SITE_NAME = / [·—] Cascade [^·—]*$/;
+const REDIRECT = /http-equiv="refresh"/i;
 
 const words = (html: string): string =>
   decoded(html.replace(/<[^>]*>/g, ""))
@@ -116,8 +118,9 @@ const words = (html: string): string =>
 
 /**
  * The rows of `search.json`: every page of `listed`, and the anchors the reader looks for by name inside pages that are
- * not one page each: the term reference's terms, and the rules of the spec's pages. A decision note is named by its title
- * without the site's name after it.
+ * not one page each: the term reference's terms of every namespace, and the rules of the spec's pages. A page is titled
+ * without the site's name after it, a decision note and an evals page are told by their kind, and a page that only
+ * redirects is no row.
  */
 function searchRows(
   listed: readonly Listed[],
@@ -126,14 +129,15 @@ function searchRows(
   const rows: SearchRow[] = [];
   for (const { path, title, kind } of listed) {
     if (kind !== "page") continue;
+    const html = (): string => new TextDecoder().decode(tree.get(path));
+    if (REDIRECT.test(html())) continue;
     const note =
       path.startsWith(NOTE_FOLDER) && path !== `${NOTE_FOLDER}index.html`;
-    rows.push(
-      note
-        ? { path, title: title.replace(SITE_NAME, ""), kind: "decision" }
-        : { path, title, kind: "page" },
-    );
-    const html = (): string => new TextDecoder().decode(tree.get(path));
+    rows.push({
+      path,
+      title: title.replace(SITE_NAME, ""),
+      kind: note ? "decision" : path.startsWith(EVALS_FOLDER) ? "eval" : "page",
+    });
     if (path === TERMS_PAGE)
       for (const [, id = "", label = ""] of html().matchAll(TERM_ANCHOR))
         rows.push({

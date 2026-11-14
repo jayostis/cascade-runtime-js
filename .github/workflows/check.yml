@@ -225,6 +225,10 @@ jobs:
       - name: Run the pod explorer
         if: ${{ !cancelled() }}
         run: npm run test:explorer
+      # The hub's search box, run in a browser: a click goes to its anchor, the arrows wrap, Enter and Escape, a page with no script.
+      - name: Run the hub's search box
+        if: ${{ !cancelled() }}
+        run: npm run test:search
       # The packed browser build opens a pod over IndexedDB in Chromium, retitles it and opens it again, and checks the
       # secrets of known-answer 1.2 pods through its Argon2id worker.
       - name: Retitle a pod and check a secret in a browser

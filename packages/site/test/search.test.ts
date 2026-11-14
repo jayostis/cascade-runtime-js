@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, posix } from "node:path";
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
 import {
@@ -31,6 +39,7 @@ const TERMS = page(
   `<h3 id="cascade:Attachment"><code>cascade:Attachment</code> attachment</h3>
 <h3 id="cascade:AttachmentShape"><code>cascade:AttachmentShape</code> Attachment shape</h3>
 <h3 id="cascade:abatementDate"><code>cascade:abatementDate</code> Abatement Date</h3>
+<h3 id="prov:wasDerivedFrom"><code>prov:wasDerivedFrom</code> was derived from</h3>
 <div id="cascade:AttachmentShape-node">a node, not a term</div>`,
 );
 
@@ -118,7 +127,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
         );
     });
 
-    it("lists each term of the term page as an anchor of it, by name and by label, and no other id", () => {
+    it("lists each term of the term page, of any namespace, as an anchor of it, by name and by label, and no other id", () => {
       const terms = rows.filter(({ kind }) => kind === "term");
       assert.deepEqual(
         terms.map(({ path, title, label }) => [path, title, label]),
@@ -138,8 +147,27 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
             "cascade:abatementDate",
             "Abatement Date",
           ],
+          [
+            "terms/index.html#prov:wasDerivedFrom",
+            "prov:wasDerivedFrom",
+            "was derived from",
+          ],
         ],
       );
+    });
+
+    it("finds a term of another namespace by its local name and by its prefixed name, and a prefix only the same namespace's terms have", () => {
+      for (const query of [
+        "wasDerivedFrom",
+        "prov:wasDerivedFrom",
+        "was derived",
+      ])
+        assert.equal(
+          rank(rows, query)[0]?.path,
+          "terms/index.html#prov:wasDerivedFrom",
+          query,
+        );
+      assert.deepEqual(rank(rows, "cascade:wasDerivedFrom"), []);
     });
 
     it("lists each rule of a rules page as an anchor of it, titled by its heading", () => {
@@ -258,6 +286,79 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     });
   });
 
+  describe("given pages that hold a word in their file's name, a redirect and eval pages", () => {
+    const rule = (id: string, heading: string) =>
+      `<section class="rule" id="${id}"><h2>${heading}</h2></section>`;
+    let rows: SearchRow[];
+
+    before(async () => {
+      ({ rows } = await rowsOf({
+        "terms/index.html": TERMS,
+        "spec/currency.html": page(
+          "Currency · Cascade runtime rules",
+          rule("c1", "C1. A revision replaces another") +
+            rule("c2", "C2. A record names its latest"),
+        ),
+        "spec/naming.html": page(
+          "Naming · Cascade runtime rules",
+          rule("n1", "N1. A pod holds files"),
+        ),
+        "decisions/currency.html": page(
+          "Which revision of a record is current · Cascade decision notes",
+        ),
+        "decisions/naming.html": page(
+          "How everything in a pod is named · Cascade decision notes",
+        ),
+        "evals/runs/a/doctor.html": page(
+          "What I'd show my doctor — Cascade evals",
+        ),
+        "try/index.html": text(
+          `<!DOCTYPE html><html><head><title>Cascade in your browser has moved</title><meta http-equiv="refresh" content="5; url=../x/"></head><body></body></html>`,
+        ),
+      }));
+    });
+
+    it("puts a page whose file is named by the query before the terms and rules that hold it in their titles", () => {
+      const places = rank(rows, "currency").map(({ path }) => path);
+      assert.ok(
+        [0, 1].includes(places.indexOf("decisions/currency.html")),
+        places.join(", "),
+      );
+      assert.ok(
+        rank(rows, "naming")
+          .slice(0, 8)
+          .some(({ path }) => path === "decisions/naming.html"),
+      );
+    });
+
+    it("matches a rule by its heading, never by its page's file name, so a file's name lists no rule of it", () => {
+      assert.deepEqual(
+        rank(rows, "currency").filter(({ kind }) => kind === "rule"),
+        [],
+      );
+    });
+
+    it("finds nothing for a word that only the files' extension holds, such as html", () => {
+      assert.deepEqual(rank(rows, "html"), []);
+    });
+
+    it("titles every page without the site's name after it, and tells an evals page by its kind", () => {
+      assert.ok(rows.every(({ title }) => !/ [·—] Cascade /.test(title)));
+      assert.deepEqual(
+        rows.find(({ path }) => path.startsWith("evals/")),
+        {
+          path: "evals/runs/a/doctor.html",
+          title: "What I'd show my doctor",
+          kind: "eval",
+        },
+      );
+    });
+
+    it("lists no page that only redirects", () => {
+      assert.ok(!rows.some(({ path }) => path.startsWith("try/")));
+    });
+  });
+
   describe("with shell()", () => {
     const box = (
       chrome: Parameters<typeof shell>[0]["chrome"],
@@ -299,7 +400,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       "node",
       "cli.js",
     );
-    const out = join(ROOT, "build", "pages");
+    const out = mkdtempSync(join(tmpdir(), "search-pages-"));
     const html: string[] = [];
     const walk = (folder: string): void => {
       for (const name of readdirSync(join(out, folder))) {
@@ -313,7 +414,15 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     before(() => {
       const run = spawnSync(
         process.execPath,
-        [cli, "build-pages", "--no-kits", "--built", "2026-11-14"],
+        [
+          cli,
+          "build-pages",
+          "--no-kits",
+          "--built",
+          "2026-11-14",
+          "--out",
+          out,
+        ],
         { encoding: "utf8", cwd: ROOT },
       );
       assert.equal(run.status, 0, run.stderr);
@@ -321,6 +430,37 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       rows = JSON.parse(
         readFileSync(join(out, SEARCH_FILE), "utf8"),
       ) as SearchRow[];
+    });
+
+    after(() => {
+      rmSync(out, { recursive: true, force: true });
+    });
+
+    it("answers the words a reader tries as the notes and terms they mean", () => {
+      const first = (query: string, at: number) =>
+        rank(rows, query)
+          .slice(0, at)
+          .map(({ path }) => path);
+      assert.ok(first("currency", 3).includes("decisions/currency.html"));
+      assert.ok(first("naming", 8).includes("decisions/naming.html"));
+      assert.deepEqual(rank(rows, "html"), []);
+      for (const query of ["wasDerivedFrom", "prov:wasDerivedFrom"])
+        assert.equal(
+          rank(rows, query)[0]?.path,
+          "terms/index.html#prov:wasDerivedFrom",
+          query,
+        );
+    });
+
+    it("tells every eval page by its kind, titles no page with the site's name and lists no redirect", () => {
+      assert.ok(rows.filter(({ kind }) => kind === "eval").length > 10);
+      assert.ok(
+        rows
+          .filter(({ path }) => path.startsWith("evals/"))
+          .every(({ kind }) => kind === "eval"),
+      );
+      assert.ok(rows.every(({ title }) => !/ [·—] Cascade /.test(title)));
+      assert.ok(!rows.some(({ path }) => path.startsWith("try/")));
     });
 
     it("puts the box on every page of the hub, but the evals' own frame and a page that only redirects", () => {
@@ -364,14 +504,14 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     });
 
     it("lands every row on a file of the tree, and on an id of it when the row is an anchor", () => {
+      const pages = new Map<string, string>();
       for (const { path } of rows) {
         const [file = "", id] = path.split("#");
         assert.ok(existsSync(join(out, file)), path);
-        if (id !== undefined)
-          assert.ok(
-            readFileSync(join(out, file), "utf8").includes(`id="${id}"`),
-            path,
-          );
+        if (id === undefined) continue;
+        if (!pages.has(file))
+          pages.set(file, readFileSync(join(out, file), "utf8"));
+        assert.ok(pages.get(file)?.includes(`id="${id}"`), path);
       }
       assert.ok(rows.some(({ kind }) => kind === "rule"));
       assert.ok(rows.some(({ kind }) => kind === "decision"));

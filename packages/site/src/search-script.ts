@@ -6,35 +6,58 @@
 export const SEARCH_SCRIPT = String.raw`'use strict';
 (function () {
 var SHOWN = 8;
-var KIND = { term: 'Term', rule: 'Rule', decision: 'Decision', page: 'Page' };
-var ORDER = { term: 0, rule: 1, decision: 2, page: 3 };
+var KIND = { term: 'Term', rule: 'Rule', decision: 'Decision', page: 'Page', eval: 'Eval' };
+var ORDER = { term: 0, rule: 1, decision: 2, page: 3, eval: 4 };
+var PREFIXED = /^([a-z][a-z0-9-]*):(\S+)$/;
 
 function plain(text) {
   return String(text).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+function pathOf(row) {
+  if (row.path.indexOf('#') >= 0) return '';
+  return plain(row.path.replace(/\/?index\.html$/, '').replace(/\.html$/, ''));
+}
+
 function scoreOf(row, whole, words, typed) {
-  var name = plain(row.title).replace(/^cascade:/, '');
+  var title = plain(row.title);
+  var name = title;
+  if (row.kind === 'term') {
+    var asked = PREFIXED.exec(whole);
+    var colon = title.indexOf(':');
+    name = colon < 0 ? title : title.slice(colon + 1);
+    if (asked !== null) {
+      if (colon < 0 || title.slice(0, colon) !== asked[1]) return 0;
+      whole = asked[2];
+      words = [whole];
+      typed = typed.slice(asked[1].length + 1);
+    }
+  }
   var label = row.label === undefined ? '' : plain(row.label);
-  if (name === whole) return row.title.replace(/^cascade:/, '') === typed ? 101 : 100;
+  if (name === whole) return row.title.slice(row.title.length - name.length) === typed ? 101 : 100;
   if (label === whole) return 90;
+  var path = pathOf(row);
+  if (path.slice(path.lastIndexOf('/') + 1) === whole) return 85;
   if (name.indexOf(whole) === 0) return 80;
   if (name.indexOf(whole) > 0) return 60;
   if (label.indexOf(whole) === 0) return 55;
   if (label.indexOf(whole) > 0) return 50;
-  var all = name + ' ' + label + ' ' + plain(row.path);
+  var all = name + ' ' + label;
   var inName = 0;
+  var inPath = 0;
   for (var i = 0; i < words.length; i++) {
-    if (all.indexOf(words[i]) < 0) return 0;
-    if (name.indexOf(words[i]) >= 0) inName++;
+    if (all.indexOf(words[i]) < 0) {
+      if (path.indexOf(words[i]) < 0) return 0;
+      inPath++;
+    } else if (name.indexOf(words[i]) >= 0) inName++;
   }
-  return 30 + inName;
+  return inPath > 0 ? 10 : 30 + inName;
 }
 
 function rank(rows, query) {
-  var whole = plain(query).replace(/^cascade:/, '');
+  var whole = plain(query);
   if (whole === '') return [];
-  var typed = String(query).trim().replace(/^cascade:/, '');
+  var typed = String(query).trim();
   var words = whole.split(' ');
   var scored = [];
   for (var i = 0; i < rows.length; i++) {
@@ -67,7 +90,13 @@ function load() {
         if (!response.ok) throw new Error(String(response.status));
         return response.json();
       })
-      .then(function (found) { rows = found; });
+      .then(
+        function (found) { rows = found; },
+        function (error) {
+          loading = null;
+          throw error;
+        }
+      );
   return loading;
 }
 
@@ -135,12 +164,27 @@ function show() {
   mark(-1);
 }
 
+function go(row) {
+  if (!row) return;
+  close();
+  window.location.href = root + row.path;
+}
+
 form.addEventListener('submit', function (event) {
   event.preventDefault();
-  var one = shown[active < 0 ? 0 : active];
-  if (one) window.location.href = root + one.path;
+  if (rows !== null) return go(shown[active < 0 ? 0 : active]);
+  if (plain(input.value) === '') return;
+  load().then(function () { go(rank(rows, input.value)[0]); }, function () { say('The search could not be loaded.'); });
 });
 
+list.addEventListener('mousedown', function (event) { event.preventDefault(); });
+list.addEventListener('click', function (event) {
+  if (event.target.closest('a')) close();
+});
+form.addEventListener('focusout', function (event) {
+  if (!form.contains(event.relatedTarget)) close();
+});
+window.addEventListener('hashchange', close);
 input.addEventListener('input', show);
 input.addEventListener('focus', function () { load().catch(function () {}); });
 input.addEventListener('keydown', function (event) {
