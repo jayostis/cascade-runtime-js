@@ -385,34 +385,54 @@ export type Listed =
   | { readonly view: AdapterView }
   | { readonly repository: string; readonly unavailable: string };
 
-/** The page that lists the adapters, with the commit each was built from and how many paths it carries. */
+const BRIDGE_SPECIFICATION = "https://github.com/jayostis/cascade-bridge-spec";
+
+/**
+ * The page that opens the adapters: the builder's problem, why adapters are built this way, one fact followed through
+ * three forms (when `fact` is given), a card for each adapter with the commit it was built from, and the Bridge
+ * specification's pages on adapters.
+ */
 export function adaptersIndex(
   listed: readonly Listed[],
   chrome: Chrome,
+  fact?: Html,
 ): Uint8Array {
   return shell(
     chrome,
     "Adapters",
     "../",
     markup`<a href="../index.html">Cascade Protocol reference</a>`,
-    markup`<h1>Adapters</h1>
-<p class="prose">An adapter turns one source format into Cascade records. Its accounting says, for every path of the source
-format it knows, what the path becomes or why it does not: the property and the record class it is written as, linked to
-the term reference, or the verdict and the gap that explains it. Each page below is read from the adapter's default branch
-as it stood when these pages were built.</p>
-<h2 class="part" id="adapters">The adapters</h2>
-<table>
-<thead><tr><th>adapter</th><th>built from</th><th>paths carried</th><th>carried in part</th><th>not carried</th></tr></thead>
-<tbody>
+    markup`<h1>One more source format, without one more engine</h1>
+<p class="lede">A hospital's export, a vendor's file: each source format is one adapter to write, not another engine.
+An adapter describes a source format. It is data, not code. cascade-bridge-rs is the one Bridge today.</p>
+<h2 class="part" id="reasons">Why adapters are built this way</h2>
+<ol class="reasons">
+<li><strong>No new engine for a new format.</strong> The Bridge reads an adapter, so one more format means one more adapter and no change to the Bridge.</li>
+<li><strong>Adapters are tested the same way.</strong> The same checks run over every adapter, so a new one is held to what the others are.</li>
+<li><strong>Every source path is meant to be accounted for.</strong> For each path of its format an adapter says what the path becomes; what it does not carry is reported with its reason.</li>
+<li><strong>There will be many.</strong> Hospitals and vendors each write their own format, so the cost of one more has to stay small.</li>
+</ol>
+${
+  fact === undefined
+    ? ""
+    : markup`<h2 class="part" id="one-fact-three-forms">One fact, three forms</h2>
+<p class="prose">Priya Natarajan's aspirin allergy arrives from three sources, each in its own shape. The adapters read the
+same two facts out of all three, the substance and the reaction, and they become one record.</p>
+${fact}`
+}<h2 class="part" id="adapters">The adapters</h2>
+<p class="about">Each card links the adapter's own page, which says where every source path goes and what is not carried. Each page is read from the adapter's default branch as it stood when these pages were built.</p>
+<ul class="cards">
 ${listed.map((one) => {
   if ("unavailable" in one)
-    return markup`<tr><td data-label="adapter"><code>${repositoryOf(one.repository)}</code></td><td data-label="built from"><a href="${one.repository}">${one.repository}</a></td><td data-label="paths carried" colspan="3">Not available: ${one.unavailable}</td></tr>\n`;
+    return markup`<li><h3><code>${repositoryOf(one.repository)}</code></h3><p>Not available: ${one.unavailable}</p><p class="about"><a href="${one.repository}">${one.repository}</a></p></li>\n`;
   const { view } = one;
-  const { carried, part, not } = counts(view.accounting);
-  return markup`<tr><td data-label="adapter"><a href="${view.slug}/index.html">${view.title}</a></td><td data-label="built from"><a href="${view.repository}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a></td><td data-label="paths carried">${carried}</td><td data-label="carried in part">${part}</td><td data-label="not carried">${not}</td></tr>\n`;
-})}</tbody>
-</table>
-<p class="about">A path is counted once for each verdict the accounting gives it, whatever forms it is written in and however many reasons it gives.</p>
+  return markup`<li><h3><a href="${view.slug}/index.html">${view.title}</a></h3><p>Where each source path of ${view.title} goes in a Cascade pod, and what is not carried.</p><p class="about">Built from <a href="${view.repository}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a></p></li>\n`;
+})}</ul>
+<h2 class="part" id="write-one">Inside an adapter, and writing one</h2>
+<ul>
+<li><a href="${BRIDGE_SPECIFICATION}/tree/main/adapter">What is in an adapter</a>: the folder of the Bridge specification that says what an adapter holds.</li>
+<li><a href="${BRIDGE_SPECIFICATION}/blob/main/adapter/README.md">Write one</a>: the adapter folder's README, for whoever brings in a new source format.</li>
+</ul>
 `,
   );
 }
