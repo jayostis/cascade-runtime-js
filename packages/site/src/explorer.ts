@@ -912,10 +912,8 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
     const placed = steps.map((step) => {
       const at = rowAt(step.when);
       if (at.performed) return { step, ...at, wrote: undefined };
-      // a step with no act at its time that the kit says wrote no file, or refused, or a matcher run, ran and wrote nothing
-      const wrote: StepWrote | undefined =
-        said.get(step.name) ??
-        (step.happened.kind === "matcher" ? "nothing" : undefined);
+      // a step with no act at its time that the kit says wrote no file, or refused, ran and wrote nothing
+      const wrote: StepWrote | undefined = said.get(step.name);
       return wrote === undefined
         ? { step, ...at, wrote }
         : { step, ...at, performed: true, wrote };

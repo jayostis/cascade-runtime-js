@@ -495,13 +495,16 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       for (const [read, name, how] of [
         [of.alex, "E7", "nothing"],
         [of.alex, "M2", "nothing"],
-        [of.priya, "M1", "nothing"],
         [of.priya, "E10", "refused"],
         [of.priya, "E11", "refused"],
         [of.martin, "E4", "nothing"],
       ] as const)
         assert.deepEqual(read(name), { performed: true, wrote: how }, name);
       assert.deepEqual(of.alex("E9"), { performed: false, wrote: undefined });
+      assert.deepEqual(of.priya("M1"), {
+        performed: false,
+        wrote: undefined,
+      });
       assert.equal(of.priya("E2").wrote, undefined);
     });
   });
