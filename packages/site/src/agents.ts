@@ -6,7 +6,11 @@ import {
   WANTS,
 } from "./front-page.js";
 import { type Chrome, Html, markup, shell } from "./html.js";
-import { renderMarkdown, renderWithHeadings } from "./markdown.js";
+import {
+  type MarkdownOptions,
+  renderMarkdown,
+  renderWithHeadings,
+} from "./markdown.js";
 import {
   addressOf,
   isLocal,
@@ -96,7 +100,7 @@ export const SEARCH_SCRIPT_FILE = "search.js";
 export interface SearchRow {
   readonly path: string;
   readonly title: string;
-  readonly kind: "page" | "term" | "rule" | "decision" | "eval";
+  readonly kind: "page" | "call" | "term" | "rule" | "decision" | "eval";
   /** What a term is called in words, beside its name. */
   readonly label?: string;
 }
@@ -105,6 +109,33 @@ const TERM_ANCHOR =
   /<h3 id="([a-z][a-z0-9-]*:[^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h3>/g;
 const RULE_ANCHOR =
   /<section class="rule" id="([^"]+)">\s*<h2>([\s\S]*?)<\/h2>/g;
+/** What the API page's render puts before the first inline code span that names a call, so a row can land on it. */
+const CALL_ANCHOR_PREFIX = "call-";
+const CALL_ANCHOR = /<span id="call-([^"]+)"><\/span>/g;
+const CALLED = /([A-Za-z_$][\w$]*)\(/g;
+const BARE = /^(?:await )?(?:[A-Za-z_$][\w$]*\.)*([A-Za-z_$][\w$]*)$/;
+
+/** The id the API page gives the place its first inline code span names the call `name`. */
+export const callAnchor = (name: string): string =>
+  `${CALL_ANCHOR_PREFIX}${name}`;
+
+/**
+ * The calls an inline code span names: each of `calls` that it writes with a parenthesis after it, wherever in the span
+ * (`pod.import(pullFiles(pull, name))` names both), or that is the whole span, with or without a `pod.` before it
+ * (`ask`, `pod.look`). A property or a name inside a longer span, such as `pod.titled`, is not a call.
+ */
+export function callsNamed(
+  code: string,
+  calls: ReadonlySet<string>,
+): readonly string[] {
+  const bare = BARE.exec(code.trim())?.[1];
+  return [
+    ...new Set([
+      ...[...code.matchAll(CALLED)].map(([, name = ""]) => name),
+      ...(bare === undefined ? [] : [bare]),
+    ]),
+  ].filter((name) => calls.has(name));
+}
 const NOTE_FOLDER = "decisions/";
 const RULES_FOLDER = "spec/";
 const EVALS_FOLDER = "evals/";
@@ -120,9 +151,9 @@ const words = (html: string): string =>
 
 /**
  * The rows of `search.json`: every page of `listed`, and the anchors the reader looks for by name inside pages that are
- * not one page each: the term reference's terms of every namespace, and the rules of the spec's pages. A page is titled
- * without the site's name after it, a decision note and an evals page are told by their kind, and a page that only
- * redirects is no row.
+ * not one page each: the term reference's terms of every namespace, and the rules of the spec's pages. The API page's
+ * calls, each at the place the page first names it, are anchors of it too. A page is titled without the site's name
+ * after it, a decision note and an evals page are told by their kind, and a page that only redirects is no row.
  */
 function searchRows(
   listed: readonly Listed[],
@@ -148,7 +179,14 @@ function searchRows(
           kind: "term",
           label: words(label),
         });
-    else if (path.startsWith(RULES_FOLDER))
+    else if (path === API_PAGE) {
+      for (const [, name = ""] of html().matchAll(CALL_ANCHOR))
+        rows.push({
+          path: `${path}#${callAnchor(name)}`,
+          title: name,
+          kind: "call",
+        });
+    } else if (path.startsWith(RULES_FOLDER))
       for (const [, id = "", heading = ""] of html().matchAll(RULE_ANCHOR))
         rows.push({
           path: `${path}#${id}`,
@@ -327,9 +365,10 @@ function documentPage(
   lead: Html,
   source: string,
   contents = false,
+  code?: MarkdownOptions["code"],
 ): string {
   const { html, headings } = contents
-    ? renderWithHeadings(source)
+    ? renderWithHeadings(source, code === undefined ? {} : { code })
     : { html: renderMarkdown(source), headings: [] };
   const list = headings.filter(({ depth }) => depth === 2);
   return shell({
@@ -356,13 +395,25 @@ const INSTALL_MARKER = /^<!-- INSTALL -->\r?\n(?:\r?\n)?/m;
 
 /**
  * The API page and the package page: the guide an agent reads and the package's README, rendered as they are. The guide
- * is `AGENTS.md` at the hub's root byte for byte; the page is that same text as a page.
+ * is `AGENTS.md` at the hub's root byte for byte; the page is that same text as a page. Where the page first names one of
+ * `calls` in an inline code span it puts an empty anchor before the span, which the search box's row for the call goes to;
+ * the text shown is the guide's.
  */
 export function apiPages(
   guide: string,
   readme: string,
   chrome: Chrome,
+  calls: ReadonlySet<string> = new Set(),
 ): ReadonlyMap<string, Uint8Array> {
+  const anchored = new Set<string>();
+  const anchors = (code: string, heading: boolean): readonly string[] => {
+    const fresh = callsNamed(
+      heading ? `${code.charAt(0).toLowerCase()}${code.slice(1)}` : code,
+      calls,
+    ).filter((name) => !anchored.has(name));
+    for (const name of fresh) anchored.add(name);
+    return fresh.map(callAnchor);
+  };
   return new Map([
     [
       API_PAGE,
@@ -375,6 +426,7 @@ export function apiPages(
 `,
           guide,
           true,
+          anchors,
         ),
       ),
     ],

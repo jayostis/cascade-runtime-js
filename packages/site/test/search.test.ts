@@ -361,6 +361,40 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     });
   });
 
+  describe("given an API page that anchors the calls it names", () => {
+    const API = page(
+      "The cascade-runtime API: building an app on a Cascade pod",
+      `<h2 id="open-a-pod">Open a pod</h2><p><span id="call-openPod"></span><code>openPod()</code> is one; <span id="call-retitle"></span><code>await pod.retitle(name)</code> titles it; <code>openPod(name, { from })</code>; <code>pod.titled</code></p>
+<h2 id="ask">Ask</h2><p><span id="call-ask"></span><code>ask</code> and <code>openPod</code> again</p>`,
+    );
+    let rows: SearchRow[];
+
+    before(async () => {
+      ({ rows } = await rowsOf({ "api/index.html": API }));
+    });
+
+    it("lists each call that has an anchor, at its anchor, titled by the call's name", () => {
+      assert.deepEqual(
+        rows
+          .filter(({ kind }) => kind === "call")
+          .map(({ path, title }) => [path, title]),
+        [
+          ["api/index.html#call-openPod", "openPod"],
+          ["api/index.html#call-retitle", "retitle"],
+          ["api/index.html#call-ask", "ask"],
+        ],
+      );
+    });
+
+    it("lists the call before the page that names it, on the call's name", () => {
+      assert.equal(
+        rank(rows, "openPod")[0]?.path,
+        "api/index.html#call-openPod",
+      );
+      assert.equal(rank(rows, "retitle")[0]?.title, "retitle");
+    });
+  });
+
   describe("with shell()", () => {
     const box = (
       chrome: Parameters<typeof shell>[0]["chrome"],
@@ -506,6 +540,12 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
         );
         assert.ok(termPage.includes(`id="${path.split("#")[1]}"`), path);
       }
+    });
+
+    it("lands the name of a call of the API page on that page, first", () => {
+      const first = rank(rows, "openPod")[0];
+      assert.equal(first?.kind, "call");
+      assert.match(first?.path ?? "", /^api\/index\.html#./);
     });
 
     it("lands every row on a file of the tree, and on an id of it when the row is an anchor", () => {
