@@ -41,7 +41,8 @@ export function markup(
 
 const HUB = "https://jayostis.github.io/cascade-runtime-js";
 
-const FONTS =
+/** The stylesheet of the website's three faces. */
+export const FONTS =
   "https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap";
 
 const MARK = new Html(
