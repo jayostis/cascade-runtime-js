@@ -9,6 +9,7 @@ import { hubFiles } from "../src/front-page.js";
 import { PLAIN } from "../src/html.js";
 import type { AdapterRead, PagesContext } from "../src/hub/context.js";
 import { adaptersSection } from "../src/hub/adapters.js";
+import { explorerArguments } from "../src/hub/explorer-arguments.js";
 import { buildTree } from "../src/sections.js";
 import { readPage } from "./page.js";
 
@@ -194,6 +195,34 @@ describe("The hub publishes each adapter's explorer as it is · adaptersSection"
       );
       assert.ok(read.has("adapters/fhir-r4/explorer.json"));
       assert.ok(read.has("adapters/fhir-r4/cases/0.json"));
+    });
+  });
+
+  describe("when the generator is run over an adapter", () => {
+    it("is told the way back to the adapters page, and the folder, vocabulary, repository, report and output", () => {
+      const said = explorerArguments({
+        script: "scripts/adapter_explorer.py",
+        adapterFolder: "adapter",
+        vocabularyFolder: "vocabulary",
+        repository: FHIR_REPOSITORY,
+        report: "https://hub.example/conformance/tests/fhir-r4/",
+        out: "out",
+      });
+      assert.deepEqual(said, [
+        "scripts/adapter_explorer.py",
+        "adapter",
+        "--vocabulary",
+        "vocabulary",
+        "--repository",
+        FHIR_REPOSITORY,
+        "--report",
+        "https://hub.example/conformance/tests/fhir-r4/",
+        "--way-back",
+        "Adapters",
+        "../index.html",
+        "--out",
+        "out",
+      ]);
     });
   });
 
