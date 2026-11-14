@@ -14,6 +14,8 @@ import {
   RULE_LIST,
   readText,
   readWrittenFeature,
+  type StepWrote,
+  stepsThatWroteNoFile,
   type StepKind,
   type Term,
   Words,
@@ -180,12 +182,13 @@ export interface ExplorerAct {
   readonly role?: Curie;
   /**
    * The kit's steps that fall on this row, each with whether the pod holds an act of exactly its time. A step that was
-   * not performed here (the kit's decided E7, E9, M2) is listed `performed: false`; whether the row wrote files is
-   * `wrote`, which a performed step may leave empty.
+   * not performed here (the kit's E9) is listed `performed: false`; a step that ran and wrote no act says so in its own
+   * `wrote`, and whether the row wrote files is the row's `wrote`, which a performed step may leave empty.
    */
   readonly kitSteps: readonly {
     readonly name: string;
     readonly performed: boolean;
+    readonly wrote?: StepWrote;
     /** The sentence the feature's Background states for the step, without the label that names it. */
     readonly text?: string;
   }[];
@@ -202,8 +205,10 @@ export interface ExplorerKit {
     readonly kind: StepKind;
     /** The row of the log it falls on. */
     readonly row: number;
-    /** Whether the pod holds an act of exactly that time; false when the step was not performed here and leaves no act of its own. */
+    /** Whether the pod holds an act of exactly that time, or the kit says the step ran and left none; false when the step was not performed here. */
     readonly performed: boolean;
+    /** Why a performed step has no act of its time: the kit says it wrote nothing, or it was refused. */
+    readonly wrote?: StepWrote;
   }[];
   readonly cases: readonly {
     /** `P1`, `T3` and so on, or absent for a rule with no number. */
@@ -902,9 +907,18 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       if (stated !== undefined)
         sentences.set(step.name, stated.text.replace(LABEL, ""));
     }
-    const placed = steps.map((step) => ({ step, ...rowAt(step.when) }));
-    for (const { step, row } of placed) kitRows.set(step.name, row);
     const written = await readWrittenFeature(vocabulary, feature);
+    const said = stepsThatWroteNoFile(written);
+    const placed = steps.map((step) => {
+      const at = rowAt(step.when);
+      if (at.performed) return { step, ...at, wrote: undefined };
+      // a step with no act at its time that the kit says wrote no file, or refused, ran and wrote nothing
+      const wrote: StepWrote | undefined = said.get(step.name);
+      return wrote === undefined
+        ? { step, ...at, wrote }
+        : { step, ...at, performed: true, wrote };
+    });
+    for (const { step, row } of placed) kitRows.set(step.name, row);
     handles = await Words.handlesOf(vocabulary, `conformance/${options.kit}`);
     kit = {
       name: options.kit,
@@ -912,12 +926,13 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
       ...(story.introduction === ""
         ? {}
         : { introduction: story.introduction }),
-      steps: placed.map(({ step, row, performed }) => ({
+      steps: placed.map(({ step, row, performed, wrote }) => ({
         name: step.name,
         when: step.when,
         kind: step.happened.kind,
         row,
         performed,
+        ...(wrote === undefined ? {} : { wrote }),
       })),
       cases: written.rules.flatMap((rule) =>
         rule.examples.map((example) => {
@@ -952,9 +967,14 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
   const kitSteps = (row: number): ExplorerAct["kitSteps"] =>
     kit?.steps
       .filter((step) => step.row === row)
-      .map(({ name, performed }) => {
+      .map(({ name, performed, wrote }) => {
         const text = sentences.get(name);
-        return { name, performed, ...(text === undefined ? {} : { text }) };
+        return {
+          name,
+          performed,
+          ...(wrote === undefined ? {} : { wrote }),
+          ...(text === undefined ? {} : { text }),
+        };
       }) ?? [];
   const log: ExplorerAct[] = [making, ...drafts].map((draft, row) => {
     const { snapshotParent, ...rest } = draft;
