@@ -169,6 +169,7 @@ export async function checkProposal(
         refused: `the entry is no Turtle: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+    if (drafts.length === 0) return { refused: "the entry states nothing" };
     for (const [subject] of drafts)
       if (
         subject.termType === "NamedNode" &&

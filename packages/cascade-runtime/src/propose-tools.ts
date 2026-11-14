@@ -40,15 +40,18 @@ export type {
  * `members` as a judgment of `verdict` takes them: IRIs, each once however often it is named, at least two for a verdict
  * that compares and one for one that does not.
  */
-function membersOf(verdict: Verdict, members: unknown): string[] {
+function membersOf(
+  verdict: Verdict,
+  members: unknown,
+): string[] | { refused: string } {
   const named = members as unknown[];
   named.forEach((member, at) => checkIri(member, `members[${at}]`));
   const once = [...new Set(named as string[])];
   const least = verdict === "erroneous" ? 1 : 2;
   if (once.length < least)
-    throw new Refusal(
-      `a judgment that records are ${verdict} names at least ${least} different records`,
-    );
+    return {
+      refused: `a judgment that records are ${verdict} names at least ${least} different records`,
+    };
   return once;
 }
 
@@ -57,13 +60,16 @@ function membersOf(verdict: Verdict, members: unknown): string[] {
  * door and asks once, and files it through the host's `write` only on their yes, naming the door's model as its proposer.
  * A no, a dismissed question or no answer files nothing, and says so.
  *
+ * A refusal after the call is well formed is the answer `{ written: false, refused }`; a call its schema rejects (a member
+ * that is no IRI, a door that cannot ask) fails as a tool error.
+ *
  * @throws Refusal when the door cannot ask, or names no model, or the host writes nothing, or the input is no proposal.
  */
 function proposing(
-  proposalOf: (input: ToolInput) => Proposal,
+  proposalOf: (input: ToolInput) => Proposal | { refused: string },
 ): DeclaredTool["run"] {
   return async (reads, input, door) => {
-    const proposal = proposalOf(input);
+    const made = proposalOf(input);
     if (door?.ask === undefined)
       throw new Refusal(
         "this door cannot ask the person, and a write is made only when they say yes",
@@ -74,6 +80,8 @@ function proposing(
       );
     if (reads.write === undefined)
       throw new Refusal("this host writes to no pod");
+    if ("refused" in made) return { written: false, refused: made.refused };
+    const proposal = made;
     const pod = input.pod as string;
     try {
       const checked = (await reads.check?.({ pod, proposal })) ?? {};
@@ -152,11 +160,12 @@ const DECLARED: DeclaredTool[] = [
     },
     kind: "WritingToAPod",
     ofPod: true,
-    run: proposing(({ verdict, members }) => ({
-      kind: "judgment",
-      verdict: verdict as Verdict,
-      members: membersOf(verdict as Verdict, members),
-    })),
+    run: proposing(({ verdict, members }) => {
+      const named = membersOf(verdict as Verdict, members);
+      return Array.isArray(named)
+        ? { kind: "judgment", verdict: verdict as Verdict, members: named }
+        : named;
+    }),
   },
   {
     name: "propose_retraction",

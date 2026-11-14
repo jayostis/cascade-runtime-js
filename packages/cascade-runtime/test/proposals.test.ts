@@ -288,18 +288,21 @@ describe("Tools a model proposes a write with · propose_entry, propose_judgment
   });
 
   describe("given input its schema refuses", () => {
-    it("counts a record named twice once: a Same of one record is refused before it asks", async () => {
-      for (const verdict of ["same", "different"]) {
+    it("counts a record named twice once: a Same of one record is refused before it asks, as an answer", async () => {
+      for (const [verdict, members] of [
+        ["same", [RECORD_A, RECORD_A]],
+        ["different", [RECORD_A, RECORD_A]],
+        ["same", []],
+      ] as const) {
         const { reads, written } = writing();
         const { door, asked } = asking("yes");
-        await assert.rejects(
-          toolNamed("propose_judgment").run(
-            reads,
-            { pod: "p", verdict, members: [RECORD_A, RECORD_A] },
-            door,
-          ),
-          refusal(/at least 2/),
-        );
+        const answer = (await toolNamed("propose_judgment").run(
+          reads,
+          { pod: "p", verdict, members: [...members] },
+          door,
+        )) as { written: boolean; refused: string };
+        assert.equal(answer.written, false);
+        assert.match(answer.refused, /at least 2/);
         assert.deepEqual([asked, written], [[], []]);
       }
     });
@@ -321,9 +324,8 @@ describe("Tools a model proposes a write with · propose_entry, propose_judgment
       );
     });
 
-    it("refuses a judgment of no records, an unknown verdict and a member that is no IRI, before it asks", async () => {
+    it("refuses an unknown verdict and a member that is no IRI, before it asks", async () => {
       for (const input of [
-        { pod: "p", verdict: "same", members: [] },
         { pod: "p", verdict: "similar", members: [RECORD_A, RECORD_B] },
         { pod: "p", verdict: "same", members: [RECORD_A, "two words"] },
         { pod: "p", verdict: "same", members: [RECORD_A, "a>b"] },
@@ -619,6 +621,13 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
 
   const PREFIXED = `@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n`;
   const UNKNOWN_PROPOSALS: readonly [string, () => Proposal][] = [
+    [
+      "an entry of prefixes and no statement",
+      () => ({
+        kind: "entry",
+        turtle: `${PREFIXED}@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .\n`,
+      }),
+    ],
     [
       "an entry that types the owner as a software agent",
       () => ({
