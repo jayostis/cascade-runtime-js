@@ -9,6 +9,7 @@ import {
 } from "../../agents.js";
 import type { PagesContext } from "../../hub/context.js";
 import type { Section } from "../../sections.js";
+import { callNames } from "./calls.js";
 
 const PACKAGE = ["packages", "cascade-runtime"];
 
@@ -28,7 +29,12 @@ export const apiSection: Section<PagesContext> = {
     const guide = await readFile(join(root, ...PACKAGE, "guide", AGENTS_FILE));
     const readme = await readFile(join(root, ...PACKAGE, "README.md"), "utf8");
     return new Map([
-      ...apiPages(guide.toString("utf8"), readme, chrome),
+      ...apiPages(
+        guide.toString("utf8"),
+        readme,
+        chrome,
+        await callNames(root),
+      ),
       [AGENTS_FILE, new Uint8Array(guide)],
     ]);
   },

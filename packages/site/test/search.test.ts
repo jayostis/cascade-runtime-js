@@ -361,11 +361,11 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     });
   });
 
-  describe("given an API page that names calls in its sections", () => {
+  describe("given an API page that anchors the calls it names", () => {
     const API = page(
       "The cascade-runtime API: building an app on a Cascade pod",
-      `<h2 id="open-a-pod">Open a pod</h2><p><code>openPod()</code> is one; <code>await pod.retitle(name)</code> titles it; <code>openPod(name, { from })</code>; <code>pod.titled</code></p>
-<h2 id="ask">Ask</h2><p><code>pod.ask("x")</code> and <code>openPod</code> again</p>`,
+      `<h2 id="open-a-pod">Open a pod</h2><p><span id="call-openPod"></span><code>openPod()</code> is one; <span id="call-retitle"></span><code>await pod.retitle(name)</code> titles it; <code>openPod(name, { from })</code>; <code>pod.titled</code></p>
+<h2 id="ask">Ask</h2><p><span id="call-ask"></span><code>ask</code> and <code>openPod</code> again</p>`,
     );
     let rows: SearchRow[];
 
@@ -373,21 +373,24 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       ({ rows } = await rowsOf({ "api/index.html": API }));
     });
 
-    it("lists each call the page names once, as the anchor of the section that first names it, titled by the call's name", () => {
+    it("lists each call that has an anchor, at its anchor, titled by the call's name", () => {
       assert.deepEqual(
         rows
           .filter(({ kind }) => kind === "call")
           .map(({ path, title }) => [path, title]),
         [
-          ["api/index.html#open-a-pod", "openPod"],
-          ["api/index.html#open-a-pod", "retitle"],
-          ["api/index.html#ask", "ask"],
+          ["api/index.html#call-openPod", "openPod"],
+          ["api/index.html#call-retitle", "retitle"],
+          ["api/index.html#call-ask", "ask"],
         ],
       );
     });
 
     it("lists the call before the page that names it, on the call's name", () => {
-      assert.equal(rank(rows, "openPod")[0]?.path, "api/index.html#open-a-pod");
+      assert.equal(
+        rank(rows, "openPod")[0]?.path,
+        "api/index.html#call-openPod",
+      );
       assert.equal(rank(rows, "retitle")[0]?.title, "retitle");
     });
   });

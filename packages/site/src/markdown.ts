@@ -64,6 +64,11 @@ export interface MarkdownOptions {
     firstCells: readonly string[],
     section: string,
   ) => TableAddition | undefined;
+  /**
+   * Called with the text of each inline code span, and, with `heading` true, of each heading when `ids` is on; an empty
+   * anchor with each id it returns is written before the span, or first in the heading, which shows as it would without.
+   */
+  readonly code?: (text: string, heading: boolean) => readonly string[];
   /** Ids no heading takes, for a page that gives them to something else. */
   readonly reserved?: readonly string[];
 }
@@ -78,6 +83,7 @@ function markdown({
   ids = false,
   link,
   table,
+  code,
   reserved = [],
 }: MarkdownOptions): {
   marked: Marked;
@@ -120,6 +126,16 @@ function markdown({
               return `<table>\n<thead>\n<tr>\n${cells(token.header)}<th>${escape(added.heading)}</th>\n</tr>\n</thead>\n<tbody>\n${body}</tbody>\n</table>\n`;
             },
           }),
+      ...(code === undefined
+        ? {}
+        : {
+            codespan(token) {
+              const ids = code(token.text, false);
+              return ids.length === 0
+                ? false
+                : `${ids.map((id) => `<span id="${escape(id)}"></span>`).join("")}<code>${escape(token.text)}</code>`;
+            },
+          }),
       image(token) {
         return safe(token.href) ? false : escape(token.text);
       },
@@ -136,10 +152,16 @@ function markdown({
               used.add(id);
               headings.push({
                 depth: token.depth,
-                html: inner.replace(/<\/?a\b[^>]*>/g, ""),
+                html: inner.replace(
+                  /<\/?a\b[^>]*>|<span id="[^"]*"><\/span>/g,
+                  "",
+                ),
                 id,
               });
-              return `<h${token.depth} id="${id}">${inner}</h${token.depth}>\n`;
+              const anchors = (code?.(token.text, true) ?? [])
+                .map((anchor) => `<span id="${escape(anchor)}"></span>`)
+                .join("");
+              return `<h${token.depth} id="${id}">${anchors}${inner}</h${token.depth}>\n`;
             },
           }
         : {}),
