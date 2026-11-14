@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -9,6 +11,7 @@ import {
   findRoot,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { hubFiles } from "../src/front-page.js";
 import { type Chrome, chromeStrings } from "../src/html.js";
 import { Site } from "../src/site.js";
 import { STYLESHEET } from "../src/stylesheet.js";
@@ -189,6 +192,19 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         }
     });
 
+    it("gives the hub's front page the chrome it was built with", () => {
+      const front = (chrome: Chrome) =>
+        new TextDecoder().decode(
+          hubFiles(["Records"], new Map(), chrome).get("index.html"),
+        );
+      const on = front({ website: true, built: BUILT });
+      assert.ok(on.includes(`Built on ${BUILT}.`));
+      assert.ok(on.includes(`href="${WEBSITE}/contribute/"`));
+      const plain = front({ website: false, built: BUILT });
+      assert.ok(plain.includes(`Built on ${BUILT}.`));
+      assert.ok(!plain.includes(WEBSITE));
+    });
+
     it("keeps the pod's own links in a nav of their own, under the header", () => {
       for (const [path, html] of pages) {
         assert.equal(html.split('<nav class="hub-nav"').length, 2, path);
@@ -238,6 +254,62 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
           .map((name) => name),
       );
       assert.deepEqual(framed.sort(), ["front-page.ts", "html.ts"]);
+    });
+  });
+
+  describe("with the build command's options", () => {
+    const cli = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "src",
+      "node",
+      "cli.js",
+    );
+    const spec = (...options: string[]) => {
+      const out = mkdtempSync(join(tmpdir(), "chrome-"));
+      const run = spawnSync(
+        process.execPath,
+        [cli, "build-spec", "--out", out, ...options],
+        { encoding: "utf8", cwd: ROOT },
+      );
+      return { run, out };
+    };
+
+    it("writes the date of --built in the footer of every page it builds", () => {
+      const { run, out } = spec("--built", BUILT);
+      try {
+        assert.equal(run.status, 0, run.stderr);
+        const html = readdirSync(out).filter((name) => name.endsWith(".html"));
+        assert.ok(html.length > 0);
+        for (const name of html)
+          assert.ok(
+            readFileSync(join(out, name), "utf8").includes(
+              `Built on ${BUILT}.`,
+            ),
+            name,
+          );
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    });
+
+    it("links the website from the footer of its pages with --website-links", () => {
+      const { run, out } = spec("--built", BUILT, "--website-links");
+      try {
+        assert.equal(run.status, 0, run.stderr);
+        const page = readFileSync(join(out, "index.html"), "utf8");
+        const footer = page.slice(page.indexOf(`<footer class="sx-footer">`));
+        assert.ok(footer.includes(`href="${WEBSITE}/contribute/"`));
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a --built that is not a date as YYYY-MM-DD", () => {
+      const { run, out } = spec("--built", "13-11-2026");
+      rmSync(out, { recursive: true, force: true });
+      assert.equal(run.status, 1);
+      assert.match(run.stderr, /--built is 13-11-2026, not a date/);
     });
   });
 

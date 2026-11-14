@@ -121,7 +121,7 @@ function chromeOf(values: {
   readonly built?: string | undefined;
 }): Chrome {
   const { built } = values;
-  if (built !== undefined && !/^d{4}-d{2}-d{2}$/.test(built))
+  if (built !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(built))
     throw new Error(`--built is ${built}, not a date as YYYY-MM-DD`);
   return {
     website: values["website-links"] === true,
@@ -524,15 +524,16 @@ async function buildPages(args: string[]): Promise<number> {
     },
   });
   const vocabulary = await localVocabulary(ROOT, log);
+  const chrome = chromeOf(values);
   const { tree } = await buildTree({
     sections: SECTIONS,
     ctx: pagesContext(
       vocabulary,
       reportFileOf(values.report),
       testsFolderOf(values.tests),
-      chromeOf(values),
+      chrome,
     ),
-    front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows),
+    front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows, chrome),
     finishers: FINISHERS,
     skip: ({ needsKits }) => values["no-kits"] === true && needsKits === true,
   });
