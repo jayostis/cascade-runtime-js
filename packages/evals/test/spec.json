@@ -24,6 +24,7 @@
     "Printing what to show a doctor · renderSite()",
     "Reading about a case's person, and how the test works · renderSite()",
     "Publishing the report · renderSite(), buildSite()",
+    "Keeping the hub's pages to builders · speaksToPatient()",
     "Recording a run in the history · recordHistory()"
   ],
   "glossary": [
