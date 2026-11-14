@@ -204,7 +204,7 @@ function promptHtml(s: Sitting, q: string): string {
     const asked = s.results.asked.find(
       (it) => it.job === t.job.id && it.question === q,
     );
-    return `<div><h4 class="${arm}">${ARM_NAME[arm]}</h4>${asked === undefined ? `<p class="muted small">Not handed out.</p>` : `<pre>${esc(asked.message)}</pre><p class="small muted">Handed out at ${esc(asked.at.slice(11, 19))} UTC.</p>`}${t.job.promptText === undefined ? `<p class="small muted">The session's opening prompt is not recorded.</p>` : `<details class="opening"><summary class="small">The session's opening prompt</summary><pre>${esc(t.job.promptText)}</pre></details>`}</div>`;
+    return `<div><h4 class="${arm}">${ARM_NAME[arm]}</h4>${asked === undefined ? `<p class="muted small">Not handed out.</p>` : `<pre data-recorded>${esc(asked.message)}</pre><p class="small muted">Handed out at ${esc(asked.at.slice(11, 19))} UTC.</p>`}${t.job.promptText === undefined ? `<p class="small muted">The session's opening prompt is not recorded.</p>` : `<details class="opening"><summary class="small">The session's opening prompt</summary><pre data-recorded>${esc(t.job.promptText)}</pre></details>`}</div>`;
   }).join("");
   return `<details class="fold prompt"><summary>The exact prompt <span class="sum">· what each agent was handed for this question</span></summary><div class="body"><div class="two">${parts}</div></div></details>`;
 }
@@ -212,7 +212,7 @@ function promptHtml(s: Sitting, q: string): string {
 const TABS = [
   ["answer", "Answer"],
   ["reasoning", "Reasoning"],
-  ["doctor", "Show my doctor"],
+  ["doctor", "The doctor's card"],
 ] as const;
 
 const groupOf = (arm: Arm, q: string) => `t-${arm}-${esc(q)}`;
@@ -374,7 +374,7 @@ export function runPages(
     .map(
       (q, at) =>
         `<section class="question" id="q_${esc(q.id)}"><h2 class="qh">Question ${at + 1}</h2>
-<div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble"><span class="from">${esc(person)} asks</span>${esc(q.asks)}</div></div>
+<div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble" data-recorded><span class="from">${esc(person)} asks</span>${esc(q.asks)}</div></div>
 ${ARMS.map((arm) => tabInputs(s, arm, q.id)).join("")}<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, found.today)).join("")}</div>
 ${drillHtml(s, q.id)}${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
     )
@@ -383,7 +383,7 @@ ${drillHtml(s, q.id)}${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`
 <h1>${esc(title)}: With Cascade and the grab bag, side by side</h1>
 <p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer three tabs: the answer, the reasoning and the evidence graph behind it (which opens full width under both answers), and the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor. The exact prompt each agent was handed is one click away under each question.</p>
 ${head}
-<p class="printlinks noprint">Show my doctor, on paper: <a href="${hrefTo(where.run, where.print.pod)}">every card, With Cascade</a> · <a href="${hrefTo(where.run, where.print.records)}">every card, Grab bag</a></p>
+<p class="printlinks noprint">The cards, on paper: <a href="${hrefTo(where.run, where.print.pod)}">every card, With Cascade</a> · <a href="${hrefTo(where.run, where.print.records)}">every card, Grab bag</a></p>
 ${sections}
 <h2>One level down, for the whole run</h2>
 ${foldsHtml(s, where.run)}`;
@@ -402,7 +402,7 @@ ${foldsHtml(s, where.run)}`;
       .map((q) => {
         const t = turnOf(s, arm, q.id);
         return t?.answer === undefined
-          ? `<article class="card"><header><span><b>You asked</b> <q>${esc(q.asks)}</q></span></header>${notAnswered}</article>`
+          ? `<article class="card"><header><span><b>The question</b> <q data-recorded>${esc(q.asks)}</q></span></header>${notAnswered}</article>`
           : doctorCardHtml(t, q.asks, day(found.today));
       })
       .join("\n");
@@ -412,11 +412,15 @@ ${foldsHtml(s, where.run)}`;
       path,
       page({
         path,
-        title: `What I'd show my doctor — ${ARM_NAME[arm]} — ${title}`,
-        crumbs: [...crumbs, [title, where.run], ["Show my doctor"]],
+        title: `The doctor's cards, printed — ${ARM_NAME[arm]} — ${title}`,
+        crumbs: [
+          ...crumbs,
+          [title, where.run],
+          ["The doctor's cards, printed"],
+        ],
         print: true,
         body: `<p class="noprint small"><a href="${hrefTo(path, where.run)}">Back to the run</a> · showing the ${ARM_NAME[arm]}'s cards · <a href="${hrefTo(path, where.print[other])}">show the ${ARM_NAME[other]}'s instead</a> · <a href="#" onclick="window.print();return false">Print this page</a></p>
-<h1>What I'd show my doctor</h1><p class="muted">${esc(person)} · prepared ${arm === "pod" ? "with Cascade" : "from the grab bag"} · ${esc(instance.model)} · ${esc(day(found.today))}</p>
+<h1>The doctor's cards, printed</h1><p class="muted">${esc(person)} · prepared ${arm === "pod" ? "with Cascade" : "from the grab bag"} · ${esc(instance.model)} · ${esc(day(found.today))}</p>
 ${cards}`,
       }),
     );

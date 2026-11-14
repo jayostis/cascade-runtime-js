@@ -21,15 +21,6 @@ const recorded = JSON.parse(
   ),
 ) as Results;
 
-/** An answer the agent wrote to the person is the run's data, not the hub's wording. */
-const withoutAgentSpeech = (results: Results): Results =>
-  JSON.parse(
-    JSON.stringify(results).replaceAll(
-      "among your conditions",
-      "among the person's conditions",
-    ),
-  ) as Results;
-
 /**
  * The hub's pages are about a person's records, for the builders and adopters of a protocol; none speaks to a patient.
  */
@@ -42,6 +33,11 @@ describe("Keeping the hub's pages to builders · speaksToPatient()", () => {
       "Own your own health data.",
       "See <b>your</b> <em>health</em> story.",
       "We&rsquo;re here for you.",
+      "<b>You asked</b> <q>What do I take?</q>",
+      "Show my doctor, on paper",
+      "Ask&nbsp;your&#32;health&nbsp;records",
+      "Your&#x20;medications are listed.",
+      "See your&thinsp;records.",
     ])
       it(`flags "${sentence}"`, () => {
         assert.ok(speaksToPatient(visibleText(sentence)).length > 0);
@@ -53,6 +49,8 @@ describe("Keeping the hub's pages to builders · speaksToPatient()", () => {
       "Your health app imports FHIR; your runtime files it.",
       "The person's records stay on the person's device.",
       "<style>.your-health { color: red }</style><p>Fine.</p>",
+      "The question the person asked, and a card for the person's doctor.",
+      '<div class="reply" data-recorded><p>Your conditions <div>are</div> stable.</p></div><p>Fine.</p>',
     ])
       it(`passes "${sentence}"`, () => {
         assert.deepEqual(speaksToPatient(visibleText(sentence)), []);
@@ -72,11 +70,7 @@ describe("Keeping the hub's pages to builders · speaksToPatient()", () => {
   });
 
   it("finds none on a rendered evals page", () => {
-    const found = [
-      ...renderSite([
-        { name: "fixture-1", results: withoutAgentSpeech(recorded) },
-      ]),
-    ]
+    const found = [...renderSite([{ name: "fixture-1", results: recorded }])]
       .filter(([path]) => path.endsWith(".html"))
       .flatMap(([path, html]) =>
         speaksToPatient(visibleText(html)).map((s) => `${path}: ${s}`),

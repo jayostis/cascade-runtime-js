@@ -310,7 +310,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
           "How everything in a pod is named · Cascade decision notes",
         ),
         "evals/runs/a/doctor.html": page(
-          "What I'd show my doctor — Cascade evals",
+          "The doctor's cards, printed — Cascade evals",
         ),
         "try/index.html": text(
           `<!DOCTYPE html><html><head><title>Cascade in your browser has moved</title><meta http-equiv="refresh" content="5; url=../x/"></head><body></body></html>`,
@@ -348,7 +348,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
         rows.find(({ path }) => path.startsWith("evals/")),
         {
           path: "evals/runs/a/doctor.html",
-          title: "What I'd show my doctor",
+          title: "The doctor's cards, printed",
           kind: "eval",
         },
       );

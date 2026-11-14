@@ -112,7 +112,7 @@ export const notAnswered = `<p class="muted">Not answered.</p>`;
 export function replyHtml(t: Turn): string {
   const a = t.answer;
   if (a === undefined) return notAnswered;
-  return `<div class="reply"><p>${esc(a.answer)}</p><p class="small"><b>In short:</b> ${esc(a.short)}</p><ol>${a.items
+  return `<div class="reply" data-recorded><p>${esc(a.answer)}</p><p class="small"><b>In short:</b> ${esc(a.short)}</p><ol>${a.items
     .map(
       (it) =>
         `<li><b>${esc(it.says)}</b><span class="conf">${esc(it.confidence)} confidence</span><span class="why">${esc(it.why)}</span></li>`,
@@ -597,7 +597,7 @@ export function reasoningHtml(t: Turn): string {
   const items = a.items
     .map(
       (item, at) =>
-        `<details class="item" id="${t.arm}-${esc(t.question)}-${item.n}"${at === 0 ? " open" : ""}><summary>${item.n}. ${esc(item.says)}</summary><div class="dbody">${chainHtml(t, item)}<h4>The evidence, as a graph <span class="muted">· built only from what this agent cited, plus lookups</span></h4>${graphBlock(t.arm === "pod" ? podGraph(t, item) : recordsGraph(t, item), `${t.arm}-${t.question}-${item.n}`, NOTES[t.arm])}</div></details>`,
+        `<details class="item" data-recorded id="${t.arm}-${esc(t.question)}-${item.n}"${at === 0 ? " open" : ""}><summary>${item.n}. ${esc(item.says)}</summary><div class="dbody">${chainHtml(t, item)}<h4>The evidence, as a graph <span class="muted">· built only from what this agent cited, plus lookups</span></h4>${graphBlock(t.arm === "pod" ? podGraph(t, item) : recordsGraph(t, item), `${t.arm}-${t.question}-${item.n}`, NOTES[t.arm])}</div></details>`,
     )
     .join("");
   const across = (a.links ?? [])
@@ -606,7 +606,7 @@ export function reasoningHtml(t: Turn): string {
         `<li>item ${l.from.item} fact ${l.from.fact + 1} bears on item ${l.to.item} fact ${l.to.fact + 1}: ${esc(l.says)}</li>`,
     )
     .join("");
-  return `${items}${across === "" ? "" : `<h4>Links across its points, in the agent's words</h4><ul class="small">${across}</ul>`}`;
+  return `${items}${across === "" ? "" : `<h4>Links across its points, in the agent's words</h4><ul class="small" data-recorded>${across}</ul>`}`;
 }
 
 // ---------------------------------------------------------------- the doctor card
@@ -636,7 +636,7 @@ function sourceOf(t: Turn, item: number, fact: number, f: Fact): string {
   return said ?? "";
 }
 
-/** What I'd show my doctor: the question, the short answer, each point's dated facts and sources. Never the model's own knowledge. */
+/** The card a person would show a doctor: the question, the short answer, each point's dated facts and sources. Never the model's own knowledge. */
 export function doctorCardHtml(
   t: Turn,
   asks: string,
@@ -645,9 +645,9 @@ export function doctorCardHtml(
   const a = t.answer;
   if (a === undefined) return notAnswered;
   const how = t.arm === "pod" ? "with Cascade" : "from the grab bag";
-  return `<article class="card"><header><span><b>You asked</b> <q>${esc(asks)}</q></span><span class="muted small">Prepared ${how} · ${esc(modelName(t.job.model))} · ${esc(prepared)}</span></header>
-<p><b>In short:</b> ${esc(a.short)}</p>
-<ol>${a.items
+  return `<article class="card"><header><span><b>The question</b> <q data-recorded>${esc(asks)}</q></span><span class="muted small">Prepared ${how} · ${esc(modelName(t.job.model))} · ${esc(prepared)}</span></header>
+<p data-recorded><b>In short:</b> ${esc(a.short)}</p>
+<ol data-recorded>${a.items
     .map((item) => {
       const facts = (item.facts ?? [])
         .map((f, i) => {

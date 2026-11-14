@@ -102,6 +102,34 @@ function headline(entries: readonly Entry[]): string {
     .join("")}</tbody></table></div>`;
 }
 
+/** Each arm's cited facts borne out, added up over every run on the page, with what the totals rest on. */
+function citationTotals(entries: readonly Entry[]): string {
+  const total = (which: Arm) => {
+    let held = 0;
+    let failed = 0;
+    for (const e of entries) {
+      const a = e.instance.arms[which];
+      if (a === undefined) continue;
+      held += a.citations.held;
+      failed += a.citations.failed;
+    }
+    return { held, of: held + failed };
+  };
+  const people = new Set(
+    entries.flatMap((e) => e.results.cases.map((c) => c.id)),
+  );
+  const models = new Set(entries.map((e) => e.instance.model));
+  const many = (n: number, one: string, more: string) =>
+    `${n} ${n === 1 ? one : more}`;
+  const sums = ARMS.map((which) => {
+    const t = total(which);
+    return `<span data-total="${which}">${badge(which)} <b>${t.held} of ${t.of}</b></span>`;
+  }).join(" · ");
+  return `<section class="totals"><h2>Cited facts borne out, in all</h2>
+<p>A program checks each fact an answer cites against the record it names. Over ${many(entries.length, "run", "runs")} on this page, added up here from the recorded runs: ${sums} cited facts borne out. The same figures stand under each run below.</p>
+<p class="small muted">The limit: these are ${many(people.size, "made-up person", "made-up people")} and ${many(models.size, "model", "models")}, from one vendor; runs vary, so read a total as what happened in these runs, not as a rate to expect.</p></section>`;
+}
+
 function runRow(from: string, e: Entry): string {
   const { instance: i } = e;
   const arm = (which: Arm) => {
@@ -174,6 +202,7 @@ ${
     : `<h2>Per model</h2>
 <p class="small muted">&ldquo;Right&rdquo; counts the answer key's expected items said and its traps avoided, over every question asked, as counts. An item an answer only half said, a split between judges, a question not answered or not graded is not counted right and is shown beside the count.</p>
 ${headline(entries)}
+${citationTotals(entries)}
 <h2>Every run</h2>
 <div class="runs">${entries.map((e) => runRow(from, e)).join("")}</div>
 <div class="legend"><span>Marks used inside a run:</span>${mark("yes", "said what we expected")}${mark("part", "part of it")}${mark("no", "missed it")}${mark("beyond", "beyond the key: not wrong, possibly good")}${mark("none", "not counted: judges split, unanswered or not graded")}${mark("contra", "said something the records contradict")}</div>`
