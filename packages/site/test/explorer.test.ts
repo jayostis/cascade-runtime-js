@@ -454,12 +454,58 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
       const performed = new Map(
         data.kit?.steps.map(({ name, performed }) => [name, performed]),
       );
-      for (const name of ["E7", "E9", "M2"])
-        assert.equal(performed.get(name), false, name);
-      assert.equal(performed.get("E6"), true);
+      assert.equal(performed.get("E9"), false);
+      for (const name of ["E7", "M2", "E6"])
+        assert.equal(performed.get(name), true, name);
       for (const row of data.log)
         for (const step of row.kitSteps)
           assert.equal(step.performed, performed.get(step.name), step.name);
+    });
+
+    it("tells whether a performed step wrote nothing or was refused, as the kit's own examples do", async () => {
+      const wrote = async (name: string) => {
+        const pod = new MemoryFiles("https://pod.example/");
+        await featurePod(
+          vocabulary,
+          `conformance/${name}/${name}.feature`,
+          pod,
+          {},
+        );
+        const site = await Site.build({
+          ...optionsFor(pod, name),
+          kit: name,
+        });
+        const { kit: story, log } = decoded(
+          (await site.files()).get(EXPLORER_FILE),
+        );
+        const steps = new Map(story?.steps.map((step) => [step.name, step]));
+        for (const row of log)
+          for (const step of row.kitSteps)
+            assert.equal(step.wrote, steps.get(step.name)?.wrote, step.name);
+        return (step: string) => ({
+          performed: steps.get(step)?.performed,
+          wrote: steps.get(step)?.wrote,
+        });
+      };
+      const of = {
+        alex: await wrote("alex-rivera"),
+        priya: await wrote("priya-natarajan"),
+        martin: await wrote("martin-okafor"),
+      };
+      for (const [read, name, how] of [
+        [of.alex, "E7", "nothing"],
+        [of.alex, "M2", "nothing"],
+        [of.priya, "E10", "refused"],
+        [of.priya, "E11", "refused"],
+        [of.martin, "E4", "nothing"],
+      ] as const)
+        assert.deepEqual(read(name), { performed: true, wrote: how }, name);
+      assert.deepEqual(of.alex("E9"), { performed: false, wrote: undefined });
+      assert.deepEqual(of.priya("M1"), {
+        performed: false,
+        wrote: undefined,
+      });
+      assert.equal(of.priya("E2").wrote, undefined);
     });
   });
 
