@@ -49,9 +49,8 @@ function fhirRows(source: string): Shown["rows"] {
   const substance = resource.code?.coding?.find(
     ({ system }) => system === "http://www.nlm.nih.gov/research/umls/rxnorm",
   )?.code;
-  const reaction = resource.reaction?.[0]?.manifestation?.[0]?.coding?.find(
-    ({ system }) => system === "http://snomed.info/sct",
-  )?.code;
+  const reaction =
+    resource.reaction?.[0]?.manifestation?.[0]?.coding?.[0]?.code;
   return [
     ["/code/coding/code", need(substance, "RxNorm code", FHIR_FILE)],
     [
