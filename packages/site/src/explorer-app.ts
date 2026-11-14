@@ -866,7 +866,7 @@ fetch(root.dataset.data).then(function (r) { return r.json(); }).then(function (
 export const EXPLORER_STYLE = String.raw`body.explorer main { max-width: none; margin: 0; padding: 0; }
 :root { --pencil: #b4410c; --new: #1f7a4d; --new-bg: #e6f3ec; --built: #6b4fa0; --built-bg: #f0ecf7; --sel: #dcebf1; --warn-bg: #fbf3e2; --amber: #8a5a0d; --mono: ui-monospace, SFMono-Regular, Consolas, monospace; }
 #explorer { font-size: 14px; line-height: 1.45; }
-#explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 14rem); height: calc(100dvh - 14rem); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+#explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 18rem); height: calc(100dvh - 18rem); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
 #explorer .top { display: flex; align-items: center; gap: 6px 14px; padding: 8px 14px; background: var(--text); color: #fff; min-width: 0; }
 #explorer .top .brand { font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #ffb38a; white-space: nowrap; }
 #explorer .top .who { font-size: 1.15rem; white-space: nowrap; }
