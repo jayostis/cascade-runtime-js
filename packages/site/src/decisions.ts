@@ -63,6 +63,7 @@ function page(
       chrome,
       title: markup`${title} · Cascade decision notes`,
       stylesheet: DECISIONS_STYLESHEET_FILE,
+      hubRoot: UP,
       nav: markup`${frontPageLink(1)}
 <a href="${DECISIONS_INDEX}">Decision notes</a>
 <a href="${UP}spec/index.html">The runtime's rules</a>

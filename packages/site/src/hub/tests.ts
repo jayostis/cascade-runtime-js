@@ -906,6 +906,7 @@ function page(suite: Suite, shown: Part, chrome: Chrome): Html {
     chrome,
     title: markup`${suite.title} · Cascade unit test reports`,
     stylesheet: `../../../${STYLESHEET_FILE}`,
+    hubRoot: "../../../",
     head: markup`<style>${new Html(STYLES)}</style>\n`,
     nav: markup`${frontPageLink(3)}
 <a href="../../index.html">Conformance results</a>

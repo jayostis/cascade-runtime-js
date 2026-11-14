@@ -54,6 +54,8 @@ export interface Chrome {
   readonly website?: string;
   /** The date the pages were built, `YYYY-MM-DD`, from the commit they are built from; none writes no date. */
   readonly built?: string;
+  /** Whether `search.json` and `search.js` stand at the hub's root beside the pages, so a page that knows where the root is gets the search box. */
+  readonly search?: boolean;
 }
 
 /** No link to the website and no build date. */
@@ -82,8 +84,18 @@ const navLinks = (chrome: Chrome, current: boolean) =>
 `,
   );
 
-/** The website's strip and header, the hub being the nav's "Reference". */
-export function chromeHeader(chrome: Chrome): Html {
+/** The box that searches the hub's terms, rules, decisions and pages: shown by `search.js` once it has loaded. */
+const searchBox = (hubRoot: string) => markup`<div class="sx-find-wrap">
+<form class="sx-find" role="search" data-rows="${hubRoot}search.json" hidden>
+<label class="sx-find-label" for="sx-find-q">Search this reference</label>
+<input id="sx-find-q" type="search" placeholder="Search terms, rules, decisions and pages" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="sx-find-list" aria-autocomplete="list">
+<ul id="sx-find-list" role="listbox" aria-label="Results" hidden></ul>
+</form>
+</div>
+`;
+
+/** The website's strip and header, the hub being the nav's "Reference"; with `hubRoot` (the address of the hub's root from the page) and `chrome.search`, the search box under the bar. */
+export function chromeHeader(chrome: Chrome, hubRoot?: string): Html {
   const { website } = chrome;
   return markup`<div class="sx-strip">An open standard in progress, in alpha.${
     website !== undefined &&
@@ -104,7 +116,7 @@ ${navLinks(chrome, true)}</nav>
 ${navLinks(chrome, false)}</nav>
 </details>
 </div>
-</header>
+${chrome.search === true && hubRoot !== undefined && searchBox(hubRoot)}</header>
 `;
 }
 
@@ -179,6 +191,8 @@ export interface Shell {
   readonly nav?: Content;
   /** The body's class, for a page whose styles are scoped to it. */
   readonly bodyClass?: string;
+  /** The address of the hub's root from this page, ending in `/`, where `search.json` and `search.js` stand; a page that gives none has no search box. */
+  readonly hubRoot?: string;
   readonly main: Content;
   /** After the footer: a script. */
   readonly after?: Content;
@@ -192,6 +206,7 @@ export function shell({
   head,
   nav,
   bodyClass,
+  hubRoot,
   main,
   after,
 }: Shell): Html {
@@ -202,10 +217,15 @@ export function shell({
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 ${chromeHead}<link rel="stylesheet" href="${stylesheet}">
-${head}</head>
+${head}${
+    chrome.search === true &&
+    hubRoot !== undefined &&
+    markup`<script src="${hubRoot}search.js" defer></script>
+`
+  }</head>
 <body${bodyClass === undefined ? "" : markup` class="${bodyClass}"`}>
 <a class="b-skip" href="#main">Skip to content</a>
-${chromeHeader(chrome)}${
+${chromeHeader(chrome, hubRoot)}${
     nav === undefined
       ? ""
       : markup`<nav class="hub-nav" aria-label="This site">

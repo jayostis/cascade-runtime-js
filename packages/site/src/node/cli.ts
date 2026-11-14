@@ -509,7 +509,7 @@ function pagesContext(
 /**
  * Builds the whole Pages tree into build/pages: the hub's sections, the front page above them, and what reads the tree
  * once it is written. The one command that the pull request's docs site and the deploy both run. `--no-kits` leaves out
- * what is made of the kits, which is most of the time. `--report` names the conformance run's EARL report, with its
+ * what is made of the kits, which is most of the time. `--out` names the folder to write instead of build/pages. `--report` names the conformance run's EARL report, with its
  * table.md beside it; the spec and conformance pages show every result as not run when there is none. `--tests` names the
  * folder of the unit test reports, a folder in it for each suite of `packages/site/test-suites.json` named as its
  * repository, each with `report`, `run.json` and perhaps `spec.json`; the page of a suite with none says it is not
@@ -523,10 +523,11 @@ async function buildPages(args: string[]): Promise<number> {
       "no-kits": { type: "boolean" },
       report: { type: "string" },
       tests: { type: "string" },
+      out: { type: "string" },
     },
   });
   const vocabulary = await localVocabulary(ROOT, log);
-  const chrome = chromeOf(values);
+  const chrome: Chrome = { ...chromeOf(values), search: true };
   const { tree } = await buildTree({
     sections: SECTIONS,
     ctx: pagesContext(
@@ -539,7 +540,7 @@ async function buildPages(args: string[]): Promise<number> {
     finishers: FINISHERS,
     skip: ({ needsKits }) => values["no-kits"] === true && needsKits === true,
   });
-  const out = PAGES;
+  const out = absolute(values.out ?? PAGES);
   await rm(out, { recursive: true, force: true });
   const pages = new FolderFiles(out);
   for (const [path, bytes] of tree) await pages.write(path, bytes);

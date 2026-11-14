@@ -136,6 +136,7 @@ export function examplesPage(
     chrome,
     title: "Cascade example pods",
     stylesheet: STYLESHEET_FILE,
+    hubRoot: "",
     nav: markup`${frontPageLink(0)}\n`,
     main: markup`<h1>Cascade example pods</h1>
 <p class="prose">These are the example pods the reference runtime, cascade-runtime-js, builds from the conformance kits of
@@ -253,6 +254,7 @@ function frontPage(
     chrome,
     title: "Cascade Protocol reference",
     stylesheet: STYLESHEET_FILE,
+    hubRoot: "",
     main: markup`<h1>Cascade Protocol reference</h1>
 <p class="prose">A pod holds one person's health records as files, and an app reads and writes it through
 <code>cascade-runtime</code>.</p>
@@ -277,6 +279,7 @@ export function startPage(
     chrome,
     title: "Start an app on a Cascade pod",
     stylesheet: STYLESHEET_FILE,
+    hubRoot: "",
     nav: markup`<a href="${FRONT_PAGE}">Cascade Protocol reference</a>\n`,
     main: markup`<h1>Start an app on a Cascade pod</h1>
 <h2 class="part">1. Make the app</h2>
