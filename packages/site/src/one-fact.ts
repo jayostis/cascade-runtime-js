@@ -8,6 +8,7 @@ const FERNHILL_FILE = `${DOWNLOADS}fernhill-family-clinic-summary.xml`;
 const RECORD_FILE = "conformance/priya-natarajan/expected/allergies.ttl";
 
 const RXNORM_OID = "2.16.840.1.113883.6.88";
+const ALLERGY_TEMPLATE = "2.16.840.1.113883.10.20.22.4.7";
 const REACTION_TEMPLATE = "2.16.840.1.113883.10.20.22.4.9";
 
 /** One source or the record: where it is, what it is, and the values the example reads from it, each at the path it has there. */
@@ -60,18 +61,44 @@ function fhirRows(source: string): Shown["rows"] {
   ];
 }
 
-function ccdaRows(source: string, file: string): Shown["rows"] {
-  const substance = new RegExp(
-    `<playingEntity[^>]*>\\s*<code\\s+code="([^"]+)"[^>]*codeSystem="${RXNORM_OID.replaceAll(".", "\\.")}"`,
-  ).exec(source)?.[1];
+const CCDA_ENTRY =
+  "/ClinicalDocument/component/structuredBody/component/section/entry/act/entryRelationship/observation";
+
+const escaped = (value: string): string => value.replaceAll(".", "\\.");
+
+/** The values of the allergy entry whose substance is the RxNorm code `substance`, read from that entry alone. */
+function ccdaRows(
+  source: string,
+  file: string,
+  substance: string,
+): Shown["rows"] {
+  const entries = source.split(
+    new RegExp(`(?=<templateId root="${escaped(ALLERGY_TEMPLATE)}"\\s*/>)`),
+  );
+  const entry = entries.find((one) =>
+    new RegExp(
+      `<playingEntity[^>]*>\\s*<code\\s+code="${escaped(substance)}"[^>]*codeSystem="${escaped(RXNORM_OID)}"`,
+    ).test(one),
+  );
   const reaction = new RegExp(
-    `<templateId root="${REACTION_TEMPLATE.replaceAll(".", "\\.")}"[\\s\\S]*?<value [^>]*\\bcode="([^"]+)"`,
-  ).exec(source)?.[1];
+    `<templateId root="${escaped(REACTION_TEMPLATE)}"[\\s\\S]*?<value [^>]*\\bcode="([^"]+)"`,
+  ).exec(entry ?? "")?.[1];
   return [
-    ["playingEntity/code/@code", need(substance, "RxNorm code", file)],
     [
-      "observation/value/@code (reaction)",
-      need(reaction, "reaction code", file),
+      `${CCDA_ENTRY}/participant/participantRole/playingEntity/code/@code`,
+      need(
+        entry === undefined ? undefined : substance,
+        `entry for RxNorm code ${substance}`,
+        file,
+      ),
+    ],
+    [
+      `${CCDA_ENTRY}/entryRelationship/observation/value/@code`,
+      need(
+        reaction,
+        `reaction code in the entry for RxNorm code ${substance}`,
+        file,
+      ),
     ],
   ];
 }
@@ -109,6 +136,7 @@ export async function readOneFact(vocabulary: Files): Promise<OneFact> {
     text(vocabulary, RECORD_FILE),
   ]);
   const fhirCode = fhirRows(fhir);
+  const substance = need(fhirCode[0]?.[1], "RxNorm code", FHIR_FILE);
   return {
     sources: [
       {
@@ -121,23 +149,20 @@ export async function readOneFact(vocabulary: Files): Promise<OneFact> {
         title: "C-CDA",
         from: "Kestrel Harbor Health's summary",
         file: KESTREL_FILE,
-        rows: ccdaRows(kestrel, KESTREL_FILE),
+        rows: ccdaRows(kestrel, KESTREL_FILE, substance),
       },
       {
         title: "C-CDA",
         from: "Fernhill Family Clinic's summary",
         file: FERNHILL_FILE,
-        rows: ccdaRows(fernhill, FERNHILL_FILE),
+        rows: ccdaRows(fernhill, FERNHILL_FILE, substance),
       },
     ],
     record: {
       title: "One Cascade record",
       from: "what all three become",
       file: RECORD_FILE,
-      rows: recordRows(
-        record,
-        need(fhirCode[0]?.[1], "RxNorm code", FHIR_FILE),
-      ),
+      rows: recordRows(record, substance),
     },
   };
 }
@@ -145,6 +170,12 @@ export async function readOneFact(vocabulary: Files): Promise<OneFact> {
 /** A file of the vocabulary as GitHub shows it, from the tree the files are read from. */
 function address(vocabulary: Files, file: string): string {
   return vocabulary.iri.replace("/tree/", "/blob/") + file;
+}
+
+/** A path that may break after a slash and nowhere else. */
+function breakAtSlashes(path: string): Html {
+  const [first = "", ...rest] = path.split("/");
+  return markup`${first}${rest.map((step) => markup`/<wbr>${step}`)}`;
 }
 
 function card(
@@ -157,7 +188,7 @@ function card(
 <h3>${title}</h3>
 <p class="about">${from}: <a href="${address(vocabulary, file)}"><code>${name}</code></a></p>
 <dl>
-${rows.map(([path, value]) => markup`<dt>${path}</dt><dd><code>${value}</code></dd>\n`)}</dl>
+${rows.map(([path, value]) => markup`<dt>${breakAtSlashes(path)}</dt><dd><code>${value}</code></dd>\n`)}</dl>
 </div>
 `;
 }

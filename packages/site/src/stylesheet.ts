@@ -125,7 +125,7 @@ section.query, section.term { margin: 1.5rem 0; padding: 1rem 0 0; border-top: 1
 .fact .form, .fact .record { border: 1px solid var(--rule); background: var(--paper); padding: .6rem .8rem; margin: 0 .5rem; }
 .fact .form h3, .fact .record h3 { margin: 0; }
 .fact dl { margin: .4rem 0 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: .1rem 0; font-size: .85rem; }
-.fact dt { color: var(--muted); font: .78rem var(--mono); overflow-wrap: anywhere; }
+.fact dt { color: var(--muted); font: .78rem var(--mono); overflow-wrap: normal; overflow-x: auto; }
 .fact dd { margin: 0 0 .3rem; overflow-wrap: anywhere; }
 .fact .join { position: relative; height: 2.5rem; margin: 0 16.667%; }
 .fact .join::before { content: ""; position: absolute; inset: 0 0 50% 0; border: 2px solid var(--link); border-top: 0; }

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { dirname } from "node:path";
 import { before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { type Files, MemoryFiles } from "@cascade-runtime/runtime";
+import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
+import { readOneFact } from "../src/one-fact.js";
 import { hubFiles } from "../src/front-page.js";
 import { PLAIN } from "../src/html.js";
 import type { AdapterRead, PagesContext } from "../src/hub/context.js";
@@ -147,15 +151,23 @@ const KESTREL = `${DOWNLOADS}kestrel-harbor-health-summary.xml`;
 const FERNHILL = `${DOWNLOADS}fernhill-family-clinic-summary.xml`;
 const RECORD = "conformance/priya-natarajan/expected/allergies.ttl";
 
-const ccda = (
+const allergy = (
   substance: string,
-  reaction: string,
-) => `<participant typeCode="CSM"><participantRole classCode="MANU"><playingEntity classCode="MMAT">
-<code code="${substance}" displayName="aspirin" codeSystem="2.16.840.1.113883.6.88" codeSystemName="RxNorm"/>
-</playingEntity></participantRole></participant>
-<observation classCode="OBS" moodCode="EVN"><templateId root="2.16.840.1.113883.10.20.22.4.9"/>
+  reaction: string | undefined,
+) => `<observation classCode="OBS" moodCode="EVN"><templateId root="2.16.840.1.113883.10.20.22.4.7"/>
+<templateId root="2.16.840.1.113883.10.20.22.4.7" extension="2014-06-09"/>
+<participant typeCode="CSM"><participantRole classCode="MANU"><playingEntity classCode="MMAT">
+<code code="${substance}" displayName="substance" codeSystem="2.16.840.1.113883.6.88" codeSystemName="RxNorm"/>
+</playingEntity></participantRole></participant>${
+  reaction === undefined
+    ? ""
+    : `<entryRelationship typeCode="MFST"><observation classCode="OBS" moodCode="EVN"><templateId root="2.16.840.1.113883.10.20.22.4.9"/>
 <templateId root="2.16.840.1.113883.10.20.22.4.9" extension="2014-06-09"/><code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
-<value xsi:type="CD" code="${reaction}" displayName="Urticaria" codeSystem="2.16.840.1.113883.6.96" codeSystemName="SNOMED CT"/></observation>`;
+<value xsi:type="CD" code="${reaction}" displayName="Urticaria" codeSystem="2.16.840.1.113883.6.96" codeSystemName="SNOMED CT"/></observation></entryRelationship>`
+}</observation>`;
+
+const ccda = (substance: string, reaction: string) =>
+  allergy(substance, reaction);
 
 /** Priya's aspirin allergy as the vocabulary's conformance folder holds it: in FHIR, in two C-CDAs, and as the record. */
 const PRIYA: Readonly<Record<string, string>> = {
@@ -590,15 +602,59 @@ describe("The adapters page says what an adapter is on one screen · adaptersInd
         assert.ok(page.hrefs.includes(base + path), path);
     });
 
-    it("leaves the view out, and still builds the page, when one of its files is missing", async () => {
-      const read = await built([await adapter()], { [FERNHILL]: undefined });
-      assert.ok(read.has(INDEX));
-      assert.doesNotMatch(read(INDEX), /one-fact-three-forms/);
+    it("fails the build when one of its files is missing", async () => {
+      await assert.rejects(
+        built([await adapter()], { [FERNHILL]: undefined }),
+        /not in the vocabulary/,
+      );
     });
 
-    it("leaves the view out when a file has no code to read", async () => {
-      const read = await built([await adapter()], { [KESTREL]: "<x/>" });
-      assert.doesNotMatch(read(INDEX), /one-fact-three-forms/);
+    it("fails the build when a file has no code to read", async () => {
+      await assert.rejects(
+        built([await adapter()], { [KESTREL]: "<x/>" }),
+        /no entry for RxNorm code 1191/,
+      );
+    });
+
+    it("reads a C-CDA's values from the entry whose substance is the FHIR resource's, however many allergies come first", async () => {
+      const read = await built([await adapter()], {
+        [KESTREL]:
+          allergy("7980", "271807003") +
+          allergy("1191", "126485001") +
+          allergy("2670", "271807003"),
+      });
+      const said = plain(read(INDEX));
+      assert.ok(said.includes("126485001"));
+      assert.ok(!said.includes("7980"));
+      assert.ok(!said.includes("271807003"));
+    });
+
+    it("fails the build when that entry has no reaction, though another allergy's has one", async () => {
+      await assert.rejects(
+        built([await adapter()], {
+          [KESTREL]: allergy("1191", undefined) + allergy("7980", "271807003"),
+        }),
+        /no reaction code in the entry for RxNorm code 1191/,
+      );
+    });
+
+    it("labels each value with the adapter's own source path, a break allowed only after a slash", () => {
+      assert.ok(markup.includes("/<wbr>ClinicalDocument/<wbr>component/<wbr>"));
+      assert.ok(
+        markup.includes(
+          "participantRole/<wbr>playingEntity/<wbr>code/<wbr>@code",
+        ),
+      );
+      assert.ok(markup.includes("/<wbr>code/<wbr>coding/<wbr>code"));
+      assert.doesNotMatch(markup, /\(reaction\)/);
+    });
+
+    it("builds from the vocabulary's real conformance files", async () => {
+      const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+      const { files } = await localVocabulary(root);
+      const { sources, record } = await readOneFact(files);
+      for (const shown of [...sources, record])
+        for (const [, value] of shown.rows) assert.ok(value.length > 0);
     });
   });
 
