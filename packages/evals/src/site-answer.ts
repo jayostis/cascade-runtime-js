@@ -112,10 +112,10 @@ export const notAnswered = `<p class="muted">Not answered.</p>`;
 export function replyHtml(t: Turn): string {
   const a = t.answer;
   if (a === undefined) return notAnswered;
-  return `<div class="reply" data-recorded><p>${esc(a.answer)}</p><p class="small"><b>In short:</b> ${esc(a.short)}</p><ol>${a.items
+  return `<div class="reply"><p data-recorded>${esc(a.answer)}</p><p class="small"><b>In short:</b> <span data-recorded>${esc(a.short)}</span></p><ol>${a.items
     .map(
       (it) =>
-        `<li><b>${esc(it.says)}</b><span class="conf">${esc(it.confidence)} confidence</span><span class="why">${esc(it.why)}</span></li>`,
+        `<li><b data-recorded>${esc(it.says)}</b><span class="conf">${esc(it.confidence)} confidence</span><span class="why" data-recorded>${esc(it.why)}</span></li>`,
     )
     .join("")}</ol></div>`;
 }
@@ -203,19 +203,19 @@ function chainHtml(t: Turn, item: Item): string {
   const facts = (item.facts ?? [])
     .map((f, i) => {
       const c = citationOf(t, item.n, i);
-      return `<li><span class="ck ${tone(c?.ok)}">${tick(c?.ok)}</span> ${esc(f.says)} <span class="muted small">${esc(heldLine(f, c?.filled))}</span></li>`;
+      return `<li><span class="ck ${tone(c?.ok)}">${tick(c?.ok)}</span> <span data-recorded>${esc(f.says)}</span> <span class="muted small">${esc(heldLine(f, c?.filled))}</span></li>`;
     })
     .join("");
   const absences = (item.absences ?? [])
     .map((a, i) => {
       const c = absenceCheckOf(t, item.n, i);
-      return `<li><span class="ck ${tone(c?.backed)}">${tick(c?.backed)}</span> ${esc(a.what)} <span class="muted small">searched: ${esc(matchOf(a))}${a.match.after === undefined ? "" : `, after ${esc(a.match.after)}`} · ${esc(a.coverage)}</span>${c !== undefined && !c.backed ? `<span class="muted small"> · checker: ${esc(c.reason ?? "not backed")}</span>` : ""}</li>`;
+      return `<li><span class="ck ${tone(c?.backed)}">${tick(c?.backed)}</span> <span data-recorded>${esc(a.what)}</span> <span class="muted small">searched: ${esc(matchOf(a))}${a.match.after === undefined ? "" : `, after ${esc(a.match.after)}`} · <span data-recorded>${esc(a.coverage)}</span></span>${c !== undefined && !c.backed ? `<span class="muted small"> · checker: ${esc(c.reason ?? "not backed")}</span>` : ""}</li>`;
     })
     .join("");
   const links = (item.links ?? [])
     .map(
       (l) =>
-        `<li>fact ${l.from + 1} bears on fact ${l.to + 1}: ${esc(l.says)}</li>`,
+        `<li>fact ${l.from + 1} bears on fact ${l.to + 1}: <span data-recorded>${esc(l.says)}</span></li>`,
     )
     .join("");
   const judges = gradesOf(t)
@@ -597,16 +597,16 @@ export function reasoningHtml(t: Turn): string {
   const items = a.items
     .map(
       (item, at) =>
-        `<details class="item" data-recorded id="${t.arm}-${esc(t.question)}-${item.n}"${at === 0 ? " open" : ""}><summary>${item.n}. ${esc(item.says)}</summary><div class="dbody">${chainHtml(t, item)}<h4>The evidence, as a graph <span class="muted">· built only from what this agent cited, plus lookups</span></h4>${graphBlock(t.arm === "pod" ? podGraph(t, item) : recordsGraph(t, item), `${t.arm}-${t.question}-${item.n}`, NOTES[t.arm])}</div></details>`,
+        `<details class="item" id="${t.arm}-${esc(t.question)}-${item.n}"${at === 0 ? " open" : ""}><summary>${item.n}. <span data-recorded>${esc(item.says)}</span></summary><div class="dbody">${chainHtml(t, item)}<h4>The evidence, as a graph <span class="muted">· built only from what this agent cited, plus lookups</span></h4>${graphBlock(t.arm === "pod" ? podGraph(t, item) : recordsGraph(t, item), `${t.arm}-${t.question}-${item.n}`, NOTES[t.arm])}</div></details>`,
     )
     .join("");
   const across = (a.links ?? [])
     .map(
       (l) =>
-        `<li>item ${l.from.item} fact ${l.from.fact + 1} bears on item ${l.to.item} fact ${l.to.fact + 1}: ${esc(l.says)}</li>`,
+        `<li>item ${l.from.item} fact ${l.from.fact + 1} bears on item ${l.to.item} fact ${l.to.fact + 1}: <span data-recorded>${esc(l.says)}</span></li>`,
     )
     .join("");
-  return `${items}${across === "" ? "" : `<h4>Links across its points, in the agent's words</h4><ul class="small" data-recorded>${across}</ul>`}`;
+  return `${items}${across === "" ? "" : `<h4>Links across its points, in the agent's words</h4><ul class="small">${across}</ul>`}`;
 }
 
 // ---------------------------------------------------------------- the doctor card
@@ -646,8 +646,8 @@ export function doctorCardHtml(
   if (a === undefined) return notAnswered;
   const how = t.arm === "pod" ? "with Cascade" : "from the grab bag";
   return `<article class="card"><header><span><b>The question</b> <q data-recorded>${esc(asks)}</q></span><span class="muted small">Prepared ${how} · ${esc(modelName(t.job.model))} · ${esc(prepared)}</span></header>
-<p data-recorded><b>In short:</b> ${esc(a.short)}</p>
-<ol data-recorded>${a.items
+<p><b>In short:</b> <span data-recorded>${esc(a.short)}</span></p>
+<ol>${a.items
     .map((item) => {
       const facts = (item.facts ?? [])
         .map((f, i) => {
@@ -655,16 +655,16 @@ export function doctorCardHtml(
           const date = pointsAtEntry(f)
             ? citationOf(t, item.n, i)?.filled?.date
             : f.date;
-          return `<li>${esc(f.says)} <span class="muted">· ${date === undefined ? "" : `${esc(date)} · `}${esc(source)}</span></li>`;
+          return `<li><span data-recorded>${esc(f.says)}</span> <span class="muted">· ${date === undefined ? "" : `${esc(date)} · `}${esc(source)}</span></li>`;
         })
         .join("");
       const absences = (item.absences ?? [])
         .map(
           (ab) =>
-            `<li class="absence">Looked for and not found: ${esc(ab.what)}. <span>${esc(ab.coverage)}</span></li>`,
+            `<li class="absence">Looked for and not found: <span data-recorded>${esc(ab.what)}</span>. <span data-recorded>${esc(ab.coverage)}</span></li>`,
         )
         .join("");
-      return `<li><b>${esc(item.says)}</b>${facts === "" && absences === "" ? "" : `<ul class="facts">${facts}${absences}</ul>`}</li>`;
+      return `<li><b data-recorded>${esc(item.says)}</b>${facts === "" && absences === "" ? "" : `<ul class="facts">${facts}${absences}</ul>`}</li>`;
     })
     .join("")}</ol>
 <p class="tiny muted">Everything here is from the downloaded records. The assistant's own knowledge is left off this card on purpose: the person&rsquo;s doctor brings that.</p></article>`;

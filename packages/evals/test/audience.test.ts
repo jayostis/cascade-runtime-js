@@ -57,6 +57,25 @@ describe("Keeping the hub's pages to builders · speaksToPatient()", () => {
       });
   });
 
+  describe("given an element marked `data-recorded`", () => {
+    for (const html of [
+      '<div class="bubble"><span class="from">Ask your health records</span><span data-recorded>Fine.</span></div>',
+      "<details data-recorded-x><summary>Fine.</summary>Ask your health records a question.</details>",
+      '<p title=" data-recorded">Ask your health records a question.</p>',
+      "<p title='a data-recorded b' class=\"x\">Ask your health records a question.</p>",
+    ])
+      it(`still reads the hub's own wording in ${html}`, () => {
+        assert.ok(speaksToPatient(visibleText(html)).length > 0);
+      });
+
+    it("leaves out the marked element and keeps its siblings", () => {
+      const html =
+        '<p><b>In short:</b> <span class="x" data-recorded>Your records</span> done.</p>';
+      assert.deepEqual(speaksToPatient(visibleText(html)), []);
+      assert.match(visibleText(html), /In short:\s+done/);
+    });
+  });
+
   it("finds no patient-addressed sentence in the hub's sources", () => {
     const found = [
       ...sourcesIn("evals/src").filter((f) => f.includes("site")),

@@ -374,7 +374,7 @@ export function runPages(
     .map(
       (q, at) =>
         `<section class="question" id="q_${esc(q.id)}"><h2 class="qh">Question ${at + 1}</h2>
-<div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble" data-recorded><span class="from">${esc(person)} asks</span>${esc(q.asks)}</div></div>
+<div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble"><span class="from">${esc(person)} asks</span><span data-recorded>${esc(q.asks)}</span></div></div>
 ${ARMS.map((arm) => tabInputs(s, arm, q.id)).join("")}<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, found.today)).join("")}</div>
 ${drillHtml(s, q.id)}${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
     )

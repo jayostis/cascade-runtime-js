@@ -121,13 +121,14 @@ function citationTotals(entries: readonly Entry[]): string {
   const models = new Set(entries.map((e) => e.instance.model));
   const many = (n: number, one: string, more: string) =>
     `${n} ${n === 1 ? one : more}`;
+  const named = [...models].sort().map((m) => esc(m));
   const sums = ARMS.map((which) => {
     const t = total(which);
     return `<span data-total="${which}">${badge(which)} <b>${t.held} of ${t.of}</b></span>`;
   }).join(" · ");
   return `<section class="totals"><h2>Cited facts borne out, in all</h2>
 <p>A program checks each fact an answer cites against the record it names. Over ${many(entries.length, "run", "runs")} on this page, added up here from the recorded runs: ${sums} cited facts borne out. The same figures stand under each run below.</p>
-<p class="small muted">The limit: these are ${many(people.size, "made-up person", "made-up people")} and ${many(models.size, "model", "models")}, from one vendor; runs vary, so read a total as what happened in these runs, not as a rate to expect.</p></section>`;
+<p class="small muted">The limit: these are ${many(people.size, "made-up person", "made-up people")} and ${many(models.size, "model", "models")} (${named.join(", ")}); runs vary, so read a total as what happened in these runs, not as a rate to expect.</p></section>`;
 }
 
 function runRow(from: string, e: Entry): string {

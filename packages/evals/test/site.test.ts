@@ -206,7 +206,8 @@ describe("Reading the report's front page · renderSite()", () => {
       const totals = text(element(index, /<section[^>]*class="totals"/));
       assert.match(totals, /1 made-up person\b/);
       assert.match(totals, /2 models/);
-      assert.match(totals, /one vendor/);
+      assert.match(totals, /claude-opus-5-5, claude-sonnet-5-5/);
+      assert.doesNotMatch(totals, /vendor/);
       assert.match(totals, /runs vary/i);
     });
 

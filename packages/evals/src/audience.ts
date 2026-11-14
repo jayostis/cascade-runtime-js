@@ -64,7 +64,8 @@ function decoded(text: string): string {
 
 /** `html` without each element marked `data-recorded`, which holds what a run recorded (an agent's answer, a person's question), through its closing tag; same-name tags inside are counted. */
 function withoutRecordedElements(html: string): string {
-  const open = /<(\w+)\b[^>]*\sdata-recorded\b[^>]*>/;
+  const open =
+    /<(\w+)\b(?:\s+[^\s"'<>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>=]+))?)*?\s+data-recorded(?=[\s=>/])[^>]*>/;
   for (let start = open.exec(html); start !== null; start = open.exec(html)) {
     const tag = new RegExp(`<(/?)${start[1]}\\b[^>]*>`, "g");
     tag.lastIndex = start.index + start[0].length;
