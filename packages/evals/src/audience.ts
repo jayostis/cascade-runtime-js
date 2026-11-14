@@ -39,9 +39,7 @@ export function speaksToPatient(text: string): string[] {
   const flat = text.replace(/\s+/g, " ");
   return PATIENT_PHRASES.flatMap((pattern) =>
     [...flat.matchAll(pattern)].map((m) =>
-      flat
-        .slice(Math.max(m.index - 40, 0), m.index + m[0].length + 50)
-        .trim(),
+      flat.slice(Math.max(m.index - 40, 0), m.index + m[0].length + 50).trim(),
     ),
   );
 }

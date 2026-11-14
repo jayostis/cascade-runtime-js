@@ -667,7 +667,7 @@ export function doctorCardHtml(
       return `<li><b>${esc(item.says)}</b>${facts === "" && absences === "" ? "" : `<ul class="facts">${facts}${absences}</ul>`}</li>`;
     })
     .join("")}</ol>
-<p class="tiny muted">Everything here is from the downloaded records. The assistant's own knowledge is left off this card on purpose: your doctor brings that.</p></article>`;
+<p class="tiny muted">Everything here is from the downloaded records. The assistant's own knowledge is left off this card on purpose: the person&rsquo;s doctor brings that.</p></article>`;
 }
 
 // ---------------------------------------------------------------- cost

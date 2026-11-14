@@ -158,7 +158,7 @@ function frontPage(entries: readonly Entry[], above: Above): string {
   const from = "index.html";
   const latest = entries[0];
   const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a></p>
-<h1>Ask your health records a question. Which answer would you rather get?</h1>
+<h1>The same question, two ways of giving a model a person&rsquo;s records. Which answer would you rather build on?</h1>
 <p class="lead">Cascade joins a person's downloaded health records into one <b>pod</b>: one entry per real thing, with its history across sources, read by a model through tools. The <b>grab bag</b> is the same downloads read whole, as if pasted into the chat. The same model answers the same questions both ways. Below: how each model did, then every run, one row per model per sitting. Open a row to read both answers and the evidence behind each.</p>
 <div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a>${people(
     entries,
@@ -180,7 +180,7 @@ ${headline(entries)}
 }`;
   return page({
     path: from,
-    title: "Cascade evals — ask your records a question",
+    title: "Cascade evals — two ways to ask a person's records a question",
     crumbs: [...above, ["Cascade evals"]],
     body,
   });
