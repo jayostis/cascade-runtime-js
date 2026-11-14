@@ -660,8 +660,16 @@ class BrowserPod implements Pod {
     return (await this.#pod()).enter(turtle, options);
   }
 
+  async checkEntry(turtle: string) {
+    return (await this.#pod()).checkEntry(turtle);
+  }
+
   async judge(turtle: string): Promise<Done> {
     return (await this.#pod()).judge(turtle);
+  }
+
+  async checkJudgment(turtle: string) {
+    return (await this.#pod()).checkJudgment(turtle);
   }
 
   async match(activity?: string): Promise<Done> {

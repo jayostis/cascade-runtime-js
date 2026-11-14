@@ -12,7 +12,7 @@ import { References } from "./references.js";
 import { SavedOutputBridge } from "./saved-output-bridge.js";
 import type { StepFile } from "./step.js";
 import type { StoreFactory } from "./store.js";
-import type { Step, StepKind, Story } from "./story.js";
+import type { ProposalAnswer, Step, StepKind, Story } from "./story.js";
 
 /** What the replay holds of the story when it performs one of its steps. */
 interface StorySide {
@@ -28,6 +28,27 @@ interface StorySide {
   /** The pod of the writer so numbered, the first's 0. */
   readonly writer: (index: number) => CorePod;
 }
+
+/** What a runtime performs of a model's proposal: the proposal as the story gives it, and what the person answers. */
+export interface Proposal {
+  readonly pod: CorePod;
+  /** `proposals/<name>.ttl`: what the model proposes, saying nothing of who or when. */
+  readonly file: StepFile;
+  readonly answer: ProposalAnswer;
+  /** The pod's address and layout, which name the person who says yes. */
+  readonly address: string;
+  readonly layout: Layout;
+  /** The step's time, and the names it mints. */
+  readonly time: StoryTime;
+  readonly newStore: StoreFactory;
+}
+
+/**
+ * Has the runtime's tool at ask propose the write the story gives, through a door that asks the person once and is
+ * answered as the story says, and performs what comes of it: on a yes, the write at the step's time; else nothing.
+ * @throws Error when the door asks other than once for the proposal, or writes without a yes.
+ */
+export type Proposer = (proposal: Proposal) => Promise<Performed>;
 
 /** Performs a story's step by turning it into its inputs and calling the pod's step of its kind. */
 export type Perform = (
@@ -259,6 +280,8 @@ export interface ReplayOptions {
   readonly newStore: StoreFactory;
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
+  /** What performs a model's proposal, if the runtime has a tool a model proposes a write through. */
+  readonly proposer?: Proposer;
   /** The runtime performing its acts, as N7 names it. */
   readonly runtime: string;
   /** The tables the pod is given, instead of the story's own `references/`. */
@@ -340,6 +363,30 @@ export class Replay {
     this.#stopped = standing?.stopped;
   }
 
+  /** A model's proposal, performed by the runtime's `proposer`, which the story's steps are not given but the replay's options are. */
+  readonly #proposal: Perform = (pod, step, story) => {
+    const { happened } = step;
+    if (happened.kind !== "proposal")
+      throw new Error("the step is no proposal");
+    const { proposer, story: told, layout } = this.#options;
+    if (proposer === undefined)
+      throw new Error(
+        "this runtime has no tool at ask that a model proposes a write through",
+      );
+    story.time.begin(step.when);
+    return withStoryFile(pod, story, happened.file, (file) =>
+      proposer({
+        pod,
+        file,
+        answer: happened.answer,
+        address: told.address,
+        layout,
+        time: story.time,
+        newStore: story.newStore,
+      }),
+    );
+  };
+
   /** Performs the step, unless the replay stopped at one it could not perform. */
   async perform(step: Step): Promise<void> {
     if (this.#stopped !== undefined) return;
@@ -352,7 +399,9 @@ export class Replay {
     }
     const pod = this.#pods[writer];
     if (pod === undefined) throw new Error(`the pod has no writer ${writer}`);
-    const perform = (options.performers ?? PERFORMERS)[step.happened.kind];
+    const perform =
+      (options.performers ?? PERFORMERS)[step.happened.kind] ??
+      (step.happened.kind === "proposal" ? this.#proposal : undefined);
     if (perform === undefined) {
       this.#stopped = {
         step,

@@ -106,7 +106,7 @@ after(async () => {
  */
 describe("Serving a folder of pods to an MCP client · cascade-mcp --pods, --check-tables", () => {
   describe("when a client connects", () => {
-    it("offers each tool of `cascade-runtime/tools` by its name", async () => {
+    it("offers each tool of `cascade-runtime/tools` that reads, by its name, to a client that cannot ask the person", async () => {
       const { tools } = await client.listTools();
       assert.deepEqual(
         tools.map(({ name }) => name).sort(),
