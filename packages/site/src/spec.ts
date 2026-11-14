@@ -882,6 +882,7 @@ function page(spec: Spec, title: string, main: Content): Uint8Array {
       chrome: spec.chrome,
       title: markup`${title} · Cascade runtime rules`,
       stylesheet: SPEC_STYLESHEET_FILE,
+      hubRoot: "../",
       nav: markup`${frontPageLink(1)}
 <a href="${SPEC_INDEX}">The rules</a>
 ${spec.features.map((feature) => markup`<a href="${spec.pageOf(feature.path)}">${feature.name}</a>\n`)}`,

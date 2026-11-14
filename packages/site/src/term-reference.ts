@@ -765,6 +765,7 @@ export async function termReference(
     chrome,
     title: "Cascade terms",
     stylesheet: `../${STYLESHEET_FILE}`,
+    hubRoot: "../",
     nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
     main: markup`<h1>Cascade terms</h1>
 <p class="prose">Every term a Cascade pod carries, as cascade-vocabulary declares it in

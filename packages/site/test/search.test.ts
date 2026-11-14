@@ -44,11 +44,8 @@ const NOTE = page(
   "What a model may do with a person&#39;s pods · Cascade decision notes",
 );
 
-const section = (
-  files: Record<string, Uint8Array>,
-  path = "terms/index.html",
-): Section<object> => ({
-  path,
+const section = (files: Record<string, Uint8Array>): Section<object> => ({
+  path: Object.keys(files)[0] ?? "",
   title: "A section",
   want: "see",
   build: async () => new Map(Object.entries(files)),
@@ -84,12 +81,11 @@ type Rank = (rows: readonly SearchRow[], query: string) => SearchRow[];
 
 /** The ranking function of the script a page loads, run on its own. */
 const rank: Rank = (rows, query) => {
-  const exported: { rank?: Rank } = {};
-  new Function("module", "document", SEARCH_SCRIPT)(
-    { exports: exported },
-    { querySelector: () => null },
-  );
-  return (exported.rank as Rank)(rows, query);
+  const module: { exports: { rank?: Rank } } = { exports: {} };
+  new Function("module", "document", SEARCH_SCRIPT)(module, {
+    querySelector: () => null,
+  });
+  return (module.exports.rank as Rank)(rows, query);
 };
 
 /**
@@ -235,6 +231,16 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
         assert.deepEqual(rank(rows, query), [], JSON.stringify(query));
     });
 
+    it("puts the name typed in its own case before the same name in another case", () => {
+      const both: SearchRow[] = [
+        { path: "t#cascade:Subject", title: "cascade:Subject", kind: "term" },
+        { path: "t#cascade:subject", title: "cascade:subject", kind: "term" },
+      ];
+      assert.equal(rank(both, "subject")[0]?.title, "cascade:subject");
+      assert.equal(rank(both, "Subject")[0]?.title, "cascade:Subject");
+      assert.equal(rank(both, "SUBJECT").length, 2);
+    });
+
     it("reads a query as text, so a pattern's characters match themselves", () => {
       for (const query of ["(", "[a-", "\\", ".*", "a|b"])
         assert.deepEqual(rank(rows, query), [], query);
@@ -253,7 +259,10 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
   });
 
   describe("with shell()", () => {
-    const box = (chrome: Parameters<typeof shell>[0]["chrome"], root?: string) =>
+    const box = (
+      chrome: Parameters<typeof shell>[0]["chrome"],
+      root?: string,
+    ) =>
       shell({
         chrome,
         title: "T",
@@ -266,7 +275,10 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       const html = box({ ...PLAIN, search: true }, "../");
       const header = html.indexOf("</header>");
       const form = html.indexOf('<form class="sx-find"');
-      assert.ok(form > 0 && form < html.indexOf("<main"), "the box is above main");
+      assert.ok(
+        form > 0 && form < html.indexOf("<main"),
+        "the box is above main",
+      );
       assert.ok(form < header, "the box is in the header");
       assert.match(html, /data-rows="\.\.\/search\.json"/);
       assert.match(html, /<script src="\.\.\/search\.js" defer><\/script>/);
@@ -311,12 +323,13 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       ) as SearchRow[];
     });
 
-    it("puts the box on every page of the hub, the evals' own frame left alone", () => {
+    it("puts the box on every page of the hub, but the evals' own frame and a page that only redirects", () => {
       assert.ok(html.length > 30);
       let boxed = 0;
       for (const path of html) {
         const page = readFileSync(join(out, path), "utf8");
-        const own = path.startsWith("evals/");
+        const own =
+          path.startsWith("evals/") || page.includes('http-equiv="refresh"');
         assert.equal(page.includes('class="sx-find"'), !own, path);
         if (own) continue;
         boxed++;

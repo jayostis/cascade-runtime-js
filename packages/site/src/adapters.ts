@@ -351,6 +351,7 @@ const shell = (
       chrome,
       title: markup`${title} · Cascade adapters`,
       stylesheet: `${up}${STYLESHEET_FILE}`,
+      hubRoot: up,
       head: markup`<style>${new Html(STYLES)}</style>
 `,
       nav,

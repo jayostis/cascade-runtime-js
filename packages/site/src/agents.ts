@@ -15,7 +15,9 @@ import {
   type Walk,
   type Want,
 } from "./sections.js";
+import { SEARCH_SCRIPT } from "./search-script.js";
 import { STYLESHEET_FILE } from "./site.js";
+import { TERMS_PAGE } from "./term-reference.js";
 
 export const LLMS_FILE = "llms.txt";
 export const INDEX_FILE = "index.json";
@@ -86,6 +88,71 @@ export interface Listed {
   readonly source: string;
 }
 
+/** What the search box looks through, and the script that ranks it; both stand at the hub's root. */
+export const SEARCH_FILE = "search.json";
+export const SEARCH_SCRIPT_FILE = "search.js";
+
+/** One place the search box can go: a page, or an anchor of a page that is a term, a rule or a decision note. */
+export interface SearchRow {
+  readonly path: string;
+  readonly title: string;
+  readonly kind: "page" | "term" | "rule" | "decision";
+  /** What a term is called in words, beside its name. */
+  readonly label?: string;
+}
+
+const TERM_ANCHOR =
+  /<h3 id="(cascade:[^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h3>/g;
+const RULE_ANCHOR =
+  /<section class="rule" id="([^"]+)">\s*<h2>([\s\S]*?)<\/h2>/g;
+const NOTE_FOLDER = "decisions/";
+const RULES_FOLDER = "spec/";
+const SITE_NAME = / · Cascade [^·]*$/;
+
+const words = (html: string): string =>
+  decoded(html.replace(/<[^>]*>/g, ""))
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * The rows of `search.json`: every page of `listed`, and the anchors the reader looks for by name inside pages that are
+ * not one page each: the term reference's terms, and the rules of the spec's pages. A decision note is named by its title
+ * without the site's name after it.
+ */
+function searchRows(
+  listed: readonly Listed[],
+  tree: ReadonlyMap<string, Uint8Array>,
+): SearchRow[] {
+  const rows: SearchRow[] = [];
+  for (const { path, title, kind } of listed) {
+    if (kind !== "page") continue;
+    const note =
+      path.startsWith(NOTE_FOLDER) && path !== `${NOTE_FOLDER}index.html`;
+    rows.push(
+      note
+        ? { path, title: title.replace(SITE_NAME, ""), kind: "decision" }
+        : { path, title, kind: "page" },
+    );
+    const html = (): string => new TextDecoder().decode(tree.get(path));
+    if (path === TERMS_PAGE)
+      for (const [, id = "", label = ""] of html().matchAll(TERM_ANCHOR))
+        rows.push({
+          path: `${path}#${id}`,
+          title: id,
+          kind: "term",
+          label: words(label),
+        });
+    else if (path.startsWith(RULES_FOLDER))
+      for (const [, id = "", heading = ""] of html().matchAll(RULE_ANCHOR))
+        rows.push({
+          path: `${path}#${id}`,
+          title: words(heading),
+          kind: "rule",
+        });
+  }
+  return rows;
+}
+
 const link = (label: string, href: string): string =>
   `[${label.replace(/[[\]\\]/g, "\\$&")}](${href.replace(/[\s()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`)})`;
 
@@ -118,12 +185,22 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
     [FRONT_PAGE, "the sections' rows"],
     [LLMS_FILE, "the tree the build wrote"],
     [INDEX_FILE, "the tree the build wrote"],
+    [SEARCH_FILE, "the tree the build wrote"],
+    [SEARCH_SCRIPT_FILE, "the search box's script"],
   ]);
   for (const { section, paths } of sections)
     for (const path of paths)
       sourceOf.set(path, section.source ?? section.title);
 
-  const files: Listed[] = [...new Set([...tree.keys(), LLMS_FILE, INDEX_FILE])]
+  const files: Listed[] = [
+    ...new Set([
+      ...tree.keys(),
+      LLMS_FILE,
+      INDEX_FILE,
+      SEARCH_FILE,
+      SEARCH_SCRIPT_FILE,
+    ]),
+  ]
     .filter((path) => !/\.css$/i.test(path))
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     .map((path) => ({
@@ -226,6 +303,8 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
         `${JSON.stringify(base === undefined ? { title, files } : { title, base, files }, null, 2)}\n`,
       ),
     ],
+    [SEARCH_FILE, encoder.encode(JSON.stringify(searchRows(files, tree)))],
+    [SEARCH_SCRIPT_FILE, encoder.encode(SEARCH_SCRIPT)],
   ]);
 }
 
@@ -251,6 +330,7 @@ function documentPage(
     chrome,
     title,
     stylesheet: `../${STYLESHEET_FILE}`,
+    hubRoot: "../",
     nav: bar(here),
     main: markup`${lead}${
       list.length === 0

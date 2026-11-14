@@ -50,6 +50,25 @@ export const chromeStyles = (scope: string): string => `${scope} {
 .sx-menu nav a, .sx-menu nav span { display: flex; align-items: center; min-height: 52px; font-family: var(--serif); font-size: 24px;
                  color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--rule-soft); }
 @media (max-width: 860px) { .sx-nav { display: none; } .sx-menu { display: block; } }
+.sx-find-wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter) 12px; }
+.sx-find { position: relative; margin: 0; }
+.sx-find[hidden], .sx-find ul[hidden] { display: none; }
+.sx-find-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.sx-find input { display: block; width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid var(--rule); border-radius: 4px;
+                 background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 16px; }
+.sx-find input:focus { outline: 2px solid var(--link); outline-offset: 1px; background: #ffffff; }
+.sx-find ul { position: absolute; left: 0; right: 0; top: 100%; z-index: 60; margin: 4px 0 0; padding: 0; list-style: none;
+              background: #ffffff; border: 1px solid var(--ink); box-shadow: 0 6px 18px rgba(20, 32, 42, .18); }
+.sx-find li { margin: 0; border-bottom: 1px solid var(--rule-soft); }
+.sx-find li:last-child { border-bottom: 0; }
+.sx-find li a { display: grid; grid-template-columns: 5.5rem 1fr; gap: 0 12px; align-items: baseline; min-height: 44px; padding: 8px 14px;
+                color: var(--ink); text-decoration: none; font-family: var(--sans); font-size: 15px; }
+.sx-find li[aria-selected="true"] a, .sx-find li a:hover { background: var(--paper); }
+.sx-find-kind { grid-row: 1 / 3; font: 500 12px/1.6 var(--mono); color: var(--pencil); text-transform: uppercase; letter-spacing: .04em; }
+.sx-find-title { overflow-wrap: anywhere; }
+.sx-find-where { grid-column: 2; font: 12px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.sx-find-none { padding: 12px 14px; color: var(--ink-2); font-family: var(--sans); font-size: 15px; }
+@media (max-width: 760px) { .sx-find li a { grid-template-columns: 4.5rem 1fr; gap: 0 8px; } }
 .sx-footer { background: #ffffff; font-family: var(--sans); color: var(--ink); margin: 0; padding: 0; border: 0; }
 .sx-footer * { box-sizing: border-box; }
 .sx-footer-wrap { max-width: var(--wrap); margin: 0 auto; padding: 40px var(--gutter); }

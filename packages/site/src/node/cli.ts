@@ -524,7 +524,7 @@ async function buildPages(args: string[]): Promise<number> {
     },
   });
   const vocabulary = await localVocabulary(ROOT, log);
-  const chrome = chromeOf(values);
+  const chrome: Chrome = { ...chromeOf(values), search: true };
   const { tree } = await buildTree({
     sections: SECTIONS,
     ctx: pagesContext(

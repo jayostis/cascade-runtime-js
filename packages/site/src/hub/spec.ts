@@ -115,6 +115,7 @@ export const specSection: Section<SpecContext> = {
           chrome: ctx.chrome,
           title: "Cascade runtime conformance results",
           stylesheet: `../${STYLESHEET_FILE}`,
+          hubRoot: "../",
           nav: markup`${frontPageLink(1)}\n`,
           main: markup`<h1>Cascade runtime conformance results</h1>
 <p class="prose">The reference runtime's latest result on <code>main</code> for every example of cascade-vocabulary's
