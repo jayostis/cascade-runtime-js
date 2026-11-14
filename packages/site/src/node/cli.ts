@@ -37,6 +37,7 @@ import {
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
 import type * as Published from "cascade-runtime/published";
+import { explorerArguments } from "../hub/explorer-arguments.js";
 import {
   type Example,
   FRONT_PAGE,
@@ -412,18 +413,14 @@ async function explorerOf(
   try {
     await promisify(execFile)(
       process.env.PYTHON ?? "python3",
-      [
-        join(spec.folder, "scripts", "adapter_explorer.py"),
-        folder,
-        "--vocabulary",
+      explorerArguments({
+        script: join(spec.folder, "scripts", "adapter_explorer.py"),
+        adapterFolder: folder,
         vocabularyFolder,
-        "--repository",
-        adapter,
-        "--report",
-        `${HUB}conformance/tests/${repositoryName({ repository: adapter })}/`,
-        "--out",
+        repository: adapter,
+        report: `${HUB}conformance/tests/${repositoryName({ repository: adapter })}/`,
         out,
-      ],
+      }),
       { maxBuffer: 1 << 26 },
     );
     const files = new FolderFiles(out);
