@@ -23,6 +23,7 @@ import {
   type ExplorerEntry,
 } from "../src/explorer.js";
 import { type Served, servePages } from "../src/node/serve.js";
+import { PLAIN } from "../src/html.js";
 import { Site } from "../src/site.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -72,6 +73,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
         at: "2026-03-03T08:00:00Z",
         ask: `npm run ask -- ${kit}`,
         kit,
+        chrome: PLAIN,
       })
     ).files();
     const folder = mkdtempSync(join(tmpdir(), "explorer-"));

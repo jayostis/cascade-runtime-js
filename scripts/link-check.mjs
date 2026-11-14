@@ -114,11 +114,15 @@ const unescaped = (text) =>
     .replaceAll("&#39;", "'")
     .replaceAll("&amp;", "&");
 
-/** The addresses a page's href and src attributes hold, as written. */
+/** The addresses a page's href and src attributes hold, as written; a preconnect or dns-prefetch hint names an origin, not a page. */
 const linksOf = (html) =>
-  [...html.matchAll(/\s(?:href|src)=(?:"([^"]*)"|'([^']*)')/g)].map(
-    ([, a, b]) => unescaped(a ?? b ?? ""),
-  );
+  [...html.matchAll(/<[^<>]*>/g)]
+    .filter(([tag]) => !/\srel=["']?(?:preconnect|dns-prefetch)\b/i.test(tag))
+    .flatMap(([tag]) =>
+      [...tag.matchAll(/\s(?:href|src)=(?:"([^"]*)"|'([^']*)')/g)].map(
+        ([, a, b]) => unescaped(a ?? b ?? ""),
+      ),
+    );
 
 /** A Markdown file without its code fences and code spans, whose addresses are examples, not links. */
 const outsideCode = (text) =>

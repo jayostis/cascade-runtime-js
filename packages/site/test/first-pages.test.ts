@@ -20,7 +20,7 @@ import {
   TRY_PAGE,
   viewTitles,
 } from "../src/front-page.js";
-import { escape } from "../src/html.js";
+import { escape, PLAIN } from "../src/html.js";
 import { examplesSection } from "../src/hub/examples.js";
 import { startSection } from "../src/hub/start.js";
 import { trySection } from "../src/hub/try.js";
@@ -81,10 +81,11 @@ async function pagesOf(vocabulary: LocalVocabulary) {
     examples: async () => examples,
     builtFrom: async () => built,
     start: async () => start,
+    chrome: PLAIN,
   };
   const sections = [startSection, trySection, examplesSection];
   const front = (rows: Parameters<typeof hubFiles>[1]) =>
-    hubFiles(viewTitles(vocabulary.layout), rows);
+    hubFiles(viewTitles(vocabulary.layout), rows, PLAIN);
   return {
     examples,
     vocabularyAt,

@@ -151,7 +151,10 @@ function run(args: string[]): Promise<{ code: number; said: string }> {
 const bare = (body: string, title = "A page"): string =>
   `<!DOCTYPE html><html><head><title>${title}</title><link rel="stylesheet" href="${SITE}site.css"></head><body><h1 id="top-heading">${title}</h1>${body}</body></html>`;
 const page = (body: string, title = "A page"): string =>
-  bare(`<nav><a href="${SITE}">Cascade pods</a></nav>${body}`, title);
+  bare(
+    `<nav><a href="${SITE}">Cascade Protocol reference</a></nav>${body}`,
+    title,
+  );
 
 const HUB = SITE;
 const tree = (): Record<string, string> => ({
@@ -168,7 +171,7 @@ const tree = (): Record<string, string> => ({
 });
 
 const live = (body: string): string =>
-  `<!DOCTYPE html><html><body><a href="${origin}/site/">Cascade pods</a>${body}</body></html>`;
+  `<!DOCTYPE html><html><body><a href="${origin}/site/">Cascade Protocol reference</a>${body}</body></html>`;
 
 /** The lines the script asked of the server for `path`, in order. */
 const askedOf = (path: string): string[] =>
@@ -525,7 +528,7 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       first = await check(
         {
           "index.html": page(
-            `<a href="${origin}/gone">dead</a><a href="${origin}/ok">fine</a><a href="sub.html">in</a>`,
+            `<link rel="preconnect" href="${origin}/preconnected"><link rel="dns-prefetch" href="${origin}/prefetched"><a href="${origin}/gone">dead</a><a href="${origin}/ok">fine</a><a href="sub.html">in</a>`,
           ),
           "sub.html": page(""),
           "site.css": "",
@@ -553,6 +556,12 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
       );
       assert.ok(!second.said.includes(`${origin}/ok`), second.said);
       assert.ok(!second.said.includes("sub.html"), second.said);
+    });
+
+    it("leaves a preconnect and a dns-prefetch hint unasked, since each names an origin", () => {
+      assert.equal(askedOf("/preconnected").length, 0);
+      assert.equal(askedOf("/prefetched").length, 0);
+      assert.ok(!second.said.includes("/preconnected"), second.said);
     });
   });
 

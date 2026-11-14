@@ -4,7 +4,7 @@ import type { Browser, Page } from "playwright";
 /** What a newcomer may click to reach a thing: at most this many from a README's Docs block or the front page. */
 const CLICKS = 2;
 
-export const FRONT_TITLE = "Cascade pods";
+export const FRONT_TITLE = "Cascade Protocol reference";
 
 /** A link of a row of the front page's "Find your way" table, and what it must reach. */
 export interface Target {
@@ -85,7 +85,7 @@ export const ROWS: ReadonlyMap<string, readonly Target[]> = new Map([
     "want-agent",
     [
       { href: "AGENTS.md", text: "# Building an app on a Cascade pod" },
-      { href: "llms.txt", text: "# Cascade pods" },
+      { href: "llms.txt", text: "# Cascade Protocol reference" },
       { href: "index.json", text: "{" },
     ],
   ],

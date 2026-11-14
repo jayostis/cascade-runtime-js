@@ -1,4 +1,4 @@
-import { type Content, Html, markup } from "./html.js";
+import { type Chrome, type Content, Html, markup, shell } from "./html.js";
 import {
   frontPageLink,
   noteHref,
@@ -24,14 +24,14 @@ const UP = "../";
 
 const DECISION_STYLES = `
 .note { overflow-wrap: anywhere; }
-.note h2 { margin: 2.25rem 0 .5rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+.note h2 { margin: 2.25rem 0 .5rem; padding-top: .5rem; border-top: 1px solid var(--rule-soft); }
 .note h3 { margin: 1.5rem 0 .25rem; }
-.note pre { background: var(--panel); padding: .75rem; overflow-x: auto; border-radius: 4px; }
-.note :not(pre) > code { background: var(--panel); padding: 0 .2rem; border-radius: 3px; }
+.note pre { background: var(--paper); padding: .75rem; overflow-x: auto; border-radius: 4px; }
+.note :not(pre) > code { background: var(--paper); padding: 0 .2rem; border-radius: 3px; }
 .note table { font-size: .9rem; }
 .note tr:target { background: #fff6cc; }
 ul.cited { margin: 0; padding-left: 1.1rem; }
-.none { color: var(--quiet); }
+.none { color: var(--muted); }
 `;
 
 export interface DecisionOptions {
@@ -40,6 +40,7 @@ export interface DecisionOptions {
   readonly readme: string;
   /** The spec's pages, from a page of `decisions/`, ending in a slash. */
   readonly spec: string;
+  readonly chrome: Chrome;
 }
 
 /** A page of the notes' own folder to another: `naming.html`, never the way round through the folder above. */
@@ -52,33 +53,25 @@ const ruleLink = (cited: Citation, spec: string): string =>
     : ruleHref(cited.feature, cited.number, spec);
 
 function page(
+  chrome: Chrome,
   title: string,
   source: { readonly href: string; readonly path: string },
   main: Content,
 ): Uint8Array {
   return new TextEncoder().encode(
-    markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · Cascade decision notes</title>
-<link rel="stylesheet" href="${DECISIONS_STYLESHEET_FILE}">
-</head>
-<body>
-<nav>
-${frontPageLink(1)}
+    shell({
+      chrome,
+      title: markup`${title} · Cascade decision notes`,
+      stylesheet: DECISIONS_STYLESHEET_FILE,
+      nav: markup`${frontPageLink(1)}
 <a href="${DECISIONS_INDEX}">Decision notes</a>
 <a href="${UP}spec/index.html">The runtime's rules</a>
-</nav>
-<main>
-<p class="kind"><a href="${source.href}">${source.path}</a> on GitHub, at the commit these pages were built from</p>
+`,
+      main: markup`<p class="kind"><a href="${source.href}">${source.path}</a> on GitHub, at the commit these pages were built from</p>
 <div class="note">
 ${main}</div>
-</main>
-</body>
-</html>
-`.text,
+`,
+    }).text,
   );
 }
 
@@ -108,7 +101,11 @@ const linkFrom =
 
 function notePage(
   note: DecisionNote,
-  { decisions, spec }: Pick<DecisionOptions, "decisions" | "spec">,
+  {
+    decisions,
+    spec,
+    chrome,
+  }: Pick<DecisionOptions, "decisions" | "spec" | "chrome">,
 ): Uint8Array {
   const claimed = new Set<string>();
   const { html } = renderWithHeadings(note.text, {
@@ -127,6 +124,7 @@ function notePage(
     },
   });
   return page(
+    chrome,
     note.title,
     { href: noteHref(note.path, decisions.blob), path: note.path },
     html,
@@ -152,12 +150,14 @@ function listFirst(readme: string): readonly [string, string] {
 function indexPage({
   decisions,
   readme,
-}: Pick<DecisionOptions, "decisions" | "readme">): Uint8Array {
+  chrome,
+}: Pick<DecisionOptions, "decisions" | "readme" | "chrome">): Uint8Array {
   const render = (source: string): Html =>
     renderWithHeadings(source, { link: linkFrom(README, decisions) }).html;
   const [opening, format] = listFirst(readme);
   const plain = (thing: string): string => thing.replaceAll("`", "");
   return page(
+    chrome,
     "Decision notes",
     { href: noteHref(README, decisions.blob), path: README },
     markup`${render(opening)}<h2 id="every-note">Every note, and the rows no rule cites</h2>

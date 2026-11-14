@@ -10,7 +10,7 @@ import {
   type Term,
   XSD,
 } from "@cascade-runtime/runtime";
-import { type Content, Html, markup } from "./html.js";
+import { type Chrome, type Content, Html, markup, shell } from "./html.js";
 import { NAMESPACE_HOST, ruleHref, termHref, termId } from "./links.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { numberOf } from "./spec.js";
@@ -729,7 +729,10 @@ export async function declaredTerms(
  * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
  * `termHref` links.
  */
-export async function termReference(vocabulary: Files): Promise<string> {
+export async function termReference(
+  vocabulary: Files,
+  chrome: Chrome,
+): Promise<string> {
   const [ontology, ontologyText] = await parse(vocabulary, ONTOLOGY);
   const [shapes, shapesText] = await parse(vocabulary, SHAPES);
   const entries = entriesOf(ontology);
@@ -758,18 +761,12 @@ export async function termReference(vocabulary: Files): Promise<string> {
     entries: sorted.filter(group.holds),
   }));
   const { unhomed } = reference;
-  return markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cascade terms</title>
-<link rel="stylesheet" href="../${STYLESHEET_FILE}">
-</head>
-<body>
-<nav><a href="../index.html">Cascade pods</a></nav>
-<main>
-<h1>Cascade terms</h1>
+  return shell({
+    chrome,
+    title: "Cascade terms",
+    stylesheet: `../${STYLESHEET_FILE}`,
+    nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
+    main: markup`<h1>Cascade terms</h1>
 <p class="prose">Every term a Cascade pod carries, as cascade-vocabulary declares it in
 <a href="${reference.blob}${ONTOLOGY}">${ONTOLOGY}</a>: what it is, the shapes in
 <a href="${reference.blob}${SHAPES}">${SHAPES}</a> that check it, and each query and each rule of the spec that names it.</p>
@@ -790,8 +787,6 @@ ${grouped.map(
 ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : entries.map((entry) => reference.entry(entry))}`,
 )}<h2 class="part" id="shapes">Shapes other shapes use</h2>
 <p class="prose">The shapes no entry above shows: those another shape sends a value to with <code>node</code>, and those whose class or property this page has no entry for.</p>
-${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n<p class="iri">${shape.value}</p>\n${reference.shape(shape, true)}</section>\n`)}</main>
-</body>
-</html>
-`.text;
+${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n<p class="iri">${shape.value}</p>\n${reference.shape(shape, true)}</section>\n`)}`,
+  }).text;
 }

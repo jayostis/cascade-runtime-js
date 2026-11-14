@@ -206,4 +206,4 @@ export const FRONT_PAGE = "index.html";
 
 /** The link back to the front page from a page `depth` folders below it, for the first place in its header. */
 export const frontPageLink = (depth: number) =>
-  markup`<a href="${"../".repeat(depth)}${FRONT_PAGE}">Cascade pods</a>`;
+  markup`<a href="${"../".repeat(depth)}${FRONT_PAGE}">Cascade Protocol reference</a>`;

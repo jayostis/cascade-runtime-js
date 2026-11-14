@@ -8,7 +8,13 @@ import {
   repositoryName,
   type Term,
 } from "@cascade-runtime/runtime";
-import { type Content, Html, markup } from "./html.js";
+import {
+  type Chrome,
+  type Content,
+  Html,
+  markup,
+  shell as pageShell,
+} from "./html.js";
 import { noteLinkOf, termHref } from "./links.js";
 import { renderWithHeadings } from "./markdown.js";
 import { STYLESHEET_FILE } from "./site.js";
@@ -318,8 +324,8 @@ export function crateOf(text: string): Crate {
 }
 
 const STYLES = `
-.forms { display: block; color: var(--quiet); font-size: .8rem; }
-.contents { color: var(--quiet); }
+.forms { display: block; color: var(--muted); font-size: .8rem; }
+.contents { color: var(--muted); }
 td.path { max-width: 38rem; }
 `;
 
@@ -334,28 +340,22 @@ export function shownPath(path: string): string {
 const encoder = new TextEncoder();
 
 const shell = (
+  chrome: Chrome,
   title: string,
   up: string,
   nav: Content,
   main: Content,
 ): Uint8Array =>
   encoder.encode(
-    markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · Cascade adapters</title>
-<link rel="stylesheet" href="${up}${STYLESHEET_FILE}">
-<style>${new Html(STYLES)}</style>
-</head>
-<body>
-<nav>${nav}</nav>
-<main>
-${main}</main>
-</body>
-</html>
-`.text,
+    pageShell({
+      chrome,
+      title: markup`${title} · Cascade adapters`,
+      stylesheet: `${up}${STYLESHEET_FILE}`,
+      head: markup`<style>${new Html(STYLES)}</style>
+`,
+      nav,
+      main,
+    }).text,
   );
 
 const plural = (count: number, one: string, many = `${one}s`): string =>
@@ -385,11 +385,15 @@ export type Listed =
   | { readonly repository: string; readonly unavailable: string };
 
 /** The page that lists the adapters, with the commit each was built from and how many paths it carries. */
-export function adaptersIndex(listed: readonly Listed[]): Uint8Array {
+export function adaptersIndex(
+  listed: readonly Listed[],
+  chrome: Chrome,
+): Uint8Array {
   return shell(
+    chrome,
     "Adapters",
     "../",
-    markup`<a href="../index.html">Cascade pods</a>`,
+    markup`<a href="../index.html">Cascade Protocol reference</a>`,
     markup`<h1>Adapters</h1>
 <p class="prose">An adapter turns one source format into Cascade records. Its accounting says, for every path of the source
 format it knows, what the path becomes or why it does not: the property and the record class it is written as, linked to
@@ -552,7 +556,7 @@ const RESERVED = [
 ];
 
 /** One adapter's page: the crosswalk, what is not carried, and the adapter's format notes. */
-export function adapterPage(view: AdapterView): Uint8Array {
+export function adapterPage(view: AdapterView, chrome: Chrome): Uint8Array {
   const { accounting } = view;
   const { carried, part, not } = counts(accounting);
   const withForms = accounting.paths.some(
@@ -572,9 +576,10 @@ export function adapterPage(view: AdapterView): Uint8Array {
     [CRATE_FILE, "the adapter's manifest"],
   ];
   return shell(
+    chrome,
     view.title,
     "../../",
-    markup`<a href="../../index.html">Cascade pods</a> <a href="../index.html">Adapters</a>`,
+    markup`<a href="../../index.html">Cascade Protocol reference</a> <a href="../index.html">Adapters</a>`,
     markup`<p class="kind">Adapter</p>
 <h1>${view.title}</h1>
 <p class="about">Read from <a href="${view.repository}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a>,

@@ -5,6 +5,7 @@ import {
   type TestedWith,
 } from "@cascade-runtime/runtime";
 import { hubFiles } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import { specSection } from "../src/hub/spec.js";
 import { buildTree } from "../src/sections.js";
 import { readSpecReport, type SpecPages, specPages } from "../src/spec.js";
@@ -135,6 +136,7 @@ export async function pagesOf(
     ),
     builtFrom: [],
     at: "2026-10-24T00:00:00Z",
+    chrome: PLAIN,
   });
 }
 
@@ -156,6 +158,7 @@ export async function hubWith(
         at: "2026-10-24T00:00:00Z",
       }),
       report: async () => ({ report, ...files }),
+      chrome: PLAIN,
       tests: async () => [
         {
           suite: {
@@ -170,7 +173,7 @@ export async function hubWith(
         },
       ],
     },
-    front: (rows) => hubFiles(["Records"], rows),
+    front: (rows) => hubFiles(["Records"], rows, PLAIN),
   });
   return tree;
 }

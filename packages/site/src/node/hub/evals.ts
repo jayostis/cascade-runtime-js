@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FolderFiles } from "@cascade-runtime/runtime/node";
+import { chromeStrings } from "../../html.js";
 import { FRONT_PAGE } from "../../links.js";
 import type { PagesContext } from "../../hub/context.js";
 import type { Section } from "../../sections.js";
@@ -13,6 +14,7 @@ interface Evals {
     from: { history: true },
     out: string,
     home: string,
+    chrome: ReturnType<typeof chromeStrings>,
   ): Promise<string>;
 }
 
@@ -25,14 +27,19 @@ export const evalsSection: Section<PagesContext> = {
     "recorded runs of a model answering a person's questions from a pod, against reading her downloads in full.",
   source: "packages/evals/history in cascade-runtime-js",
   optional: true,
-  async build({ root }) {
+  async build({ root, chrome }) {
     const { buildSite } = (await import(
       pathToFileURL(join(root, "packages", "evals", "dist", "src", "site.js"))
         .href
     )) as Evals;
     const out = await mkdtemp(join(tmpdir(), "evals-site-"));
     try {
-      await buildSite({ history: true }, out, `../${FRONT_PAGE}`);
+      await buildSite(
+        { history: true },
+        out,
+        `../${FRONT_PAGE}`,
+        chromeStrings(chrome),
+      );
       const folder = new FolderFiles(out);
       const files = new Map<string, Uint8Array>();
       for (const path of await folder.list("")) {

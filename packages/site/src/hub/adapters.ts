@@ -20,7 +20,7 @@ export const ADAPTERS_PAGE = `${ADAPTERS_FOLDER}index.html`;
 /** What the section reads of the context. */
 export type AdaptersContext = Pick<
   PagesContext,
-  "adapters" | "vocabulary" | "log"
+  "adapters" | "vocabulary" | "log" | "chrome"
 >;
 
 async function viewOf(
@@ -84,7 +84,7 @@ export const adaptersSection: Section<AdaptersContext> = {
         slugs.add(view.slug);
         written.set(
           `${ADAPTERS_FOLDER}${view.slug}/index.html`,
-          adapterPage(view),
+          adapterPage(view, ctx.chrome),
         );
         listed.push({ view });
         ctx.log(
@@ -99,7 +99,7 @@ export const adaptersSection: Section<AdaptersContext> = {
         listed.push({ repository: adapter.repository, unavailable });
       }
     }
-    written.set(ADAPTERS_PAGE, adaptersIndex(listed));
+    written.set(ADAPTERS_PAGE, adaptersIndex(listed, ctx.chrome));
     return written;
   },
   async rows() {

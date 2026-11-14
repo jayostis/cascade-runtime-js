@@ -5,7 +5,7 @@ import {
   WANT_ORDER,
   WANTS,
 } from "./front-page.js";
-import { Html, markup } from "./html.js";
+import { type Chrome, Html, markup, shell } from "./html.js";
 import { renderMarkdown, renderWithHeadings } from "./markdown.js";
 import {
   addressOf,
@@ -229,14 +229,14 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
   ]);
 }
 
-const bar = (here: "guide" | "package") => markup`<nav>
-<a href="../${FRONT_PAGE}">Cascade pods</a>
+const bar = (here: "guide" | "package") => markup`
+<a href="../${FRONT_PAGE}">Cascade Protocol reference</a>
 ${here === "guide" ? markup`<a href="package.html">The package</a>` : markup`<a href="index.html">The guide</a>`}
 <a href="../${AGENTS_FILE}">${AGENTS_FILE}</a>
-</nav>
 `;
 
 function documentPage(
+  chrome: Chrome,
   title: string,
   here: "guide" | "package",
   lead: Html,
@@ -247,29 +247,22 @@ function documentPage(
     ? renderWithHeadings(source)
     : { html: renderMarkdown(source), headings: [] };
   const list = headings.filter(({ depth }) => depth === 2);
-  return markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}</title>
-<link rel="stylesheet" href="../${STYLESHEET_FILE}">
-</head>
-<body>
-${bar(here)}<main>
-${lead}${
-    list.length === 0
-      ? ""
-      : markup`<p class="about">On this page</p>
+  return shell({
+    chrome,
+    title,
+    stylesheet: `../${STYLESHEET_FILE}`,
+    nav: bar(here),
+    main: markup`${lead}${
+      list.length === 0
+        ? ""
+        : markup`<p class="about">On this page</p>
 <ul class="contents">
 ${list.map(({ id, html: label }) => markup`<li><a href="#${id}">${new Html(label)}</a></li>\n`)}</ul>
 `
-  }<article class="document">
+    }<article class="document">
 ${html}</article>
-</main>
-</body>
-</html>
-`.text;
+`,
+  }).text;
 }
 
 /** The README's marker where the package's install line goes, which a page has no install line for. */
@@ -282,12 +275,14 @@ const INSTALL_MARKER = /^<!-- INSTALL -->\r?\n(?:\r?\n)?/m;
 export function apiPages(
   guide: string,
   readme: string,
+  chrome: Chrome,
 ): ReadonlyMap<string, Uint8Array> {
   return new Map([
     [
       API_PAGE,
       encoder.encode(
         documentPage(
+          chrome,
           "The cascade-runtime API: building an app on a Cascade pod",
           "guide",
           markup`<p class="about">This page is the guide a coding agent reads, <a href="../${AGENTS_FILE}">${AGENTS_FILE}</a>, as a page. What the package is and holds: <a href="package.html">the package</a>.</p>
@@ -301,6 +296,7 @@ export function apiPages(
       PACKAGE_PAGE,
       encoder.encode(
         documentPage(
+          chrome,
           "cascade-runtime, the package",
           "package",
           markup`<p class="about">The calls are on <a href="index.html">the guide</a>.</p>

@@ -5,7 +5,7 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import type { Answer } from "./answer.js";
-import { type Content, Html, markup } from "./html.js";
+import { type Content, Html, markup, shell } from "./html.js";
 import { namedInQuery } from "./term-reference.js";
 import { noteHref, ruleHref, sharedPageOf, termHref } from "./links.js";
 import type { Site } from "./site.js";
@@ -149,35 +149,25 @@ function question(site: Site, answer: Answer, lensed = false): Html {
 
 /** The links at the head of every page of the site. */
 export function navOf(site: Site): Html {
-  return markup`<nav>
-${
-  site.options.front !== undefined &&
-  markup`<a href="${site.options.front}">Cascade pods</a>
+  return markup`${
+    site.options.front !== undefined &&
+    markup`<a href="${site.options.front}">Cascade Protocol reference</a>
 `
-}<a href="index.html">The explorer</a>
+  }<a href="index.html">The explorer</a>
 <a href="layout.html">How the pod is laid out</a>
 <a href="pipeline.html">How a view is built</a>
 <a href="not-shown.html">Not shown</a>
-</nav>`;
+`;
 }
 
 function layout(site: Site, title: string, main: Content): Html {
-  return markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · ${site.pod.title}</title>
-<link rel="stylesheet" href="site.css">
-</head>
-<body>
-${navOf(site)}
-<main>
-${main}
-</main>
-</body>
-</html>
-`;
+  return shell({
+    chrome: site.options.chrome,
+    title: markup`${title} · ${site.pod.title}`,
+    stylesheet: "site.css",
+    nav: navOf(site),
+    main: markup`${main}\n`,
+  });
 }
 
 function home(site: Site): Html {

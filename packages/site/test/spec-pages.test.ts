@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { earl, MemoryFiles } from "@cascade-runtime/runtime";
+import { PLAIN } from "../src/html.js";
 import {
   filesNamed,
   readSpecReport,
@@ -320,6 +321,7 @@ describe("Warnings about rules and decision notes · specPages().warnings, rules
         report: await readSpecReport(earl([], "cascade-runtime-js", RAN_WITH)),
         builtFrom: [],
         at: "2026-10-24T00:00:00Z",
+        chrome: PLAIN,
       });
       assert.deepEqual(warned(pages, "row names no rule"), [
         'row "steps" names no rule',

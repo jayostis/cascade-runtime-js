@@ -11,6 +11,7 @@ import {
   LLMS_FILE,
 } from "../src/agents.js";
 import { FRONT_PAGE, hubFiles, REPOSITORIES } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { apiSection } from "../src/node/hub/api.js";
 import { evalsSection } from "../src/node/hub/evals.js";
@@ -57,7 +58,7 @@ function made(
 }
 
 const front = (rows: Parameters<typeof hubFiles>[1]) =>
-  hubFiles(["Records"], rows);
+  hubFiles(["Records"], rows, PLAIN);
 
 /** The site `sections` make with `agentFiles` as the finisher, under the context `ctx`. */
 const siteOf = (
@@ -109,7 +110,7 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
     before(async () => {
       ({ tree } = await buildTree({
         sections: [trySection, apiSection],
-        ctx: { root: ROOT } as PagesContext,
+        ctx: { root: ROOT, chrome: PLAIN } as PagesContext,
         front,
         finishers: [agentFiles],
       }));
@@ -460,7 +461,7 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
     });
 
     it("lists the front page, `llms.txt` and itself", () => {
-      assert.equal(by.get(FRONT_PAGE)?.title, "Cascade pods");
+      assert.equal(by.get(FRONT_PAGE)?.title, "Cascade Protocol reference");
       assert.equal(by.get(LLMS_FILE)?.kind, "document");
       assert.equal(by.get(INDEX_FILE)?.kind, "data");
     });

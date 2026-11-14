@@ -18,7 +18,10 @@ export const startSection: Section<PagesContext> = {
     if (shown === undefined)
       throw new Error(`no example ${start.example} among the kits`);
     return new Map([
-      [START_PAGE, new TextEncoder().encode(startPage(start, shown))],
+      [
+        START_PAGE,
+        new TextEncoder().encode(startPage(start, shown, ctx.chrome)),
+      ],
     ]);
   },
   async rows() {
