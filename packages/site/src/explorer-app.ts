@@ -733,12 +733,19 @@ function stopTarget(s) {
 function known(id) { return id === 'p:' || id === 'q:' || id === '~log' || dirs.has(id) || E.has(id) || F.has(id.slice(2)) || Q.has(id.slice(2)); }
 function frame() {
   var legend = ['pod', 'vocabulary', 'query', 'layout', 'kit', 'fixed'].map(function (k) { return tag(k); }).join('');
-  root.innerHTML = '<header class="top"><span class="brand">Pod explorer</span><span class="who">' + esc(D.pod.title) + '</span><span class="addr">' + esc(D.pod.address) + '</span><span class="legend">every label says where it is from: ' + legend + '</span></header>' +
+  root.innerHTML = (D.kit && D.kit.introduction ? '<p class="intro">' + esc(D.kit.introduction) + '</p>' : '') + '<header class="top"><span class="brand">Pod explorer</span><span class="who">' + esc(D.pod.title) + '</span><span class="addr">' + esc(D.pod.address) + '</span><span class="legend">every label says where it is from: ' + legend + '</span></header>' +
     '<div class="bar"><div class="stops" aria-label="Stops of the demo">' + STOPS.map(function (s) { var id = stopTarget(s); return '<button class="stop" data-go="' + esc(id) + '"' + (known(id) ? '' : ' disabled title="This pod has none"') + '>' + esc(s[0]) + '</button>'; }).join('') + '</div><div class="stepline" id="stepline"></div></div>' +
     '<div class="app"><div class="tabs"><button data-pane="tree">Files</button><button data-pane="ins">Selected</button><button data-pane="log">Log</button></div>' +
     '<div class="panes"><section class="pane" data-p="tree"><h2>The pod <span>and the queries run over it</span></h2><div class="filter"><input id="flt" type="search" placeholder="Filter files and queries" aria-label="Filter files and queries"></div><div class="scroll tree" id="tree"></div></section>' +
     '<section class="pane" data-p="ins"><h2>Selected</h2><div class="scroll insp" id="ins"></div></section>' +
     '<section class="pane" data-p="log"><h2>Log <span>the pod’s own history</span></h2><div class="logctl"><button data-stepby="-1" aria-label="Previous act">◀</button><input type="range" id="rng" min="0" max="' + END + '" step="1" aria-label="Act"><button data-stepby="1" aria-label="Next act">▶</button></div><div class="scroll" id="log"></div></section></div></div>';
+  sizeForIntro();
+  if (!sizeForIntro.listening) { sizeForIntro.listening = true; window.addEventListener('resize', sizeForIntro); }
+}
+/* the introduction above the explorer takes room from the app's height, which is the window's less a fixed allowance */
+function sizeForIntro() {
+  var intro = root.querySelector('.intro');
+  root.style.setProperty('--intro', intro ? intro.offsetHeight + 10 + 'px' : '0px');
 }
 /* scrolls the log pane, and no other, so that the selected act's row is inside it */
 function keepActInView(pane) {
@@ -866,7 +873,8 @@ fetch(root.dataset.data).then(function (r) { return r.json(); }).then(function (
 export const EXPLORER_STYLE = String.raw`body.explorer main { max-width: none; margin: 0; padding: 0; }
 :root { --pencil: #b4410c; --new: #1f7a4d; --new-bg: #e6f3ec; --built: #6b4fa0; --built-bg: #f0ecf7; --sel: #dcebf1; --warn-bg: #fbf3e2; --amber: #8a5a0d; --mono: ui-monospace, SFMono-Regular, Consolas, monospace; }
 #explorer { font-size: 14px; line-height: 1.45; }
-#explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 18rem); height: calc(100dvh - 18rem); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+#explorer .intro { margin: 0 0 10px; padding: 0 14px; max-width: 76ch; font-size: 1.05rem; line-height: 1.5; }
+#explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 18rem - var(--intro, 0px)); height: calc(100dvh - 18rem - var(--intro, 0px)); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
 #explorer .top { display: flex; align-items: center; gap: 6px 14px; padding: 8px 14px; background: var(--ink); color: #fff; min-width: 0; }
 #explorer .top .brand { font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #ffb38a; white-space: nowrap; }
 #explorer .top .who { font-size: 1.15rem; white-space: nowrap; }

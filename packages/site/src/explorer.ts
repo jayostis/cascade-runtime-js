@@ -194,6 +194,8 @@ export interface ExplorerAct {
 export interface ExplorerKit {
   readonly name: string;
   readonly feature: string;
+  /** The two sentences the kit opens with; absent when it has none. */
+  readonly introduction?: string;
   readonly steps: readonly {
     readonly name: string;
     readonly when: string;
@@ -907,6 +909,9 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
     kit = {
       name: options.kit,
       feature,
+      ...(story.introduction === ""
+        ? {}
+        : { introduction: story.introduction }),
       steps: placed.map(({ step, row, performed }) => ({
         name: step.name,
         when: step.when,

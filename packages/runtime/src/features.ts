@@ -32,6 +32,17 @@ export interface Feature {
   readonly folder: string;
   readonly examples: readonly Example[];
   readonly background: readonly StatedStep[];
+  /** The first paragraph of the Feature's description as one line, when a paragraph follows it, else empty. */
+  readonly introduction: string;
+}
+
+/** The first paragraph of a feature's description as one line, or empty when the description is only that paragraph. */
+export function introductionOf(description: string | undefined): string {
+  const paragraphs = (description ?? "")
+    .split(/\r?\n\s*\r?\n/)
+    .map((paragraph) => paragraph.trim().replace(/\s*\r?\n\s*/g, " "))
+    .filter((paragraph) => paragraph !== "");
+  return paragraphs.length > 1 ? (paragraphs[0] ?? "") : "";
 }
 
 function slug(name: string): string {
@@ -100,6 +111,7 @@ export async function readFeature(
   return {
     path,
     folder: folderOf(path),
+    introduction: introductionOf(document.feature?.description),
     examples,
     background: background.map((step) =>
       stated(step.text, step.dataTable?.rows, step.docString?.content),

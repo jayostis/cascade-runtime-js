@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import { promisify } from "node:util";
-import { runConformance } from "../src/conformance.js";
+import { featureStory, runConformance } from "../src/conformance.js";
 import { featuresOf, readFeature } from "../src/features.js";
 import { MemoryFiles } from "../src/files.js";
 import { KIT_CHECKS, kitsOf } from "../src/kit.js";
@@ -498,6 +498,54 @@ describe("Running a feature's examples and a kit's checks on a runtime · runCon
           "",
         ]);
       assert.equal(reported.byName.get(queried)?.[0], "failed");
+    });
+  });
+
+  describe("given a kit whose Feature description opens with a paragraph of its own", () => {
+    const FEATURE = (description: string) =>
+      new TextEncoder().encode(
+        `Feature: Kit\n${description}\n\n  Scenario: One\n    Given a thing\n`,
+      );
+    const read = async (description: string) => {
+      const files = new MemoryFiles("https://v.example/");
+      await files.write("conformance/kit/kit.feature", FEATURE(description));
+      return (await readFeature(files, "conformance/kit/kit.feature"))
+        .introduction;
+    };
+
+    it("returns the paragraph, as one line, from featureStory for each example pod's kit", async () => {
+      const files = await vocabulary();
+      for (const kit of [
+        "alex-rivera",
+        "priya-natarajan",
+        "martin-okafor",
+        "tamsin-vale",
+      ]) {
+        const path = `conformance/${kit}/${kit}.feature`;
+        const written = new TextDecoder().decode(await files.read(path));
+        const paragraph = /^Feature:.*\r?\n((?:[ \t]+\S.*\r?\n)+)\r?\n/.exec(
+          written,
+        )?.[1];
+        assert.ok(paragraph, `${path} has no first paragraph`);
+        const { feature } = await featureStory(files, path, newStore);
+        assert.equal(
+          feature.introduction,
+          paragraph.trim().replace(/\s*\r?\n\s*/g, " "),
+          kit,
+        );
+      }
+    });
+
+    it("returns none when the description is one paragraph, or there is no description", async () => {
+      assert.equal(await read("  Only the old description."), "");
+      assert.equal(await read(""), "");
+    });
+
+    it("returns the first paragraph and not the paragraphs after it", async () => {
+      assert.equal(
+        await read("  One here.\n  Two here.\n\n  The old description."),
+        "One here. Two here.",
+      );
     });
   });
 
