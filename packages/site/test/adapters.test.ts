@@ -9,7 +9,11 @@ import { hubFiles } from "../src/front-page.js";
 import { PLAIN } from "../src/html.js";
 import type { AdapterRead, PagesContext } from "../src/hub/context.js";
 import { adaptersSection } from "../src/hub/adapters.js";
-import { explorerArguments } from "../src/hub/explorer-arguments.js";
+import {
+  explorerArguments,
+  fallbacksUnlikeTheSite,
+} from "../src/hub/explorer-arguments.js";
+import { FONTS } from "../src/html.js";
 import { buildTree } from "../src/sections.js";
 import { readPage } from "./page.js";
 
@@ -122,7 +126,7 @@ const EXPLORER = new Map<string, Uint8Array>([
   [
     "index.html",
     encoder.encode(
-      "<!DOCTYPE html><title>fhir-r4: an adapter explorer</title>",
+      "<!DOCTYPE html><title>fhir-r4: an adapter explorer</title><style>a { color: var(--ink, #14202a); }</style>",
     ),
   ],
   ["explorer.json", encoder.encode("{}")],
@@ -199,7 +203,7 @@ describe("The hub publishes each adapter's explorer as it is · adaptersSection"
   });
 
   describe("when the generator is run over an adapter", () => {
-    it("is told the way back to the adapters page, and the folder, vocabulary, repository, report and output", () => {
+    it("is told the way back to the adapters page, the site's faces and stylesheet, and the folder, vocabulary, repository, report and output", () => {
       const said = explorerArguments({
         script: "scripts/adapter_explorer.py",
         adapterFolder: "adapter",
@@ -220,9 +224,92 @@ describe("The hub publishes each adapter's explorer as it is · adaptersSection"
         "--way-back",
         "Adapters",
         "../index.html",
+        "--stylesheet",
+        FONTS,
+        "--stylesheet",
+        "../../site.css",
         "--out",
         "out",
       ]);
+      assert.match(
+        FONTS,
+        /^https:\/\/fonts\.googleapis\.com\/css2\?family=Newsreader/,
+      );
+    });
+  });
+
+  describe("with an explorer whose stylesheet names the site's tokens", () => {
+    const page = (style: string) =>
+      new Map([
+        ...EXPLORER,
+        [
+          "index.html",
+          encoder.encode(`<!DOCTYPE html><style>${style}</style><body>`),
+        ],
+      ]);
+
+    it("names no token when each fallback is the value site.css gives it", () => {
+      assert.deepEqual(
+        fallbacksUnlikeTheSite(
+          "a { color: var(--ink, #14202a); font: 14px var(--mono, 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace); margin: var(--bar, 0px); }",
+        ),
+        [],
+      );
+    });
+
+    it("names each token whose fallback site.css gives another value", () => {
+      assert.deepEqual(
+        fallbacksUnlikeTheSite(
+          "a { color: var(--ink, #000); border-color: var(--rule,#c9d1d6); font-family: var(--serif, Georgia, serif); }",
+        ),
+        [
+          "--ink: #000 where site.css has #14202a",
+          "--serif: Georgia, serif where site.css has 'Newsreader', Georgia, 'Times New Roman', serif",
+        ],
+      );
+    });
+
+    it("names each token the explorer names that site.css no longer defines, but not the explorer's own", () => {
+      assert.deepEqual(
+        fallbacksUnlikeTheSite(
+          "a { color: var(--ink, #14202a); border-color: var(--edge, #000); margin: var(--bar, 0px); padding-left: var(--d, 0); }",
+        ),
+        ["--edge: the explorer names it and site.css does not define it"],
+      );
+    });
+
+    it("names the page when no style of it names a token of the site", () => {
+      assert.deepEqual(fallbacksUnlikeTheSite(""), [
+        "the page has no <style> naming the site's tokens",
+      ]);
+      assert.deepEqual(
+        fallbacksUnlikeTheSite("a { margin: var(--bar, 0px); }"),
+        ["the page has no <style> naming the site's tokens"],
+      );
+    });
+
+    it("fails the build when the explorer falls back to a value site.css does not give", async () => {
+      await assert.rejects(
+        built([await adapter()], {}, async () =>
+          page("a { color: var(--link, #0b5cad); }"),
+        ),
+        /the explorer of .*cascade-bridge-adapter-fhir-r4 does not match site\.css: --link: #0b5cad where site\.css has #0b6a8a/,
+      );
+    });
+
+    it("fails the build when the explorer has no style naming the site's tokens", async () => {
+      await assert.rejects(
+        built(
+          [await adapter()],
+          {},
+          async () =>
+            new Map([
+              ...EXPLORER,
+              ["index.html", encoder.encode("<!DOCTYPE html><body>")],
+            ]),
+        ),
+        /does not match site\.css: the page has no <style> naming the site's tokens/,
+      );
     });
   });
 

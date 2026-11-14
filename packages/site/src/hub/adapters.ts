@@ -10,6 +10,7 @@ import {
 import { oneFactView, readOneFact } from "../one-fact.js";
 import type { Section } from "../sections.js";
 import type { AdapterRead, PagesContext } from "./context.js";
+import { fallbacksUnlikeTheSite } from "./explorer-arguments.js";
 
 export const ADAPTERS_PAGE = `${ADAPTERS_FOLDER}index.html`;
 
@@ -85,9 +86,23 @@ export const adaptersSection: Section<AdaptersContext> = {
         ctx.log(`adapters: ${view.slug}: ${unavailable}`);
         listed.push({ repository: view.repository, unavailable });
       } else {
-        if (!explorer.has("index.html"))
+        const page = explorer.get("index.html");
+        if (page === undefined)
           throw new Error(
             `the explorer of ${view.repository} has no index.html`,
+          );
+        const unlike = fallbacksUnlikeTheSite(
+          [
+            ...new TextDecoder()
+              .decode(page)
+              .matchAll(/<style>([\s\S]*?)<\/style>/g),
+          ]
+            .map(([, style]) => style)
+            .join("\n"),
+        );
+        if (unlike.length > 0)
+          throw new Error(
+            `the explorer of ${view.repository} does not match site.css: ${unlike.join("; ")}`,
           );
         for (const [path, bytes] of explorer)
           written.set(`${ADAPTERS_FOLDER}${view.slug}/${path}`, bytes);
