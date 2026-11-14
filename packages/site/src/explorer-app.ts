@@ -873,7 +873,7 @@ fetch(root.dataset.data).then(function (r) { return r.json(); }).then(function (
 export const EXPLORER_STYLE = String.raw`body.explorer main { max-width: none; margin: 0; padding: 0; }
 :root { --pencil: #b4410c; --new: #1f7a4d; --new-bg: #e6f3ec; --built: #6b4fa0; --built-bg: #f0ecf7; --sel: #dcebf1; --warn-bg: #fbf3e2; --amber: #8a5a0d; --mono: ui-monospace, SFMono-Regular, Consolas, monospace; }
 #explorer { font-size: 14px; line-height: 1.45; }
-#explorer .intro { margin: 0 0 10px; max-width: 70ch; font-size: 1.05rem; line-height: 1.5; }
+#explorer .intro { margin: 0 0 10px; padding: 0 14px; max-width: 76ch; font-size: 1.05rem; line-height: 1.5; }
 #explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 18rem - var(--intro, 0px)); height: calc(100dvh - 18rem - var(--intro, 0px)); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
 #explorer .top { display: flex; align-items: center; gap: 6px 14px; padding: 8px 14px; background: var(--ink); color: #fff; min-width: 0; }
 #explorer .top .brand { font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #ffb38a; white-space: nowrap; }
