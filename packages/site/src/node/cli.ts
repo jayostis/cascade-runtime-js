@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve as absolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
@@ -80,6 +81,11 @@ const STAGE = join(ROOT, "build", "package");
 const STARTER = "cascade-starter-kit";
 const PAGES = join(ROOT, "build", "pages");
 const SPEC = join(ROOT, "build", "spec");
+const BRIDGE_SPEC = {
+  repository: "https://github.com/jayostis/cascade-bridge-spec",
+};
+/** Where an adapter explorer's link to the hub's conformance report for the adapter points. */
+const HUB = "https://jayostis.github.io/cascade-runtime-js/";
 const log = (line: string): void => console.error(line);
 /** The hub's folders of the term reference and the spec's pages. */
 const TERMS = "terms/";
@@ -367,6 +373,7 @@ const testsFolderOf = (named: string | undefined): string =>
  */
 async function readAdapters(
   followed: readonly Followed[],
+  folders: Map<string, string>,
 ): Promise<AdapterRead[]> {
   const siblingsIn = await siblingsOf(ROOT);
   const cache = join(ROOT, "build", "cache");
@@ -374,6 +381,7 @@ async function readAdapters(
     followed.map(async (adapter): Promise<AdapterRead> => {
       try {
         const resolved = await resolve(adapter, { siblingsIn, cache, log });
+        folders.set(adapter.repository, resolved.folder);
         return {
           repository: adapter.repository,
           files: new FolderFiles(resolved.folder, resolved.iri),
@@ -387,6 +395,60 @@ async function readAdapters(
       }
     }),
   );
+}
+
+/**
+ * The explorer of one adapter: cascade-bridge-spec's `scripts/adapter_explorer.py`, from the sibling checkout or the head of
+ * its default branch, run over the adapter's checkout and the vocabulary's, with Python 3.10 or later and rdflib
+ * (`PYTHON` names the interpreter when it is not `python3`). Its files are read back and its folder removed.
+ */
+async function explorerOf(
+  adapter: string,
+  folder: string,
+  vocabularyFolder: string,
+): Promise<Map<string, Uint8Array>> {
+  const spec = await resolve(BRIDGE_SPEC, {
+    siblingsIn: await siblingsOf(ROOT),
+    cache: join(ROOT, "build", "cache"),
+    log,
+  });
+  const out = join(await mkdtemp(join(tmpdir(), "explorer-")), "out");
+  try {
+    await promisify(execFile)(
+      process.env.PYTHON ?? "python3",
+      [
+        join(spec.folder, "scripts", "adapter_explorer.py"),
+        folder,
+        "--vocabulary",
+        vocabularyFolder,
+        "--repository",
+        adapter,
+        "--report",
+        `${HUB}conformance/tests/${repositoryName({ repository: adapter })}/`,
+        "--out",
+        out,
+      ],
+      { maxBuffer: 1 << 26 },
+    );
+    const files = new FolderFiles(out);
+    const read = new Map<string, Uint8Array>();
+    for (const path of await files.list("")) {
+      const bytes = await files.read(path);
+      if (bytes !== undefined) read.set(path, bytes);
+    }
+    return read;
+  } catch (error) {
+    const said =
+      error instanceof Error && "stderr" in error
+        ? String(error.stderr).trim().split(/\r?\n/).slice(-3).join(" ")
+        : "";
+    throw new Error(
+      `the explorer could not be made${said === "" ? "" : `: ${said}`}`,
+      { cause: error },
+    );
+  } finally {
+    await rm(dirname(out), { recursive: true, force: true });
+  }
 }
 
 /** Runs the work on the first call, and gives the same answer to every call after. */
@@ -405,6 +467,10 @@ function pagesContext(
   testsFolder: string,
   chrome: Chrome,
 ): PagesContext {
+  const folders = new Map<string, string>();
+  const adapters = once(() =>
+    readAdapters(vocabulary.config.adapters, folders),
+  );
   return {
     root: ROOT,
     log,
@@ -492,7 +558,13 @@ function pagesContext(
     })),
     report: once(() => readConformance(reportFile, vocabulary.resolved.iri)),
     tests: once(() => readTestReports(testsFolder)),
-    adapters: once(() => readAdapters(vocabulary.config.adapters)),
+    adapters,
+    explorer: async (repository) => {
+      await adapters();
+      const folder = folders.get(repository);
+      if (folder === undefined) throw new Error("it was not read");
+      return explorerOf(repository, folder, vocabulary.resolved.folder);
+    },
     start: once(async () => {
       const starter = await latestBuild(
         STARTER_REPOSITORY,

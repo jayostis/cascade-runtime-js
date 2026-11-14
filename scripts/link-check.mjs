@@ -455,6 +455,12 @@ async function checkLink(written, base, where) {
 const isFrontPage = (address) =>
   address === settings.site || address === `${settings.site}index.html`;
 
+/**
+ * The adapters' explorers, which the hub publishes as the generator wrote them, with no hub header or footer (the maintainer's
+ * ruling, as is for now), so they link no way back to the front page.
+ */
+const EXPLORER_PAGE = /^adapters\/[^/]+\/(?:index\.html)?$/;
+
 const linksToFrontPage = (base) => (written) => {
   try {
     const target = new URL(written, base);
@@ -489,7 +495,12 @@ async function scan(url) {
   const links = isHtml
     ? linksOf(found.text)
     : linksOfText(found.text, url.endsWith(".md"));
-  if (isHtml && !isFrontPage(url) && !links.some(linksToFrontPage(url)))
+  if (
+    isHtml &&
+    !isFrontPage(url) &&
+    !EXPLORER_PAGE.test(where) &&
+    !links.some(linksToFrontPage(url))
+  )
     fail(where, "", "links no way back to the front page");
   await Promise.all(
     links.map(async (written) => {

@@ -110,6 +110,8 @@ const RULES_FOLDER = "spec/";
 const EVALS_FOLDER = "evals/";
 const SITE_NAME = / [·—] Cascade [^·—]*$/;
 const REDIRECT = /http-equiv="refresh"/i;
+/** An adapter explorer's data of one test case, which its page fetches when a reader opens the case: no file to find by name. */
+const EXPLORER_CASE = /^adapters\/[^/]+\/cases\/[^/]+\.json$/;
 
 const words = (html: string): string =>
   decoded(html.replace(/<[^>]*>/g, ""))
@@ -170,7 +172,7 @@ function item(label: string, href: string, about?: string): string {
  * `llms.txt` and `index.json`, written from the tree as it stands once every section and the front page are in it, so
  * a page another step adds is indexed with no change here. `llms.txt` is in the llmstxt.org form: it lists each
  * section's rows, which name the kinds of page and each kit's root, never every page; `index.json` lists every file
- * but the stylesheets, each with its title, kind and what it is built from. Links are relative to the file, because the
+ * but the stylesheets and the adapter explorers' test cases, each with its title, kind and what it is built from. Links are relative to the file, because the
  * hub does not depend on the address it is served at; a build given the address it will be served at (`base`, ending in
  * `/`) puts it before every local link in `llms.txt` and names it in `index.json`, whose paths stay relative to it.
  */
@@ -205,7 +207,7 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
       SEARCH_SCRIPT_FILE,
     ]),
   ]
-    .filter((path) => !/\.css$/i.test(path))
+    .filter((path) => !/\.css$/i.test(path) && !EXPLORER_CASE.test(path))
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     .map((path) => ({
       path,

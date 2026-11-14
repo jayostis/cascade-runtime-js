@@ -78,6 +78,7 @@ async function pagesOf(vocabulary: LocalVocabulary) {
     }),
     tests: async () => [],
     adapters: async () => [],
+    explorer: async () => new Map(),
     examples: async () => examples,
     builtFrom: async () => built,
     start: async () => start,

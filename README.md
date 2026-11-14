@@ -137,6 +137,12 @@ npm run build:pages -- --report earl.ttl # with that conformance report, its tab
 npm run build:spec                       # every rule beside its note and its result in build/conformance/earl.nt, in build/spec
 ```
 
+`npm run build:pages` also makes each adapter's explorer with
+cascade-bridge-spec's `scripts/adapter_explorer.py`, read from the sibling
+checkout or else its default branch, so it needs Python 3.10 or later with
+`rdflib` (`PYTHON` names the interpreter when it is not `python3`). An adapter
+whose explorer cannot be made is listed as not available and the build goes on.
+
 Open `build/alex-rivera/site/index.html`. The pod is the vocabulary's
 `conformance/alex-rivera/` replayed with the Bridge's saved output, so it needs
 only Node, and with the kit's own tables, which `npm run conformance` and
