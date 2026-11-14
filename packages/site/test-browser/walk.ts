@@ -79,7 +79,7 @@ export const ROWS: ReadonlyMap<string, readonly Target[]> = new Map([
   ],
   [
     "want-evals",
-    [{ href: "evals/", title: "Cascade evals — ask your records a question" }],
+    [{ href: "evals/", title: "Cascade evals — two ways to ask a person's records a question" }],
   ],
   [
     "want-agent",
