@@ -82,7 +82,9 @@ export const proposer: Proposer = async ({
     async write({ proposal, model }) {
       if (asked !== 1 || answer !== "yes")
         throw new Error(
-          `the door wrote ${file.name} without a yes: it asked ${asked} times and the person answered ${answer}`,
+          asked !== 1
+            ? `the door wrote ${file.name} after it asked the person ${asked} times, not once`
+            : `the door wrote ${file.name} without a yes: the person answered ${answer}`,
         );
       const turtle = proposedTurtle(proposal as Proposal, {
         model,

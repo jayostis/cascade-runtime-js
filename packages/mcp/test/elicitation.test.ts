@@ -13,6 +13,7 @@ import { PROPOSAL_TOOLS, toolsFor } from "cascade-runtime/tools/propose";
 import { podServer } from "../src/server.js";
 
 const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
+const LATE_MS = 600;
 const ASK_TOOLS = PROPOSAL_TOOLS.map(({ name }) => name);
 const ASTHMA = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
@@ -40,7 +41,13 @@ const PROPOSALS: Record<string, Record<string, unknown>> = {
 
 /** What a client's person does with a question: the action it answers, or never answering. */
 type Said =
-  "accept" | "decline" | "cancel" | "silence" | "accept without ticking";
+  | "accept"
+  | "decline"
+  | "cancel"
+  | "silence"
+  | "accept without ticking"
+  | "accept leaving the box out"
+  | "accept after the client stopped waiting";
 
 interface Connected {
   readonly client: Client;
@@ -89,6 +96,11 @@ async function connect(
           return { action: "accept", content: { yes: true } };
         case "accept without ticking":
           return { action: "accept", content: { yes: false } };
+        case "accept leaving the box out":
+          return { action: "accept", content: {} as Record<string, boolean> };
+        case "accept after the client stopped waiting":
+          await new Promise((resolve) => setTimeout(resolve, LATE_MS));
+          return { action: "accept", content: { yes: true } };
         default:
           return { action: connected.said };
       }
@@ -164,7 +176,7 @@ describe("Asking the person before a write · elicitation", () => {
       );
     });
 
-    it("sets each tool's annotations from its tier: `readOnlyHint` for a tool at free, none for a tool at ask", async () => {
+    it("sets each tool's annotations from its tier: `readOnlyHint` for a tool at free, and `destructiveHint` without it for a tool at ask", async () => {
       const { tools } = await asks.client.listTools();
       for (const tool of tools) {
         const tier = toolsFor({ canAsk: true }).find(
@@ -204,7 +216,8 @@ describe("Asking the person before a write · elicitation", () => {
       for (const [said, answer] of [
         ["decline", "no"],
         ["cancel", "dismissed"],
-        ["accept without ticking", "no"],
+        ["accept without ticking", "dismissed"],
+        ["accept leaving the box out", "dismissed"],
       ] as const)
         it(`${name}: writes nothing, and says ${answer}, when the person's action is ${said}`, async () => {
           asks.said = said;
@@ -260,6 +273,58 @@ describe("Asking the person before a write · elicitation", () => {
         assert.deepEqual(asks.written, []);
       } finally {
         await asks.close();
+      }
+    });
+  });
+
+  describe("when the client stops waiting for a call before the person answers", () => {
+    it("writes nothing when the person says yes after the client gave up on the call", async () => {
+      const asks = await connect({ name: "Impatient", version: "1" }, true);
+      try {
+        asks.said = "accept after the client stopped waiting";
+        const result = await asks.client
+          .callTool(
+            { name: "propose_entry", arguments: PROPOSALS.propose_entry! },
+            { timeout: LATE_MS / 4 },
+          )
+          .then(
+            () => "answered",
+            () => "gave up",
+          );
+        assert.equal(result, "gave up");
+        await new Promise((resolve) => setTimeout(resolve, LATE_MS * 2));
+        assert.equal(asks.shown.length, 1);
+        assert.deepEqual(asks.written, []);
+      } finally {
+        await asks.close();
+      }
+    });
+  });
+
+  describe("when a client speaks the 2026-07-28 revision to `cascade-mcp --pods`", () => {
+    it("lists the tools that read and none that propose a write", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "cascade-mcp-modern-"));
+      const client = new Client(
+        { name: "modern-client", version: "1.0.0" },
+        {
+          capabilities: { elicitation: {} },
+          versionNegotiation: { mode: { pin: "2026-07-28" } },
+        },
+      );
+      try {
+        await client.connect(
+          new StdioClientTransport({
+            command: process.execPath,
+            args: [CLI, "--pods", folder],
+          }),
+        );
+        assert.deepEqual(
+          (await client.listTools()).tools.map(({ name }) => name).sort(),
+          TOOLS.map(({ name }) => name).sort(),
+        );
+      } finally {
+        await client.close();
+        await rm(folder, { recursive: true, force: true, maxRetries: 5 });
       }
     });
   });
