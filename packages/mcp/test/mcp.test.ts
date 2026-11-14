@@ -110,9 +110,7 @@ describe("Serving a folder of pods to an MCP client · cascade-mcp --pods, --che
       const { tools } = await client.listTools();
       assert.deepEqual(
         tools.map(({ name }) => name).sort(),
-        TOOLS.filter(({ tier }) => tier === "free")
-          .map(({ name }) => name)
-          .sort(),
+        TOOLS.map(({ name }) => name).sort(),
       );
     });
 

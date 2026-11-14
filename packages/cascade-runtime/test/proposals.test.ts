@@ -1,21 +1,34 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import * as oxigraph from "oxigraph";
 import { openPod } from "cascade-runtime";
+import {
+  findRoot,
+  FolderFiles,
+  readConfig,
+  resolveVocabulary,
+} from "@cascade-runtime/runtime/node";
+import { OxigraphStore, Shapes } from "@cascade-runtime/runtime";
 import { podReads, podsIn } from "cascade-runtime/tools/node";
 import {
-  type Answer,
   type Door,
   offeredTools,
   type PodReads,
-  proposedTurtle,
-  type Proposal,
   schemaOf,
   TOOLS,
 } from "cascade-runtime/tools";
+import {
+  type Answer,
+  offeredToolsOf,
+  PROPOSAL_TOOLS,
+  type Proposal,
+  proposedTurtle,
+  toolsFor,
+} from "cascade-runtime/tools/propose";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -57,7 +70,8 @@ const PROPOSING: readonly [string, Record<string, unknown>, Proposal][] = [
   ],
 ];
 
-const toolNamed = (name: string) => TOOLS.find((tool) => tool.name === name)!;
+const toolNamed = (name: string) =>
+  PROPOSAL_TOOLS.find((tool) => tool.name === name)!;
 
 /** A door whose person answers `answer`, with every question it was asked. */
 function asking(answer: Answer | "throws") {
@@ -95,14 +109,29 @@ const refusal = (why: RegExp) => (error: Error) =>
  * @rule runtime/consent.feature Y2
  */
 describe("Tools a model proposes a write with · propose_entry, propose_judgment, propose_retraction", () => {
-  describe("TOOLS", () => {
-    it("lists three tools at the kind `WritingToAPod` and the tier `ask`", () => {
+  describe("PROPOSAL_TOOLS", () => {
+    it("lists three tools at the kind `WritingToAPod` and the tier `ask`, as `offeredToolsOf()` lists them", () => {
       assert.deepEqual(
-        offeredTools()
-          .filter(({ tier }) => tier === "ask")
-          .map(({ name, kind }) => [name, kind]),
-        PROPOSING.map(([name]) => [name, `${CASCADE}WritingToAPod`]),
+        offeredToolsOf({ canAsk: true }).filter(({ tier }) => tier === "ask"),
+        PROPOSING.map(([name]) => ({
+          name,
+          kind: `${CASCADE}WritingToAPod`,
+          tier: "ask",
+        })),
       );
+    });
+
+    it("is offered to a door that can ask the person and to none that cannot, and is no tool of `TOOLS`, which every door offers", () => {
+      assert.deepEqual(
+        toolsFor({ canAsk: false }).map(({ name }) => name),
+        TOOLS.map(({ name }) => name),
+      );
+      assert.deepEqual(offeredToolsOf({ canAsk: false }), offeredTools());
+      assert.deepEqual(
+        toolsFor({ canAsk: true }).map(({ name }) => name),
+        [...TOOLS, ...PROPOSAL_TOOLS].map(({ name }) => name),
+      );
+      assert.ok(TOOLS.every(({ tier }) => tier === "free"));
     });
 
     it("takes the pod's name in every one, beside its own properties", () => {
@@ -217,6 +246,7 @@ describe("Tools a model proposes a write with · propose_entry, propose_judgment
     it("refuses an entry that is empty, a retraction of no IRI and a call that names no pod, before it asks", async () => {
       for (const [name, input] of [
         ["propose_entry", { pod: "p", turtle: "" }],
+        ["propose_entry", { pod: "p", turtle: "<urn:a> <urn:b> <urn:c> ." }],
         ["propose_entry", { turtle: ASTHMA }],
         ["propose_retraction", { pod: "p", judgment: "not an iri" }],
         ["propose_retraction", { pod: "p", judgment: "x>y" }],
@@ -443,6 +473,46 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
 
   after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
+  it("refuses to retract a judgment the pod does not hold, writing nothing", async () => {
+    const again = podReads(podsIn(folder));
+    try {
+      await assert.rejects(
+        again.write!({
+          pod: "p",
+          model: FILED_BY,
+          proposal: { kind: "retraction", judgment: RECORD_A },
+        }),
+        refusal(/holds no judgment/),
+      );
+    } finally {
+      await again.close();
+    }
+    const after = new Map(files);
+    for (const name of await readdir(join(folder, "p"), { recursive: true }))
+      if (name.endsWith(".ttl")) after.delete(name);
+    assert.equal(after.size, 0, "no file was added");
+  });
+
+  it("refuses a judgment of a record the pod does not hold, writing nothing", async () => {
+    const again = podReads(podsIn(folder));
+    try {
+      await assert.rejects(
+        again.write!({
+          pod: "p",
+          model: FILED_BY,
+          proposal: {
+            kind: "judgment",
+            verdict: "same",
+            members: [RECORD_A, RECORD_B],
+          },
+        }),
+        refusal(/no current version/),
+      );
+    } finally {
+      await again.close();
+    }
+  });
+
   for (const kind of ["entry", "judgment", "retraction"] as const)
     it(`types the model and the owner in the file of the ${kind}'s act, and associates the model only in its role`, async () => {
       const lines = statements(await actOf(ids[kind]));
@@ -470,4 +540,66 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
         1,
       );
     });
+});
+
+/**
+ * What `proposedTurtle` gives is held to the vocabulary's shapes, those of a person's judgment, of a retraction and of a
+ * write a model proposed, as the vocabulary's examples are.
+ * @rule runtime/consent.feature Y3
+ */
+describe("Recording a write a model proposed under the vocabulary's shapes · proposedTurtle()", () => {
+  let shapes: Shapes;
+  before(async () => {
+    const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+    const { folder } = await resolveVocabulary(root, await readConfig(root));
+    shapes = await Shapes.read(
+      new FolderFiles(folder),
+      () => new OxigraphStore(),
+    );
+  });
+
+  const NAMED = "urn:uuid:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const at = (kind: "generatedAtTime" | "startedAtTime") =>
+    `<${NAMED}> <${PROV}${kind}> "2026-01-01T00:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .`;
+  const by = { model: MODEL, owner: OWNER, session: SESSION };
+
+  it("breaks no shape for a judgment, as the pod files it", async () => {
+    const turtle = `${proposedTurtle({ kind: "judgment", verdict: "same", members: [RECORD_A, RECORD_B] }, by).replaceAll("urn:cascade:this-judgment", NAMED)}\n${at("generatedAtTime")}`;
+    assert.deepEqual(
+      await shapes.resultLines(
+        await new OxigraphStore().parse(turtle, "urn:test:"),
+      ),
+      [],
+    );
+  });
+
+  it("breaks no shape for a retraction of a judgment, as the pod files it", async () => {
+    const turtle = `${proposedTurtle({ kind: "retraction", judgment: JUDGMENT }, by).replaceAll("urn:cascade:this-judgment", NAMED)}\n${at("startedAtTime")}\n<${JUDGMENT}> a <${CASCADE}Judgment> ; <${CASCADE}verdict> <${CASCADE}Same> ; <${PROV}wasAttributedTo> <${OWNER}> .`;
+    assert.deepEqual(
+      (
+        await shapes.resultLines(
+          await new OxigraphStore().parse(turtle, "urn:test:"),
+        )
+      ).filter((line) => line.startsWith(NAMED)),
+      [],
+    );
+  });
+
+  it("breaks a shape when the model is the judgment's author, which the proposal never is", async () => {
+    const turtle = `${proposedTurtle(
+      { kind: "judgment", verdict: "same", members: [RECORD_A, RECORD_B] },
+      by,
+    )
+      .replaceAll("urn:cascade:this-judgment", NAMED)
+      .replace(
+        `prov:wasAttributedTo <${OWNER}>`,
+        `prov:wasAttributedTo <${MODEL.iri}>`,
+      )}\n${at("generatedAtTime")}`;
+    assert.notDeepEqual(
+      await shapes.resultLines(
+        await new OxigraphStore().parse(turtle, "urn:test:"),
+      ),
+      [],
+    );
+  });
 });

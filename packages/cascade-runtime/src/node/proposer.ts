@@ -9,14 +9,13 @@ import {
   RDF,
 } from "@cascade-runtime/runtime";
 import { judged } from "../judging.js";
+import type { Door, PodReads } from "../pod-tools.js";
 import {
-  type Door,
-  type PodReads,
   type Proposal,
+  PROPOSAL_TOOLS,
   proposedTurtle,
-  TOOLS,
   type Verdict,
-} from "../pod-tools.js";
+} from "../propose-tools.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -105,7 +104,11 @@ export const proposer: Proposer = async ({
       };
     },
   } as PodReads;
-  await TOOLS.find(({ name }) => name === tool)!.run(reads, input, door);
+  await PROPOSAL_TOOLS.find(({ name }) => name === tool)!.run(
+    reads,
+    input,
+    door,
+  );
   if (asked !== 1)
     throw new Error(`the door asked ${asked} times for ${file.name}, not once`);
   return performed ?? { wrote: [] };

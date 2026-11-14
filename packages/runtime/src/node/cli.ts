@@ -97,9 +97,9 @@ async function proposerOf(): Promise<Proposer> {
 async function toolsOffered(): Promise<
   (door: { canAsk: boolean }) => readonly OfferedTool[]
 > {
-  const name = "cascade-runtime/tools";
+  const name = "cascade-runtime/tools/propose";
   let built: {
-    offeredTools?: (door: { canAsk: boolean }) => OfferedTool[];
+    offeredToolsOf?: (door: { canAsk: boolean }) => OfferedTool[];
   };
   try {
     built = (await import(name)) as typeof built;
@@ -109,15 +109,15 @@ async function toolsOffered(): Promise<
       { cause: error },
     );
   }
-  if (built.offeredTools === undefined)
+  if (built.offeredToolsOf === undefined)
     throw new Error(
-      `${name} loaded but lists no \`offeredTools\`: its build is stale (tsc -b packages/cascade-runtime builds it)`,
+      `${name} loaded but lists no \`offeredToolsOf\`: its build is stale (tsc -b packages/cascade-runtime builds it)`,
     );
-  const { offeredTools } = built;
+  const { offeredToolsOf } = built;
   log(
-    `the run lists ${offeredTools({ canAsk: true }).length} tools, ${offeredTools({ canAsk: false }).length} through a door that cannot ask`,
+    `the run lists ${offeredToolsOf({ canAsk: true }).length} tools, ${offeredToolsOf({ canAsk: false }).length} through a door that cannot ask`,
   );
-  return offeredTools;
+  return offeredToolsOf;
 }
 
 async function conformance(args: string[]): Promise<number> {

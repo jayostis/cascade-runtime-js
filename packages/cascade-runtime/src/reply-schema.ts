@@ -41,10 +41,10 @@ function bare(schema: InputSchema): Record<string, unknown> {
   };
 }
 
-/** The input of any pod tool that reads: every such tool's properties, so an absence's query gives the input it ran with. */
+/** The input of any pod tool: every tool's properties, so an absence's query gives the input it ran with. */
 function anyToolInput() {
   const variants = new Map<string, Map<string, Record<string, unknown>>>();
-  for (const tool of TOOLS.filter(({ tier }) => tier === "free"))
+  for (const tool of TOOLS)
     for (const [name, property] of Object.entries(
       schemaOf(tool).properties ?? {},
     )) {

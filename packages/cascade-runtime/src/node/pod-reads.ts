@@ -12,10 +12,10 @@ import {
   CHANGE_TOOLS,
   citedLabChange,
   type PodReads,
-  proposedTurtle,
   type TableLookups,
   unknownChangeTool,
 } from "../pod-tools.js";
+import { proposedTurtle } from "../propose-tools.js";
 
 export { proposer } from "./proposer.js";
 
@@ -139,6 +139,15 @@ export function podReads(
           ...(refused === undefined ? {} : { refused }),
           ...(activity === undefined ? {} : { id: activity }),
         };
+      }
+      if (proposal.kind === "retraction") {
+        const held = await pod.ask({
+          query: `SELECT ?judgment WHERE { ?judgment a ?kind FILTER (?judgment = <${proposal.judgment}> && ?kind IN (<https://ns.cascadeprotocol.org/cascade#Judgment>, <https://ns.cascadeprotocol.org/cascade#MatcherJudgmentAssertion>)) }`,
+        });
+        if (held.length === 0)
+          throw new Refusal(
+            `the pod holds no judgment ${proposal.judgment} to retract`,
+          );
       }
       let filed;
       try {

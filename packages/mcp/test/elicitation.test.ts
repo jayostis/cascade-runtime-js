@@ -9,12 +9,11 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
 import { openPod } from "cascade-runtime";
 import { type PodReads, TOOLS } from "cascade-runtime/tools";
+import { PROPOSAL_TOOLS, toolsFor } from "cascade-runtime/tools/propose";
 import { podServer } from "../src/server.js";
 
 const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
-const ASK_TOOLS = TOOLS.filter(({ tier }) => tier === "ask").map(
-  ({ name }) => name,
-);
+const ASK_TOOLS = PROPOSAL_TOOLS.map(({ name }) => name);
 const ASTHMA = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 <urn:cascade:output-0> a cascade:ProblemOrDiagnosis .
@@ -136,9 +135,7 @@ describe("Asking the person before a write · elicitation", () => {
     it("lists the tools that read and none that propose a write", async () => {
       assert.deepEqual(
         (await none.client.listTools()).tools.map(({ name }) => name).sort(),
-        TOOLS.filter(({ tier }) => tier === "free")
-          .map(({ name }) => name)
-          .sort(),
+        TOOLS.map(({ name }) => name).sort(),
       );
     });
 
@@ -161,14 +158,18 @@ describe("Asking the person before a write · elicitation", () => {
     it("lists every tool of `cascade-runtime/tools`", async () => {
       assert.deepEqual(
         (await asks.client.listTools()).tools.map(({ name }) => name).sort(),
-        TOOLS.map(({ name }) => name).sort(),
+        toolsFor({ canAsk: true })
+          .map(({ name }) => name)
+          .sort(),
       );
     });
 
     it("sets each tool's annotations from its tier: `readOnlyHint` for a tool at free, none for a tool at ask", async () => {
       const { tools } = await asks.client.listTools();
       for (const tool of tools) {
-        const tier = TOOLS.find(({ name }) => name === tool.name)!.tier;
+        const tier = toolsFor({ canAsk: true }).find(
+          ({ name }) => name === tool.name,
+        )!.tier;
         assert.equal(
           tool.annotations?.readOnlyHint,
           tier === "free",

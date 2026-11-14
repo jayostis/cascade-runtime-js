@@ -15,14 +15,13 @@ import {
 } from "@modelcontextprotocol/server";
 import { Refusal } from "cascade-runtime";
 import {
-  type Answer,
   type Door,
   type PodReads,
   schemaOf,
-  TOOLS,
   type ToolInput,
   type ToolTier,
 } from "cascade-runtime/tools";
+import { type Answer, toolsFor } from "cascade-runtime/tools/propose";
 
 const WARNING =
   "A hosted client (Claude Desktop, VS Code with a hosted model, any chat service) sends what these tools return to its provider. The example and story pods are made up; a person's own pod is theirs to decide about before it is asked here.";
@@ -171,7 +170,7 @@ export function podServer(
     };
   };
   const asking: RegisteredTool[] = [];
-  for (const tool of TOOLS) {
+  for (const tool of toolsFor({ canAsk: true })) {
     const registered = server.registerTool(
       tool.name,
       {

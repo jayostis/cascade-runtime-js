@@ -61,12 +61,6 @@ const RUNS: Record<string, [Record<string, unknown>, string]> = {
   timeline: [{ pod: "p" }, "tool"],
   ask: [{ pod: "p", question: "pod/My lab results" }, "ask"],
   reference_table_checks: [{ pod: "p" }, "tables"],
-  propose_entry: [{ pod: "p", turtle: "<urn:a> <urn:b> <urn:c> ." }, "write"],
-  propose_judgment: [
-    { pod: "p", verdict: "same", members: ["urn:uuid:a", "urn:uuid:b"] },
-    "write",
-  ],
-  propose_retraction: [{ pod: "p", judgment: "urn:uuid:a" }, "write"],
 };
 
 const toolNamed = (name: string) => TOOLS.find((tool) => tool.name === name)!;
@@ -390,31 +384,26 @@ interface TableChecks {
  */
 describe("Tools a model reads a pod with · TOOLS", () => {
   describe("TOOLS", () => {
-    it("lists seven tools that read: `list_pods`, `find_changes`, `finding_rows`, `lab_series`, `timeline`, `ask` and `reference_table_checks`, and three that propose a write", () => {
+    it("lists seven tools: `list_pods`, `find_changes`, `finding_rows`, `lab_series`, `timeline`, `ask` and `reference_table_checks`", () => {
       assert.deepEqual(TOOLS.map(({ name }) => name).sort(), [
         "ask",
         "find_changes",
         "finding_rows",
         "lab_series",
         "list_pods",
-        "propose_entry",
-        "propose_judgment",
-        "propose_retraction",
         "reference_table_checks",
         "timeline",
       ]);
     });
 
-    it("declares for each tool that reads the kind `ReadingPodsOrTables` at the tier `free`, as `offeredTools()` lists it", () => {
+    it("declares for each tool the kind `ReadingPodsOrTables` at the tier `free`, as `offeredTools()` lists it", () => {
       assert.deepEqual(
-        offeredTools().filter(({ tier }) => tier === "free"),
-        TOOLS.filter(({ name }) => !name.startsWith("propose_")).map(
-          ({ name }) => ({
-            name,
-            kind: "https://ns.cascadeprotocol.org/cascade#ReadingPodsOrTables",
-            tier: "free",
-          }),
-        ),
+        offeredTools(),
+        TOOLS.map(({ name }) => ({
+          name,
+          kind: "https://ns.cascadeprotocol.org/cascade#ReadingPodsOrTables",
+          tier: "free",
+        })),
       );
     });
 
@@ -470,13 +459,7 @@ describe("Tools a model reads a pod with · TOOLS", () => {
             },
           },
         ) as PodReads;
-        await tool.run(recording, input, {
-          model: {
-            iri: "urn:uuid:4f1c0b3e-8a2d-4c57-9e61-0d7b5a3c2f19",
-            label: "m",
-          },
-          ask: async () => "yes",
-        });
+        await tool.run(recording, input);
         assert.deepEqual(called, [read], tool.name);
       }
     });
