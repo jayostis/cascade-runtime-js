@@ -198,25 +198,72 @@ describe("The hub publishes each adapter's explorer as it is · adaptersSection"
   });
 
   describe("with an adapter whose explorer cannot be made", () => {
-    it("lists it as not available, with the reason and no folder", async () => {
-      const read = await built([await adapter()], {}, async () => {
-        throw new Error("the explorer could not be made: rdflib is missing");
-      });
-      const said = plain(read(INDEX));
-      assert.match(said, /Not available/);
-      assert.match(said, /rdflib is missing/);
-      assert.equal(read.has(FHIR_PAGE), false);
-      assert.equal(read.has("adapters/fhir-r4/explorer.json"), false);
+    it("fails the build with the reason, though the adapter was read", async () => {
+      await assert.rejects(
+        built([await adapter()], {}, async () => {
+          throw new Error("the explorer could not be made: rdflib is missing");
+        }),
+        /rdflib is missing/,
+      );
     });
 
-    it("lists it as not available when what was made has no page", async () => {
-      const read = await built(
-        [await adapter()],
-        {},
-        async () => new Map([["explorer.json", encoder.encode("{}")]]),
+    it("fails the build when what was made has no page", async () => {
+      await assert.rejects(
+        built(
+          [await adapter()],
+          {},
+          async () => new Map([["explorer.json", encoder.encode("{}")]]),
+        ),
+        /has no index\.html/,
       );
-      assert.match(plain(read(INDEX)), /its explorer has no index\.html/);
-      assert.equal(read.has("adapters/fhir-r4/explorer.json"), false);
+    });
+
+    it("makes the explorers of the adapters at once, not one after the other", async () => {
+      let running = 0;
+      let most = 0;
+      await built(
+        [
+          await adapter(),
+          {
+            ...(await adapter({ "ro-crate-metadata.json": crate("c-cda") })),
+            repository: CCDA_REPOSITORY,
+          },
+        ],
+        {},
+        async () => {
+          most = Math.max(most, ++running);
+          await new Promise((done) => setTimeout(done, 20));
+          running--;
+          return EXPLORER;
+        },
+      );
+      assert.equal(most, 2);
+    });
+  });
+
+  describe("with the build told to leave the explorers out", () => {
+    it("lists each adapter that was read as not available, saying so, and writes no folder for it", async () => {
+      const read = await built([await adapter()], {}, async () => undefined);
+      const said = plain(read(INDEX));
+      assert.match(said, /Not available/);
+      assert.match(said, /explorer was left out of this build/);
+      assert.equal(read.has(FHIR_PAGE), false);
+    });
+  });
+
+  describe("with an adapter that could not be read", () => {
+    it("lists it as not available and goes on, asking for no explorer of it", async () => {
+      let asked = 0;
+      const read = await built(
+        [{ repository: CCDA_REPOSITORY, unavailable: "the fetch failed" }],
+        {},
+        async () => {
+          asked++;
+          return EXPLORER;
+        },
+      );
+      assert.match(plain(read(INDEX)), /the fetch failed/);
+      assert.equal(asked, 0);
     });
   });
 

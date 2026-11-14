@@ -106,8 +106,10 @@ export interface PagesContext {
   adapters(): Promise<readonly AdapterRead[]>;
   /**
    * The explorer of the adapter of that repository: the files cascade-bridge-spec's generator writes over it (`index.html`,
-   * `explorer.json`, `cases/<n>.json`), by path in its folder. Rejects when it cannot be made, and the adapter is then listed
-   * as not available.
+   * `explorer.json`, `cases/<n>.json`), by path in its folder. Rejects when it cannot be made, which fails the build; gives
+   * nothing when the build was told to leave the explorers out.
    */
-  explorer(repository: string): Promise<ReadonlyMap<string, Uint8Array>>;
+  explorer(
+    repository: string,
+  ): Promise<ReadonlyMap<string, Uint8Array> | undefined>;
 }

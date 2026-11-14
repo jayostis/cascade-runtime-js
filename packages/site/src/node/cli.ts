@@ -407,11 +407,7 @@ async function explorerOf(
   folder: string,
   vocabularyFolder: string,
 ): Promise<Map<string, Uint8Array>> {
-  const spec = await resolve(BRIDGE_SPEC, {
-    siblingsIn: await siblingsOf(ROOT),
-    cache: join(ROOT, "build", "cache"),
-    log,
-  });
+  const spec = await bridgeSpec();
   const out = join(await mkdtemp(join(tmpdir(), "explorer-")), "out");
   try {
     await promisify(execFile)(
@@ -438,14 +434,19 @@ async function explorerOf(
     }
     return read;
   } catch (error) {
-    const said =
+    const stderr =
       error instanceof Error && "stderr" in error
         ? String(error.stderr).trim().split(/\r?\n/).slice(-3).join(" ")
         : "";
-    throw new Error(
-      `the explorer could not be made${said === "" ? "" : `: ${said}`}`,
-      { cause: error },
-    );
+    const said =
+      stderr !== ""
+        ? stderr
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    throw new Error(`the explorer of ${adapter} could not be made: ${said}`, {
+      cause: error,
+    });
   } finally {
     await rm(dirname(out), { recursive: true, force: true });
   }
@@ -457,6 +458,15 @@ function once<T>(work: () => Promise<T>): () => Promise<T> {
   return () => (answer ??= work());
 }
 
+/** The cascade-bridge-spec checkout the explorers are made with, resolved once for every adapter. */
+const bridgeSpec = once(async () =>
+  resolve(BRIDGE_SPEC, {
+    siblingsIn: await siblingsOf(ROOT),
+    cache: join(ROOT, "build", "cache"),
+    log,
+  }),
+);
+
 /**
  * The providers of the hub's context: every kit's published sample built with the staged package, as an app that
  * installed it would, each one's pod and site, and what the pages were built from.
@@ -466,6 +476,7 @@ function pagesContext(
   reportFile: string,
   testsFolder: string,
   chrome: Chrome,
+  explorers: boolean,
 ): PagesContext {
   const folders = new Map<string, string>();
   const adapters = once(() =>
@@ -560,6 +571,7 @@ function pagesContext(
     tests: once(() => readTestReports(testsFolder)),
     adapters,
     explorer: async (repository) => {
+      if (!explorers) return undefined;
       await adapters();
       const folder = folders.get(repository);
       if (folder === undefined) throw new Error("it was not read");
@@ -581,7 +593,8 @@ function pagesContext(
 /**
  * Builds the whole Pages tree into build/pages: the hub's sections, the front page above them, and what reads the tree
  * once it is written. The one command that the pull request's docs site and the deploy both run. `--no-kits` leaves out
- * what is made of the kits, which is most of the time. `--out` names the folder to write instead of build/pages. `--report` names the conformance run's EARL report, with its
+ * what is made of the kits, which is most of the time. `--no-explorers` leaves out the adapters' explorers, which need
+ * Python 3.10 or later with rdflib; without it a build whose explorer cannot be made fails. `--out` names the folder to write instead of build/pages. `--report` names the conformance run's EARL report, with its
  * table.md beside it; the spec and conformance pages show every result as not run when there is none. `--tests` names the
  * folder of the unit test reports, a folder in it for each suite of `packages/site/test-suites.json` named as its
  * repository, each with `report`, `run.json` and perhaps `spec.json`; the page of a suite with none says it is not
@@ -593,6 +606,7 @@ async function buildPages(args: string[]): Promise<number> {
     options: {
       ...CHROME_OPTIONS,
       "no-kits": { type: "boolean" },
+      "no-explorers": { type: "boolean" },
       report: { type: "string" },
       tests: { type: "string" },
       out: { type: "string" },
@@ -607,6 +621,7 @@ async function buildPages(args: string[]): Promise<number> {
       reportFileOf(values.report),
       testsFolderOf(values.tests),
       chrome,
+      values["no-explorers"] !== true,
     ),
     front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows, chrome),
     finishers: FINISHERS,

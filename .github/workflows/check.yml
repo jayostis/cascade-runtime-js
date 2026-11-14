@@ -167,9 +167,6 @@ jobs:
           checkout-only: "true"
       - run: npm ci
       # The Pages tree's adapter explorers are made by cascade-bridge-spec's generator, which needs Python and rdflib.
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
       - run: python3 -m pip install rdflib==7.6.0
       # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
       # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
@@ -621,9 +618,6 @@ jobs:
           cache: npm
       - run: npm ci
       # The Pages tree's adapter explorers are made by cascade-bridge-spec's generator, which needs Python and rdflib.
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
       - run: python3 -m pip install rdflib==7.6.0
       # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
       # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.

@@ -716,14 +716,6 @@ function entriesOf(ontology: Graph): Map<string, Entry> {
   return entries;
 }
 
-/** The IRI of each term the term reference gives an entry, so a page that links `termHref` links only those. */
-export async function declaredTerms(
-  vocabulary: Files,
-): Promise<ReadonlySet<string>> {
-  const [ontology] = await parse(vocabulary, ONTOLOGY);
-  return new Set(entriesOf(ontology).keys());
-}
-
 /**
  * The term reference: an entry for each term `ontologies/cascade.ttl` declares, this vocabulary's own and those it copies,
  * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
