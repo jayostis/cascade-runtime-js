@@ -126,7 +126,7 @@ const EXPLORER = new Map<string, Uint8Array>([
   [
     "index.html",
     encoder.encode(
-      "<!DOCTYPE html><title>fhir-r4: an adapter explorer</title>",
+      "<!DOCTYPE html><title>fhir-r4: an adapter explorer</title><style>a { color: var(--ink, #14202a); }</style>",
     ),
   ],
   ["explorer.json", encoder.encode("{}")],
@@ -269,12 +269,46 @@ describe("The hub publishes each adapter's explorer as it is · adaptersSection"
       );
     });
 
+    it("names each token the explorer names that site.css no longer defines, but not the explorer's own", () => {
+      assert.deepEqual(
+        fallbacksUnlikeTheSite(
+          "a { color: var(--ink, #14202a); border-color: var(--edge, #000); margin: var(--bar, 0px); padding-left: var(--d, 0); }",
+        ),
+        ["--edge: the explorer names it and site.css does not define it"],
+      );
+    });
+
+    it("names the page when no style of it names a token of the site", () => {
+      assert.deepEqual(fallbacksUnlikeTheSite(""), [
+        "the page has no <style> naming the site's tokens",
+      ]);
+      assert.deepEqual(
+        fallbacksUnlikeTheSite("a { margin: var(--bar, 0px); }"),
+        ["the page has no <style> naming the site's tokens"],
+      );
+    });
+
     it("fails the build when the explorer falls back to a value site.css does not give", async () => {
       await assert.rejects(
         built([await adapter()], {}, async () =>
           page("a { color: var(--link, #0b5cad); }"),
         ),
-        /the explorer of .*cascade-bridge-adapter-fhir-r4 falls back to values site\.css does not hold: --link: #0b5cad where site\.css has #0b6a8a/,
+        /the explorer of .*cascade-bridge-adapter-fhir-r4 does not match site\.css: --link: #0b5cad where site\.css has #0b6a8a/,
+      );
+    });
+
+    it("fails the build when the explorer has no style naming the site's tokens", async () => {
+      await assert.rejects(
+        built(
+          [await adapter()],
+          {},
+          async () =>
+            new Map([
+              ...EXPLORER,
+              ["index.html", encoder.encode("<!DOCTYPE html><body>")],
+            ]),
+        ),
+        /does not match site\.css: the page has no <style> naming the site's tokens/,
       );
     });
   });

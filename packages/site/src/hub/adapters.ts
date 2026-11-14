@@ -102,7 +102,7 @@ export const adaptersSection: Section<AdaptersContext> = {
         );
         if (unlike.length > 0)
           throw new Error(
-            `the explorer of ${view.repository} falls back to values site.css does not hold: ${unlike.join("; ")}`,
+            `the explorer of ${view.repository} does not match site.css: ${unlike.join("; ")}`,
           );
         for (const [path, bytes] of explorer)
           written.set(`${ADAPTERS_FOLDER}${view.slug}/${path}`, bytes);
