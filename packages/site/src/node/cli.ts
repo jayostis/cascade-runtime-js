@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve as absolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
@@ -80,6 +81,11 @@ const STAGE = join(ROOT, "build", "package");
 const STARTER = "cascade-starter-kit";
 const PAGES = join(ROOT, "build", "pages");
 const SPEC = join(ROOT, "build", "spec");
+const BRIDGE_SPEC = {
+  repository: "https://github.com/jayostis/cascade-bridge-spec",
+};
+/** Where an adapter explorer's link to the hub's conformance report for the adapter points. */
+const HUB = "https://jayostis.github.io/cascade-runtime-js/";
 const log = (line: string): void => console.error(line);
 /** The hub's folders of the term reference and the spec's pages. */
 const TERMS = "terms/";
@@ -367,6 +373,7 @@ const testsFolderOf = (named: string | undefined): string =>
  */
 async function readAdapters(
   followed: readonly Followed[],
+  folders: Map<string, string>,
 ): Promise<AdapterRead[]> {
   const siblingsIn = await siblingsOf(ROOT);
   const cache = join(ROOT, "build", "cache");
@@ -374,6 +381,7 @@ async function readAdapters(
     followed.map(async (adapter): Promise<AdapterRead> => {
       try {
         const resolved = await resolve(adapter, { siblingsIn, cache, log });
+        folders.set(adapter.repository, resolved.folder);
         return {
           repository: adapter.repository,
           files: new FolderFiles(resolved.folder, resolved.iri),
@@ -389,11 +397,75 @@ async function readAdapters(
   );
 }
 
+/**
+ * The explorer of one adapter: cascade-bridge-spec's `scripts/adapter_explorer.py`, from the sibling checkout or the head of
+ * its default branch, run over the adapter's checkout and the vocabulary's, with Python 3.10 or later and rdflib
+ * (`PYTHON` names the interpreter when it is not `python3`). Its files are read back and its folder removed.
+ */
+async function explorerOf(
+  adapter: string,
+  folder: string,
+  vocabularyFolder: string,
+): Promise<Map<string, Uint8Array>> {
+  const spec = await bridgeSpec();
+  const out = join(await mkdtemp(join(tmpdir(), "explorer-")), "out");
+  try {
+    await promisify(execFile)(
+      process.env.PYTHON ?? "python3",
+      [
+        join(spec.folder, "scripts", "adapter_explorer.py"),
+        folder,
+        "--vocabulary",
+        vocabularyFolder,
+        "--repository",
+        adapter,
+        "--report",
+        `${HUB}conformance/tests/${repositoryName({ repository: adapter })}/`,
+        "--out",
+        out,
+      ],
+      { maxBuffer: 1 << 26 },
+    );
+    const files = new FolderFiles(out);
+    const read = new Map<string, Uint8Array>();
+    for (const path of await files.list("")) {
+      const bytes = await files.read(path);
+      if (bytes !== undefined) read.set(path, bytes);
+    }
+    return read;
+  } catch (error) {
+    const stderr =
+      error instanceof Error && "stderr" in error
+        ? String(error.stderr).trim().split(/\r?\n/).slice(-3).join(" ")
+        : "";
+    const said =
+      stderr !== ""
+        ? stderr
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    throw new Error(`the explorer of ${adapter} could not be made: ${said}`, {
+      cause: error,
+    });
+  } finally {
+    await rm(dirname(out), { recursive: true, force: true });
+  }
+}
+
 /** Runs the work on the first call, and gives the same answer to every call after. */
 function once<T>(work: () => Promise<T>): () => Promise<T> {
   let answer: Promise<T> | undefined;
   return () => (answer ??= work());
 }
+
+/** The cascade-bridge-spec checkout the explorers are made with, resolved once for every adapter. */
+const bridgeSpec = once(async () =>
+  resolve(BRIDGE_SPEC, {
+    siblingsIn: await siblingsOf(ROOT),
+    cache: join(ROOT, "build", "cache"),
+    log,
+  }),
+);
 
 /**
  * The providers of the hub's context: every kit's published sample built with the staged package, as an app that
@@ -404,7 +476,12 @@ function pagesContext(
   reportFile: string,
   testsFolder: string,
   chrome: Chrome,
+  explorers: boolean,
 ): PagesContext {
+  const folders = new Map<string, string>();
+  const adapters = once(() =>
+    readAdapters(vocabulary.config.adapters, folders),
+  );
   return {
     root: ROOT,
     log,
@@ -492,7 +569,14 @@ function pagesContext(
     })),
     report: once(() => readConformance(reportFile, vocabulary.resolved.iri)),
     tests: once(() => readTestReports(testsFolder)),
-    adapters: once(() => readAdapters(vocabulary.config.adapters)),
+    adapters,
+    explorer: async (repository) => {
+      if (!explorers) return undefined;
+      await adapters();
+      const folder = folders.get(repository);
+      if (folder === undefined) throw new Error("it was not read");
+      return explorerOf(repository, folder, vocabulary.resolved.folder);
+    },
     start: once(async () => {
       const starter = await latestBuild(
         STARTER_REPOSITORY,
@@ -509,7 +593,8 @@ function pagesContext(
 /**
  * Builds the whole Pages tree into build/pages: the hub's sections, the front page above them, and what reads the tree
  * once it is written. The one command that the pull request's docs site and the deploy both run. `--no-kits` leaves out
- * what is made of the kits, which is most of the time. `--out` names the folder to write instead of build/pages. `--report` names the conformance run's EARL report, with its
+ * what is made of the kits, which is most of the time. `--no-explorers` leaves out the adapters' explorers, which need
+ * Python 3.10 or later with rdflib; without it a build whose explorer cannot be made fails. `--out` names the folder to write instead of build/pages. `--report` names the conformance run's EARL report, with its
  * table.md beside it; the spec and conformance pages show every result as not run when there is none. `--tests` names the
  * folder of the unit test reports, a folder in it for each suite of `packages/site/test-suites.json` named as its
  * repository, each with `report`, `run.json` and perhaps `spec.json`; the page of a suite with none says it is not
@@ -521,6 +606,7 @@ async function buildPages(args: string[]): Promise<number> {
     options: {
       ...CHROME_OPTIONS,
       "no-kits": { type: "boolean" },
+      "no-explorers": { type: "boolean" },
       report: { type: "string" },
       tests: { type: "string" },
       out: { type: "string" },
@@ -535,6 +621,7 @@ async function buildPages(args: string[]): Promise<number> {
       reportFileOf(values.report),
       testsFolderOf(values.tests),
       chrome,
+      values["no-explorers"] !== true,
     ),
     front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows, chrome),
     finishers: FINISHERS,

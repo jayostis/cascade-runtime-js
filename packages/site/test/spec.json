@@ -11,7 +11,7 @@
     "Decision notes as pages · specSection",
     "Warnings about rules and decision notes · specPages().warnings, rulesNamedIn(), filesNamed()",
     "Conformance results on the specification · readSpecReport(), specSection",
-    "The adapters page and an adapter's crosswalk · adaptersSection",
+    "The hub publishes each adapter's explorer as it is · adaptersSection",
     "The adapters page says what an adapter is on one screen · adaptersIndex()",
     "The pages of a pod · Site.build(), Site.files()",
     "Where a pod's pages link · Site.files(), Site.page(), viewRules()",
@@ -94,7 +94,7 @@
     },
     {
       "term": "crosswalk",
-      "definition": "the page the site makes from an adapter's accounting: each source path beside the vocabulary term it is carried as, and the source paths that are not carried.",
+      "definition": "what an adapter's accounting says each source path becomes: the vocabulary term it is carried as, and the source paths that are not carried. The adapter's explorer shows it.",
       "aliases": ["crosswalks"]
     },
     {

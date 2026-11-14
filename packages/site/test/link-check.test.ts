@@ -403,6 +403,25 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
     });
   });
 
+  describe("with an adapter's explorer, which the hub publishes as the generator wrote it", () => {
+    it("asks it no link back to the front page, but asks one of the other pages of the adapters", async () => {
+      const result = await check({
+        "site.css": "",
+        "index.html": bare(`<a href="adapters/">adapters</a>`),
+        "adapters/index.html": bare(""),
+        "adapters/fhir-r4/index.html": bare("an explorer, as it is"),
+        "adapters/fhir-r4/other.html": bare(""),
+      });
+      assert.equal(result.code, 1, result.said);
+      const failed = result.said
+        .split("\n")
+        .filter((line) => line.startsWith("FAIL"));
+      assert.deepEqual(failed, [
+        "FAIL adapters/fhir-r4/other.html, adapters/index.html: links no way back to the front page",
+      ]);
+    });
+  });
+
   describe("with the `.txt` and `.md` files a site serves", () => {
     let result: Checked;
 

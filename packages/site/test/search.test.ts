@@ -13,6 +13,7 @@ import { dirname, join, posix } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
+import { ADAPTERS_FOLDER } from "../src/adapters.js";
 import {
   agentFiles,
   INDEX_FILE,
@@ -21,6 +22,7 @@ import {
   type SearchRow,
 } from "../src/agents.js";
 import { PLAIN, shell } from "../src/html.js";
+import { EXPLORER_FILE } from "../src/explorer.js";
 import { SEARCH_SCRIPT } from "../src/search-script.js";
 import { buildTree, type Section } from "../src/sections.js";
 
@@ -463,13 +465,16 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       assert.ok(!rows.some(({ path }) => path.startsWith("try/")));
     });
 
-    it("puts the box on every page of the hub, but the evals' own frame and a page that only redirects", () => {
+    it("puts the box on every page of the hub, but the evals' own frame, an adapter's explorer and a page that only redirects", () => {
       assert.ok(html.length > 30);
       let boxed = 0;
       for (const path of html) {
         const page = readFileSync(join(out, path), "utf8");
         const own =
-          path.startsWith("evals/") || page.includes('http-equiv="refresh"');
+          path.startsWith("evals/") ||
+          (path.startsWith(ADAPTERS_FOLDER) &&
+            existsSync(join(out, posix.dirname(path), EXPLORER_FILE))) ||
+          page.includes('http-equiv="refresh"');
         assert.equal(page.includes('class="sx-find"'), !own, path);
         if (own) continue;
         boxed++;

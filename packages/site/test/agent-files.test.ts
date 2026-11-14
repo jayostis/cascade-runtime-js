@@ -419,6 +419,13 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
           { source: "the A repository" },
         ),
         made("b/index.html", "Section B", { "b/index.html": page("B") }),
+        made("adapters/index.html", "Adapters", {
+          "adapters/index.html": page("Adapters"),
+          "adapters/x/index.html": page("X: an adapter explorer"),
+          "adapters/x/explorer.json": text("{}"),
+          "adapters/x/cases/0.json": text("{}"),
+          "adapters/cases/0.json": text("{}"),
+        }),
       ]);
       entries = entriesOf(tree);
       by = new Map(entries.map((entry) => [entry.path, entry]));
@@ -449,6 +456,13 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
         ),
         ["Notes", "data.ttl", "table.json", "blob.bin"],
       );
+    });
+
+    it("lists an adapter's explorer as one page and its data, and leaves out its test cases, which only the page reads", () => {
+      assert.equal(by.get("adapters/x/index.html")?.kind, "page");
+      assert.ok(by.has("adapters/x/explorer.json"));
+      assert.ok(!by.has("adapters/x/cases/0.json"));
+      assert.ok(by.has("adapters/cases/0.json"));
     });
 
     it("leaves out every stylesheet", () => {
