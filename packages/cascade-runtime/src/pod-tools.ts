@@ -11,7 +11,13 @@ import {
 } from "./changes.js";
 import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
-import type { Answer, Model, Proposal, Written } from "./proposals.js";
+import type {
+  Answer,
+  ProposalCheck,
+  Model,
+  Proposal,
+  Written,
+} from "./proposals.js";
 import {
   HISTORY_QUESTION,
   medicationsNotChecked,
@@ -31,6 +37,7 @@ import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
 export * from "./table-checks.js";
 export type {
   Answer,
+  ProposalCheck,
   Model,
   Proposal,
   Recording,
@@ -243,6 +250,12 @@ export interface PodReads {
   }): Promise<{ value: unknown; found?: readonly LabChange[] }>;
   /** What the reference tables and the pod's verdicts against them answer for the pod; absent, or none, when the tables are off. */
   tables?(input: { pod: string }): Promise<TableLookups | undefined>;
+  /**
+   * What the pod would say to a write, found before the person is asked and writing nothing: why it would refuse it, and
+   * what the person is shown of it, read from the pod. Absent, the tool asks without having checked, and shows what it
+   * can of the proposal alone.
+   */
+  check?(input: { pod: string; proposal: Proposal }): Promise<ProposalCheck>;
   /**
    * Files a write the person said yes to, as `proposedTurtle` records it, naming `model` as its proposer and the pod's
    * owner as the person who said yes; absent when the host writes nothing, which a tool at ask then refuses.

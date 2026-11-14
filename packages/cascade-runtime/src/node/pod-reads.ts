@@ -16,6 +16,7 @@ import {
   unknownChangeTool,
 } from "../pod-tools.js";
 import { proposedTurtle } from "../propose-tools.js";
+import { checkProposal } from "./proposal-check.js";
 
 export { proposer } from "./proposer.js";
 
@@ -126,36 +127,34 @@ export function podReads(
       const found = await findChanges(pod, input);
       return { value: found.map(citedLabChange), found };
     },
+    async check({ pod: name, proposal }) {
+      return checkProposal(await podNamed(name), proposal);
+    },
     async write({ pod: name, proposal, model }) {
       const pod = await podNamed(name);
+      const { refused } = await checkProposal(pod, proposal, model);
+      if (refused !== undefined) return { refused };
       const turtle = proposedTurtle(proposal, {
         model,
         owner: pod.owner,
         session: randomId(),
       });
       if (proposal.kind === "entry") {
-        const { refused, activity } = await pod.enter(turtle);
+        const entered = await pod.enter(turtle);
         return {
-          ...(refused === undefined ? {} : { refused }),
-          ...(activity === undefined ? {} : { id: activity }),
+          ...(entered.refused === undefined
+            ? {}
+            : { refused: entered.refused }),
+          ...(entered.activity === undefined ? {} : { id: entered.activity }),
         };
-      }
-      if (proposal.kind === "retraction") {
-        const held = await pod.ask({
-          query: `SELECT ?judgment WHERE { ?judgment a ?kind FILTER (?judgment = <${proposal.judgment}> && ?kind IN (<https://ns.cascadeprotocol.org/cascade#Judgment>, <https://ns.cascadeprotocol.org/cascade#MatcherJudgmentAssertion>)) }`,
-        });
-        if (held.length === 0)
-          throw new Refusal(
-            `the pod holds no judgment ${proposal.judgment} to retract`,
-          );
       }
       let filed;
       try {
         filed = await pod.judge(turtle);
       } catch (error) {
-        throw new Refusal(
-          error instanceof Error ? error.message : String(error),
-        );
+        return {
+          refused: error instanceof Error ? error.message : String(error),
+        };
       }
       return {
         ...(filed.refused === undefined ? {} : { refused: filed.refused }),

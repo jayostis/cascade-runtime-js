@@ -45,7 +45,7 @@ import {
   type AnswerStore,
   type Described,
 } from "./answers.js";
-import { judged } from "./judging.js";
+import { checkJudgment, judged } from "./judging.js";
 import { THIS_JUDGMENT } from "./proposals.js";
 import { currentOf, shipped, type Tables } from "./tables.js";
 
@@ -115,7 +115,18 @@ export interface Pod {
    */
   connect(saved: Exported, options?: { match?: boolean }): Promise<Done>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
+  /**
+   * What `enter` would say to the entry, writing nothing: `refused` with why when the vocabulary refuses it or it states
+   * a property the vocabulary does not declare, else its `statements` and the `labels` the vocabulary gives its terms.
+   */
+  checkEntry(turtle: string): Promise<{
+    refused?: string;
+    statements?: readonly Triple[];
+    labels?: ReadonlyMap<string, string>;
+  }>;
   judge(turtle: string): Promise<Done>;
+  /** Why `judge` would fail on the Turtle before the pod's rules are asked, or nothing, writing nothing. */
+  checkJudgment(turtle: string): Promise<string | undefined>;
   match(activity?: string): Promise<Done>;
   ask(
     question: string | { query: string },
@@ -639,8 +650,33 @@ class OpenPod implements Pod {
     });
   }
 
+  checkEntry(turtle: string) {
+    return this.#next(async () => {
+      const checked = await this.#core.checkEntry({
+        bytes: new TextEncoder().encode(turtle),
+        base: this.address,
+        name: "the entry",
+      });
+      return checked;
+    });
+  }
+
   judge(turtle: string): Promise<Done> {
     return this.#next(() => this.#judge(turtle));
+  }
+
+  checkJudgment(turtle: string): Promise<string | undefined> {
+    return this.#next(() =>
+      checkJudgment(
+        {
+          core: this.#core,
+          newStore: this.#parts.newStore,
+          address: this.address,
+          time: clock,
+        },
+        turtle,
+      ),
+    );
   }
 
   match(activity?: string): Promise<Done> {

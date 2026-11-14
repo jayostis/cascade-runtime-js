@@ -79,16 +79,16 @@ function failure(error: unknown): string {
 }
 
 /**
- * Files the judgment or the retraction `turtle` holds, named `<urn:cascade:this-judgment>` in it: under a new name, at
- * the time now, and for a verdict that says something of its members' versions, naming the version each was at.
+ * What filing the judgment or the retraction `turtle` holds writes, named `<urn:cascade:this-judgment>` in it: under a
+ * new name, at the time now, and for a verdict that says something of its members' versions, naming the version each was at.
  *
  * @throws Error when the Turtle is none, holds more or less than one judgment or retraction, or names a member the pod
  *   holds no version of.
  */
-export async function judged(
+async function prepared(
   { core, newStore, address, time }: Judging,
   turtle: string,
-): Promise<Judged> {
+): Promise<{ name: string; triples: Triple[] }> {
   let stated: Triple[];
   try {
     stated = await newStore().parse(turtle, address);
@@ -157,8 +157,9 @@ export async function judged(
       used.push([judgment, iri(DERIVED_FROM), iri(version)]);
     }
   }
-  const filed = await core.judge({
-    bytes: ntriples([
+  return {
+    name,
+    triples: [
       ...named,
       ...used,
       [
@@ -166,9 +167,40 @@ export async function judged(
         iri(retracting ? STARTED_AT : GENERATED_AT),
         literal(time.now(), `${XSD}dateTime`),
       ],
-    ]),
-    base: address,
+    ],
+  };
+}
+
+/**
+ * Files the judgment or the retraction `turtle` holds, named `<urn:cascade:this-judgment>` in it.
+ *
+ * @throws Error as `checkJudgment` does.
+ */
+export async function judged(
+  judging: Judging,
+  turtle: string,
+): Promise<Judged> {
+  const { name, triples } = await prepared(judging, turtle);
+  const filed = await judging.core.judge({
+    bytes: ntriples(triples),
+    base: judging.address,
     name: "the judgment",
   });
   return filed.refused === undefined ? { ...filed, judgment: name } : filed;
+}
+
+/**
+ * Why filing the judgment or the retraction `turtle` holds would fail before the pod's rules are asked, or nothing
+ * when it would not; nothing is written.
+ */
+export async function checkJudgment(
+  judging: Judging,
+  turtle: string,
+): Promise<string | undefined> {
+  try {
+    await prepared(judging, turtle);
+  } catch (error) {
+    return failure(error);
+  }
+  return undefined;
 }

@@ -115,23 +115,59 @@ ${agents}`;
   }
 }
 
-const SAID: Record<Verdict, string> = {
-  same: "the same thing",
-  different: "different things",
-  erroneous: "entered in error",
+/** What a host found of a proposal before the person is asked, nothing written. */
+export interface ProposalCheck {
+  /** Why the pod would refuse it, when it would. */
+  readonly refused?: string;
+  /**
+   * What the person is shown of it, one line each, read from the pod: an entry's statements by the vocabulary's words, or
+   * each record a judgment names by what it is and where it came from.
+   */
+  readonly shown?: readonly string[];
+  /** For a retraction, the verdict of the judgment it retracts. */
+  readonly verdict?: Verdict;
+}
+
+const SAID: Record<Verdict, readonly [string, string]> = {
+  same: ["this record is the same thing", "these records are the same thing"],
+  different: [
+    "this record is a different thing",
+    "these records are different things",
+  ],
+  erroneous: [
+    "this record was entered in error",
+    "these records were entered in error",
+  ],
 };
 
-/** What the person is shown before they are asked: who proposes what, for which pod, and that nothing is written without their yes. */
+/** What a judgment of `verdict` over `count` records says, as a clause. */
+const saying = (verdict: Verdict, count: number): string =>
+  SAID[verdict][count === 1 ? 0 : 1];
+
+/**
+ * What the person is shown before they are asked: who proposes what, for which pod, and that nothing is written without
+ * their yes. What a proposal holds is shown as the host read it from the pod (`shown`), never as the model wrote it.
+ */
 export function describeProposal(
   pod: string,
   proposal: Proposal,
   model: Model,
+  { shown, verdict }: Pick<ProposalCheck, "shown" | "verdict"> = {},
 ): string {
-  const what =
-    proposal.kind === "entry"
-      ? `to add this entry to the pod ${pod}:\n\n${proposal.turtle.trim()}`
-      : proposal.kind === "judgment"
-        ? `to record in the pod ${pod}, as your judgment, that these records are ${SAID[proposal.verdict]}:\n\n${proposal.members.map((member) => `- ${member}`).join("\n")}`
-        : `to retract, in the pod ${pod}, your judgment ${proposal.judgment}, which sets aside what it said`;
-  return `${model.label} proposes ${what}\n\nSay yes to write it; nothing is written otherwise.`;
+  const lines = (fallback: readonly string[]) => (shown ?? fallback).join("\n");
+  let what: string;
+  let after = "";
+  if (proposal.kind === "entry")
+    what = `to add this entry to the pod ${pod}:\n\n${lines(["(what it states could not be read here)"])}`;
+  else if (proposal.kind === "judgment")
+    what = `to record in the pod ${pod}, as your judgment, that ${saying(proposal.verdict, proposal.members.length)}:\n\n${lines(proposal.members.map((member) => `- ${member}`))}`;
+  else {
+    const says =
+      verdict === undefined || shown === undefined
+        ? ""
+        : ` that ${saying(verdict, shown.length)}`;
+    what = `to retract, in the pod ${pod}, your judgment${says}:\n\n${lines([`- ${proposal.judgment}`])}`;
+    after = "\n\nRetracting a judgment sets aside what it said.";
+  }
+  return `${model.label} proposes ${what}${after}\n\nSay yes to write it; nothing is written otherwise.`;
 }

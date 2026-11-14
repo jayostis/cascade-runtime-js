@@ -1,5 +1,10 @@
 import { ConnectRefused, readConnect } from "@cascade-runtime/fhir-pull";
-import { fileConnect, fileEntry, fileExport } from "./arrivals.js";
+import {
+  entryChecked,
+  fileConnect,
+  fileEntry,
+  fileExport,
+} from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
 import {
   builtFileBytes,
@@ -636,6 +641,15 @@ export class CorePod {
   enter(entry: StepFile): Promise<Performed> {
     return this.#step(async (context) =>
       fileEntry(context, entry, await this.#shapes()),
+    );
+  }
+
+  /** What `enter` would say to `entry`, without writing anything: why it is refused, or its statements and the vocabulary's labels. */
+  async checkEntry(entry: StepFile) {
+    return entryChecked(
+      { newStore: this.#options.newStore, time: this.#options.time },
+      entry,
+      await this.#shapes(),
     );
   }
 

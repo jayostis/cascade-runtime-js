@@ -28,6 +28,7 @@ export {
 } from "./proposals.js";
 export type {
   Answer,
+  ProposalCheck,
   Model,
   Proposal,
   Recording,
@@ -35,16 +36,20 @@ export type {
   Written,
 } from "./proposals.js";
 
-/** `members` as a judgment of `verdict` takes them: IRIs, at least two for a verdict that compares and one for one that does not. */
+/**
+ * `members` as a judgment of `verdict` takes them: IRIs, each once however often it is named, at least two for a verdict
+ * that compares and one for one that does not.
+ */
 function membersOf(verdict: Verdict, members: unknown): string[] {
   const named = members as unknown[];
-  const least = verdict === "erroneous" ? 1 : 2;
-  if (named.length < least)
-    throw new Refusal(
-      `a judgment that records are ${verdict} names at least ${least} of them`,
-    );
   named.forEach((member, at) => checkIri(member, `members[${at}]`));
-  return named as string[];
+  const once = [...new Set(named as string[])];
+  const least = verdict === "erroneous" ? 1 : 2;
+  if (once.length < least)
+    throw new Refusal(
+      `a judgment that records are ${verdict} names at least ${least} different records`,
+    );
+  return once;
 }
 
 /**
@@ -70,16 +75,27 @@ function proposing(
     if (reads.write === undefined)
       throw new Refusal("this host writes to no pod");
     const pod = input.pod as string;
-    const said = await door.ask(describeProposal(pod, proposal, door.model));
-    if (said !== "yes") return { written: false, said };
-    const { refused, id } = await reads.write({
-      pod,
-      proposal,
-      model: door.model,
-    });
-    return refused === undefined
-      ? { written: true, ...(id === undefined ? {} : { id }) }
-      : { written: false, refused };
+    try {
+      const checked = (await reads.check?.({ pod, proposal })) ?? {};
+      if (checked.refused !== undefined)
+        return { written: false, refused: checked.refused };
+      const said = await door.ask(
+        describeProposal(pod, proposal, door.model, checked),
+      );
+      if (said !== "yes") return { written: false, said };
+      const { refused, id } = await reads.write({
+        pod,
+        proposal,
+        model: door.model,
+      });
+      return refused === undefined
+        ? { written: true, ...(id === undefined ? {} : { id }) }
+        : { written: false, refused };
+    } catch (error) {
+      if (error instanceof Refusal)
+        return { written: false, refused: error.message };
+      throw error;
+    }
   };
 }
 

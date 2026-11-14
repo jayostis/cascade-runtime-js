@@ -24,6 +24,7 @@ import type { StepWrites } from "./pod.js";
 import {
   type BlankNode,
   iri,
+  type Literal,
   literal,
   type NamedNode,
   ntriples,
@@ -1238,13 +1239,17 @@ export async function fileExport(
   return name;
 }
 
-/** An entry: its session's description, and each draft as a record (N2) with its version and first revision (A12). */
-export async function fileEntry(
-  context: StepContext,
+/**
+ * An entry's statements with its session's start given, once they name one session and conform to the vocabulary's shapes.
+ *
+ * @throws Refusal when they do not.
+ */
+async function entryGraph(
+  { newStore, time }: Pick<StepContext, "newStore" | "time">,
   entry: StepFile,
   shapes: Shapes,
-): Promise<string> {
-  let graph = await parseStepFile(entry, context.newStore);
+): Promise<{ graph: Graph; session: Triple[0] }> {
+  let graph = await parseStepFile(entry, newStore);
   const activities = [
     ...new Map(
       [`${PROV}Activity`, HAND_ENTRY_SESSION].flatMap((kind) =>
@@ -1265,7 +1270,7 @@ export async function fileEntry(
     throw new Refusal(`${entry.name}'s session has no name`);
   let [at] = graph.objects(session, STARTED);
   if (at === undefined) {
-    at = literal(context.time.now(), DATE_TIME);
+    at = literal(time.now(), DATE_TIME);
     graph = new Graph([...graph.triples, [session, iri(STARTED), at]]);
   }
   try {
@@ -1280,6 +1285,59 @@ export async function fileEntry(
     throw new Refusal(
       `${entry.name} does not conform to the vocabulary's shapes: ${unfit.join("; ")}`,
     );
+  return { graph, session };
+}
+
+/**
+ * What the pod would say to an entry without filing it: why the vocabulary refuses it, when it does, or else its
+ * statements, with the label the vocabulary gives each term.
+ */
+export async function entryChecked(
+  context: Pick<StepContext, "newStore" | "time">,
+  entry: StepFile,
+  shapes: Shapes,
+): Promise<
+  | { refused: string }
+  | { statements: readonly Triple[]; labels: ReadonlyMap<string, string> }
+> {
+  let graph: Graph;
+  try {
+    ({ graph } = await entryGraph(context, entry, shapes));
+  } catch (error) {
+    if (error instanceof Refusal) return { refused: error.message };
+    throw error;
+  }
+  const declared = new Set(
+    shapes.terms.flatMap(([s]) =>
+      s.termType === "NamedNode" ? [s.value] : [],
+    ),
+  );
+  const undeclared = [
+    ...new Set(
+      graph.triples
+        .map(([, p]) => p.value)
+        .filter((predicate) => predicate !== TYPE && !declared.has(predicate)),
+    ),
+  ].sort();
+  if (undeclared.length > 0)
+    return {
+      refused: `${entry.name} states ${undeclared.join(", ")}, which the vocabulary does not declare`,
+    };
+  const labels = new Map<string, string>();
+  for (const [s, p, o] of shapes.terms)
+    if (p.value === RDFS_LABEL && o.termType === "Literal")
+      labels.set(s.value, o.value);
+  return { statements: graph.triples, labels };
+}
+
+/** An entry: its session's description, and each draft as a record (N2) with its version and first revision (A12). */
+export async function fileEntry(
+  context: StepContext,
+  entry: StepFile,
+  shapes: Shapes,
+): Promise<string> {
+  const { graph, session } = await entryGraph(context, entry, shapes);
+  const [at] = graph.objects(session, STARTED) as [Literal];
   const records = new Map<string, NamedNode>();
   for (const draft of graph.subjects(TYPE)) {
     const position = DRAFT.exec(draft.value)?.[1];

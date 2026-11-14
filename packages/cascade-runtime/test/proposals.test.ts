@@ -219,7 +219,7 @@ describe("Tools a model proposes a write with · propose_entry, propose_judgment
 
     it("shows the person the pod, who proposes and what will be written, before it asks", async () => {
       const shown: Record<string, RegExp[]> = {
-        propose_entry: [/Test client 1\.2\.3/, /Asthma/, /\bp\b/],
+        propose_entry: [/Test client 1\.2\.3/, /add this entry/, /\bp\b/],
         propose_judgment: [
           /different/,
           new RegExp(RECORD_A),
@@ -316,7 +316,7 @@ describe("Tools a model proposes a write with · propose_entry, propose_judgment
         asking("yes").door,
       );
       assert.deepEqual(
-        (written[0]!.proposal as { members: string[] }).members,
+        (written[0]!.proposal as unknown as { members: string[] }).members,
         [RECORD_A, RECORD_B],
       );
     });
