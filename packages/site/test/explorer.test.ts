@@ -445,7 +445,7 @@ describe("The pod explorer's data · explorerData(), Site.files()", () => {
           assert.equal(step.performed, performed.get(step.name), step.name);
     });
 
-    it("says of a performed step whether it wrote nothing or was refused, as the kit's own examples do", async () => {
+    it("tells whether a performed step wrote nothing or was refused, as the kit's own examples do", async () => {
       const wrote = async (name: string) => {
         const pod = new MemoryFiles("https://pod.example/");
         await featurePod(

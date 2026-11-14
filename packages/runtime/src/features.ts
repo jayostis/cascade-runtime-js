@@ -210,6 +210,42 @@ export async function readWrittenFeature(
   };
 }
 
+/** What a kit says of a step that ran and left no act: it wrote nothing, or it was refused. */
+export type StepWrote = "nothing" | "refused";
+
+/**
+ * The steps a kit's examples say wrote no file, or wrote none because they were refused, read from the examples as
+ * written: `"E7" wrote no file` (one name or a list of them), an empty list of `wrote these reference descriptions`, and
+ * `that step is refused` after reading the pod as it stood after a step. A refusal outranks a plain nothing.
+ */
+export function stepsThatWroteNoFile(
+  feature: WrittenFeature,
+): ReadonlyMap<string, StepWrote> {
+  const said = new Map<string, StepWrote>();
+  const say = (name: string, how: StepWrote) => {
+    if (said.get(name) !== "refused") said.set(name, how);
+  };
+  for (const { text } of feature.rules.flatMap(({ examples }) => examples)) {
+    const lines = text.split("\n").map((line) => line.trim());
+    lines.forEach((line, at) => {
+      const none = /^(?:Then|And) (.+) wrote no file$/.exec(line);
+      if (none !== null)
+        for (const [, name] of none[1]!.matchAll(/"([^"]+)"/g))
+          say(name!, "nothing");
+      const described =
+        /^(?:Then|And) "([^"]+)" wrote these reference descriptions:$/.exec(
+          line,
+        );
+      if (described !== null && !(lines[at + 2] ?? "").startsWith("|"))
+        say(described[1]!, "nothing");
+    });
+    const after = /When the pod is read as it stood after "([^"]+)"/.exec(text);
+    if (after !== null && /^\s*Then that step is refused\s*$/m.test(text))
+      say(after[1]!, "refused");
+  }
+  return said;
+}
+
 /** Every feature file of the rules, under `runtime/`, and of each kit, a folder under `conformance/`. */
 export async function featuresOf(vocabulary: Files): Promise<string[]> {
   return [
