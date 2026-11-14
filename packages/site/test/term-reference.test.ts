@@ -10,6 +10,7 @@ import {
 } from "@cascade-runtime/runtime";
 import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { termsSection } from "../src/hub/terms.js";
 import { ruleHref, termHref, termId } from "../src/links.js";
@@ -135,7 +136,7 @@ describe("The term reference · termReference(), termsSection", () => {
   let many: string;
 
   before(async () => {
-    page = await termReference(await fixture());
+    page = await termReference(await fixture(), PLAIN);
     const system = `${CASCADE}vaccineCodeSystem`;
     const files = await fixture();
     await files.write(
@@ -149,7 +150,7 @@ describe("The term reference · termReference(), termsSection", () => {
         `queries/views/many-${n}.rq`,
         text(`SELECT ?s WHERE { ?v <${system}> ?s } # ${n}`),
       );
-    many = await termReference(files);
+    many = await termReference(files, PLAIN);
   });
 
   describe("`termReference()`", () => {
@@ -296,11 +297,12 @@ describe("The term reference · termReference(), termsSection", () => {
         root: "",
         log: () => undefined,
         vocabulary: async () => ({ files, builtFrom: [], at: "" }),
+        chrome: PLAIN,
       } as unknown as PagesContext;
       ({ tree } = await buildTree({
         sections: [termsSection],
         ctx,
-        front: (rows) => hubFiles([], rows),
+        front: (rows) => hubFiles([], rows, PLAIN),
       }));
     });
 
@@ -324,7 +326,7 @@ describe("The term reference · termReference(), termsSection", () => {
       ({ files } = await localVocabulary(
         findRoot(dirname(fileURLToPath(import.meta.url))),
       ));
-      real = await termReference(files);
+      real = await termReference(files, PLAIN);
       ({ hrefs, ids } = readPage(real));
     });
 
@@ -367,6 +369,7 @@ describe("The term reference · termReference(), termsSection", () => {
         report: { results: new Map(), ranWith: [], repeated: [] },
         builtFrom: [],
         at: "2026-11-04T00:00:00Z",
+        chrome: PLAIN,
       });
       const rules = hrefs.filter((href) => href.startsWith(SPEC));
       assert.ok(rules.length > 0);

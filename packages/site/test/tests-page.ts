@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { hubFiles } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import type { Suite, SuiteRun, TestRun } from "../src/hub/context.js";
 import { testsSection } from "../src/hub/tests.js";
 import { buildTree } from "../src/sections.js";
@@ -125,8 +126,8 @@ export async function pageWith(
   ];
   const { tree } = await buildTree({
     sections: [testsSection],
-    ctx: { tests: async () => runs },
-    front: (rows) => hubFiles(["Records"], rows),
+    ctx: { tests: async () => runs, chrome: PLAIN },
+    front: (rows) => hubFiles(["Records"], rows, PLAIN),
   });
   const markup = runs
     .map(({ suite: { repository } }) => {

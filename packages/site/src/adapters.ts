@@ -13,7 +13,6 @@ import {
   type Content,
   Html,
   markup,
-  PLAIN,
   shell as pageShell,
 } from "./html.js";
 import { noteLinkOf, termHref } from "./links.js";
@@ -388,7 +387,7 @@ export type Listed =
 /** The page that lists the adapters, with the commit each was built from and how many paths it carries. */
 export function adaptersIndex(
   listed: readonly Listed[],
-  chrome: Chrome = PLAIN,
+  chrome: Chrome,
 ): Uint8Array {
   return shell(
     chrome,
@@ -557,10 +556,7 @@ const RESERVED = [
 ];
 
 /** One adapter's page: the crosswalk, what is not carried, and the adapter's format notes. */
-export function adapterPage(
-  view: AdapterView,
-  chrome: Chrome = PLAIN,
-): Uint8Array {
+export function adapterPage(view: AdapterView, chrome: Chrome): Uint8Array {
   const { accounting } = view;
   const { carried, part, not } = counts(accounting);
   const withForms = accounting.paths.some(

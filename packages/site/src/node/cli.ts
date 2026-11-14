@@ -146,7 +146,7 @@ function inHub(): Pick<SiteOptions, "front" | "terms" | "spec"> {
  */
 async function buildExampleSite(
   args: string[],
-  hub: Pick<SiteOptions, "front" | "terms" | "spec" | "chrome"> = {},
+  hub: Partial<Pick<SiteOptions, "front" | "terms" | "spec" | "chrome">> = {},
 ): Promise<number> {
   const { values, positionals } = parseArgs({
     args,

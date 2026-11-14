@@ -4,6 +4,7 @@ import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { evalsSection } from "../src/node/hub/evals.js";
 import {
@@ -37,7 +38,7 @@ function inMemory(
 }
 
 const front = (rows: Parameters<typeof hubFiles>[1]) =>
-  hubFiles(["Records"], rows);
+  hubFiles(["Records"], rows, PLAIN);
 
 const buildOf = (
   sections: Section<object>[],
@@ -256,7 +257,10 @@ describe("The evals pages as a section of the site · evalsSection", () => {
     let files: ReadonlyMap<string, Uint8Array>;
 
     before(async () => {
-      files = await evalsSection.build({ root: ROOT } as PagesContext);
+      files = await evalsSection.build({
+        root: ROOT,
+        chrome: PLAIN,
+      } as PagesContext);
     });
 
     it("writes `evals/index.html` as its entry page", () => {

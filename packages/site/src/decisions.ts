@@ -1,11 +1,4 @@
-import {
-  type Chrome,
-  type Content,
-  Html,
-  markup,
-  PLAIN,
-  shell,
-} from "./html.js";
+import { type Chrome, type Content, Html, markup, shell } from "./html.js";
 import {
   frontPageLink,
   noteHref,
@@ -47,7 +40,7 @@ export interface DecisionOptions {
   readonly readme: string;
   /** The spec's pages, from a page of `decisions/`, ending in a slash. */
   readonly spec: string;
-  readonly chrome?: Chrome;
+  readonly chrome: Chrome;
 }
 
 /** A page of the notes' own folder to another: `naming.html`, never the way round through the folder above. */
@@ -60,14 +53,14 @@ const ruleLink = (cited: Citation, spec: string): string =>
     : ruleHref(cited.feature, cited.number, spec);
 
 function page(
-  chrome: Chrome | undefined,
+  chrome: Chrome,
   title: string,
   source: { readonly href: string; readonly path: string },
   main: Content,
 ): Uint8Array {
   return new TextEncoder().encode(
     shell({
-      chrome: chrome ?? PLAIN,
+      chrome,
       title: markup`${title} · Cascade decision notes`,
       stylesheet: DECISIONS_STYLESHEET_FILE,
       nav: markup`${frontPageLink(1)}

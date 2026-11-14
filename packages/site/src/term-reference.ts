@@ -10,14 +10,7 @@ import {
   type Term,
   XSD,
 } from "@cascade-runtime/runtime";
-import {
-  type Chrome,
-  type Content,
-  Html,
-  markup,
-  PLAIN,
-  shell,
-} from "./html.js";
+import { type Chrome, type Content, Html, markup, shell } from "./html.js";
 import { NAMESPACE_HOST, ruleHref, termHref, termId } from "./links.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { numberOf } from "./spec.js";
@@ -738,7 +731,7 @@ export async function declaredTerms(
  */
 export async function termReference(
   vocabulary: Files,
-  chrome: Chrome = PLAIN,
+  chrome: Chrome,
 ): Promise<string> {
   const [ontology, ontologyText] = await parse(vocabulary, ONTOLOGY);
   const [shapes, shapesText] = await parse(vocabulary, SHAPES);

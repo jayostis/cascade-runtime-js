@@ -5,7 +5,7 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import type { Answer } from "./answer.js";
-import { type Content, Html, markup, PLAIN, shell } from "./html.js";
+import { type Content, Html, markup, shell } from "./html.js";
 import { namedInQuery } from "./term-reference.js";
 import { noteHref, ruleHref, sharedPageOf, termHref } from "./links.js";
 import type { Site } from "./site.js";
@@ -162,7 +162,7 @@ export function navOf(site: Site): Html {
 
 function layout(site: Site, title: string, main: Content): Html {
   return shell({
-    chrome: site.options.chrome ?? PLAIN,
+    chrome: site.options.chrome,
     title: markup`${title} · ${site.pod.title}`,
     stylesheet: "site.css",
     nav: navOf(site),

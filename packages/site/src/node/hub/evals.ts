@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FolderFiles } from "@cascade-runtime/runtime/node";
-import { chromeStrings, PLAIN } from "../../html.js";
+import { chromeStrings } from "../../html.js";
 import { FRONT_PAGE } from "../../links.js";
 import type { PagesContext } from "../../hub/context.js";
 import type { Section } from "../../sections.js";
@@ -38,7 +38,7 @@ export const evalsSection: Section<PagesContext> = {
         { history: true },
         out,
         `../${FRONT_PAGE}`,
-        chromeStrings(chrome ?? PLAIN),
+        chromeStrings(chrome),
       );
       const folder = new FolderFiles(out);
       const files = new Map<string, Uint8Array>();

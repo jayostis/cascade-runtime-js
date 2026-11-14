@@ -64,6 +64,7 @@ export const chromeStyles = (scope: string): string => `${scope} {
 .sx-footer p { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .sx-footer-legal { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 32px; padding-top: 18px;
                    border-top: 1px solid var(--rule); font-size: 14px; line-height: 1.5; color: var(--muted); }
+.sx-footer-inner > .sx-footer-legal:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .sx-footer-legal span { margin-right: auto; }
 .sx-footer p.sx-footer-built { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
 .sx-footer-legal a { color: var(--muted); display: inline-flex; align-items: center; min-height: 32px; }

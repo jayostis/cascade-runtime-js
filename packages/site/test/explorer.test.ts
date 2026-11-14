@@ -25,6 +25,7 @@ import {
   type ExplorerData,
   type ExplorerFile,
 } from "../src/explorer.js";
+import { PLAIN } from "../src/html.js";
 import { Site, type SiteOptions } from "../src/site.js";
 import { COPY } from "../src/terms.js";
 
@@ -53,6 +54,7 @@ const optionsFor = (pod: MemoryFiles, name: string): SiteOptions => ({
   name,
   at: "2026-03-03T08:00:00Z",
   ask: `npm run ask -- ${name}`,
+  chrome: PLAIN,
 });
 
 const file = (data: ExplorerData, path: string): ExplorerFile => {

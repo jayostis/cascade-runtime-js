@@ -87,7 +87,7 @@ export interface PagesContext {
   readonly root: string;
   readonly log: (line: string) => void;
   /** What every page's header and footer are built with. */
-  readonly chrome?: Chrome;
+  readonly chrome: Chrome;
   /** The address the pages will be served at, ending in `/`; when unset, `llms.txt` links relative to itself. */
   readonly base?: string;
   /** Every kit's pod and site, built. */

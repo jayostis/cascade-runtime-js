@@ -5,7 +5,7 @@ import {
   WANT_ORDER,
   WANTS,
 } from "./front-page.js";
-import { type Chrome, Html, markup, PLAIN, shell } from "./html.js";
+import { type Chrome, Html, markup, shell } from "./html.js";
 import { renderMarkdown, renderWithHeadings } from "./markdown.js";
 import {
   addressOf,
@@ -275,7 +275,7 @@ const INSTALL_MARKER = /^<!-- INSTALL -->\r?\n(?:\r?\n)?/m;
 export function apiPages(
   guide: string,
   readme: string,
-  chrome: Chrome = PLAIN,
+  chrome: Chrome,
 ): ReadonlyMap<string, Uint8Array> {
   return new Map([
     [

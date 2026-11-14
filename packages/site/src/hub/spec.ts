@@ -1,5 +1,5 @@
 import { decisionPages } from "../decisions.js";
-import { markup, PLAIN, shell } from "../html.js";
+import { markup, shell } from "../html.js";
 import { frontPageLink } from "../links.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
@@ -112,7 +112,7 @@ export const specSection: Section<SpecContext> = {
       `${CONFORMANCE_FOLDER}index.html`,
       encoder.encode(
         shell({
-          chrome: ctx.chrome ?? PLAIN,
+          chrome: ctx.chrome,
           title: "Cascade runtime conformance results",
           stylesheet: `../${STYLESHEET_FILE}`,
           nav: markup`${frontPageLink(1)}\n`,

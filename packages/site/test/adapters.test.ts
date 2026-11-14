@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { type Files, MemoryFiles } from "@cascade-runtime/runtime";
 import { hubFiles } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import type { AdapterRead, PagesContext } from "../src/hub/context.js";
 import { adaptersSection } from "../src/hub/adapters.js";
 import { termHref } from "../src/links.js";
@@ -171,8 +172,9 @@ async function built(adapters: readonly AdapterRead[]) {
       adapters: async () => adapters,
       vocabulary: async () => ({ files, builtFrom: [], at: "2026-11-04" }),
       log: () => undefined,
+      chrome: PLAIN,
     } as unknown as PagesContext,
-    front: (rows) => hubFiles(["Records"], rows),
+    front: (rows) => hubFiles(["Records"], rows, PLAIN),
   });
   const read = (path: string): string => {
     const bytes = tree.get(path);

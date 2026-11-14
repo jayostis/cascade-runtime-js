@@ -227,6 +227,21 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       }
     });
 
+    it("takes the legal line's own rule and spacing away when no column is above it", () => {
+      assert.match(
+        stylesheet,
+        /\.sx-footer-inner > \.sx-footer-legal:first-child \{ margin-top: 0; padding-top: 0; border-top: 0; \}/,
+      );
+      const footer = off.values().next().value ?? "";
+      const inner = footer.slice(
+        footer.indexOf(`<div class="sx-footer-inner">`),
+      );
+      assert.match(
+        inner,
+        /^<div class="sx-footer-inner">\s*<div class="sx-footer-legal">/,
+      );
+    });
+
     it("sets the page's width on `main`, not on `body`, so the strip, header and footer run across", () => {
       assert.match(stylesheet, /\nmain, nav\.hub-nav \{ max-width: 68rem;/);
       assert.ok(!/\nnav \{/.test(stylesheet));

@@ -1,4 +1,4 @@
-import { type Html, markup, PLAIN, shell } from "./html.js";
+import { type Html, markup, shell } from "./html.js";
 import type { Site } from "./site.js";
 import { EXPLORER_FILE } from "./explorer.js";
 
@@ -12,7 +12,7 @@ export const EXPLORER_STYLE_FILE = "explorer.css";
  */
 export function explorerPage(site: Site, nav: Html): Html {
   return shell({
-    chrome: site.options.chrome ?? PLAIN,
+    chrome: site.options.chrome,
     title: `Explorer · ${site.pod.title}`,
     stylesheet: "site.css",
     head: markup`<link rel="stylesheet" href="${EXPLORER_STYLE_FILE}">

@@ -19,7 +19,6 @@ import {
   escape,
   Html,
   markup,
-  PLAIN,
   shell,
 } from "./html.js";
 import {
@@ -65,7 +64,7 @@ export interface SpecOptions {
    * then links its note's page and row. Without it they link the note on GitHub.
    */
   readonly notes?: string;
-  readonly chrome?: Chrome;
+  readonly chrome: Chrome;
 }
 
 /** A rule with no note pointer, a Choice row with no rule, or a pointer that names nothing. */
@@ -594,7 +593,7 @@ class Spec {
     this.blob = iri.includes("/tree/") ? iri.replace("/tree/", "/blob/") : iri;
     this.tree = iri;
     this.notes = options.notes;
-    this.chrome = options.chrome ?? PLAIN;
+    this.chrome = options.chrome;
     for (const note of notes.values()) {
       const claimed = new Set<string>();
       for (const cells of choiceTables(note.text))

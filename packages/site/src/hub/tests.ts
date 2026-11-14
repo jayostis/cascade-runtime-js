@@ -1,5 +1,5 @@
 import { readCtrf } from "../ctrf.js";
-import { type Chrome, Html, markup, PLAIN, shell } from "../html.js";
+import { type Chrome, Html, markup, shell } from "../html.js";
 import { frontPageLink, pageNameOf, ruleHref } from "../links.js";
 import {
   declaredDuration,
@@ -941,7 +941,7 @@ export const testsSection: Section<TestsContext> = {
       const shown = part(suite, run);
       files.set(
         testsPageOf(suite),
-        encoder.encode(page(suite, shown, ctx.chrome ?? PLAIN).text),
+        encoder.encode(page(suite, shown, ctx.chrome).text),
       );
       if (shown.ctrf !== undefined)
         files.set(

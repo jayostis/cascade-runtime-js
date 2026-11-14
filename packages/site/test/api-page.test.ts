@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
 import { agentFiles } from "../src/agents.js";
 import { hubFiles } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { apiSection } from "../src/node/hub/api.js";
 import { buildTree } from "../src/sections.js";
@@ -52,8 +53,8 @@ describe("The API page · apiSection", () => {
         },
         apiSection,
       ],
-      ctx: { root: ROOT } as PagesContext,
-      front: (rows) => hubFiles(["Records"], rows),
+      ctx: { root: ROOT, chrome: PLAIN } as PagesContext,
+      front: (rows) => hubFiles(["Records"], rows, PLAIN),
       finishers: [agentFiles],
     }));
     guide = headingsOf(await readFile(GUIDE, "utf8"));

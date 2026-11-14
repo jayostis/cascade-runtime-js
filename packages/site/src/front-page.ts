@@ -1,5 +1,5 @@
 import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
-import { type Chrome, type Content, markup, PLAIN, shell } from "./html.js";
+import { type Chrome, type Content, markup, shell } from "./html.js";
 import { FRONT_PAGE, frontPageLink } from "./links.js";
 import { addressOf, type Row, type Rows, type Want } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
@@ -130,7 +130,7 @@ ${listed.map(
 export function examplesPage(
   examples: readonly Example[],
   built: BuiltFrom,
-  chrome: Chrome = PLAIN,
+  chrome: Chrome,
 ): string {
   return shell({
     chrome,
@@ -271,7 +271,7 @@ ${repositories}`,
 export function startPage(
   { command, app, prompt }: Start,
   { title }: Example,
-  chrome: Chrome = PLAIN,
+  chrome: Chrome,
 ): string {
   return shell({
     chrome,
@@ -359,7 +359,7 @@ export function podOf(
 export function hubFiles(
   kinds: readonly string[],
   rows: Rows,
-  chrome: Chrome = PLAIN,
+  chrome: Chrome,
 ): Map<string, Uint8Array> {
   const encoder = new TextEncoder();
   return new Map([

@@ -17,6 +17,7 @@ import {
   type LocalVocabulary,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { PLAIN } from "../src/html.js";
 import { termHref, termId } from "../src/links.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { namedInQuery } from "../src/term-reference.js";
@@ -78,6 +79,7 @@ before(async () => {
     blob: BLOB,
     terms: "../terms/",
     spec: "../spec/",
+    chrome: PLAIN,
   };
   site = await Site.build(options);
   files = await site.files();

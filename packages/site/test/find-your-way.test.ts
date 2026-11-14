@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { FRONT_PAGE, hubFiles, STARTER_TRY } from "../src/front-page.js";
+import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { SECTIONS } from "../src/node/hub/index.js";
 import { addressOf, buildTree, pageOf, type Row } from "../src/sections.js";
@@ -30,6 +31,7 @@ async function frontPage(): Promise<string> {
           runner: "node:test",
         },
       })),
+    chrome: PLAIN,
   } as unknown as PagesContext;
   const { tree } = await buildTree({
     sections: SECTIONS.map((section) => ({
@@ -46,7 +48,7 @@ async function frontPage(): Promise<string> {
       },
     })),
     ctx,
-    front: (rows) => hubFiles(["Records"], rows),
+    front: (rows) => hubFiles(["Records"], rows, PLAIN),
   });
   return new TextDecoder().decode(tree.get(FRONT_PAGE));
 }
@@ -63,7 +65,8 @@ function rowsOf(html: string): Map<string, string[]> {
 }
 
 /** The front page of `rows` under the `build` want alone; throws when it links one address twice. */
-const frontOf = (rows: Row[]) => hubFiles([], new Map([["build", rows]]));
+const frontOf = (rows: Row[]) =>
+  hubFiles([], new Map([["build", rows]]), PLAIN);
 
 /**
  * The front page is where a reader starts: a "Find your way" table with a row for each thing a reader came for, and a
