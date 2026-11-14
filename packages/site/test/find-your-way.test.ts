@@ -87,8 +87,8 @@ describe("The front page · hubFiles()", () => {
     };
 
     it("is titled and headed Cascade Protocol reference", () => {
-      assert.match(html, /<title>Cascade Protocol reference</title>/);
-      assert.match(html, /<h1>Cascade Protocol reference</h1>/);
+      assert.match(html, /<title>Cascade Protocol reference<\/title>/);
+      assert.match(html, /<h1>Cascade Protocol reference<\/h1>/);
     });
 
     it("lists a row for each thing a reader came for, in the table's order, each with its links", () => {

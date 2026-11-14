@@ -1,4 +1,4 @@
-import { type Html, markup } from "./html.js";
+import { type Html, markup, PLAIN, shell } from "./html.js";
 import type { Site } from "./site.js";
 import { EXPLORER_FILE } from "./explorer.js";
 
@@ -11,34 +11,21 @@ export const EXPLORER_STYLE_FILE = "explorer.css";
  * compiled with the package, because the page loads it as it is: it holds no backtick and no `${`.
  */
 export function explorerPage(site: Site, nav: Html): Html {
-  const front = site.options.front;
-  return markup`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Explorer · ${site.pod.title}</title>
-<link rel="stylesheet" href="site.css">
-<link rel="stylesheet" href="${EXPLORER_STYLE_FILE}">
-</head>
-<body class="explorer">
-${nav}
-<main>
-<div id="explorer" data-data="${EXPLORER_FILE}"><p class="loading">Loading ${site.pod.title}.</p></div>
+  return shell({
+    chrome: site.options.chrome ?? PLAIN,
+    title: `Explorer · ${site.pod.title}`,
+    stylesheet: "site.css",
+    head: markup`<link rel="stylesheet" href="${EXPLORER_STYLE_FILE}">
+`,
+    bodyClass: "explorer",
+    nav,
+    main: markup`<div id="explorer" data-data="${EXPLORER_FILE}"><p class="loading">Loading ${site.pod.title}.</p></div>
 <noscript><p>The explorer needs script. The pod's files are listed in <a href="${EXPLORER_FILE}">${EXPLORER_FILE}</a>,
 and <a href="layout.html">how the pod is laid out</a> reads without it.</p></noscript>
-</main>
-<footer>
-<a href="layout.html">How the pod is laid out</a>
-<a href="pipeline.html">How a view is built</a>
-<a href="not-shown.html">Not shown</a>
-<a href="${EXPLORER_FILE}">${EXPLORER_FILE}</a>
-${front !== undefined && markup`<a href="${front}">Cascade pods</a>`}
-</footer>
-<script src="${EXPLORER_SCRIPT_FILE}"></script>
-</body>
-</html>
-`;
+`,
+    after: markup`<script src="${EXPLORER_SCRIPT_FILE}"></script>
+`,
+  });
 }
 
 export const EXPLORER_SCRIPT = String.raw`'use strict';
@@ -331,7 +318,7 @@ function pageLinks() {
   var l = D.pod.links, out = [];
   if (l.terms) out.push('<a href="' + esc(l.terms) + '">the vocabulary’s terms</a>');
   if (l.spec) out.push('<a href="' + esc(l.spec) + '">the runtime’s rules</a>');
-  if (l.front) out.push('<a href="' + esc(l.front) + '">Cascade pods</a>');
+  if (l.front) out.push('<a href="' + esc(l.front) + '">Cascade Protocol reference</a>');
   out.push('<a href="pipeline.html">how a view is built</a>', '<a href="layout.html">how the pod is laid out</a>');
   return '<p class="gen">' + out.join(' · ') + '</p>';
 }
@@ -876,10 +863,7 @@ fetch(root.dataset.data).then(function (r) { return r.json(); }).then(function (
 })();
 `;
 
-export const EXPLORER_STYLE = String.raw`body.explorer { max-width: none; padding: 0 0 0; }
-body.explorer > nav { margin: 0 1rem; }
-body.explorer main { margin: 0; }
-body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padding: .75rem 1rem 1.25rem; border-top: 1px solid var(--rule); font-size: .9rem; }
+export const EXPLORER_STYLE = String.raw`body.explorer main { max-width: none; margin: 0; padding: 0; }
 :root { --pencil: #b4410c; --new: #1f7a4d; --new-bg: #e6f3ec; --built: #6b4fa0; --built-bg: #f0ecf7; --sel: #dcebf1; --warn-bg: #fbf3e2; --amber: #8a5a0d; --mono: ui-monospace, SFMono-Regular, Consolas, monospace; }
 #explorer { font-size: 14px; line-height: 1.45; }
 #explorer .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 14rem); height: calc(100dvh - 14rem); min-height: 28rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
@@ -1041,6 +1025,5 @@ body.explorer footer { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; padd
   #explorer .scroll { overflow: visible; }
   #explorer .insp { padding: 8px 12px 24px; }
   #explorer .kv { grid-template-columns: minmax(0, 1fr); }
-  body.explorer { padding: 0; }
 }
 `;

@@ -1,4 +1,11 @@
-import { type Content, Html, markup, shell } from "./html.js";
+import {
+  type Chrome,
+  type Content,
+  Html,
+  markup,
+  PLAIN,
+  shell,
+} from "./html.js";
 import {
   frontPageLink,
   noteHref,
@@ -40,6 +47,7 @@ export interface DecisionOptions {
   readonly readme: string;
   /** The spec's pages, from a page of `decisions/`, ending in a slash. */
   readonly spec: string;
+  readonly chrome?: Chrome;
 }
 
 /** A page of the notes' own folder to another: `naming.html`, never the way round through the folder above. */
@@ -52,12 +60,14 @@ const ruleLink = (cited: Citation, spec: string): string =>
     : ruleHref(cited.feature, cited.number, spec);
 
 function page(
+  chrome: Chrome | undefined,
   title: string,
   source: { readonly href: string; readonly path: string },
   main: Content,
 ): Uint8Array {
   return new TextEncoder().encode(
     shell({
+      chrome: chrome ?? PLAIN,
       title: markup`${title} · Cascade decision notes`,
       stylesheet: DECISIONS_STYLESHEET_FILE,
       nav: markup`${frontPageLink(1)}
@@ -98,7 +108,11 @@ const linkFrom =
 
 function notePage(
   note: DecisionNote,
-  { decisions, spec }: Pick<DecisionOptions, "decisions" | "spec">,
+  {
+    decisions,
+    spec,
+    chrome,
+  }: Pick<DecisionOptions, "decisions" | "spec" | "chrome">,
 ): Uint8Array {
   const claimed = new Set<string>();
   const { html } = renderWithHeadings(note.text, {
@@ -117,6 +131,7 @@ function notePage(
     },
   });
   return page(
+    chrome,
     note.title,
     { href: noteHref(note.path, decisions.blob), path: note.path },
     html,
@@ -142,12 +157,14 @@ function listFirst(readme: string): readonly [string, string] {
 function indexPage({
   decisions,
   readme,
-}: Pick<DecisionOptions, "decisions" | "readme">): Uint8Array {
+  chrome,
+}: Pick<DecisionOptions, "decisions" | "readme" | "chrome">): Uint8Array {
   const render = (source: string): Html =>
     renderWithHeadings(source, { link: linkFrom(README, decisions) }).html;
   const [opening, format] = listFirst(readme);
   const plain = (thing: string): string => thing.replaceAll("`", "");
   return page(
+    chrome,
     "Decision notes",
     { href: noteHref(README, decisions.blob), path: README },
     markup`${render(opening)}<h2 id="every-note">Every note, and the rows no rule cites</h2>

@@ -13,7 +13,15 @@ import {
 } from "@cascade-runtime/runtime";
 import { Marked, type Tokens } from "marked";
 import type { Ingredient } from "./front-page.js";
-import { type Content, escape, Html, markup, shell } from "./html.js";
+import {
+  type Chrome,
+  type Content,
+  escape,
+  Html,
+  markup,
+  PLAIN,
+  shell,
+} from "./html.js";
 import {
   anchorOf,
   frontPageLink,
@@ -57,6 +65,7 @@ export interface SpecOptions {
    * then links its note's page and row. Without it they link the note on GitHub.
    */
   readonly notes?: string;
+  readonly chrome?: Chrome;
 }
 
 /** A rule with no note pointer, a Choice row with no rule, or a pointer that names nothing. */
@@ -543,6 +552,7 @@ const plural = (count: number, one: string, many = `${one}s`): string =>
 class Spec {
   readonly warnings: SpecWarning[] = [];
   readonly blob: string;
+  readonly chrome: Chrome;
   readonly #options: SpecOptions;
   readonly #notes: ReadonlyMap<string, Note>;
   readonly features: readonly WrittenFeature[];
@@ -584,6 +594,7 @@ class Spec {
     this.blob = iri.includes("/tree/") ? iri.replace("/tree/", "/blob/") : iri;
     this.tree = iri;
     this.notes = options.notes;
+    this.chrome = options.chrome ?? PLAIN;
     for (const note of notes.values()) {
       const claimed = new Set<string>();
       for (const cells of choiceTables(note.text))
@@ -869,6 +880,7 @@ class Spec {
 function page(spec: Spec, title: string, main: Content): Uint8Array {
   return new TextEncoder().encode(
     shell({
+      chrome: spec.chrome,
       title: markup`${title} · Cascade runtime rules`,
       stylesheet: SPEC_STYLESHEET_FILE,
       nav: markup`${frontPageLink(1)}

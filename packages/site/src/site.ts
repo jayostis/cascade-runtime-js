@@ -32,6 +32,7 @@ import {
   EXPLORER_STYLE_FILE,
   explorerPage,
 } from "./explorer-app.js";
+import type { Chrome } from "./html.js";
 import { addressesOf } from "./links.js";
 import { navOf, pages } from "./pages.js";
 import { numberOf } from "./spec.js";
@@ -67,6 +68,8 @@ export interface SiteOptions {
   readonly spec?: string;
   /** The vocabulary's conformance kit the pod was built from, `conformance/<kit>/<kit>.feature`; a pod built from none, or a person's own, has none. */
   readonly kit?: string;
+  /** What the pages' header and footer are built with; without it, they link nothing at the website and carry no date. */
+  readonly chrome?: Chrome;
 }
 
 /** A step of the build and what it added. */

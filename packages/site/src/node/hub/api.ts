@@ -24,11 +24,11 @@ export const apiSection: Section<PagesContext> = {
     "openPod and every call of cascade-runtime, as the guide a coding agent reads.",
   source:
     "packages/cascade-runtime/guide/AGENTS.md and README.md in cascade-runtime-js",
-  async build({ root }) {
+  async build({ root, chrome }) {
     const guide = await readFile(join(root, ...PACKAGE, "guide", AGENTS_FILE));
     const readme = await readFile(join(root, ...PACKAGE, "README.md"), "utf8");
     return new Map([
-      ...apiPages(guide.toString("utf8"), readme),
+      ...apiPages(guide.toString("utf8"), readme, chrome),
       [AGENTS_FILE, new Uint8Array(guide)],
     ]);
   },

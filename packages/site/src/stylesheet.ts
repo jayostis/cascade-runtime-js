@@ -35,7 +35,7 @@ export const chromeStyles = (scope: string): string => `${scope} {
 .sx-logo:hover { color: var(--ink); text-decoration: none; }
 .sx-logo svg { flex: none; }
 .sx-nav { display: flex; align-items: center; gap: 2px; padding: 0; margin: 0; border: 0; }
-.sx-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--ink);
+.sx-nav a, .sx-nav span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--ink);
             font-family: var(--sans); font-size: 15px; text-decoration: none; border-bottom: 2px solid transparent; }
 .sx-nav a:hover { border-bottom-color: var(--rule); color: var(--ink); text-decoration: none; }
 .sx-nav a[aria-current="page"] { border-bottom-color: var(--pencil); font-weight: 600; }
@@ -47,7 +47,7 @@ export const chromeStyles = (scope: string): string => `${scope} {
 .sx-menu[open] summary { background: var(--ink); color: #ffffff; }
 .sx-menu nav { position: absolute; left: 0; right: 0; top: 100%; background: #ffffff; border-bottom: 1px solid var(--rule);
                padding: 4px var(--gutter) 16px; display: flex; flex-direction: column; margin: 0; }
-.sx-menu nav a { display: flex; align-items: center; min-height: 52px; font-family: var(--serif); font-size: 24px;
+.sx-menu nav a, .sx-menu nav span { display: flex; align-items: center; min-height: 52px; font-family: var(--serif); font-size: 24px;
                  color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--rule-soft); }
 @media (max-width: 860px) { .sx-nav { display: none; } .sx-menu { display: block; } }
 .sx-footer { background: #ffffff; font-family: var(--sans); color: var(--ink); margin: 0; padding: 0; border: 0; }
@@ -65,6 +65,7 @@ export const chromeStyles = (scope: string): string => `${scope} {
 .sx-footer-legal { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 32px; padding-top: 18px;
                    border-top: 1px solid var(--rule); font-size: 14px; line-height: 1.5; color: var(--muted); }
 .sx-footer-legal span { margin-right: auto; }
+.sx-footer p.sx-footer-built { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
 .sx-footer-legal a { color: var(--muted); display: inline-flex; align-items: center; min-height: 32px; }
 `;
 

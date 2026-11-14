@@ -1,5 +1,5 @@
 import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
-import { type Content, markup, shell } from "./html.js";
+import { type Chrome, type Content, markup, PLAIN, shell } from "./html.js";
 import { FRONT_PAGE, frontPageLink } from "./links.js";
 import { addressOf, type Row, type Rows, type Want } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
@@ -130,8 +130,10 @@ ${listed.map(
 export function examplesPage(
   examples: readonly Example[],
   built: BuiltFrom,
+  chrome: Chrome = PLAIN,
 ): string {
   return shell({
+    chrome,
     title: "Cascade example pods",
     stylesheet: STYLESHEET_FILE,
     nav: markup`${frontPageLink(0)}\n`,
@@ -240,13 +242,18 @@ ${REPOSITORIES.map(
 </table>
 `;
 
-function frontPage(kinds: readonly string[], listed: Rows): string {
+function frontPage(
+  kinds: readonly string[],
+  listed: Rows,
+  chrome: Chrome,
+): string {
   const rows = withRepositories(listed);
   checkOnce(rows);
   return shell({
-    title: "Cascade pods",
+    chrome,
+    title: "Cascade Protocol reference",
     stylesheet: STYLESHEET_FILE,
-    main: markup`<h1>Cascade pods</h1>
+    main: markup`<h1>Cascade Protocol reference</h1>
 <p class="prose">A pod holds one person's health records as files, and an app reads and writes it through
 <code>cascade-runtime</code>.</p>
 <h2 id="find-your-way-heading">Find your way</h2>
@@ -264,11 +271,13 @@ ${repositories}`,
 export function startPage(
   { command, app, prompt }: Start,
   { title }: Example,
+  chrome: Chrome = PLAIN,
 ): string {
   return shell({
+    chrome,
     title: "Start an app on a Cascade pod",
     stylesheet: STYLESHEET_FILE,
-    nav: markup`<a href="${FRONT_PAGE}">Cascade pods</a>\n`,
+    nav: markup`<a href="${FRONT_PAGE}">Cascade Protocol reference</a>\n`,
     main: markup`<h1>Start an app on a Cascade pod</h1>
 <h2 class="part">1. Make the app</h2>
 <p class="prose">With Node 22 or later, run this in a folder of your choice:</p>
@@ -323,7 +332,7 @@ export function redirectPage(): string {
 <body>
 <main>
 <p>This page has moved to <a href="${STARTER_TRY}">${STARTER_TRY}</a>.</p>
-<p><a href="../${FRONT_PAGE}">Cascade pods</a></p>
+<p><a href="../${FRONT_PAGE}">Cascade Protocol reference</a></p>
 </main>
 </body>
 </html>
@@ -350,10 +359,11 @@ export function podOf(
 export function hubFiles(
   kinds: readonly string[],
   rows: Rows,
+  chrome: Chrome = PLAIN,
 ): Map<string, Uint8Array> {
   const encoder = new TextEncoder();
   return new Map([
-    [FRONT_PAGE, encoder.encode(frontPage(kinds, rows))],
+    [FRONT_PAGE, encoder.encode(frontPage(kinds, rows, chrome))],
     [STYLESHEET_FILE, encoder.encode(STYLESHEET)],
   ]);
 }

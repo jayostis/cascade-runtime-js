@@ -1,5 +1,5 @@
 import { readCtrf } from "../ctrf.js";
-import { Html, markup, shell } from "../html.js";
+import { type Chrome, Html, markup, PLAIN, shell } from "../html.js";
 import { frontPageLink, pageNameOf, ruleHref } from "../links.js";
 import {
   declaredDuration,
@@ -26,7 +26,7 @@ import { SPEC_FOLDER } from "./spec.js";
 export const TESTS_FOLDER = "conformance/tests/";
 
 /** What the section reads of the context. */
-export type TestsContext = Pick<PagesContext, "tests">;
+export type TestsContext = Pick<PagesContext, "tests" | "chrome">;
 
 /** A suite's repository's name, which names its page's folder and its CTRF file. */
 export const nameOf = (suite: Suite): string =>
@@ -900,9 +900,10 @@ ${unlisted}${none}${shownCases}`,
   };
 }
 
-function page(suite: Suite, shown: Part): Html {
+function page(suite: Suite, shown: Part, chrome: Chrome): Html {
   const name = nameOf(suite);
   return shell({
+    chrome,
     title: markup`${suite.title} · Cascade unit test reports`,
     stylesheet: `../../../${STYLESHEET_FILE}`,
     head: markup`<style>${new Html(STYLES)}</style>\n`,
@@ -938,7 +939,10 @@ export const testsSection: Section<TestsContext> = {
     const files = new Map<string, Uint8Array>();
     for (const { suite, run } of await ctx.tests()) {
       const shown = part(suite, run);
-      files.set(testsPageOf(suite), encoder.encode(page(suite, shown).text));
+      files.set(
+        testsPageOf(suite),
+        encoder.encode(page(suite, shown, ctx.chrome ?? PLAIN).text),
+      );
       if (shown.ctrf !== undefined)
         files.set(
           `${TESTS_FOLDER}${nameOf(suite)}/${ctrfFileOf(suite)}`,

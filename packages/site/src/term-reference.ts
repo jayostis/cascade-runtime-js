@@ -10,7 +10,14 @@ import {
   type Term,
   XSD,
 } from "@cascade-runtime/runtime";
-import { type Content, Html, markup, shell } from "./html.js";
+import {
+  type Chrome,
+  type Content,
+  Html,
+  markup,
+  PLAIN,
+  shell,
+} from "./html.js";
 import { NAMESPACE_HOST, ruleHref, termHref, termId } from "./links.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { numberOf } from "./spec.js";
@@ -729,7 +736,10 @@ export async function declaredTerms(
  * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
  * `termHref` links.
  */
-export async function termReference(vocabulary: Files): Promise<string> {
+export async function termReference(
+  vocabulary: Files,
+  chrome: Chrome = PLAIN,
+): Promise<string> {
   const [ontology, ontologyText] = await parse(vocabulary, ONTOLOGY);
   const [shapes, shapesText] = await parse(vocabulary, SHAPES);
   const entries = entriesOf(ontology);
@@ -759,9 +769,10 @@ export async function termReference(vocabulary: Files): Promise<string> {
   }));
   const { unhomed } = reference;
   return shell({
+    chrome,
     title: "Cascade terms",
     stylesheet: `../${STYLESHEET_FILE}`,
-    nav: markup`<a href="../index.html">Cascade pods</a>\n`,
+    nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
     main: markup`<h1>Cascade terms</h1>
 <p class="prose">Every term a Cascade pod carries, as cascade-vocabulary declares it in
 <a href="${reference.blob}${ONTOLOGY}">${ONTOLOGY}</a>: what it is, the shapes in

@@ -165,7 +165,10 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
         assert.deepEqual(links(footer), [], path);
         assert.ok(!footer.includes("<h2>"), `${path} has a column`);
-        assert.ok(footer.includes("is a trademark of Cascade Agentic Labs"), path);
+        assert.ok(
+          footer.includes("is a trademark of Cascade Agentic Labs"),
+          path,
+        );
         const header = html.slice(
           html.indexOf(`<header class="sx-header">`),
           html.indexOf("</header>"),

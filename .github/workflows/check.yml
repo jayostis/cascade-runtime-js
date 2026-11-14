@@ -184,7 +184,7 @@ jobs:
       # report from the recorded runs (CI never calls a model, it only checks every recorded run renders).
       - name: Build the Pages tree
         if: ${{ !cancelled() }}
-        run: npm run build:pages
+        run: npm run build:pages -- --built "$(git log -1 --format=%cs)"
         env:
           GITHUB_TOKEN: ${{ github.token }}
       # Every link of the tree resolves as a file, its anchor in it, and a GitHub link into a repository checked out beside
@@ -684,7 +684,7 @@ jobs:
             fetch "$repository" "$workflow" "$artifact" "$file" "build/tests/${repository#*/}"
           done
       - name: Build the Pages tree
-        run: npm run build:pages -- --report build/conformance/earl.ttl --tests build/tests
+        run: npm run build:pages -- --report build/conformance/earl.ttl --tests build/tests --built "$(git log -1 --format=%cs)"
         env:
           GITHUB_TOKEN: ${{ github.token }}
           # llms.txt links absolutely under the address the deploy serves; the pull request's artifact leaves it unset.

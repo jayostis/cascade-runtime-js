@@ -151,7 +151,10 @@ function run(args: string[]): Promise<{ code: number; said: string }> {
 const bare = (body: string, title = "A page"): string =>
   `<!DOCTYPE html><html><head><title>${title}</title><link rel="stylesheet" href="${SITE}site.css"></head><body><h1 id="top-heading">${title}</h1>${body}</body></html>`;
 const page = (body: string, title = "A page"): string =>
-  bare(`<nav><a href="${SITE}">Cascade Protocol reference</a></nav>${body}`, title);
+  bare(
+    `<nav><a href="${SITE}">Cascade Protocol reference</a></nav>${body}`,
+    title,
+  );
 
 const HUB = SITE;
 const tree = (): Record<string, string> => ({

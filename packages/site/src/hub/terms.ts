@@ -9,7 +9,10 @@ export const termsSection: Section<PagesContext> = {
   want: "model",
   source: "cascade-vocabulary's ontologies, shapes, queries and runtime rules",
   async build(ctx) {
-    const page = await termReference((await ctx.vocabulary()).files);
+    const page = await termReference(
+      (await ctx.vocabulary()).files,
+      ctx.chrome,
+    );
     return new Map([[TERMS_PAGE, new TextEncoder().encode(page)]]);
   },
   async rows() {

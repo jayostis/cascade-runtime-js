@@ -5,7 +5,7 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import type { Answer } from "./answer.js";
-import { type Content, Html, markup, shell } from "./html.js";
+import { type Content, Html, markup, PLAIN, shell } from "./html.js";
 import { namedInQuery } from "./term-reference.js";
 import { noteHref, ruleHref, sharedPageOf, termHref } from "./links.js";
 import type { Site } from "./site.js";
@@ -150,10 +150,10 @@ function question(site: Site, answer: Answer, lensed = false): Html {
 /** The links at the head of every page of the site. */
 export function navOf(site: Site): Html {
   return markup`${
-  site.options.front !== undefined &&
-  markup`<a href="${site.options.front}">Cascade pods</a>
+    site.options.front !== undefined &&
+    markup`<a href="${site.options.front}">Cascade Protocol reference</a>
 `
-}<a href="index.html">The explorer</a>
+  }<a href="index.html">The explorer</a>
 <a href="layout.html">How the pod is laid out</a>
 <a href="pipeline.html">How a view is built</a>
 <a href="not-shown.html">Not shown</a>
@@ -162,6 +162,7 @@ export function navOf(site: Site): Html {
 
 function layout(site: Site, title: string, main: Content): Html {
   return shell({
+    chrome: site.options.chrome ?? PLAIN,
     title: markup`${title} · ${site.pod.title}`,
     stylesheet: "site.css",
     nav: navOf(site),

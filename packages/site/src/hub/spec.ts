@@ -1,5 +1,5 @@
 import { decisionPages } from "../decisions.js";
-import { markup, shell } from "../html.js";
+import { markup, PLAIN, shell } from "../html.js";
 import { frontPageLink } from "../links.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
@@ -20,7 +20,10 @@ const TABLE_FILE = "table.md";
 const RESULTS_FILE = "results.json";
 
 /** What the section reads of the context. */
-export type SpecContext = Pick<PagesContext, "vocabulary" | "report" | "tests">;
+export type SpecContext = Pick<
+  PagesContext,
+  "vocabulary" | "report" | "tests" | "chrome"
+>;
 
 const encoder = new TextEncoder();
 
@@ -50,6 +53,7 @@ export const specSection: Section<SpecContext> = {
       builtFrom,
       at,
       notes: "../",
+      chrome: ctx.chrome,
     });
     const files = new Map<string, Uint8Array>();
     for (const [path, bytes] of pages.files)
@@ -61,6 +65,7 @@ export const specSection: Section<SpecContext> = {
       decisions: pages.decisions,
       readme: new TextDecoder().decode(readme),
       spec: `../${SPEC_FOLDER}`,
+      chrome: ctx.chrome,
     }))
       files.set(`${DECISIONS_FOLDER}${path}`, bytes);
 
@@ -107,6 +112,7 @@ export const specSection: Section<SpecContext> = {
       `${CONFORMANCE_FOLDER}index.html`,
       encoder.encode(
         shell({
+          chrome: ctx.chrome ?? PLAIN,
           title: "Cascade runtime conformance results",
           stylesheet: `../${STYLESHEET_FILE}`,
           nav: markup`${frontPageLink(1)}\n`,

@@ -267,7 +267,8 @@ export function renderSite(
   history = runs.length !== 1,
   home?: string,
 ): Map<string, string> {
-  const above: Above = home === undefined ? [] : [["Cascade pods", home]];
+  const above: Above =
+    home === undefined ? [] : [["Cascade Protocol reference", home]];
   const site = new Map<string, string>();
   const entries: Entry[] = [];
   for (const { name, results } of runs)

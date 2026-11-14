@@ -1130,7 +1130,9 @@ describe("Publishing the report · renderSite(), buildSite()", () => {
       for (const [path, html] of history) {
         const up = "../".repeat(path.split("/").length - 1);
         assert.ok(
-          html.includes(`<a href="${up}../index.html">Cascade Protocol reference</a>`),
+          html.includes(
+            `<a href="${up}../index.html">Cascade Protocol reference</a>`,
+          ),
           `${path} links the page above the report`,
         );
       }

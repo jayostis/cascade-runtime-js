@@ -1,3 +1,4 @@
+import type { Chrome } from "../html.js";
 import type { Files } from "@cascade-runtime/runtime";
 import type { BuiltFrom, Example, Ingredient, Start } from "../front-page.js";
 import type { SpecReport } from "../spec.js";
@@ -85,6 +86,8 @@ export interface PagesContext {
   /** The checkout the pages are built in. */
   readonly root: string;
   readonly log: (line: string) => void;
+  /** What every page's header and footer are built with. */
+  readonly chrome?: Chrome;
   /** The address the pages will be served at, ending in `/`; when unset, `llms.txt` links relative to itself. */
   readonly base?: string;
   /** Every kit's pod and site, built. */

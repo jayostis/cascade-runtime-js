@@ -50,12 +50,23 @@ const MARK = new Html(
   `<svg width="30" height="25" viewBox="0 0 124 104" aria-hidden="true"><rect x="7" y="7" width="58" height="46" rx="12" fill="none" stroke="#143d5c" stroke-width="13"/><rect x="33" y="29" width="58" height="46" rx="12" fill="none" stroke="#1f7fa0" stroke-width="13"/><rect x="59" y="51" width="58" height="46" rx="12" fill="none" stroke="#22b2cf" stroke-width="13"/></svg>`,
 );
 
+/** What a page's chrome is built with. */
+export interface Chrome {
+  /** Whether the logo, nav, strip and footer link to cascadeprotocol.org; off until the website answers at the addresses they name. */
+  readonly website: boolean;
+  /** The date the pages were built, `YYYY-MM-DD`, from the commit they are built from; none writes no date. */
+  readonly built?: string;
+}
+
+/** No link to the website and no build date. */
+export const PLAIN: Chrome = { website: false };
+
 const NAV: readonly (readonly [string, string])[] = [
   ["Understand", `${WEBSITE}/understand/`],
   ["Build", `${WEBSITE}/build/`],
+  ["Standards", `${WEBSITE}/standards/`],
+  ["Contribute", `${WEBSITE}/contribute/`],
   ["Reference ↗", `${HUB}/`],
-  ["Community", `${WEBSITE}/community/`],
-  ["GitHub ↗", ORG],
 ];
 
 /** The website's head links: its fonts. */
@@ -64,34 +75,61 @@ export const chromeHead = markup`<link rel="preconnect" href="https://fonts.goog
 <link href="${FONTS}" rel="stylesheet">
 `;
 
-/** The website's alpha strip and header, the hub being the nav's "Reference". */
-export const chromeHeader = markup`<div class="sx-strip">Alpha · We're looking for development partners. <a href="${WEBSITE}/community/partners/">Build with us →</a></div>
+const navLinks = (chrome: Chrome, current: boolean) =>
+  NAV.map(([label, href]) =>
+    href.startsWith(WEBSITE) && !chrome.website
+      ? markup`<span>${label}</span>
+`
+      : markup`<a href="${href}"${current && href === `${HUB}/` ? new Html(' aria-current="page"') : ""}>${label}</a>
+`,
+  );
+
+/** The website's strip and header, the hub being the nav's "Reference". */
+export function chromeHeader(chrome: Chrome): Html {
+  return markup`<div class="sx-strip">An open standard in progress, in alpha.${
+    chrome.website &&
+    markup` <a href="${WEBSITE}/community/status/">See what works today →</a> · <a href="${WEBSITE}/contribute/">Help shape it →</a>`
+  }</div>
 <header class="sx-header">
 <div class="sx-bar">
-<a class="sx-logo" href="${WEBSITE}/">${MARK}<span>Cascade Protocol™</span></a>
+${
+  chrome.website
+    ? markup`<a class="sx-logo" href="${WEBSITE}/">${MARK}<span>Cascade Protocol™</span></a>`
+    : markup`<span class="sx-logo">${MARK}<span>Cascade Protocol™</span></span>`
+}
 <nav class="sx-nav" aria-label="Main">
-${NAV.map(([label, href]) => markup`<a href="${href}"${href === `${HUB}/` ? new Html(' aria-current="page"') : ""}>${label}</a>\n`)}</nav>
+${navLinks(chrome, true)}</nav>
 <details class="sx-menu">
 <summary>Menu</summary>
 <nav aria-label="Main, phone">
-${NAV.map(([label, href]) => markup`<a href="${href}">${label}</a>\n`)}</nav>
+${navLinks(chrome, false)}</nav>
 </details>
 </div>
 </header>
 `;
+}
 
 const column = (
   heading: string,
   links: readonly (readonly [string, string])[],
 ) =>
   markup`<div><h2>§ ${heading}</h2><ul>
-${links.map(([label, href]) => markup`<li><a href="${href.startsWith("https://") ? href : WEBSITE + href}">${label}</a></li>\n`)}</ul></div>
+${links.map(
+  ([
+    label,
+    href,
+  ]) => markup`<li><a href="${href.startsWith("https://") ? href : WEBSITE + href}">${label}</a></li>
+`,
+)}</ul></div>
 `;
 
-/** The website's footer. */
-export const chromeFooter = markup`<footer class="sx-footer">
+/** The website's footer; with no link to the website, its legal line alone. */
+export function chromeFooter(chrome: Chrome): Html {
+  return markup`<footer class="sx-footer">
 <div class="sx-footer-wrap"><div class="sx-footer-inner">
-<div class="sx-footer-cols">
+${
+  chrome.website &&
+  markup`<div class="sx-footer-cols">
 ${column("Protocol", [
   ["Understand Cascade", "/understand/"],
   ["How it's built", "/how-its-built/"],
@@ -100,31 +138,41 @@ ${column("Protocol", [
   ["Security and privacy (previous version)", "/v0/docs/security/"],
   ["Compared with FHIR and others (previous version)", "/v0/docs/comparison/"],
 ])}${column("Build", [
-  ["Quick start", "/build/"],
-  ["Guides, playground and reference (previous version)", "/v0/"],
-])}${column("Community", [
-  ["Become a partner", "/community/partners/"],
-  ["Talk with Jed and Jay", "/community/"],
-  ["Contribute", "/contribute/"],
-  ["Status", "/community/status/"],
-  ["Build notes", "/blog/"],
-  ["GitHub ↗", ORG],
-])}<div><h2>§ Alpha</h2>
-<p>Cascade is early and changing. We're looking for development partners.</p>
-<p><a href="${WEBSITE}/community/partners/" style="color: var(--link)">Build with us →</a></p>
+    ["Start building", "/build/"],
+    ["Guides, playground and reference (previous version)", "/v0/"],
+  ])}${column("Community", [
+    ["Help shape it", "/contribute/"],
+    ["Become a partner", "/community/partners/"],
+    ["Talk with us", "/community/"],
+    ["Status", "/community/status/"],
+    ["Build notes", "/blog/"],
+    ["GitHub ↗", ORG],
+  ])}<div><h2>§ Working toward a standard</h2>
+<p>Cascade is an open standard in progress. We build on existing standards, extend them only where they stop, and we're looking for people to build it with us.</p>
+<p><a href="${WEBSITE}/contribute/" style="color: var(--link)">Help shape it →</a></p>
 </div>
 </div>
-<div class="sx-footer-legal">
+`
+}<div class="sx-footer-legal">
 <span>Cascade Protocol™ is a trademark of Cascade Agentic Labs LLC. Spec CC BY 4.0 · code Apache 2.0.</span>
-<a href="${WEBSITE}/legal/trademarks.html">Trademark policy</a>
+${
+  chrome.website &&
+  markup`<a href="${WEBSITE}/legal/trademarks.html">Trademark policy</a>
 <a href="${WEBSITE}/legal/privacy.html">POTS Check privacy</a>
 <a href="${WEBSITE}/legal/terms.html">POTS Check terms</a>
-</div>
-</div></div>
+`
+}</div>
+${
+  chrome.built !== undefined &&
+  markup`<p class="sx-footer-built">Built on ${chrome.built}.</p>
+`
+}</div></div>
 </footer>
 `;
+}
 
 export interface Shell {
+  readonly chrome: Chrome;
   /** The whole `<title>`. */
   readonly title: Content;
   /** The stylesheet's address from the page. */
@@ -133,6 +181,8 @@ export interface Shell {
   readonly head?: Content;
   /** The hub's own links, under the header. */
   readonly nav?: Content;
+  /** The body's class, for a page whose styles are scoped to it. */
+  readonly bodyClass?: string;
   readonly main: Content;
   /** After the footer: a script. */
   readonly after?: Content;
@@ -140,10 +190,12 @@ export interface Shell {
 
 /** The one frame of every hub page: skip link, the website's strip, header and footer, around the page's own nav and main. */
 export function shell({
+  chrome,
   title,
   stylesheet,
   head,
   nav,
+  bodyClass,
   main,
   after,
 }: Shell): Html {
@@ -155,9 +207,9 @@ export function shell({
 <title>${title}</title>
 ${chromeHead}<link rel="stylesheet" href="${stylesheet}">
 ${head}</head>
-<body>
+<body${bodyClass === undefined ? "" : markup` class="${bodyClass}"`}>
 <a class="b-skip" href="#main">Skip to content</a>
-${chromeHeader}${
+${chromeHeader(chrome)}${
     nav === undefined
       ? ""
       : markup`<nav class="hub-nav" aria-label="This site">
@@ -165,13 +217,13 @@ ${nav}</nav>
 `
   }<main id="main">
 ${main}</main>
-${chromeFooter}${after}</body>
+${chromeFooter(chrome)}${after}</body>
 </html>
 `;
 }
 
 /** The chrome as strings for a page of another package, which has a palette of its own: tokens scoped to the header's and footer's wrappers. */
-export function chromeStrings(): {
+export function chromeStrings(chrome: Chrome): {
   readonly head: string;
   readonly header: string;
   readonly footer: string;
@@ -180,10 +232,10 @@ export function chromeStrings(): {
     head: `${chromeHead.text}<style>${chromeStyles(".sx-scope")}</style>\n`,
     header: markup`<div class="sx-scope">
 <a class="b-skip" href="#main">Skip to content</a>
-${chromeHeader}</div>
+${chromeHeader(chrome)}</div>
 `.text,
     footer: markup`<div class="sx-scope">
-${chromeFooter}</div>
+${chromeFooter(chrome)}</div>
 `.text,
   };
 }

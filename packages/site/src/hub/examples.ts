@@ -25,7 +25,9 @@ export const examplesSection: Section<PagesContext> = {
     const files = new Map<string, Uint8Array>([
       [
         EXAMPLES_PAGE,
-        encoder.encode(examplesPage(examples, await ctx.builtFrom())),
+        encoder.encode(
+          examplesPage(examples, await ctx.builtFrom(), ctx.chrome),
+        ),
       ],
     ]);
     for (const { folder, site } of examples) {

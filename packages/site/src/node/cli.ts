@@ -50,6 +50,7 @@ import type {
   PagesContext,
   SuiteRun,
 } from "../hub/context.js";
+import type { Chrome } from "../html.js";
 import { nameOf, suitesOf } from "../hub/tests.js";
 import { EXPLORER_BUDGET, EXPLORER_FILE } from "../explorer.js";
 import { buildTree } from "../sections.js";
@@ -105,6 +106,29 @@ function target(name: string | undefined, pod: string | undefined): Target {
   return { name, pod: new FolderFiles(folder), named, own: pod !== undefined };
 }
 
+/**
+ * The options that set the chrome of every page: the switch for the links to cascadeprotocol.org, off until the website
+ * answers at the addresses they name, and the build date, which the caller reads from the commit and the build never from
+ * the clock.
+ */
+const CHROME_OPTIONS = {
+  "website-links": { type: "boolean" },
+  built: { type: "string" },
+} as const;
+
+function chromeOf(values: {
+  readonly "website-links"?: boolean | undefined;
+  readonly built?: string | undefined;
+}): Chrome {
+  const { built } = values;
+  if (built !== undefined && !/^d{4}-d{2}-d{2}$/.test(built))
+    throw new Error(`--built is ${built}, not a date as YYYY-MM-DD`);
+  return {
+    website: values["website-links"] === true,
+    ...(built !== undefined && { built }),
+  };
+}
+
 /** Where a kit's site, in a folder of the hub, finds the hub's pages it links: those a section of the hub writes. */
 function inHub(): Pick<SiteOptions, "front" | "terms" | "spec"> {
   const written = (path: string) =>
@@ -122,12 +146,13 @@ function inHub(): Pick<SiteOptions, "front" | "terms" | "spec"> {
  */
 async function buildExampleSite(
   args: string[],
-  hub: Pick<SiteOptions, "front" | "terms" | "spec"> = {},
+  hub: Pick<SiteOptions, "front" | "terms" | "spec" | "chrome"> = {},
 ): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
     allowPositionals: true,
     options: {
+      ...CHROME_OPTIONS,
       pod: { type: "string" },
       out: { type: "string" },
       lens: { type: "string" },
@@ -135,7 +160,10 @@ async function buildExampleSite(
   });
   const found = target(positionals[0], values.pod);
   const vocabulary = await localVocabulary(ROOT, log);
-  return writeSite(vocabulary, found, values.out, values.lens, hub);
+  return writeSite(vocabulary, found, values.out, values.lens, {
+    chrome: chromeOf(values),
+    ...hub,
+  });
 }
 
 async function writeSite(
@@ -143,7 +171,7 @@ async function writeSite(
   { name, pod, named, own }: Target,
   outFolder: string | undefined,
   lens: string | undefined,
-  hub: Pick<SiteOptions, "front" | "terms" | "spec">,
+  hub: Pick<SiteOptions, "front" | "terms" | "spec" | "chrome">,
 ): Promise<number> {
   const { iri } = vocabulary.resolved;
   const kit = `conformance/${name}`;
@@ -373,10 +401,12 @@ function pagesContext(
   vocabulary: LocalVocabulary,
   reportFile: string,
   testsFolder: string,
+  chrome: Chrome,
 ): PagesContext {
   return {
     root: ROOT,
     log,
+    chrome,
     // Set only by the deploy's build, so a pull request's artifact and a local build keep relative links.
     ...(process.env.PAGES_URL ? { base: process.env.PAGES_URL } : {}),
     examples: once(async () => {
@@ -404,7 +434,7 @@ function pagesContext(
         const podFiles = new FolderFiles(pod);
         for (const [path, bytes] of podOf(sample))
           await podFiles.write(path, bytes);
-        const built = await buildExampleSite([name], inHub());
+        const built = await buildExampleSite([name], { ...inHub(), chrome });
         if (built !== 0) throw new Error(`the site of ${name} was not built`);
         const folder = new FolderFiles(join(ROOT, "build", name, "site"));
         const site = new Map<string, Uint8Array>();
@@ -487,6 +517,7 @@ async function buildPages(args: string[]): Promise<number> {
   const { values } = parseArgs({
     args,
     options: {
+      ...CHROME_OPTIONS,
       "no-kits": { type: "boolean" },
       report: { type: "string" },
       tests: { type: "string" },
@@ -499,6 +530,7 @@ async function buildPages(args: string[]): Promise<number> {
       vocabulary,
       reportFileOf(values.report),
       testsFolderOf(values.tests),
+      chromeOf(values),
     ),
     front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows),
     finishers: FINISHERS,
@@ -520,7 +552,11 @@ async function buildSpec(args: string[]): Promise<number> {
   const started = performance.now();
   const { values } = parseArgs({
     args,
-    options: { report: { type: "string" }, out: { type: "string" } },
+    options: {
+      ...CHROME_OPTIONS,
+      report: { type: "string" },
+      out: { type: "string" },
+    },
   });
   const resolved = await resolveVocabulary(
     ROOT,
@@ -537,6 +573,7 @@ async function buildSpec(args: string[]): Promise<number> {
     report,
     builtFrom: await builtFromRuntime(resolved),
     at: clock.now(),
+    chrome: chromeOf(values),
   });
   const out = absolute(values.out ?? SPEC);
   await rm(out, { recursive: true, force: true });
