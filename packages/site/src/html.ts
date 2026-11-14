@@ -65,6 +65,7 @@ export const PLAIN: Chrome = {};
 const NAV: readonly (readonly [string, string | null])[] = [
   ["Understand", "/understand/"],
   ["Build", "/build/"],
+  ["Standards", "/standards/"],
   ["Contribute", "/contribute/"],
   ["Reference ↗", null],
 ];
@@ -142,16 +143,18 @@ ${
   markup`<div class="sx-footer-cols">
 ${column(website, "Protocol", [
   ["Understand Cascade", "/understand/"],
+  ["Built on standards", "/standards/"],
   ["How it's built", "/how-its-built/"],
   ["How we know it works", "/community/status/"],
   ["Cascade in use", "/understand/apps/"],
+  ["AI models", "/understand/models/"],
 ])}${column(website, "Build", [
     ["Start building", "/build/"],
     ["Previous version", "/v0/"],
   ])}${column(website, "Community", [
     ["Help shape it", "/contribute/"],
     ["Become a partner", "/community/partners/"],
-    ["Talk with us", "/community/"],
+    ["Talk with us", "/contribute/#talk"],
     ["Status", "/community/status/"],
     ["Build notes", "/blog/"],
     ["GitHub", "/contribute/#repos"],

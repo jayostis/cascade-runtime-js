@@ -118,7 +118,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         );
         assert.deepEqual(
           [...nav.matchAll(/<a [^>]*>([^<]*)<\/a>/g)].map(([, label]) => label),
-          ["Understand", "Build", "Contribute", "Reference ↗"],
+          ["Understand", "Build", "Standards", "Contribute", "Reference ↗"],
           path,
         );
         assert.match(
@@ -128,6 +128,75 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         );
         assert.equal(header.split("aria-current").length, 2, path);
       }
+    });
+
+    it("lists the website's nav and footer by label and path, in its order and columns", () => {
+      const expected = {
+        nav: [
+          ["Understand", "/understand/"],
+          ["Build", "/build/"],
+          ["Standards", "/standards/"],
+          ["Contribute", "/contribute/"],
+          ["Reference ↗", HUB],
+        ],
+        columns: {
+          "§ Protocol": [
+            ["Understand Cascade", "/understand/"],
+            ["Built on standards", "/standards/"],
+            ["How it's built", "/how-its-built/"],
+            ["How we know it works", "/community/status/"],
+            ["Cascade in use", "/understand/apps/"],
+            ["AI models", "/understand/models/"],
+          ],
+          "§ Build": [
+            ["Start building", "/build/"],
+            ["Previous version", "/v0/"],
+          ],
+          "§ Community": [
+            ["Help shape it", "/contribute/"],
+            ["Become a partner", "/community/partners/"],
+            ["Talk with us", "/contribute/#talk"],
+            ["Status", "/community/status/"],
+            ["Build notes", "/blog/"],
+            ["GitHub", "/contribute/#repos"],
+          ],
+        },
+        legal: [
+          ["Trademark policy", "/legal/trademarks.html"],
+          ["POTS Check privacy", "/legal/privacy.html"],
+          ["POTS Check terms", "/legal/terms.html"],
+        ],
+      };
+      const pairs = (html: string) =>
+        [...html.matchAll(/<a href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map(
+          ([, href, label]) => [
+            (label ?? "").replace("&#39;", "'"),
+            (href ?? "").replace(WEBSITE, ""),
+          ],
+        );
+      const message =
+        "the hub's chrome differs from apply-chrome.py of the website: compare it with that file and update this list";
+      const html = pages.get([...pages.keys()][0] ?? "") ?? "";
+      const nav = html.slice(
+        html.indexOf(`<nav class="sx-nav"`),
+        html.indexOf("</nav>"),
+      );
+      assert.deepEqual(pairs(nav), expected.nav, message);
+      const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
+      const cols = footer.slice(
+        0,
+        footer.indexOf('<div class="sx-footer-legal">'),
+      );
+      const found: Record<string, string[][]> = {};
+      for (const part of cols.split("<div><h2>").slice(1, 4)) {
+        found[part.slice(0, part.indexOf("</h2>"))] = pairs(part);
+      }
+      assert.deepEqual(found, expected.columns, message);
+      assert.deepEqual(
+        pairs(footer.slice(footer.indexOf('<div class="sx-footer-legal">'))),
+        expected.legal,
+        message,
+      );
     });
 
     it("builds every link of the chrome from the website address it was given, bar the hub's own", () => {
@@ -164,7 +233,10 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         );
         assert.ok(!footer.includes("(previous version)"), path);
         assert.ok(footer.includes(`href="${WEBSITE}/contribute/"`), path);
-        assert.ok(footer.includes("Talk with us"), path);
+        assert.ok(
+          footer.includes(`href="${WEBSITE}/contribute/#talk">Talk with us<`),
+          path,
+        );
         assert.ok(footer.includes("§ Working toward a standard"), path);
         assert.ok(!footer.includes("Talk with Jed and Jay"), path);
         assert.ok(!footer.includes("§ Alpha"), path);
