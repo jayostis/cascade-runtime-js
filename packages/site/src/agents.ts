@@ -96,7 +96,7 @@ export const SEARCH_SCRIPT_FILE = "search.js";
 export interface SearchRow {
   readonly path: string;
   readonly title: string;
-  readonly kind: "page" | "term" | "rule" | "decision" | "eval";
+  readonly kind: "page" | "call" | "term" | "rule" | "decision" | "eval";
   /** What a term is called in words, beside its name. */
   readonly label?: string;
 }
@@ -105,6 +105,10 @@ const TERM_ANCHOR =
   /<h3 id="([a-z][a-z0-9-]*:[^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h3>/g;
 const RULE_ANCHOR =
   /<section class="rule" id="([^"]+)">\s*<h2>([\s\S]*?)<\/h2>/g;
+/** An inline code span that is a call: its name is the last identifier before the parenthesis. */
+const CALL_SPAN = /^(?:await )?(?:[A-Za-z_$][\w$]*\.)*([A-Za-z_$][\w$]*)\(/;
+/** The ids of the page's headings and its inline code, in the order they stand. */
+const API_TOKEN = /<h[1-6] id="([^"]+)"|<code>([^<]*)<\/code>/g;
 const NOTE_FOLDER = "decisions/";
 const RULES_FOLDER = "spec/";
 const EVALS_FOLDER = "evals/";
@@ -120,7 +124,7 @@ const words = (html: string): string =>
 
 /**
  * The rows of `search.json`: every page of `listed`, and the anchors the reader looks for by name inside pages that are
- * not one page each: the term reference's terms of every namespace, and the rules of the spec's pages. A page is titled
+ * not one page each: the term reference's terms of every namespace, and the rules of the spec's pages. The API page's calls, each named once in the section that first names it, are anchors of it too. A page is titled
  * without the site's name after it, a decision note and an evals page are told by their kind, and a page that only
  * redirects is no row.
  */
@@ -148,7 +152,21 @@ function searchRows(
           kind: "term",
           label: words(label),
         });
-    else if (path.startsWith(RULES_FOLDER))
+    else if (path === API_PAGE) {
+      const seen = new Set<string>();
+      let section = "";
+      for (const [, id, code] of html().matchAll(API_TOKEN)) {
+        if (id !== undefined) section = id;
+        const name = CALL_SPAN.exec(decoded(code ?? ""))?.[1];
+        if (name === undefined || seen.has(name)) continue;
+        seen.add(name);
+        rows.push({
+          path: section === "" ? path : `${path}#${section}`,
+          title: name,
+          kind: "call",
+        });
+      }
+    } else if (path.startsWith(RULES_FOLDER))
       for (const [, id = "", heading = ""] of html().matchAll(RULE_ANCHOR))
         rows.push({
           path: `${path}#${id}`,
