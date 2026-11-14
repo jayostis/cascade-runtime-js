@@ -58,6 +58,17 @@ export const kv = (rows: readonly (readonly [string, string | undefined])[]) =>
     .map(([key, value]) => `<tr><th>${esc(key)}</th><td>${value}</td></tr>`)
     .join("")}</table>`;
 
+/** The attribute that exempts a box's label from the audience rule when the agent wrote it. The kind names are fixed text, checked in the source. */
+const agentWrote = new Set<Kind>([
+  "item",
+  "fact",
+  "absence",
+  "knowledge",
+  "link",
+]);
+const recorded = (node: GNode) =>
+  agentWrote.has(node.kind) ? " data-recorded" : "";
+
 const BOX = { w: 176, h: 48, gx: 28, gy: 10 };
 
 function svgOf(graph: Graph, id: string): string {
@@ -104,7 +115,7 @@ function svgOf(graph: Graph, id: string): string {
     .map((node) => {
       const p = at.get(node.id)!;
       const sub = node.sub ?? KIND[node.kind];
-      return `<g class="node k-${node.kind}" tabindex="0" role="button" data-id="${esc(node.id)}" transform="translate(${p.x},${p.y})"><title>${esc(KIND[node.kind])}: ${esc(node.label)}${node.sub === undefined ? "" : ` · ${esc(node.sub)}`}</title><rect width="${BOX.w}" height="${BOX.h}" rx="9"/><text x="10" y="19" class="l">${esc(cut(node.label, node.check === undefined ? 26 : 20))}</text><text x="10" y="36" class="s">${esc(cut(sub, 30))}</text>${node.check === undefined ? "" : `<text x="${BOX.w - 10}" y="19" text-anchor="end" class="ck ${node.check}">${node.check === "ok" ? "✓" : "✗"}</text>`}</g>`;
+      return `<g class="node k-${node.kind}" tabindex="0" role="button" data-id="${esc(node.id)}" transform="translate(${p.x},${p.y})"><title${recorded(node)}>${esc(KIND[node.kind])}: ${esc(node.label)}${node.sub === undefined ? "" : ` · ${esc(node.sub)}`}</title><rect width="${BOX.w}" height="${BOX.h}" rx="9"/><text x="10" y="19" class="l"${recorded(node)}>${esc(cut(node.label, node.check === undefined ? 26 : 20))}</text><text x="10" y="36" class="s"${recorded(node)}>${esc(cut(sub, 30))}</text>${node.check === undefined ? "" : `<text x="${BOX.w - 10}" y="19" text-anchor="end" class="ck ${node.check}">${node.check === "ok" ? "✓" : "✗"}</text>`}</g>`;
     })
     .join("");
   return `<svg class="graph" data-graph="${esc(id)}" viewBox="0 0 ${width} ${total}" width="${width}" height="${total}" role="img" aria-label="Evidence graph">${edges}${nodes}</svg>`;
@@ -126,7 +137,7 @@ function treeOf(graph: Graph): string {
     const kids = again
       ? []
       : graph.edges.filter((it) => it.from === id).map((it) => it.to);
-    return `<li class="k-${node.kind}"><details${node.col <= 1 ? " open" : ""}><summary><span class="kl">${esc(KIND[node.kind])}</span>${checkMark(node)}<b>${esc(node.label)}</b>${node.sub === undefined ? "" : `<span class="sub">${esc(node.sub)}</span>`}</summary><div class="nd">${node.detail ?? ""}</div>${kids.length === 0 ? "" : `<ul>${kids.map(walk).join("")}</ul>`}</details></li>`;
+    return `<li class="k-${node.kind}"><details${node.col <= 1 ? " open" : ""}><summary><span class="kl">${esc(KIND[node.kind])}</span>${checkMark(node)}<b${recorded(node)}>${esc(node.label)}</b>${node.sub === undefined ? "" : `<span class="sub"${recorded(node)}>${esc(node.sub)}</span>`}</summary><div class="nd">${node.detail ?? ""}</div>${kids.length === 0 ? "" : `<ul>${kids.map(walk).join("")}</ul>`}</details></li>`;
   };
   return `<ul class="tree">${walk(root.id)}</ul>`;
 }
@@ -136,7 +147,7 @@ export function graphBlock(graph: Graph, id: string, note: string): string {
   const details = graph.nodes
     .map(
       (node) =>
-        `<div class="ndetail" data-id="${esc(node.id)}" hidden><span class="kl">${esc(KIND[node.kind])}${node.check === undefined ? "" : ` · <span class="${node.check}">${node.check === "ok" ? "checked by a program: the record says this" : "checked by a program: the record does not say this"}</span>`}</span><b>${esc(node.label)}</b>${node.sub === undefined ? "" : ` <span class="muted">· ${esc(node.sub)}</span>`}${node.detail ?? ""}</div>`,
+        `<div class="ndetail" data-id="${esc(node.id)}" hidden><span class="kl">${esc(KIND[node.kind])}${node.check === undefined ? "" : ` · <span class="${node.check}">${node.check === "ok" ? "checked by a program: the record says this" : "checked by a program: the record does not say this"}</span>`}</span><b${recorded(node)}>${esc(node.label)}</b>${node.sub === undefined ? "" : ` <span class="muted"${recorded(node)}>· ${esc(node.sub)}</span>`}${node.detail ?? ""}</div>`,
     )
     .join("");
   return `<div class="gwrap"><div class="svgblock"><div class="svgwrap">${svgOf(graph, id)}</div><div class="gpanel"><span class="muted small">Click a box for what it holds.</span></div></div>${treeOf(graph)}<p class="tiny muted">${note}</p>${details}</div>`;

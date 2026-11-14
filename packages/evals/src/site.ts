@@ -102,6 +102,35 @@ function headline(entries: readonly Entry[]): string {
     .join("")}</tbody></table></div>`;
 }
 
+/** Each arm's cited facts borne out, added up over every run on the page, with what the totals rest on. */
+function citationTotals(entries: readonly Entry[]): string {
+  const total = (which: Arm) => {
+    let held = 0;
+    let failed = 0;
+    for (const e of entries) {
+      const a = e.instance.arms[which];
+      if (a === undefined) continue;
+      held += a.citations.held;
+      failed += a.citations.failed;
+    }
+    return { held, of: held + failed };
+  };
+  const people = new Set(
+    entries.flatMap((e) => e.results.cases.map((c) => c.id)),
+  );
+  const models = new Set(entries.map((e) => e.instance.model));
+  const many = (n: number, one: string, more: string) =>
+    `${n} ${n === 1 ? one : more}`;
+  const named = [...models].sort().map((m) => esc(m));
+  const sums = ARMS.map((which) => {
+    const t = total(which);
+    return `<span data-total="${which}">${badge(which)} <b>${t.held} of ${t.of}</b></span>`;
+  }).join(" · ");
+  return `<section class="totals"><h2>Cited facts borne out, in all</h2>
+<p>A program checks each fact an answer cites against the record it names. Over ${many(entries.length, "run", "runs")} on this page, added up here from the recorded runs: ${sums} cited facts borne out. The same figures stand under each run below.</p>
+<p class="small muted">The limit: these are ${many(people.size, "made-up person", "made-up people")} and ${many(models.size, "model", "models")} (${named.join(", ")}); runs vary, so read a total as what happened in these runs, not as a rate to expect.</p></section>`;
+}
+
 function runRow(from: string, e: Entry): string {
   const { instance: i } = e;
   const arm = (which: Arm) => {
@@ -158,7 +187,7 @@ function frontPage(entries: readonly Entry[], above: Above): string {
   const from = "index.html";
   const latest = entries[0];
   const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a></p>
-<h1>Ask your health records a question. Which answer would you rather get?</h1>
+<h1>The same question, two ways of giving a model a person&rsquo;s records. Which answer would you rather build on?</h1>
 <p class="lead">Cascade joins a person's downloaded health records into one <b>pod</b>: one entry per real thing, with its history across sources, read by a model through tools. The <b>grab bag</b> is the same downloads read whole, as if pasted into the chat. The same model answers the same questions both ways. Below: how each model did, then every run, one row per model per sitting. Open a row to read both answers and the evidence behind each.</p>
 <div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a>${people(
     entries,
@@ -174,13 +203,14 @@ ${
     : `<h2>Per model</h2>
 <p class="small muted">&ldquo;Right&rdquo; counts the answer key's expected items said and its traps avoided, over every question asked, as counts. An item an answer only half said, a split between judges, a question not answered or not graded is not counted right and is shown beside the count.</p>
 ${headline(entries)}
+${citationTotals(entries)}
 <h2>Every run</h2>
 <div class="runs">${entries.map((e) => runRow(from, e)).join("")}</div>
 <div class="legend"><span>Marks used inside a run:</span>${mark("yes", "said what we expected")}${mark("part", "part of it")}${mark("no", "missed it")}${mark("beyond", "beyond the key: not wrong, possibly good")}${mark("none", "not counted: judges split, unanswered or not graded")}${mark("contra", "said something the records contradict")}</div>`
 }`;
   return page({
     path: from,
-    title: "Cascade evals — ask your records a question",
+    title: "Cascade evals — two ways to ask a person's records a question",
     crumbs: [...above, ["Cascade evals"]],
     body,
   });

@@ -184,6 +184,33 @@ describe("Reading the report's front page · renderSite()", () => {
       assert.equal(/\d%/.test(text(index)), false, "counts, never percentages");
     });
 
+    it("totals each arm's cited facts borne out over every run, from the runs", () => {
+      const runs = [recorded, asModel("fixture-2", "claude-sonnet-5-5")];
+      for (const which of ARMS) {
+        const held = runs
+          .flatMap((r) => r.instances)
+          .reduce((n, i) => n + i.arms[which]!.citations.held, 0);
+        const failed = runs
+          .flatMap((r) => r.instances)
+          .reduce((n, i) => n + i.arms[which]!.citations.failed, 0);
+        assert.ok(held > 0, "the fixture cites facts");
+        assert.match(
+          text(element(index, new RegExp(`<[a-z]+[^>]*data-total="${which}"`))),
+          new RegExp(`${held} of ${held + failed}`),
+          which,
+        );
+      }
+    });
+
+    it("states the totals' limit and that runs vary", () => {
+      const totals = text(element(index, /<section[^>]*class="totals"/));
+      assert.match(totals, /1 made-up person\b/);
+      assert.match(totals, /2 models/);
+      assert.match(totals, /claude-opus-5-5, claude-sonnet-5-5/);
+      assert.doesNotMatch(totals, /vendor/);
+      assert.match(totals, /runs vary/i);
+    });
+
     it("shows one row for each instance, each a link to that run's page", () => {
       const rows = [...index.matchAll(/<a[^>]*class="runrow"[^>]*>/g)].map(
         (m) => m[0],
@@ -739,7 +766,7 @@ describe("Seeing what an answer's citations cite · renderSite()", () => {
 describe("Printing what to show a doctor · renderSite()", () => {
   describe("with the doctor card of an answer", () => {
     it("opens with the question the person asked", () => {
-      assert.match(text(tab("checkup", "pod", "doctor")), /You asked/);
+      assert.match(text(tab("checkup", "pod", "doctor")), /The question/);
     });
 
     it("shows the answer's short form", () => {
