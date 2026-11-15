@@ -255,12 +255,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         assert.ok(!chrome.includes(WEBSITE), `${path} links the website`);
         assert.ok(!chrome.includes("cascadeprotocol.org"), path);
         assert.ok(!chrome.includes("/understand/"), path);
-        assert.ok(
-          html.includes(
-            `<div class="sx-strip">An open standard in progress, in alpha.</div>`,
-          ),
-          path,
-        );
+        assert.ok(html.includes(`<div class="sx-strip">Alpha</div>`), path);
         const footer = html.slice(html.indexOf(`<footer class="sx-footer">`));
         assert.deepEqual(links(footer), [], path);
         assert.ok(!footer.includes("<h2>"), `${path} has a column`);

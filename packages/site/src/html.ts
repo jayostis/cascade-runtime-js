@@ -99,9 +99,9 @@ const searchBox = (hubRoot: string) => markup`<div class="sx-find-wrap">
 /** The website's strip and header, the hub being the nav's "Reference"; with `hubRoot` (the address of the hub's root from the page) and `chrome.search`, the search box under the bar. */
 export function chromeHeader(chrome: Chrome, hubRoot?: string): Html {
   const { website } = chrome;
-  return markup`<div class="sx-strip">An open standard in progress, in alpha.${
+  return markup`<div class="sx-strip">Alpha${
     website !== undefined &&
-    markup` <a href="${website}/community/status/">See what works today →</a> · <a href="${website}/contribute/">Help shape it →</a>`
+    markup`: <a href="${website}/community/status/">see what works today →</a>`
   }</div>
 <header class="sx-header">
 <div class="sx-bar">
