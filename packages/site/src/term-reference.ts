@@ -199,6 +199,7 @@ class Reference {
   readonly #prefixes: ReadonlyMap<string, string>;
   readonly #used: UsedBy | undefined;
   readonly #nodeShapes: readonly NamedNode[];
+  readonly #tree: string;
   /** The vocabulary's files on GitHub at the commit read, ending in a slash. */
   readonly blob: string;
 
@@ -210,6 +211,7 @@ class Reference {
     used: UsedBy | undefined,
     tree: string,
   ) {
+    this.#tree = tree;
     this.blob = tree.includes("/tree/")
       ? tree.replace("/tree/", "/blob/")
       : tree;
@@ -258,6 +260,8 @@ class Reference {
 
   /** The IRI as a prefixed name, by this site's prefixes or the files' own, or else whole. */
   name(iri: string): string {
+    const file = this.#file(iri);
+    if (file !== undefined) return file;
     const known = prefixed(iri);
     if (known !== undefined) return known;
     for (const [prefix, namespace] of this.#prefixes) {
@@ -268,16 +272,35 @@ class Reference {
     return iri;
   }
 
+  /** A name a file of the vocabulary gives with a relative IRI, as `file#Name` (or the file's own name), else undefined. */
+  #file(iri: string): string | undefined {
+    if (!iri.startsWith(this.#tree)) return undefined;
+    return iri.slice(this.#tree.length).replace(/^.*\//, "");
+  }
+
+  /** The id an anchor of the IRI has: a shape of a file as `file#Name`, else the term's. */
+  id(iri: string): string {
+    return this.#file(iri) ?? termId(iri);
+  }
+
+  #href(iri: string): string {
+    const file = this.#file(iri);
+    return file === undefined
+      ? termHref(iri, "")
+      : `#${encodeURIComponent(file)}`;
+  }
+
   /** A term as a name: a link to its entry where it has one, else text. */
   term(iri: string): Html {
     return this.#entries.has(iri) || this.#homes.has(iri)
-      ? markup`<a href="${termHref(iri, "")}"><code>${this.name(iri)}</code></a>`
+      ? markup`<a href="${this.#href(iri)}"><code>${this.name(iri)}</code></a>`
       : markup`<code>${this.name(iri)}</code>`;
   }
 
   /** An address to follow: its entry, the page itself, or text where it is on the namespace's host. */
   link(iri: string): Html {
     if (this.#entries.has(iri) || this.#homes.has(iri)) return this.term(iri);
+    if (this.#file(iri) !== undefined) return this.term(iri);
     if (/^https?:\/\//i.test(iri) && !NAMESPACE_HOST.test(iri))
       return markup`<a href="${iri}">${iri}</a>`;
     return markup`<code>${iri}</code>`;
@@ -441,7 +464,7 @@ class Reference {
   shape(shape: NamedNode, home: boolean): Html {
     const wide = this.wide(shape);
     const properties = this.#shapes.objects(shape, `${SH}property`);
-    return markup`<div class="shape"${home ? markup` id="${termId(shape.value)}"` : ""}>${this.targets(shape)}${wide.length === 0 ? "" : markup`<p>On the whole node: ${wide.map(([predicate, object], i) => markup`${i === 0 ? "" : "; "}${this.constraint(predicate, object)}`)}${this.said(shape)}</p>\n`}${properties.length === 0 ? "" : markup`<ul>\n${properties.map((p) => this.propertyLine(p))}</ul>\n`}</div>\n`;
+    return markup`<div class="shape"${home ? markup` id="${this.id(shape.value)}"` : ""}>${this.targets(shape)}${wide.length === 0 ? "" : markup`<p>On the whole node: ${wide.map(([predicate, object], i) => markup`${i === 0 ? "" : "; "}${this.constraint(predicate, object)}`)}${this.said(shape)}</p>\n`}${properties.length === 0 ? "" : markup`<ul>\n${properties.map((p) => this.propertyLine(p))}</ul>\n`}</div>\n`;
   }
 
   /** The shapes at home on the property's entry, each whole. */
@@ -703,15 +726,15 @@ const parse = async (
   vocabulary: Files,
   ...paths: readonly [string, ...string[]]
 ): Promise<[Graph, string]> => {
-  const text = (
-    await Promise.all(paths.map((path) => readText(vocabulary, path)))
-  ).join("\n");
-  return [
-    new Graph(
-      await new OxigraphStore().parse(text, `${vocabulary.iri}${paths[0]}`),
+  const texts = await Promise.all(
+    paths.map((path) => readText(vocabulary, path)),
+  );
+  const triples = await Promise.all(
+    texts.map((text, index) =>
+      new OxigraphStore().parse(text, `${vocabulary.iri}${paths[index]}`),
     ),
-    text,
-  ];
+  );
+  return [new Graph(triples.flat()), texts.join("\n")];
 };
 
 /** The terms the ontology declares, each with the entry the page gives it. */

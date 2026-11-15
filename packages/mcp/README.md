@@ -35,7 +35,9 @@ when the first pod opens, and turns on `reference_table_checks`.
 
 Every row names the entry it is about, so an answer can cite it.
 
-**A hosted client sends what the tools return to its provider.** A pod made from a person's own records is theirs to
+## A hosted client sends what the tools return to its provider
+
+A pod made from a person's own records is theirs to
 decide about: use a model that runs on their machine, or leave that pod out.
 
 **Claude Desktop.** Open Settings, Developer, Edit Config, and add the server to `claude_desktop_config.json`, with the

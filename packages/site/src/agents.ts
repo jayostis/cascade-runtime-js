@@ -175,15 +175,24 @@ function searchRows(
       title: title.replace(SITE_NAME, ""),
       kind: note ? "decision" : path.startsWith(EVALS_FOLDER) ? "eval" : "page",
     });
-    if (path === TERMS_PAGE || path === BRIDGE_TERMS_PAGE)
+    if (path === TERMS_PAGE || path === BRIDGE_TERMS_PAGE) {
+      /** A term the Bridge reuses is the term reference's to answer, so its entry on the Bridge's page is no row. */
+      const described = new Set<string>();
+      const terms = tree.get(TERMS_PAGE);
+      if (path === BRIDGE_TERMS_PAGE && terms !== undefined)
+        for (const [, id = ""] of new TextDecoder()
+          .decode(terms)
+          .matchAll(TERM_ANCHOR))
+          described.add(id);
       for (const [, id = "", label = ""] of html().matchAll(TERM_ANCHOR))
-        rows.push({
-          path: `${path}#${id}`,
-          title: id,
-          kind: "term",
-          label: words(label),
-        });
-    else if (path === MCP_PAGE)
+        if (!described.has(id))
+          rows.push({
+            path: `${path}#${id}`,
+            title: id,
+            kind: "term",
+            label: words(label),
+          });
+    } else if (path === MCP_PAGE)
       for (const [, id = "", name = ""] of html().matchAll(TOOL_ANCHOR))
         rows.push({
           path: `${path}#${id}`,

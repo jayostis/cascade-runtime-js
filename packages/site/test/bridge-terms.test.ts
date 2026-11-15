@@ -11,7 +11,7 @@ import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { bridgeTermsSection } from "../src/hub/bridge-terms.js";
 import { termHref, termId } from "../src/links.js";
-import { buildTree } from "../src/sections.js";
+import { buildTree, type Section } from "../src/sections.js";
 import {
   BRIDGE_TERMS_PAGE,
   bridgeTermReference,
@@ -199,6 +199,44 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
     });
   });
 
+  describe("given shapes named with relative IRIs in two files", () => {
+    const RELATIVE = (name: string, target: string, extra = "") =>
+      `@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+<#${name}> a sh:NodeShape ;${extra}
+    sh:targetClass bridge:${target} .
+`;
+    let relative: string;
+
+    before(async () => {
+      const files = new MemoryFiles(TREE);
+      await files.write("vocab/bridge.ttl", text(ONTOLOGY));
+      await files.write(
+        "shapes/bridge.shapes.ttl",
+        text(RELATIVE("Act", "Adapter")),
+      );
+      await files.write(
+        "shapes/facts.shapes.ttl",
+        text(RELATIVE("Fact", "LiftTest", "\n    sh:prefixes <> ;")),
+      );
+      relative = await bridgeTermReference(files, PLAIN);
+    });
+
+    it("names each by its file and its own name, at an anchor of that name", () => {
+      const { ids, said } = readPage(relative);
+      assert.ok(ids.has("bridge.shapes.ttl#Act"));
+      assert.ok(ids.has("facts.shapes.ttl#Fact"));
+      assert.match(said, /facts\.shapes\.ttl#Fact checks each bridge:LiftTest/);
+      assert.match(said, /bridge\.shapes\.ttl#Act checks each bridge:Adapter/);
+    });
+
+    it("shows no address of the repository's tree for a shape, nor for `sh:prefixes <>`", () => {
+      assert.equal(relative.split(`${TREE}shapes/`).length, 1);
+      assert.match(readPage(relative).said, /prefixes facts\.shapes\.ttl/);
+    });
+  });
+
   describe("`bridgeTermsSection`", () => {
     let tree: ReadonlyMap<string, Uint8Array>;
     let rows: SearchRow[];
@@ -250,6 +288,45 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
         new TextDecoder().decode(tree.get("llms.txt")),
         /terms\/bridge\.html/,
       );
+    });
+
+    it("lists no term the term reference already describes, so that page stays the first answer for it", async () => {
+      const files = await fixture();
+      const ctx = {
+        root: "",
+        log: () => undefined,
+        bridgeSpec: async () => ({ files, commit: "abc123" }),
+        chrome: PLAIN,
+      } as unknown as PagesContext;
+      const reference: Section<PagesContext> = {
+        path: TERMS_PAGE,
+        title: "Cascade terms",
+        want: "conformance",
+        build: async () =>
+          new Map([
+            [
+              TERMS_PAGE,
+              text(`<h3 id="oa:hasSource"><code>oa:hasSource</code></h3>\n`),
+            ],
+          ]),
+        rows: async () => [],
+      };
+      const built = await buildTree({
+        sections: [reference, bridgeTermsSection],
+        ctx,
+        front: (rows) => hubFiles([], rows, PLAIN),
+        finishers: [agentFiles],
+      });
+      const paths = (
+        JSON.parse(
+          new TextDecoder().decode(built.tree.get(SEARCH_FILE)),
+        ) as SearchRow[]
+      )
+        .filter(({ kind }) => kind === "term")
+        .map(({ path }) => path);
+      assert.ok(paths.includes(`${TERMS_PAGE}#oa:hasSource`));
+      assert.ok(!paths.includes(`${BRIDGE_TERMS_PAGE}#oa:hasSource`));
+      assert.ok(paths.includes(`${BRIDGE_TERMS_PAGE}#bridge:Adapter`));
     });
   });
 

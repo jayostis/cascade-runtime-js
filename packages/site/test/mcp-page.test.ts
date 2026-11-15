@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { before, describe, it } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
 import { agentFiles, SEARCH_FILE, type SearchRow } from "../src/agents.js";
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
@@ -17,23 +17,33 @@ const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const decode = (bytes: Uint8Array | undefined) =>
   new TextDecoder().decode(bytes);
 
-/** The tools the server registers: those `toolsFor` gives a client that can ask the person, as `podServer` registers them. */
-async function registered(): Promise<
-  readonly { name: string; tier: string }[]
-> {
-  const { toolsFor } = (await import(
-    pathToFileURL(
-      join(
-        ROOT,
-        "packages",
-        "cascade-runtime",
-        "dist",
-        "src",
-        "propose-tools.js",
-      ),
-    ).href
-  )) as typeof import("cascade-runtime/tools/propose");
-  return toolsFor({ canAsk: true });
+interface Listed {
+  readonly name: string;
+  readonly description: string;
+  readonly tier: "free" | "ask";
+}
+
+/** The tools a client that can ask the person lists on `podServer`, through an in-memory client, not from the page's own source. */
+async function registered(): Promise<readonly Listed[]> {
+  const { Client } = await import("@modelcontextprotocol/client");
+  const { InMemoryTransport } = await import("@modelcontextprotocol/server");
+  const { podServer } = await import("cascade-mcp");
+  const client = new Client(
+    { name: "page-test", version: "1.0.0" },
+    { capabilities: { elicitation: {} } },
+  );
+  const [toServer, toClient] = InMemoryTransport.createLinkedPair();
+  await Promise.all([
+    podServer({} as Parameters<typeof podServer>[0]).connect(toServer),
+    client.connect(toClient),
+  ]);
+  const { tools } = await client.listTools();
+  await client.close();
+  return tools.map(({ name, description, annotations }) => ({
+    name,
+    description: description ?? "",
+    tier: annotations?.readOnlyHint === true ? "free" : "ask",
+  }));
 }
 
 /**
@@ -43,7 +53,7 @@ async function registered(): Promise<
 describe("The MCP page · mcpPage(), mcpSection", () => {
   let tree: ReadonlyMap<string, Uint8Array>;
   let page: string;
-  let tools: readonly { name: string; tier: string }[];
+  let tools: readonly Listed[];
 
   before(async () => {
     tools = await registered();
@@ -86,21 +96,19 @@ describe("The MCP page · mcpPage(), mcpSection", () => {
       );
     });
 
-    it("shows each tool's description as the server sends it", async () => {
-      const { TOOLS } = (await import(
-        pathToFileURL(
-          join(
-            ROOT,
-            "packages",
-            "cascade-runtime",
-            "dist",
-            "src",
-            "pod-tools.js",
-          ),
-        ).href
-      )) as typeof import("cascade-runtime/tools");
+    it("has a row for no tool the server does not list", () => {
+      const rows = [...readPage(page).ids].filter((id) =>
+        id.startsWith("tool-"),
+      );
+      assert.deepEqual(
+        rows.sort(),
+        tools.map(({ name }) => toolAnchor(name)).sort(),
+      );
+    });
+
+    it("shows each tool's description as the server sends it, the tools that propose a write too", () => {
       const said = readPage(page).said.replace(/\s+/g, " ");
-      for (const { description } of TOOLS)
+      for (const { description } of tools)
         assert.ok(
           said.includes(description.replace(/\s+/g, " ")),
           `the description of a tool is shown whole: ${description.slice(0, 40)}`,
@@ -118,7 +126,17 @@ describe("The MCP page · mcpPage(), mcpSection", () => {
       );
       assert.match(
         said,
-        /A hosted client sends what the tools return to its provider\./,
+        /A hosted client sends what the tools return to its provider/,
+      );
+      assert.ok(
+        page.includes(
+          "A hosted client sends what the tools return to its provider</h2>",
+        ),
+        "the warning is a heading",
+      );
+      assert.match(
+        said,
+        /A proposal the pod's rules refuse is an answer, not an error/,
       );
       assert.ok(code.some((block) => block.includes("mcpServers")));
     });

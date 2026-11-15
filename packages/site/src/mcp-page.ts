@@ -104,8 +104,9 @@ export function mcpPage(
 <article class="document">
 ${renderMarkdown(before)}</article>
 <h2 class="part" id="tools">The tools</h2>
-<p class="prose">Each tool answers in one block of JSON text. Input the rules refuse comes back as an error that says why, and any
-other failure as a fixed message with the reason in the server's log.</p>
+<p class="prose">Each tool answers in one block of JSON text. A call whose input the rules refuse fails with an error that says why,
+and any other failure with a fixed message and the reason in the server's log. A proposal the pod's rules refuse is an
+answer, not an error: <code>{ written: false, refused }</code>, with the reason.</p>
 ${tools.map(row)}<article class="document">
 ${renderMarkdown(after)}</article>
 `,
