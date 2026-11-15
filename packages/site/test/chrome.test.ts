@@ -118,7 +118,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         );
         assert.deepEqual(
           [...nav.matchAll(/<a [^>]*>([^<]*)<\/a>/g)].map(([, label]) => label),
-          ["Understand", "Build", "Standards", "Contribute", "Reference ↗"],
+          ["Architecture", "Build", "Standards", "Contribute", "Reference ↗"],
           path,
         );
         assert.match(
@@ -133,7 +133,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
     it("lists the website's nav and footer by label and path, in its order and columns", () => {
       const expected = {
         nav: [
-          ["Understand", "/understand/"],
+          ["Architecture", "/#architecture"],
           ["Build", "/build/"],
           ["Standards", "/standards/"],
           ["Contribute", "/contribute/"],
@@ -141,12 +141,12 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         ],
         columns: {
           "§ Protocol": [
-            ["Understand Cascade", "/understand/"],
+            ["The architecture", "/#architecture"],
             ["Built on standards", "/standards/"],
-            ["How it's built", "/how-its-built/"],
             ["How we know it works", "/community/status/"],
-            ["Cascade in use", "/understand/apps/"],
+            ["Built on Cascade", "/case-studies/"],
             ["AI models", "/understand/models/"],
+            ["Site map", "/site-map/"],
           ],
           "§ Build": [
             ["Start building", "/build/"],
@@ -154,7 +154,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
           ],
           "§ Community": [
             ["Help shape it", "/contribute/"],
-            ["Become a partner", "/community/partners/"],
+            ["Partner with us", "/community/partners/"],
             ["Talk with us", "/contribute/#talk"],
             ["Status", "/community/status/"],
             ["Build notes", "/blog/"],
@@ -238,6 +238,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
           path,
         );
         assert.ok(footer.includes("§ Working toward a standard"), path);
+        assert.ok(!footer.includes("We build on existing standards"), path);
         assert.ok(!footer.includes("Talk with Jed and Jay"), path);
         assert.ok(!footer.includes("§ Alpha"), path);
       }
