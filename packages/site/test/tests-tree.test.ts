@@ -116,7 +116,7 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
       assert.equal(rows[0]?.about, "Checks a record against its shape.");
       assert.equal(rows[1]?.about, "Reads what a hospital sends.");
       assert.equal(rows[2]?.about, "");
-      assert.match(rows[1]?.cases ?? "", /^3\b/);
+      assert.match(rows[1]?.cases ?? "", /^4$/);
     });
 
     it("links each capability, in the order the package's spec gives, to its id on the page", () => {
@@ -151,9 +151,7 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
 
     it("does not list the build capabilities among a package's", () => {
       assert.equal(rows.length, 3);
-      assert.ok(
-        !rows[1]?.capabilities.some((one) => one.label === "Packing"),
-      );
+      assert.ok(!rows[1]?.capabilities.some((one) => one.label === "Packing"));
     });
   });
 
@@ -424,17 +422,6 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
     });
   });
 
-  describe("with no failed case", () => {
-    it('says "No failures."', async () => {
-      const green = await pageWith({
-        runtime: { report: versioned("1.2.0"), ...RUN },
-      });
-      assert.match(green.page.said, /No failures\./);
-      const red = await pageWith({ runtime: { report: NODE, ...RUN } });
-      assert.doesNotMatch(red.page.said, /No failures\./);
-    });
-  });
-
   describe("with a suite that names its test folder", () => {
     it("shows its files without the folder", async () => {
       const given = {
@@ -460,7 +447,7 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
   });
 
   describe("with a repository other than the runtime's", () => {
-    it("shows the whole repository as one package", async () => {
+    it("reads the whole repository as one package, which has no level of its own", async () => {
       const { markup } = await pageWith({}, [
         {
           suite: suite("someone/host-thing", "vitest"),
@@ -474,7 +461,11 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
           },
         },
       ]);
-      assert.deepEqual(packagesOf(markup, "host-thing"), ["host-thing"]);
+      assert.deepEqual(packagesOf(markup, "host-thing"), []);
+      assert.doesNotMatch(
+        partOf(markup, "host-thing"),
+        /<table class="packages">/,
+      );
     });
   });
 

@@ -207,7 +207,7 @@ export function rowsOf(markup: string, heading: string) {
   )?.[1];
   if (table === undefined) return [];
   return [...table.matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g)]
-    .filter(([, , cells]) => !(cells ?? "").includes("<th scope=\"col\""))
+    .filter(([, , cells]) => !(cells ?? "").includes('<th scope="col"'))
     .map(([, attributes = "", cells = ""]) => {
       const [name = "", about = "", capabilities = "", cases = ""] = [
         ...cells.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g),
@@ -443,7 +443,7 @@ export const THREE_PACKAGES = (failing = 1): string => {
   return report(
     packageProperty("alpha", "alpha", "1.0.0", {
       about: "Reads what a hospital sends.",
-      capabilities: ["Reading a record", "Writing a record"],
+      capabilities: ["Reading a record · read", "Writing a record"],
       build: ["Packing"],
     }) +
       packageProperty("beta", "beta", "1.0.0", {

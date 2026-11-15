@@ -147,8 +147,18 @@ button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visibl
 .controls button:hover { background: var(--rule-soft); }
 .controls button[aria-pressed="true"] { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 .failures-only [data-result="passed"], .failures-only [data-result="skipped"], .failures-only [data-failed="0"] { display: none; }
-.no-failures { display: none; color: var(--ok); font-weight: 600; }
-.failures-only .no-failures { display: block; }
+.verdict { font-weight: 700; }
+.verdict.passed { color: var(--ok); }
+.verdict.failed { color: var(--bad); }
+.verdict .where { color: var(--muted); font-weight: 400; }
+.table-wrap { overflow-x: auto; margin: .75rem 0; }
+table.packages { border-collapse: collapse; width: 100%; font-size: .9rem; }
+table.packages th, table.packages td { text-align: left; vertical-align: top; padding: .45rem .6rem; border-top: 1px solid var(--rule); }
+table.packages thead th { border-top: 0; border-bottom: 2px solid var(--ink); font-size: .8rem; color: var(--muted); }
+table.packages ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .1rem .8rem; }
+table.packages td.cases { white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.packages tr.failing th, table.packages tr.failing td { background: var(--bad-bg); }
+table.packages tr.failing a { color: var(--bad); }
 pre.failure { background: var(--bad-bg); color: var(--ink); border-left: 3px solid var(--bad); white-space: pre-wrap;
               padding: .5rem .75rem; margin: .35rem 0 0; border-radius: 4px; overflow-x: auto; }
 .time { color: var(--muted); font: .8rem/1.4 var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
@@ -158,7 +168,9 @@ ul.tree li { margin: .2rem 0; }
 ul.tree summary, li.capability > details > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap;
                                                      align-items: baseline; gap: .1rem .5rem; color: var(--ink); }
 summary::-webkit-details-marker { display: none; }
-ul.tree summary::before, details.build > summary::before, .glossary > summary::before {
+section.pkg > details > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; }
+section.pkg > details > summary h3 { margin: 0; }
+ul.tree summary::before, details.build > summary::before, .glossary > summary::before, section.pkg > details > summary::before {
   content: "\\25B8"; color: var(--muted); display: inline-block; width: 1em; transition: transform .1s; }
 details[open] > summary::before { transform: rotate(90deg); }
 summary { list-style: none; }
@@ -215,6 +227,8 @@ details.build > summary { font-weight: 600; color: var(--ink); }
 export const SCRIPT = `
 document.querySelectorAll("[data-controls]").forEach(function (c) { c.hidden = false; });
 document.addEventListener("click", function (event) {
+  var link = event.target.closest && event.target.closest('a[href^="#"]');
+  if (link) { openTarget(link.getAttribute("href")); return; }
   var button = event.target.closest && event.target.closest("button[data-action]");
   if (!button) return;
   var part = button.closest("[data-part]");
@@ -229,9 +243,9 @@ document.addEventListener("click", function (event) {
       part.querySelectorAll("[data-failed]:not([data-failed='0']) > details").forEach(function (d) { d.open = true; });
   }
 });
-function openTarget() {
+function openTarget(hash) {
   var id;
-  try { id = decodeURIComponent(location.hash.slice(1)); } catch (e) { return; }
+  try { id = decodeURIComponent(hash.slice(1)); } catch (e) { return; }
   var target = id && document.getElementById(id);
   if (!target) return;
   var own = target.tagName === "DETAILS" ? target : target.querySelector && target.querySelector(":scope > details");
@@ -255,8 +269,8 @@ document.querySelectorAll("input[data-glossary-filter]").forEach(function (input
     empty.hidden = shown !== 0;
   });
 });
-openTarget();
-window.addEventListener("hashchange", openTarget);
+openTarget(location.hash);
+window.addEventListener("hashchange", function () { openTarget(location.hash); });
 `;
 
 const encoder = new TextEncoder();
@@ -602,6 +616,16 @@ function specFor(
   return specOf(given, folder);
 }
 
+/** A package as the page shows it: its section, and what its row of the table above says of it. */
+interface Packaged {
+  readonly folder: string;
+  readonly section: Html;
+  readonly about: string | undefined;
+  readonly capabilities: readonly { name: string; id: string }[];
+  readonly cases: readonly TestCase[];
+}
+
+/** A package's section; `alone`, the only package of its suite, it has no heading and no fold of its own. */
 function packageSection(
   folder: string,
   cases: readonly TestCase[],
@@ -609,7 +633,8 @@ function packageSection(
   spec: Spec,
   suite: Suite,
   run: TestRun,
-): Html {
+  alone: boolean,
+): Packaged {
   const all = capabilitiesOf(cases, suite);
   const inBuild = (one: Capability): boolean =>
     spec.build.includes(one.name) ||
@@ -634,10 +659,10 @@ function packageSection(
     info === undefined
       ? ""
       : markup`<p class="package-line"><code>${info.name}</code> ${info.version} · commit <a href="${repositoryUrl(suite)}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>${unreleased(info.version) ? " · unreleased: what main does today, not a compatibility promise" : ""}</p>\n`;
-  return markup`<section class="pkg" data-failed="${String(count(cases, "failed"))}">
-<h3 class="package"><code>${folder}</code> ${counts(cases)}</h3>
-${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}${spec.glossary.length === 0 ? "" : glossaryList(spec.glossary)}<ul class="tree top">
-${main.map((one) => capability(one, suite, run, spec.glossary, idOf(one)))}</ul>
+  const failed = count(cases, "failed");
+  const ids = main.map((one) => ({ name: one.name, id: idOf(one) }));
+  const body = markup`${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}${spec.glossary.length === 0 ? "" : glossaryList(spec.glossary)}<ul class="tree top">
+${main.map((one, at) => capability(one, suite, run, spec.glossary, ids[at]?.id ?? ""))}</ul>
 ${
   build.length === 0
     ? ""
@@ -645,7 +670,30 @@ ${
 <ul class="tree top">
 ${build.map((one) => capability(one, suite, run, spec.glossary, idOf(one)))}</ul></details>
 `
-}</section>
+}`;
+  const section = alone
+    ? markup`<section class="pkg" data-failed="${String(failed)}">
+${body}</section>
+`
+    : markup`<section class="pkg" id="${packageId(folder)}" data-failed="${String(failed)}"><details${new Html(failed > 0 ? " open" : "")}><summary><h3 class="package"><code>${folder}</code> ${counts(cases)}</h3></summary>
+${body}</details></section>
+`;
+  return { folder, section, about: spec.about, capabilities: ids, cases };
+}
+
+const packageId = (folder: string): string => `package-${folder}`;
+
+/** One row for each package: what it is for, its capabilities as links, how many cases it has and how many failed. */
+function packageTable(packaged: readonly Packaged[]): Html {
+  const rows = packaged.map(({ folder, about, capabilities, cases }) => {
+    const failed = count(cases, "failed");
+    return markup`<tr${new Html(failed > 0 ? ` class="failing"` : "")} data-failed="${String(failed)}"><th scope="row"><a href="#${packageId(folder)}"><code>${folder}</code></a></th><td>${about ?? ""}</td><td><ul>${capabilities.map(({ name, id }) => markup`<li><a href="#${id}">${name.split(" · ")[0] ?? name}</a></li>`)}</ul></td><td class="cases">${String(cases.length)}${failed > 0 ? markup` ${badge("failed", failed)}` : ""}</td></tr>
+`;
+  });
+  return markup`<div class="table-wrap"><table class="packages">
+<thead><tr><th scope="col">Package</th><th scope="col">What it is for</th><th scope="col">Capabilities</th><th scope="col">Cases</th></tr></thead>
+<tbody>
+${rows}</tbody></table></div>
 `;
 }
 
@@ -664,24 +712,39 @@ function packagesOf(packages: ReadonlyMap<string, PackageInfo>): Html {
   return markup`<span class="run">${which} <code>${version}</code></span>${all.some((one) => unreleased(one.version)) ? markup`<span class="run tag">unreleased</span>` : ""}`;
 }
 
-/** What stays at the top while the part scrolls: the run, the counts, how long it took, and the controls, which script reveals. */
+/** The run's verdict in one line, with the commit it ran, when, and how long it took. */
+function verdict(
+  suite: Suite,
+  run: TestRun,
+  total: number,
+  failed: number,
+  milliseconds: number | undefined,
+): Html {
+  const said =
+    failed > 0
+      ? `${failed} of ${total} ${total === 1 ? "case fails" : "cases fail"}`
+      : total === 0
+        ? "No cases ran"
+        : total === 1
+          ? "The 1 case passes"
+          : `All ${total} cases pass`;
+  return markup`<span class="verdict ${failed > 0 ? "failed" : "passed"}">${said} <span class="where">· commit <a href="${repositoryUrl(suite)}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a> · <time datetime="${run.at}">${run.at}</time>${milliseconds === undefined ? "" : markup` · <span class="duration" title="run time">${seconds(milliseconds / 1000)}</span>`}</span></span>
+`;
+}
+
+/** What stays at the top while the part scrolls: the verdict, the counts, and the controls, which script reveals. */
 function summaryBar(
   suite: Suite,
   run: TestRun,
   cases: readonly TestCase[],
   packages: ReadonlyMap<string, PackageInfo>,
   milliseconds: number | undefined,
+  failures: number,
 ): Html {
   const known = packages.size > 0 ? packagesOf(packages) : markup``;
   return markup`<div class="summary-bar" role="group" aria-label="Summary of ${titleInSentence(suite)}">
-${known}<span class="run">commit <a href="${repositoryUrl(suite)}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a></span>
-<span class="tallies">${badge("passed", count(cases, "passed"))}${count(cases, "failed") === 0 ? "" : badge("failed", count(cases, "failed"))}${badge("skipped", count(cases, "skipped"))}</span>
-${
-  milliseconds === undefined
-    ? ""
-    : markup`<span class="duration" title="run time">${seconds(milliseconds / 1000)}</span>
-`
-}<span class="controls" data-controls hidden><button type="button" data-action="expand-all">Expand all</button><button type="button" data-action="collapse-all">Collapse all</button><button type="button" data-action="failures-only" aria-pressed="false">Failures only</button></span>
+${known}${verdict(suite, run, cases.length, failures, milliseconds)}<span class="tallies">${badge("passed", count(cases, "passed"))}${count(cases, "failed") === 0 ? "" : badge("failed", count(cases, "failed"))}${badge("skipped", count(cases, "skipped"))}</span>
+<span class="controls" data-controls hidden><button type="button" data-action="expand-all">Expand all</button><button type="button" data-action="collapse-all">Collapse all</button><button type="button" data-action="failures-only" aria-pressed="false">Failures only</button></span>
 </div>
 `;
 }
@@ -712,7 +775,19 @@ function packageSections(
       Number(other.some((c) => c.result === "failed")) -
         Number(held.some((c) => c.result === "failed")) || listed(a, b),
   );
-  return markup`${order.map(([folder, held]) => packageSection(folder, held, packages.get(folder), specFor(folder, packages, suite, run), suite, run))}`;
+  const alone = order.length === 1;
+  const packaged = order.map(([folder, held]) =>
+    packageSection(
+      folder,
+      held,
+      packages.get(folder),
+      specFor(folder, packages, suite, run),
+      suite,
+      run,
+      alone,
+    ),
+  );
+  return markup`${alone ? "" : packageTable(packaged)}${packaged.map((one) => one.section)}`;
 }
 
 /** What each level above a case, and the case, say of themselves, with their rules as links, for an agent reading CTRF. */
@@ -901,13 +976,9 @@ function part(suite: Suite, run: TestRun | undefined): Part {
             ? undefined
             : declaredDuration(run.report)) ??
           cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0));
-  const none =
-    failed === 0 && !hidden
-      ? markup`<p class="no-failures">No failures.</p>\n`
-      : "";
   return {
-    html: markup`${summaryBar(suite, run, cases, packages, milliseconds)}<p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${failed} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span> For an agent: <a href="${ctrfFileOf(suite)}"><code>${ctrfFileOf(suite)}</code></a>.</p>
-${unlisted}${none}${shownCases}`,
+    html: markup`${summaryBar(suite, run, cases, packages, milliseconds, counted !== undefined && hidden ? counted : failed)}<p class="prose">${runLine(suite, run)}. <span class="about">${suite.about}.</span> For an agent: <a href="${ctrfFileOf(suite)}"><code>${ctrfFileOf(suite)}</code></a>.</p>
+${unlisted}${shownCases}`,
     ctrf: ctrf(
       suite,
       run,

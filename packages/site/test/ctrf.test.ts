@@ -62,7 +62,7 @@ describe("Test results for an agent · <repository>.ctrf.json", () => {
       assert.equal(summary["tests"], 2);
       assert.equal(summary["passed"], 1);
       assert.equal(summary["failed"], 1);
-      assert.match(page.said, /2 cases: 1 passed, 1 failed, 0 skipped/);
+      assert.match(page.said, /1 of 2 cases fail/);
     });
 
     it("counts a failure node reports outside the cases as failed", async () => {
