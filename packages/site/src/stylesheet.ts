@@ -1,55 +1,25 @@
+import { readFileSync } from "node:fs";
+
+/** The website's `css/chrome.css`, as scripts/sync-chrome.mjs copied it: a one-line header, then the file verbatim. */
+const COPY = readFileSync(
+  new URL("../../src/chrome.css", import.meta.url),
+  "utf8",
+);
+
+/** The website's tokens, strip, header and footer, the tokens declared on `scope` where the copy declares them on `:root`. */
+export const websiteChrome = (scope: string): string =>
+  COPY.slice(COPY.indexOf("\n") + 1).replaceAll(/:root(?=\s*\{)/g, scope);
+
 /**
- * The website's tokens, strip, header and footer (cascadeprotocol.org, css/site.css sections 1 and 2), the tokens
- * declared on `scope`: `:root` for a hub page, a wrapper element where the page has a palette of its own.
+ * What the hub adds to the website's chrome: the search box, and the rules of the nav, menu and footer the
+ * website's pages have no use for.
  */
-export const chromeStyles = (scope: string): string => `${scope} {
-  --ink: #14202a;
-  --ink-2: #3a4853;
-  --muted: #5a6873;
-  --pencil: #b4410c;
-  --link: #0b6a8a;
-  --link-hover: #084f68;
-  --rule: #c9d1d6;
-  --rule-soft: #e3e8eb;
-  --paper: #f6f7f8;
-  --amber: #8a5a0d;
-  --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
-  --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
-  --wrap: 1200px;
-  --gutter: 32px;
-}
-@media (max-width: 760px) { ${scope} { --gutter: 16px; } }
-.b-skip { position: absolute; left: -9999px; }
-.b-skip:focus { left: 16px; top: 8px; z-index: 100; background: #ffffff; padding: 8px 12px; }
-.sx-strip { background: var(--ink); color: #ffffff; font-family: var(--mono); font-size: 13px; line-height: 1.4;
-            letter-spacing: .02em; padding: 10px 16px; text-align: center; }
-.sx-strip a { color: #ffb38a; font-weight: 500; text-decoration: none; }
-.sx-strip a:hover { text-decoration: underline; }
-.sx-header { background: #ffffff; border-bottom: 1px solid var(--rule); position: relative; z-index: 50; }
-.sx-header * { box-sizing: border-box; }
-.sx-bar { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); min-height: 64px; display: flex;
-          align-items: center; gap: 4px; }
-.sx-logo { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-right: auto; color: var(--ink);
-           font-family: var(--sans); font-weight: 600; font-size: 17px; text-decoration: none; }
-.sx-logo:hover { color: var(--ink); text-decoration: none; }
-.sx-logo svg { flex: none; }
-.sx-nav { display: flex; align-items: center; gap: 2px; padding: 0; margin: 0; border: 0; }
-.sx-nav a, .sx-nav span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--ink);
+const HUB_ADDITIONS = `.sx-nav { padding: 0; margin: 0; border: 0; }
+.sx-nav span, .sx-menu nav span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--ink);
             font-family: var(--sans); font-size: 15px; text-decoration: none; border-bottom: 2px solid transparent; }
-.sx-nav a:hover { border-bottom-color: var(--rule); color: var(--ink); text-decoration: none; }
-.sx-nav a[aria-current="page"] { border-bottom-color: var(--pencil); font-weight: 600; }
-.sx-menu { display: none; margin: 0; }
-.sx-menu summary { list-style: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px;
-                   border: 1px solid var(--ink); font-family: var(--sans); font-size: 15px; color: var(--ink);
-                   cursor: pointer; }
-.sx-menu summary::-webkit-details-marker { display: none; }
-.sx-menu[open] summary { background: var(--ink); color: #ffffff; }
-.sx-menu nav { position: absolute; left: 0; right: 0; top: 100%; background: #ffffff; border-bottom: 1px solid var(--rule);
-               padding: 4px var(--gutter) 16px; display: flex; flex-direction: column; margin: 0; }
-.sx-menu nav a, .sx-menu nav span { display: flex; align-items: center; min-height: 52px; font-family: var(--serif); font-size: 24px;
-                 color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--rule-soft); }
-@media (max-width: 860px) { .sx-nav { display: none; } .sx-menu { display: block; } }
+.sx-menu, .sx-menu nav { margin: 0; }
+.sx-menu nav span { display: flex; min-height: 52px; padding: 0; font-family: var(--serif); font-size: 24px;
+                    border-bottom: 1px solid var(--rule-soft); }
 .sx-find-wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter) 12px; }
 .sx-find { position: relative; margin: 0; }
 .sx-find[hidden], .sx-find ul[hidden] { display: none; }
@@ -69,25 +39,13 @@ export const chromeStyles = (scope: string): string => `${scope} {
 .sx-find-where { grid-column: 2; font: 12px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .sx-find-none { padding: 12px 14px; color: var(--ink-2); font-family: var(--sans); font-size: 15px; }
 @media (max-width: 760px) { .sx-find li a { grid-template-columns: 4.5rem 1fr; gap: 0 8px; } }
-.sx-footer { background: #ffffff; font-family: var(--sans); color: var(--ink); margin: 0; padding: 0; border: 0; }
-.sx-footer * { box-sizing: border-box; }
-.sx-footer-wrap { max-width: var(--wrap); margin: 0 auto; padding: 40px var(--gutter); }
-.sx-footer-inner { border-top: 3px solid var(--ink); padding-top: 32px; }
-.sx-footer-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 32px; }
-.sx-footer h2 { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--pencil); margin: 0 0 6px;
-                line-height: 1.4; }
-.sx-footer ul { list-style: none; margin: 0; padding: 0; }
-.sx-footer li a { display: flex; align-items: center; min-height: 40px; color: var(--ink); font-size: 15px;
-                  text-decoration: none; border-bottom: 1px solid var(--rule-soft); }
-.sx-footer li a:hover { color: var(--link); }
-.sx-footer p { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
-.sx-footer-legal { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 32px; padding-top: 18px;
-                   border-top: 1px solid var(--rule); font-size: 14px; line-height: 1.5; color: var(--muted); }
 .sx-footer-inner > .sx-footer-legal:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-.sx-footer-legal span { margin-right: auto; }
 .sx-footer p.sx-footer-built { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
-.sx-footer-legal a { color: var(--muted); display: inline-flex; align-items: center; min-height: 32px; }
 `;
+
+/** The chrome of a hub page, the tokens declared on `scope`: `:root` for a hub page, a wrapper element where the page has a palette of its own. */
+export const chromeStyles = (scope: string): string =>
+  websiteChrome(scope) + HUB_ADDITIONS;
 
 export const STYLESHEET = `${chromeStyles(":root")}body { font: 17px/1.6 var(--sans); margin: 0; color: var(--ink); background: #fff;
        -webkit-font-smoothing: antialiased; }
