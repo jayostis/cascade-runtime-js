@@ -78,6 +78,12 @@ export interface AdapterRead {
   readonly unavailable?: string;
 }
 
+/** cascade-bridge-spec at the head of its default branch, or the sibling checkout as it stands: the Bridge's own vocabulary and shapes. */
+export interface BridgeSpecRead {
+  readonly files: Files;
+  readonly commit: string;
+}
+
 /**
  * What a section of the hub's Pages tree is built from. The providers do their work on the first call and give the same
  * answer after, so a section that needs the kits asks and one that does not never pays for them.
@@ -104,6 +110,8 @@ export interface PagesContext {
   tests(): Promise<readonly SuiteRun[]>;
   /** Each adapter the runtime follows, at the head of its default branch; one that could not be got is not fatal. */
   adapters(): Promise<readonly AdapterRead[]>;
+  /** The Bridge's vocabulary and shapes, as cascade-bridge-spec holds them; rejects when it cannot be got, which fails the build, as an explorer's does. */
+  bridgeSpec(): Promise<BridgeSpecRead>;
   /**
    * The explorer of the adapter of that repository: the files cascade-bridge-spec's generator writes over it (`index.html`,
    * `explorer.json`, `cases/<n>.json`), by path in its folder. Rejects when it cannot be made, which fails the build; gives

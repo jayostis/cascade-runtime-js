@@ -567,6 +567,10 @@ function pagesContext(
     report: once(() => readConformance(reportFile, vocabulary.resolved.iri)),
     tests: once(() => readTestReports(testsFolder)),
     adapters,
+    bridgeSpec: async () => {
+      const { folder, iri, version } = await bridgeSpec();
+      return { files: new FolderFiles(folder, iri), commit: version };
+    },
     explorer: async (repository) => {
       if (!explorers) return undefined;
       await adapters();

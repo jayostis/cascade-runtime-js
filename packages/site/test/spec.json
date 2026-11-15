@@ -7,6 +7,8 @@
     "A newcomer's first pages · startSection, examplesSection, trySection",
     "The API page · apiSection",
     "The term reference · termReference(), termsSection",
+    "The Bridge's terms · bridgeTermReference(), bridgeTermsSection",
+    "The MCP page · mcpPage(), mcpSection",
     "The specification's pages · specPages()",
     "Decision notes as pages · specSection",
     "Warnings about rules and decision notes · specPages().warnings, rulesNamedIn(), filesNamed()",

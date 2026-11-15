@@ -79,6 +79,7 @@ async function pagesOf(vocabulary: LocalVocabulary) {
     tests: async () => [],
     adapters: async () => [],
     explorer: async () => new Map(),
+    bridgeSpec: async () => ({ files: vocabulary.files, commit: "" }),
     examples: async () => examples,
     builtFrom: async () => built,
     start: async () => start,
