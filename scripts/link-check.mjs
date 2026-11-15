@@ -30,6 +30,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 /** Hosts asked nothing, each with why: a host that refuses automated requests answers a dead link and a live one alike. */
 const ALLOWED = new Map([
   ["loinc.org", "403 to bots"],
+  [
+    "www.fda.gov",
+    "404 to CI runners, 200 to a browser (red on #791 and #798, 2026-11-15)",
+  ],
   ["snomed.info", "refuses automated requests"],
   ["w3id.org/semapv/vocab/", "the SEMAPV namespace IRI, not a document"],
   [
