@@ -482,12 +482,18 @@ function readsHtml(q) {
     return '<tr>' + td('file', fileRef(x.i)) + td('terms in common', x.shared.slice(0, 8).map(term).join(' ') + (x.shared.length > 8 ? ' <span class="lbl">+' + (x.shared.length - 8) + '</span>' : '')) + '</tr>';
   }).join('') + '</tbody></table></div>' + (found.length > 30 ? '<p class="gen">30 of ' + found.length + ' shown.</p>' : ''));
 }
+/* the columns of the rows shown: a row omits a variable it leaves unbound, so the first row alone misses some */
+function answerColumns(rows) {
+  var cols = [];
+  rows.forEach(function (r) { Object.keys(r).forEach(function (k) { if (cols.indexOf(k) < 0) cols.push(k); }); });
+  return cols;
+}
 function answerHtml(q) {
   var lens = answers && answers[D.pod.lens], a = lens && lens[q.question];
   if (!answers) return '<p class="gen">The answer rows are in <code>answers.json</code>, which this site does not publish.</p>';
   if (!a) return '<p class="gen">No answer is kept for this question under the ' + esc(D.pod.lens) + ' lens.</p>';
   if (!a.rows.length) return '<p class="gen">No rows for this pod.</p>';
-  var cols = Object.keys(a.rows[0]), shown = a.rows.slice(0, 40);
+  var shown = a.rows.slice(0, 40), cols = answerColumns(shown);
   return '<div class="tw-x"><table><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + shown.map(function (r) { return '<tr>' + cols.map(function (c) { return td(c, esc(r[c] && typeof r[c] === 'object' ? r[c].value : r[c])); }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (a.rows.length > shown.length ? '<p class="gen">' + shown.length + ' of ' + a.rows.length + ' rows shown.' + tag('query') + '</p>' : '');
 }
 function inspectorHtml() {

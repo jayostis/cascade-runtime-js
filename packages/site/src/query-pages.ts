@@ -1,5 +1,12 @@
 import { type Files, prose, readText } from "@cascade-runtime/runtime";
-import { type Chrome, type Content, Html, markup, shell } from "./html.js";
+import {
+  type Chrome,
+  type Content,
+  escape,
+  Html,
+  markup,
+  shell,
+} from "./html.js";
 import {
   addressesOf,
   frontPageLink,
@@ -250,9 +257,14 @@ export function rowsOf(
 
 const phrase = (iri: string): string => prefixed(iri) ?? iri;
 
-/** The columns a reader sees: each label folded into the column it labels. */
-function shownColumns(row: Readonly<Record<string, string>>): string[] {
-  const columns = Object.keys(row);
+/**
+ * The columns a reader sees: every column any shown row has, in the order each first appears, each label folded into the
+ * column it labels. A row omits a variable it leaves unbound, so the first row alone misses some.
+ */
+function shownColumns(
+  rows: readonly Readonly<Record<string, string>>[],
+): string[] {
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
   return columns.filter(
     (column) =>
       !(
@@ -265,7 +277,15 @@ function shownColumns(row: Readonly<Record<string, string>>): string[] {
 const cellOf = (
   row: Readonly<Record<string, string>>,
   column: string,
-): string => row[`${column}Label`] ?? phrase(row[column] ?? "");
+): Html => {
+  const said = row[`${column}Label`] ?? phrase(row[column] ?? "");
+  return new Html(
+    said
+      .split(/(?<=[/#])/)
+      .map(escape)
+      .join("<wbr>"),
+  );
+};
 
 function table(
   head: readonly string[],
@@ -280,7 +300,11 @@ ${rows.map((cells) => markup`<tr>${cells.map((cell, at) => markup`<td data-label
 }
 
 const noun = (query: Query): string =>
-  query.group === "questions" ? "question" : "view";
+  query.group === "questions"
+    ? "question"
+    : query.group === "views"
+      ? "view"
+      : "query";
 
 /** What a page says of the query's rows on the example pod; none for a query that is neither a question nor a view. */
 function rowsSection(
@@ -304,16 +328,14 @@ function rowsSection(
   if (count === 0)
     return markup`${heading}<p class="prose">${who}'s pod gives this ${noun(query)} no rows. Open it in ${explorer}.</p>\n`;
   const shown = Math.min(count, ROWS_SHOWN);
-  const first = asked?.[0];
   const body =
-    asked !== undefined && first !== undefined
+    asked !== undefined && asked.length > 0
       ? (() => {
-          const columns = shownColumns(first);
+          const showing = asked.slice(0, shown);
+          const columns = shownColumns(showing);
           return table(
             columns,
-            asked
-              .slice(0, shown)
-              .map((row) => columns.map((column) => cellOf(row, column))),
+            showing.map((row) => columns.map((column) => cellOf(row, column))),
           );
         })()
       : table(

@@ -152,6 +152,8 @@ th, td { text-align: left; vertical-align: top; padding: .3rem .6rem; border-bot
          overflow-wrap: anywhere; }
 th { background: var(--paper); font: 600 .85rem/1.4 var(--mono); white-space: nowrap; }
 table.results th { white-space: normal; }
+table.rows { width: max-content; min-width: 100%; }
+table.rows th, table.rows td { min-width: 6rem; max-width: 28rem; overflow-wrap: break-word; }
 #find-your-way ul { margin: 0; padding-left: 1.1rem; }
 #find-your-way th[scope="row"], #repository-list th[scope="row"] { white-space: normal; font: 600 .95rem/1.4 var(--sans); width: 14rem; }
 td code { color: var(--muted); font-size: .8rem; }
@@ -177,6 +179,8 @@ details pre { background: var(--paper); padding: .75rem; overflow-x: auto; borde
   .layout dd { margin-bottom: .5rem; }
   thead { display: none; }
   table, tbody, tr, td { display: block; }
+  table.rows { width: auto; }
+  table.rows th, table.rows td { min-width: 0; max-width: none; }
   tr { border-bottom: 1px solid var(--rule); padding: .5rem 0; }
   td { border: 0; padding: .1rem 0; }
   #find-your-way th[scope="row"], #repository-list th[scope="row"] { display: block; width: auto; background: none; padding-left: 0; border: 0; }

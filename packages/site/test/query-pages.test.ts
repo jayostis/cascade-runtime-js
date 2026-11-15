@@ -11,6 +11,7 @@ import type { PagesContext } from "../src/hub/context.js";
 import { queriesSection } from "../src/hub/queries.js";
 import { FINISHERS, SECTIONS } from "../src/node/hub/index.js";
 import { buildTree } from "../src/sections.js";
+import { STYLESHEET } from "../src/stylesheet.js";
 import { readPage } from "./page.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -300,6 +301,58 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
     });
   });
 
+  describe("given answer rows of which the first lacks a column a later row has", () => {
+    it("shows every column any shown row has, in the order each first appears", async () => {
+      const files = await vocabulary();
+      const tree = await build(
+        files,
+        alex({
+          "pod/My vaccines": {
+            key: "k",
+            rows: [
+              { vaccine: "https://pod.example/v1" },
+              { vaccine: "https://pod.example/v2", given: "2025-10-15" },
+              { vaccine: "https://pod.example/v3", reason: "travel" },
+            ],
+          },
+        }),
+      );
+      const page = [...tree.keys()].find((path) =>
+        read(tree, path).includes("2025-10-15"),
+      );
+      assert.ok(page, "a page shows the later row's column");
+      const html = read(tree, page);
+      const heads = [...html.matchAll(/<th scope="col">([^<]*)<\/th>/g)].map(
+        (match) => match[1],
+      );
+      assert.deepEqual(heads, ["vaccine", "given", "reason"]);
+      assert.match(html, /travel/);
+    });
+  });
+
+  describe("given a wide table of answer rows", () => {
+    it("scrolls inside its own box, its columns kept from breaking per character", () => {
+      assert.match(STYLESHEET, /table\.rows\s*\{[^}]*width:\s*max-content/);
+      assert.match(STYLESHEET, /table\.rows[^{]*\bt[dh][^{]*\{[^}]*min-width/);
+    });
+
+    it("lets a long IRI wrap after a slash or a hash", async () => {
+      const files = await vocabulary();
+      const iri = "https://pod.example/clinical/immunizations.ttl#shot";
+      const tree = await build(
+        files,
+        alex({
+          "pod/My vaccines": { key: "k", rows: [{ source: iri }] },
+        }),
+      );
+      const html = [...tree.values()]
+        .map((bytes) => new TextDecoder().decode(bytes))
+        .find((page) => page.includes("immunizations.ttl"));
+      assert.ok(html);
+      assert.match(html, /clinical\/<wbr>immunizations\.ttl#<wbr>shot/);
+    });
+  });
+
   describe("given a query whose comment is one sentence longer than a line", () => {
     it("cuts its line of the index at a word with an ellipsis, and keeps the whole comment on its page", async () => {
       const files = await vocabulary();
@@ -376,10 +429,35 @@ SELECT ?s WHERE { ?s ?p ?o }
         const html = new TextDecoder().decode(bytes);
         assert.ok(
           /<table[^>]*class="[^"]*rows/.test(html) ||
-            /gives this (?:question|view) no rows|holds no entry/.test(html),
+            /gives this (?:question|view|query) no rows|holds no entry/.test(
+              html,
+            ),
           `${path} shows no rows`,
         );
       }
+    });
+
+    it("finds a real question's rows by its path under queries/questions/, and shows them as a table", async () => {
+      const { files } = await localVocabulary(ROOT);
+      const real = await build(
+        files,
+        alex({
+          "pod/My immunizations": {
+            key: "k",
+            rows: [
+              {
+                vaccine: "https://pod.example/v1",
+                vaccineLabel: "Flu shot",
+                given: "2025-10-15",
+              },
+            ],
+          },
+        }),
+      );
+      const page = read(real, "queries/questions/pod/my-immunizations.html");
+      assert.match(page, /<table[^>]*class="[^"]*rows/);
+      assert.match(page, /Flu shot/);
+      assert.match(page, /2025-10-15/);
     });
 
     it("links each index anchor the website links: questions, views, matcher, derivations, lenses and tables", () => {

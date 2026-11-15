@@ -224,7 +224,10 @@ async function usedBy(
 
 const used = new WeakMap<Files, Promise<UsedBy>>();
 
-/** What names each term and each query, read once for a vocabulary: the term reference and the query pages share it. */
+/**
+ * What names each term and each query, read once for a vocabulary: the term reference and the query pages share it. The
+ * cache is per `Files` object, which is assumed not to change after it is first read.
+ */
 function usedByOnce(
   vocabulary: Files,
   terms: ReadonlySet<string>,
@@ -740,7 +743,7 @@ function kindOf(types: readonly Term[]): Kind {
 
 const parsed = new WeakMap<Files, Map<string, Promise<[Graph, string]>>>();
 
-/** A Turtle file of the vocabulary, read once. */
+/** A Turtle file of the vocabulary, read once. The cache is per `Files` object, which is assumed not to change. */
 function parse(vocabulary: Files, path: string): Promise<[Graph, string]> {
   const held = parsed.get(vocabulary) ?? new Map();
   parsed.set(vocabulary, held);
