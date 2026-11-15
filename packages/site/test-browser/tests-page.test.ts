@@ -8,7 +8,13 @@ import {
   packageProperty,
   report,
 } from "../test/report.js";
-import { pageOf, pageWith, R, RUN } from "../test/tests-page.js";
+import {
+  pageOf,
+  pageWith,
+  R,
+  RUN,
+  THREE_PACKAGES,
+} from "../test/tests-page.js";
 
 const A = FILE("cascade-runtime", "a.test");
 
@@ -261,6 +267,114 @@ describe("The tests page's controls in a browser · expand all, collapse all, fa
           .evaluateAll((terms) => terms.length),
         1,
       );
+    });
+  });
+
+  describe("when the page holds several packages", () => {
+    let table: string;
+
+    before(async () => {
+      const { tree } = await pageWith({
+        runtime: { report: THREE_PACKAGES(), ...RUN },
+      });
+      table = new TextDecoder().decode(tree.get(pageOf(R)));
+    });
+
+    /** The page of three packages from a real address, loaded at `hash`. */
+    async function opened(hash = ""): Promise<{ errors: string[] }> {
+      const errors: string[] = [];
+      tab.removeAllListeners("pageerror");
+      tab.on("pageerror", (error) => errors.push(error.message));
+      await tab.unroute("http://page.test/**");
+      await tab.route(
+        "http://page.test/**",
+        async (route) =>
+          await route.fulfill({ contentType: "text/html", body: table }),
+      );
+      await tab.goto("about:blank");
+      await tab.goto("http://page.test/tests.html" + hash);
+      return { errors };
+    }
+
+    const isOpen = (selector: string): Promise<boolean> =>
+      tab
+        .locator(selector)
+        .evaluate((node) => (node as HTMLDetailsElement).open);
+
+    it("starts with only the package that holds a failure open", async () => {
+      await opened();
+      assert.equal(await isOpen("#package-beta > details"), true);
+      assert.equal(await isOpen("#package-alpha > details"), false);
+      assert.equal(await isOpen("#package-gamma > details"), false);
+    });
+
+    it("opens a package whose row's link is clicked, the last one included", async () => {
+      await opened();
+      await tab.locator('table.packages a[href="#package-gamma"]').click();
+      assert.equal(await isOpen("#package-gamma > details"), true);
+      assert.equal(await tab.locator("#package-gamma").isVisible(), true);
+    });
+
+    it("opens a capability's package and the capability when its link in the row is clicked", async () => {
+      await opened();
+      const id = "capability-alpha-writing-a-record";
+      await tab.locator(`table.packages a[href="#${id}"]`).click();
+      assert.equal(await isOpen("#package-alpha > details"), true);
+      assert.equal(await isOpen(`#${id} > details`), true);
+      assert.equal(await isOpen("#package-gamma > details"), false);
+    });
+
+    it("opens a package again when its link is clicked a second time after the package was closed", async () => {
+      await opened();
+      const link = tab.locator('table.packages a[href="#package-alpha"]');
+      await link.click();
+      await tab.locator('[data-action="collapse-all"]').click();
+      assert.equal(await isOpen("#package-alpha > details"), false);
+      await link.click();
+      assert.equal(await isOpen("#package-alpha > details"), true);
+    });
+
+    it("hides the rows of the packages that passed when only failures are shown, and shows them again", async () => {
+      await opened();
+      const shown = (): Promise<string[]> =>
+        tab
+          .locator("table.packages tbody tr")
+          .evaluateAll((rows) =>
+            rows
+              .filter((row) => (row as HTMLElement).offsetParent !== null)
+              .map((row) => row.querySelector("code")?.textContent ?? ""),
+          );
+      assert.deepEqual(await shown(), ["beta", "alpha", "gamma"]);
+      await tab.locator('[data-action="failures-only"]').click();
+      assert.deepEqual(await shown(), ["beta"]);
+      await tab.locator('[data-action="failures-only"]').click();
+      assert.equal((await shown()).length, 3);
+    });
+
+    it("opens and closes every package with the page's two buttons", async () => {
+      await opened();
+      await tab.locator('[data-action="expand-all"]').click();
+      assert.equal(
+        await tab.locator("section.pkg > details:not([open])").count(),
+        0,
+      );
+      await tab.locator('[data-action="collapse-all"]').click();
+      assert.equal(await tab.locator("section.pkg > details[open]").count(), 0);
+    });
+
+    it("raises nothing at a hash that names no package", async () => {
+      const { errors } = await opened("#package-nothing");
+      assert.deepEqual(errors, []);
+      assert.equal(await isOpen("#package-alpha > details"), false);
+    });
+  });
+
+  describe("when the page holds one package", () => {
+    it("has no table and starts at its capabilities", async () => {
+      await tab.setContent(html);
+      assert.equal(await tab.locator("table.packages").count(), 0);
+      await tab.locator("li.capability").first().scrollIntoViewIfNeeded();
+      assert.ok((await tab.locator("li.capability").count()) > 0);
     });
   });
 });

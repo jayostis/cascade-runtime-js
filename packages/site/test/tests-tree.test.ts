@@ -16,13 +16,18 @@ import {
   pageWith,
   partOf,
   pod,
+  promisesOf,
   R,
   RUN,
   RUNTIME,
+  rowsOf,
   suite,
   text,
+  THREE_PACKAGES,
   V,
+  verdictOf,
   versioned,
+  WIDE_PACKAGE,
   WITH_GLOSSARY,
 } from "./tests-page.js";
 import { SCRIPT } from "../src/hub/tests.js";
@@ -75,6 +80,170 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
         "apple-health",
         "runtime",
       ]);
+    });
+  });
+
+  describe("with several packages: the table that opens the page", () => {
+    let markup: string;
+    let rows: ReturnType<typeof rowsOf>;
+
+    before(async () => {
+      ({ markup } = await pageWith({
+        runtime: { report: THREE_PACKAGES(), ...RUN },
+      }));
+      rows = rowsOf(markup, R);
+    });
+
+    it("has one row for each package, the one holding a failure first", () => {
+      assert.deepEqual(
+        rows.map((row) => row.package),
+        ["beta", "alpha", "gamma"],
+      );
+    });
+
+    it("turns the row of a package holding a failure red and says how many failed", () => {
+      assert.deepEqual(
+        rows.map((row) => [row.failing, row.failed]),
+        [
+          [true, 1],
+          [false, 0],
+          [false, 0],
+        ],
+      );
+      assert.match(rows[0]?.cases ?? "", /^2 .*1 failed/);
+      assert.doesNotMatch(rows[1]?.cases ?? "", /failed/);
+    });
+
+    it("says what each package is for, and its case count", () => {
+      assert.equal(rows[0]?.about, "Checks a record against its shape.");
+      assert.equal(rows[1]?.about, "Reads what a hospital sends.");
+      assert.equal(rows[2]?.about, "");
+      assert.match(rows[1]?.cases ?? "", /^4$/);
+    });
+
+    it("links each capability, in the order the package's spec gives, to its id on the page", () => {
+      assert.deepEqual(
+        rows[1]?.capabilities.map((one) => one.label),
+        ["Reading a record", "Writing a record"],
+      );
+      for (const { id } of rows.flatMap((row) => row.capabilities))
+        assert.ok(
+          markup.includes(`<li class="capability" id="${id}"`),
+          `${id} is a capability of the page`,
+        );
+      assert.deepEqual(
+        rows[1]?.capabilities.map((one) => one.id),
+        [
+          "capability-alpha-reading-a-record",
+          "capability-alpha-writing-a-record",
+        ],
+      );
+    });
+
+    it("links each package to its section, which starts open only where a case failed", () => {
+      assert.equal(rows.length, 3);
+      for (const row of rows)
+        assert.ok(
+          partOf(markup, R).includes(
+            `<section class="pkg" id="${row.href}" data-failed="${row.failed}"><details${row.failing ? " open" : ""}>`,
+          ),
+          `${row.package}'s section`,
+        );
+    });
+
+    it("does not list the build capabilities among a package's", () => {
+      assert.equal(rows.length, 3);
+      assert.ok(!rows[1]?.capabilities.some((one) => one.label === "Packing"));
+    });
+
+    it("heads the table with what each package promises, and how many packages and capabilities there are", () => {
+      assert.equal(
+        promisesOf(markup, R),
+        "What each package promises · 3 packages, 4 capabilities",
+      );
+    });
+
+    it("labels each cell, so that the table stacked on a narrow screen says what a number is", () => {
+      for (const row of rows)
+        assert.deepEqual(row.labels, [
+          "What it is for",
+          "Capabilities",
+          "Cases",
+        ]);
+    });
+
+    it("turns red the link of the capability that failed, and no other", () => {
+      assert.deepEqual(
+        rows.flatMap((row) =>
+          row.capabilities.filter((one) => one.failed).map((one) => one.label),
+        ),
+        ["Checking a shape"],
+      );
+    });
+  });
+
+  describe("with a package of more capabilities than a row shows", () => {
+    const shown = async (failing?: number) => {
+      const rows = rowsOf(
+        (
+          await pageWith({
+            runtime: { report: WIDE_PACKAGE(failing), ...RUN },
+          })
+        ).markup,
+        R,
+      );
+      return {
+        wide: rows.find((row) => row.package === "wide"),
+        narrow: rows.find((row) => row.package === "narrow"),
+      };
+    };
+
+    it("shows the first six, and says how many more there are, linking the package", async () => {
+      const { wide, narrow } = await shown();
+      assert.deepEqual(
+        wide?.capabilities.map((one) => one.label),
+        Array.from({ length: 6 }, (_, n) => `Capability ${n + 1}`),
+      );
+      assert.deepEqual(wide?.more, {
+        href: "package-wide",
+        said: "and 3 more",
+      });
+      assert.equal(narrow?.capabilities.length, 2);
+      assert.equal(narrow?.more, undefined);
+    });
+
+    it("gives only the first sentence of what a package is for", async () => {
+      const { wide } = await shown();
+      assert.equal(wide?.about, "Says what it does.");
+    });
+
+    it("shows a capability that failed, before the others, though it is beyond the sixth", async () => {
+      const { wide } = await shown(9);
+      assert.deepEqual(
+        wide?.capabilities.map((one) => [one.label, one.failed]),
+        [
+          ["Capability 9", true],
+          ["Capability 1", false],
+          ["Capability 2", false],
+          ["Capability 3", false],
+          ["Capability 4", false],
+          ["Capability 5", false],
+        ],
+      );
+      assert.equal(wide?.more?.said, "and 3 more");
+    });
+  });
+
+  describe("with one package", () => {
+    it("has no table and no package level: the page starts at the capabilities", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: GROUPED, ...RUN },
+      });
+      const part = partOf(markup, R);
+      assert.doesNotMatch(part, /<table class="packages">/);
+      assert.deepEqual(packagesOf(markup, R), []);
+      assert.match(text(part), /The library an app calls\./);
+      assert.match(part, /<li class="capability"/);
     });
   });
 
@@ -332,17 +501,6 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
     });
   });
 
-  describe("with no failed case", () => {
-    it('says "No failures."', async () => {
-      const green = await pageWith({
-        runtime: { report: versioned("1.2.0"), ...RUN },
-      });
-      assert.match(green.page.said, /No failures\./);
-      const red = await pageWith({ runtime: { report: NODE, ...RUN } });
-      assert.doesNotMatch(red.page.said, /No failures\./);
-    });
-  });
-
   describe("with a suite that names its test folder", () => {
     it("shows its files without the folder", async () => {
       const given = {
@@ -368,7 +526,7 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
   });
 
   describe("with a repository other than the runtime's", () => {
-    it("shows the whole repository as one package", async () => {
+    it("reads the whole repository as one package, which has no level of its own", async () => {
       const { markup } = await pageWith({}, [
         {
           suite: suite("someone/host-thing", "vitest"),
@@ -382,7 +540,11 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
           },
         },
       ]);
-      assert.deepEqual(packagesOf(markup, "host-thing"), ["host-thing"]);
+      assert.deepEqual(packagesOf(markup, "host-thing"), []);
+      assert.doesNotMatch(
+        partOf(markup, "host-thing"),
+        /<table class="packages">/,
+      );
     });
   });
 
@@ -501,6 +663,59 @@ describe("The summary bar and its controls · testsSection", () => {
 
     it("adds up the cases' times for a report that declares none", () => {
       assert.match(barOf(markup, V).said, /212 ms/);
+    });
+  });
+
+  describe("with a run's verdict", () => {
+    it("says in one line that all cases pass, with the commit, when it was run and how long it took", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: GROUPED, ...RUN },
+      });
+      const { result, said } = verdictOf(markup, R);
+      assert.equal(result, "passed");
+      assert.match(said, /^All 6 cases pass\b/);
+      assert.match(said, /0123456/);
+      assert.match(said, /2026-11-04 22:12 UTC/);
+      assert.doesNotMatch(said, /T22:12:35Z/);
+      assert.match(said, /\d+ ms/);
+    });
+
+    it("links the run in that line, and says nothing of the run again below it", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: GROUPED, ...RUN },
+      });
+      const part = partOf(markup, R);
+      const line = /<span class="verdict[\s\S]*?<\/span>\n/.exec(part)?.[0];
+      assert.ok(
+        line?.includes(`<a href="${RUN.url}">the run</a>`),
+        "the verdict links the run",
+      );
+      assert.equal(part.split(`href="${RUN.url}"`).length - 1, 1);
+      assert.doesNotMatch(text(part), /run at|The run of commit/);
+    });
+
+    it("says in red how many of the cases fail", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: NODE, ...RUN },
+      });
+      const { result, said } = verdictOf(markup, R);
+      assert.equal(result, "failed");
+      assert.match(said, /^1 of 4 cases fail\b/);
+    });
+
+    it("counts a single case in the singular", async () => {
+      const one = await pageWith({
+        runtime: { report: versioned("1.2.0"), ...RUN },
+      });
+      assert.match(verdictOf(one.markup, R).said, /^The 1 case passes\b/);
+    });
+
+    it("gives the counts once: the verdict, and no sentence repeating them", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: NODE, ...RUN },
+      });
+      assert.doesNotMatch(text(partOf(markup, R)), /4 cases: 2 passed/);
+      assert.doesNotMatch(text(partOf(markup, R)), /No failures/);
     });
   });
 
