@@ -560,29 +560,42 @@ const contentsTally = ({ passed, failed, notRun }: Tally): string =>
         .filter((part) => part !== "")
         .join(", ")}`;
 
-/** Marks, in the contents, the first rule whose section is in the top of the window. */
+/** Marks, in the contents, the last rule whose top is above the line near the window's top, and the last rule at the page's end. */
 const IN_VIEW = `
 (function () {
   var nav = document.querySelector(".rules-nav");
   var sections = document.querySelectorAll("section.rule[id]");
-  if (!nav || !sections.length || !("IntersectionObserver" in window)) return;
+  if (!nav || !sections.length) return;
   var links = {};
   nav.querySelectorAll("a[href^='#']").forEach(function (a) { links[a.getAttribute("href").slice(1)] = a; });
-  var seen = {};
-  var observer = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) { seen[entry.target.id] = entry.isIntersecting; });
-    var current = null;
-    sections.forEach(function (section) { if (current === null && seen[section.id]) current = section.id; });
-    if (current === null) return;
+  var line = 17;
+  var marked = null;
+  var queued = false;
+  function mark() {
+    queued = false;
+    var current = sections[0].id;
+    for (var i = 0; i < sections.length; i += 1) {
+      if (sections[i].getBoundingClientRect().top > line) break;
+      current = sections[i].id;
+    }
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) current = sections[sections.length - 1].id;
+    if (current === marked) return;
+    marked = current;
     Object.keys(links).forEach(function (id) {
       if (id === current) links[id].setAttribute("aria-current", "true");
       else links[id].removeAttribute("aria-current");
     });
     var a = links[current];
-    if (a && (a.offsetTop < nav.scrollTop || a.offsetTop + a.offsetHeight > nav.scrollTop + nav.clientHeight))
-      nav.scrollTop = a.offsetTop - nav.clientHeight / 3;
-  }, { rootMargin: "-90px 0px -60% 0px" });
-  sections.forEach(function (section) { observer.observe(section); });
+    if (!a) return;
+    var box = nav.getBoundingClientRect();
+    var at = a.getBoundingClientRect();
+    if (current === sections[0].id) nav.scrollTop = 0;
+    else if (at.top < box.top || at.bottom > box.bottom) nav.scrollTop += at.top - box.top - nav.clientHeight / 3;
+  }
+  function soon() { if (!queued) { queued = true; requestAnimationFrame(mark); } }
+  window.addEventListener("scroll", soon, { passive: true });
+  window.addEventListener("resize", soon);
+  mark();
 })();
 `;
 
@@ -1211,16 +1224,17 @@ details.example pre { margin: .25rem 0 .75rem; }
 pre.failure { background: #fdf2f2; white-space: pre-wrap; }
 ol.contents { columns: 2 22rem; font-size: .9rem; }
 ol.contents li { break-inside: avoid; margin-bottom: .35rem; }
+.rules-nav a { display: block; }
 .rules-nav .title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .tally { display: block; font-size: .78rem; color: var(--muted); }
 .tally.failed { color: #a3201f; }
 .rules-nav a[aria-current] { font-weight: 600; }
 details.scenario { margin: .5rem 0 1rem; max-width: 46rem; }
 details.scenario summary { cursor: pointer; }
-section.rule { scroll-margin-top: 90px; }
+section.rule { scroll-margin-top: 16px; }
 @media (min-width: 1000px) {
   .rules-layout { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: 2rem; align-items: start; }
-  .rules-nav { position: sticky; top: 90px; max-height: calc(100vh - 110px); overflow-y: auto; padding-right: .5rem; }
+  .rules-nav { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; padding-right: .5rem; }
   ol.contents { columns: 1; list-style: none; margin: 0; padding: 0; }
   .rules-nav a[aria-current] { border-left: 3px solid var(--ink); margin-left: -.6rem; padding-left: .5rem; }
   .rules-body section.rule:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
@@ -1308,11 +1322,11 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
   const files = new Map<string, Uint8Array>();
   for (const feature of features)
     files.set(spec.pageOf(feature.path), featurePage(spec, feature));
-  for (const { path } of [...features, ...kits.map((kit) => kit.feature)])
-    files.set(
-      fileOfPage(spec.pageOf(path)),
-      new TextEncoder().encode(await readText(vocabulary, path)),
-    );
+  for (const { path } of [...features, ...kits.map((kit) => kit.feature)]) {
+    const bytes = await vocabulary.read(path);
+    if (bytes === undefined) throw new Error(`${path} does not exist`);
+    files.set(fileOfPage(spec.pageOf(path)), bytes);
+  }
   spec.unruledRows();
   for (const { folder, feature } of kits) {
     const listed = await vocabulary.list(`${folder}/scripted-input`);

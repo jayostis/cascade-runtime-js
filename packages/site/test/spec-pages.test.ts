@@ -118,7 +118,10 @@ describe("The specification's pages · specPages()", () => {
         /@media \(min-width: 1000px\)[^@]*\.rules-nav[^@]*position: sticky/,
       );
       assert.match(css, /-webkit-line-clamp: 2/);
-      assert.match(html, /<script>[^]*IntersectionObserver[^]*aria-current/);
+      assert.match(
+        html,
+        /<script>[^]*aria-current[^]*addEventListener\("scroll"/,
+      );
     });
   });
 
