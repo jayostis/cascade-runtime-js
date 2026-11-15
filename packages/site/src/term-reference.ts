@@ -908,7 +908,7 @@ ${grouped.map(
 ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : entries.map((entry) => reference.entry(entry))}`,
 )}<h2 class="part" id="shapes">Shapes other shapes use</h2>
 <p class="prose">The shapes no entry above shows: those another shape sends a value to with <code>node</code>, and those whose class or property this page has no entry for.</p>
-${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n<p class="iri">${shape.value}</p>\n${reference.shape(shape, true)}</section>\n`)}`,
+${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n${reference.name(shape.value) === shape.value ? markup`<p class="iri">${shape.value}</p>\n` : ""}${reference.shape(shape, true)}</section>\n`)}`,
   }).text;
 }
 

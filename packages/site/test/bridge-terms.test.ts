@@ -220,6 +220,10 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
         "shapes/facts.shapes.ttl",
         text(RELATIVE("Fact", "LiftTest", "\n    sh:prefixes <> ;")),
       );
+      await files.write(
+        "shapes/loose.shapes.ttl",
+        text(RELATIVE("Loose", "NoEntry")),
+      );
       relative = await bridgeTermReference(files, PLAIN);
     });
 
