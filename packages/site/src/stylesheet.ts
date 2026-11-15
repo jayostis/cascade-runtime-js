@@ -74,6 +74,12 @@ p code, dd code, dt code, td code { overflow-wrap: anywhere; }
 section.query, section.term { margin: 1.5rem 0; padding: 1rem 0 0; border-top: 1px solid var(--rule); }
 .prose { margin: 0 0 .5rem; max-width: 46rem; }
 .about, .count, .lens { color: var(--muted); font-size: .9rem; margin: .25rem 0; }
+.classes { list-style: none; margin: .5rem 0 1rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+         gap: .5rem; }
+.classes li { border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .5rem; font-size: .88rem; line-height: 1.3; min-width: 0; }
+.classes li > a { display: block; font-weight: 600; }
+.classes .about { display: block; margin: 0; font-size: .78rem; line-height: 1.3; overflow-wrap: anywhere; }
+.classes .gloss { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .lede { font-size: 1.15rem; max-width: 46rem; margin: 0 0 1rem; }
 .reasons { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
            gap: .75rem 1.5rem; }

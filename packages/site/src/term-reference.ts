@@ -24,6 +24,7 @@ export const BRIDGE_TERMS_PAGE = "terms/bridge.html";
 
 const ONTOLOGY = "ontologies/cascade.ttl";
 const SHAPES = "ontologies/cascade.shapes.ttl";
+const LAYOUT = "runtime/pod-layout.ttl";
 const QUERIES = "queries";
 const NOTES = "decisions";
 /** A list of queries or rules longer than this is folded behind a summary. */
@@ -83,6 +84,57 @@ const NOT_A_CONSTRAINT = new Set([
   ...LABEL,
   ...COMMENT,
 ]);
+
+/** What a vocabulary is called, by the prefix this site gives its names. */
+const SOURCE_NAMES: Readonly<Record<string, string>> = {
+  dcat: "DCAT",
+  dct: "Dublin Core Terms",
+  foaf: "FOAF",
+  ldp: "LDP",
+  oa: "Web Annotation",
+  obo: "OBO",
+  org: "the Organization ontology",
+  owl: "OWL",
+  pav: "PAV",
+  pim: "Solid PIM",
+  prov: "PROV-O",
+  rdf: "RDF",
+  rdfs: "RDF Schema",
+  semapv: "SEMAPV",
+  skos: "SKOS",
+  solid: "Solid terms",
+  sssom: "SSSOM",
+  void: "VoID",
+  xsd: "XML Schema",
+};
+const SOLID_FOR_CLASS = "http://www.w3.org/ns/solid/terms#forClass";
+const HOLDS_RECORDS = `${CASCADE}holdsRecords`;
+const ACTIVITY = "http://www.w3.org/ns/prov#Activity";
+/** An abbreviation whose full stop does not end a sentence. */
+const ABBREVIATED = /\b(?:e\.g|i\.e|etc|vs|cf)$/i;
+
+/** The comment up to the full stop that ends its first sentence. */
+function firstSentence(comment: string): string {
+  for (const stop of comment.matchAll(/[.!?](?=\s|$)/g))
+    if (!ABBREVIATED.test(comment.slice(0, stop.index)))
+      return comment.slice(0, stop.index + 1);
+  return comment;
+}
+
+/** The longest a class's gloss on the index is, its closing "…" counted. */
+export const GLOSS_LIMIT = 100;
+
+/** A comment's first sentence cut at its first colon or semicolon, or at a word before GLOSS_LIMIT, and closed with "…" when cut. */
+export function gloss(comment: string): string {
+  const sentence = firstSentence(comment).trim();
+  const stop = sentence.search(/[:;](?=\s)/);
+  const head = stop === -1 ? sentence : sentence.slice(0, stop);
+  if (head.length <= GLOSS_LIMIT)
+    return stop === -1 ? head : `${head.trimEnd()}…`;
+  const room = head.slice(0, GLOSS_LIMIT - 1);
+  const word = room.slice(0, room.lastIndexOf(" ") + 1 || room.length);
+  return `${word.replace(/[\s,.:;]+$/, "")}…`;
+}
 
 type Kind = "class" | "property" | "thing";
 
@@ -598,17 +650,15 @@ class Reference {
     );
   }
 
-  /** The values, as names, or what to say when there are none. */
-  values(terms: readonly Term[], none: string): Content {
-    if (terms.length === 0) return markup`<span class="about">${none}</span>`;
+  /** The values, as names. */
+  values(terms: readonly Term[]): Content {
     return terms.map(
       (term, index) =>
         markup`${index === 0 ? "" : ", "}${this.value(this.#ontology, term)}`,
     );
   }
 
-  links(terms: readonly Term[], none: string): Content {
-    if (terms.length === 0) return markup`<span class="about">${none}</span>`;
+  links(terms: readonly Term[]): Content {
     return terms.map(
       (term, index) =>
         markup`${index === 0 ? "" : ", "}${term.termType === "NamedNode" ? this.link(term.value) : this.value(this.#ontology, term)}`,
@@ -634,9 +684,68 @@ class Reference {
     return markup`<dt>${name}</dt><dd>${value}</dd>\n`;
   }
 
-  entry({ iri, kind }: Entry): Html {
-    const label = this.texts(iri, LABEL);
+  /** A field of names, or nothing when there are none. */
+  listed(name: string, terms: readonly Term[]): Html | "" {
+    return terms.length === 0 ? "" : this.field(name, this.values(terms));
+  }
+
+  /** A field of links, or nothing when there are none. */
+  linked(name: string, terms: readonly Term[]): Html | "" {
+    return terms.length === 0 ? "" : this.field(name, this.links(terms));
+  }
+
+  /** The vocabulary a copied term is from, by its name's prefix as this site knows it. */
+  sourceName(iri: string): string {
+    const prefix = prefixed(iri)?.split(":")[0];
+    return (
+      (prefix === undefined ? undefined : SOURCE_NAMES[prefix]) ??
+      prefix ??
+      this.objects(iri, SOURCE)[0]?.value ??
+      iri
+    );
+  }
+
+  /** What an entry says where its comment would be: the comment, or that there is none yet, or where a copy is from. */
+  definition({ iri, copied }: Entry): Html | Html[] {
     const comments = this.texts(iri, COMMENT);
+    if (comments.length > 0)
+      return comments.map(
+        (comment) => markup`<p class="prose">${comment}</p>\n`,
+      );
+    return copied
+      ? markup`<p class="prose about">from ${this.sourceName(iri)}</p>\n`
+      : markup`<p class="prose about">No definition yet.</p>\n`;
+  }
+
+  /** A class of the index: its label, and under it its name and a short gloss of its comment, the whole first sentence on hover. */
+  summary(entry: Entry): Html {
+    const { iri } = entry;
+    const label = this.texts(iri, LABEL)[0];
+    const [comment] = this.texts(iri, COMMENT);
+    const short = comment === undefined ? undefined : gloss(comment);
+    const whole = comment === undefined ? "" : firstSentence(comment).trim();
+    return markup`<li><a href="${termHref(iri, "")}">${label ?? this.name(iri)}</a><span class="about"><code>${this.name(iri)}</code> ${short === undefined ? "No definition yet." : markup`<span class="gloss"${short === whole ? "" : markup` title="${whole}"`}>${short}</span>`}</span></li>\n`;
+  }
+
+  /** The classes below the class, however far. */
+  below(iri: string): Set<string> {
+    const found = new Set<string>();
+    const queue = [iri];
+    for (let next = queue.pop(); next !== undefined; next = queue.pop())
+      for (const sub of this.#ontology.subjects(SUBCLASS, {
+        termType: "NamedNode",
+        value: next,
+      }))
+        if (!found.has(sub.value)) {
+          found.add(sub.value);
+          queue.push(sub.value);
+        }
+    return found;
+  }
+
+  entry(entry: Entry): Html {
+    const { iri, kind } = entry;
+    const label = this.texts(iri, LABEL);
     const subject = { termType: "NamedNode", value: iri } as const;
     const rest = this.#ontology
       .match(subject)
@@ -653,37 +762,19 @@ class Reference {
     return markup`<section class="term">
 <h3 id="${termId(iri)}"><code>${this.name(iri)}</code>${label.length === 0 ? "" : markup` ${label.join(" / ")}`}</h3>
 <p class="iri">${iri}</p>
-${comments.length === 0 ? markup`<p class="prose about">No comment says what it is.</p>\n` : comments.map((comment) => markup`<p class="prose">${comment}</p>\n`)}<dl class="layout">
-${this.field("Type", this.values(this.objects(iri, [TYPE]), "none stated"))}${
+${this.definition(entry)}<dl class="layout">
+${this.listed("Type", this.objects(iri, [TYPE]))}${
       kind === "class"
         ? [
-            this.field(
-              "Subclass of",
-              this.values(this.objects(iri, [SUBCLASS]), "none stated"),
-            ),
-            this.field(
-              "Domain of",
-              this.values(this.pointing(DOMAIN, iri), "no property"),
-            ),
-            this.field(
-              "Range of",
-              this.values(this.pointing(RANGE, iri), "no property"),
-            ),
+            this.listed("Subclass of", this.objects(iri, [SUBCLASS])),
+            this.listed("Domain of", this.pointing(DOMAIN, iri)),
+            this.listed("Range of", this.pointing(RANGE, iri)),
           ]
         : kind === "property"
           ? [
-              this.field(
-                "Domain",
-                this.values(this.objects(iri, [DOMAIN]), "none stated"),
-              ),
-              this.field(
-                "Range",
-                this.values(this.objects(iri, [RANGE]), "none stated"),
-              ),
-              this.field(
-                "Subproperty of",
-                this.values(this.objects(iri, [SUBPROPERTY]), "none stated"),
-              ),
+              this.listed("Domain", this.objects(iri, [DOMAIN])),
+              this.listed("Range", this.objects(iri, [RANGE])),
+              this.listed("Subproperty of", this.objects(iri, [SUBPROPERTY])),
             ]
           : ""
     }${
@@ -697,10 +788,7 @@ ${this.field("Type", this.values(this.objects(iri, [TYPE]), "none stated"))}${
                 ? shapes
                 : markup`${shapes.length === 0 ? "" : markup`<ul>\n${shapes}</ul>\n`}${homed}`,
           )
-    }${this.field("Source", this.links(this.objects(iri, SOURCE), "none stated"))}${this.field(
-      "License",
-      this.links(this.objects(iri, [LICENSE]), "none stated"),
-    )}${this.field("See also", this.links(this.objects(iri, [SEE_ALSO]), "none stated"))}${
+    }${this.linked("Source", this.objects(iri, SOURCE))}${this.linked("License", this.objects(iri, [LICENSE]))}${this.linked("See also", this.objects(iri, [SEE_ALSO]))}${
       rest.length === 0
         ? ""
         : this.field(
@@ -853,6 +941,8 @@ interface Source {
   readonly namespace: string;
   /** Whether queries and rules are read from the files, which the Bridge's vocabulary has none of. */
   readonly used: boolean;
+  /** The file that places each class in a pod; where there is one, the page opens on an index of the classes. */
+  readonly layout?: string;
   readonly title: string;
   readonly groups: readonly Group[];
   readonly lead: (blob: string, tree: string) => Html;
@@ -893,6 +983,50 @@ async function referencePage(
     entries: sorted.filter(group.holds),
   }));
   const { unhomed } = reference;
+  const names = (groups: typeof grouped): Html =>
+    markup`${groups.map(
+      ({ id, title, entries }) =>
+        markup`<h2><a href="#${id}">${title}</a></h2>
+<p class="terms">${entries.map((entry, index) => markup`${index === 0 ? "" : " · "}<a href="${termHref(entry.iri, "")}">${reference.name(entry.iri)}</a>`)}</p>
+`,
+    )}`;
+  const index = async (): Promise<Html> => {
+    const holding = new Set<string>();
+    if (source.layout !== undefined) {
+      const [layout] = await parse(vocabulary, source.layout);
+      for (const [placement, predicate, object] of layout.triples)
+        if (predicate.value === HOLDS_RECORDS && object.value === "true")
+          for (const forClass of layout.objects(placement, SOLID_FOR_CLASS))
+            holding.add(forClass.value);
+    }
+    const acts = reference.below(ACTIVITY);
+    const own = sorted.filter(
+      ({ kind, copied }) => kind === "class" && !copied,
+    );
+    const classes: readonly [string, string, readonly Entry[]][] = [
+      [
+        "what-a-pod-holds",
+        "What a pod holds",
+        own.filter(({ iri }) => holding.has(iri)),
+      ],
+      [
+        "acts",
+        "Acts",
+        own.filter(({ iri }) => !holding.has(iri) && acts.has(iri)),
+      ],
+      [
+        "other-classes",
+        "Other classes",
+        own.filter(({ iri }) => !holding.has(iri) && !acts.has(iri)),
+      ],
+    ];
+    return markup`${classes.map(
+      ([id, title, entries]) =>
+        markup`<h2 id="${id}">${title}</h2>
+${entries.length === 0 ? markup`<p class="about">None.</p>\n` : markup`<ul class="classes">\n${entries.map((entry) => reference.summary(entry))}</ul>\n`}`,
+    )}${names(grouped.filter(({ id }) => id !== "classes"))}`;
+  };
+  const opening = source.layout === undefined ? names(grouped) : await index();
   return shell({
     chrome,
     title: source.title,
@@ -900,12 +1034,7 @@ async function referencePage(
     hubRoot: "../",
     nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
     main: markup`<h1>${source.title}</h1>
-${source.lead(reference.blob, tree)}${grouped.map(
-      ({ id, title, entries }) =>
-        markup`<h3><a href="#${id}">${title}</a></h3>
-<p class="terms">${entries.map((entry, index) => markup`${index === 0 ? "" : " · "}<a href="${termHref(entry.iri, "")}">${reference.name(entry.iri)}</a>`)}</p>
-`,
-    )}<h3><a href="#shapes">Shapes other shapes use</a></h3>
+${source.lead(reference.blob, tree)}${opening}<h2><a href="#shapes">Shapes other shapes use</a></h2>
 ${grouped.map(
   ({ id, title, about, entries }) =>
     markup`<h2 class="part" id="${id}">${title}</h2>
@@ -928,6 +1057,7 @@ export const termReference = (vocabulary: Files, chrome: Chrome) =>
     shapes: [SHAPES],
     namespace: CASCADE,
     used: true,
+    layout: LAYOUT,
     title: "Cascade terms",
     groups: GROUPS,
     lead: (
