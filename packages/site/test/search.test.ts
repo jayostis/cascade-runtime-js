@@ -71,11 +71,11 @@ const SITE: Record<string, Uint8Array> = {
     "cascade:AttachmentShape",
     "Attachment shape",
   ),
-  "terms/cascade/abatementDate.html": term(
+  "terms/cascade/properties/abatementDate.html": term(
     "cascade:abatementDate",
     "Abatement Date",
   ),
-  "terms/prov/wasDerivedFrom.html": term(
+  "terms/prov/properties/wasDerivedFrom.html": term(
     "prov:wasDerivedFrom",
     "was derived from",
   ),
@@ -155,12 +155,12 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
             "Attachment shape",
           ],
           [
-            "terms/cascade/abatementDate.html",
+            "terms/cascade/properties/abatementDate.html",
             "cascade:abatementDate",
             "Abatement Date",
           ],
           [
-            "terms/prov/wasDerivedFrom.html",
+            "terms/prov/properties/wasDerivedFrom.html",
             "prov:wasDerivedFrom",
             "was derived from",
           ],
@@ -176,7 +176,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       ])
         assert.equal(
           rank(rows, query)[0]?.path,
-          "terms/prov/wasDerivedFrom.html",
+          "terms/prov/properties/wasDerivedFrom.html",
           query,
         );
       assert.deepEqual(rank(rows, "cascade:wasDerivedFrom"), []);
@@ -261,7 +261,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     it("finds a term by a word of its label, every word of the query having to be found", () => {
       assert.equal(
         rank(rows, "abatement date")[0]?.path,
-        "terms/cascade/abatementDate.html",
+        "terms/cascade/properties/abatementDate.html",
       );
       assert.deepEqual(rank(rows, "attachment abatement"), []);
     });
@@ -493,7 +493,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       for (const query of ["wasDerivedFrom", "prov:wasDerivedFrom"])
         assert.equal(
           rank(rows, query)[0]?.path,
-          "terms/prov/wasDerivedFrom.html",
+          "terms/prov/properties/wasDerivedFrom.html",
           query,
         );
     });
@@ -547,7 +547,11 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
           title,
           name,
         );
-        assert.match(path, /^terms\/[a-z]+\/[^/]+\.html$/, path);
+        assert.match(
+          path,
+          /^terms\/[a-z]+\/(?:properties\/)?[^/]+\.html$/,
+          path,
+        );
         assert.ok(
           readFileSync(join(out, path), "utf8").includes(`<h1 id="${title}">`),
           path,

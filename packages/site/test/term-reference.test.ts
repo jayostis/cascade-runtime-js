@@ -151,6 +151,12 @@ const FEATURE = `Feature: Vaccines
       Then the pod holds <https://ns.cascadeprotocol.org/cascade#Vaccination>
 `;
 
+const PROPERTIES = new Set([
+  VACCINE_CODE,
+  `${CASCADE}vaccineCodeSystem`,
+  FOAF_NAME,
+]);
+
 const text = (value: string) => new TextEncoder().encode(value);
 
 async function fixture(): Promise<Files> {
@@ -178,7 +184,7 @@ const part = (page: string, id: string): string =>
 
 /** The markup of the page of the term with the IRI. */
 function entry(pages: ReadonlyMap<string, string>, iri: string): string {
-  const found = pages.get(termPage(iri));
+  const found = pages.get(termPage(iri, PROPERTIES.has(iri)));
   assert.ok(found !== undefined, `no page for ${iri}`);
   return found;
 }
@@ -224,11 +230,15 @@ describe("The term reference · termReference(), termsSection", () => {
         `${CASCADE}Given`,
         FOAF_NAME,
       ]) {
-        assert.ok(pages.has(termHref(iri, "")), `no page for ${iri}`);
+        assert.ok(
+          pages.has(termHref(iri, "", PROPERTIES.has(iri))),
+          `no page for ${iri}`,
+        );
         assert.ok(ids.has(termId(iri)), `the index has no row for ${iri}`);
       }
       assert.ok(pages.has("cascade/Vaccination.html"));
-      assert.ok(pages.has("foaf/name.html"));
+      assert.ok(pages.has("foaf/properties/name.html"));
+      assert.ok(pages.has("cascade/properties/vaccineCode.html"));
     });
 
     it("gives the vocabulary's own namespace no page", () => {
@@ -248,7 +258,7 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.match(shown.said, /Vaccine Code/);
       assert.match(shown.said, /owl:ObjectProperty/);
       assert.ok(
-        shown.hrefs.includes(termHref(VACCINATION, "../")),
+        shown.hrefs.includes(termHref(VACCINATION, "../../")),
         "its domain",
       );
       assert.doesNotMatch(shown.said, /Range|Subproperty of|License/);
@@ -297,7 +307,7 @@ describe("The term reference · termReference(), termsSection", () => {
 
     it("links a shape that another shape sends a value to, at an anchor of its own on the index", () => {
       const shown = readPage(entry(pages, VACCINE_CODE));
-      assert.ok(shown.hrefs.includes(`../index.html#${termId(CVX_SHAPE)}`));
+      assert.ok(shown.hrefs.includes(`../../index.html#${termId(CVX_SHAPE)}`));
       assert.ok(readPage(page).ids.has(termId(CVX_SHAPE)));
     });
 
@@ -309,7 +319,22 @@ describe("The term reference · termReference(), termsSection", () => {
         /cascade:vaccineCode.*cascade:CvxCodeShape.*at most 1.*A vaccine code is one IRI\./,
       );
       assert.match(said, /cascade:vaccineCodeSystem.*xsd:string.*1 to 3/);
-      assert.ok(hrefs.includes(termHref(VACCINE_CODE, "../")));
+      assert.ok(hrefs.includes(termHref(VACCINE_CODE, "../", true)));
+    });
+
+    it("labels each cell of a shape's table with its column, which the stylesheet shows on a narrow screen", () => {
+      const cells = [...entry(pages, VACCINATION).matchAll(/<td([^>]*)>/g)].map(
+        ([, attributes]) => attributes,
+      );
+      assert.equal(cells.length, 8);
+      assert.deepEqual(cells.slice(0, 4), [
+        ' data-label="Property"',
+        ' data-label="Value type"',
+        ' data-label="How many"',
+        ' data-label="When it is not met"',
+      ]);
+      for (const attributes of cells)
+        assert.match(attributes ?? "", /^ data-label="/);
     });
 
     it("leaves out what a term has none of, so a term with no query, rule or source has no closed section", () => {
@@ -367,7 +392,7 @@ describe("The term reference · termReference(), termsSection", () => {
     });
 
     it("links each rule whose text names the vocabulary term, by prefix or by whole IRI", () => {
-      const v1 = ruleHref("runtime/vaccines.feature", "V1", SPEC);
+      const v1 = ruleHref("runtime/vaccines.feature", "V1", `../${SPEC}`);
       const v2 = ruleHref("runtime/vaccines.feature", "V2", SPEC);
       const vaccineCode = readPage(entry(pages, VACCINE_CODE));
       assert.ok(vaccineCode.hrefs.includes(v1));
@@ -494,7 +519,103 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.match(page, /<li id="cascade:Vaccination">/);
       assert.match(
         page,
-        /<a id="cascade:vaccineCode" href="cascade\/vaccineCode\.html">/,
+        /<a id="cascade:vaccineCode" href="cascade\/properties\/vaccineCode\.html">/,
+      );
+    });
+  });
+
+  describe("with the old anchors of the shapes", () => {
+    it("keeps each shape's old id on the row of the term it is at home on, and `#classes` on the index of classes", async () => {
+      const { ids } = readPage(page);
+      assert.ok(ids.has(termId(`${CASCADE}VaccinationShape`)));
+      assert.ok(ids.has("classes"));
+      assert.ok(
+        readPage(await termReference(manyFiles, PLAIN)).ids.has(
+          termId(`${CASCADE}SystemShape`),
+        ),
+      );
+    });
+  });
+
+  describe("with two terms whose names differ only by the case of the first letter", () => {
+    it("writes a class's page and a property's page at two paths that differ by more than case", async () => {
+      const files = await fixture();
+      await files.write(
+        "ontologies/cascade.ttl",
+        text(
+          `${ONTOLOGY}\ncascade:Subject a owl:Class .\ncascade:subject a owl:ObjectProperty .\n`,
+        ),
+      );
+      const written = [...(await termPages(files, PLAIN)).keys()];
+      assert.ok(written.includes("cascade/Subject.html"));
+      assert.ok(written.includes("cascade/properties/subject.html"));
+      assert.equal(
+        new Set(written.map((path) => path.toLowerCase())).size,
+        written.length,
+      );
+    });
+  });
+
+  describe("with the neighbours of a named thing", () => {
+    const BASIS = `${CASCADE}basis`;
+    let things: ReadonlyMap<string, string>;
+
+    before(async () => {
+      const files = await fixture();
+      await files.write(
+        "ontologies/cascade.ttl",
+        text(`${ONTOLOGY}
+cascade:Source a owl:Class .
+cascade:basis a owl:ObjectProperty .
+cascade:fromPrescription a owl:NamedIndividual, cascade:Source .
+cascade:fromList a owl:NamedIndividual, cascade:Source .
+cascade:fromScan a owl:NamedIndividual .
+cascade:Orphan a owl:NamedIndividual .
+`),
+      );
+      await files.write(
+        "ontologies/cascade.shapes.ttl",
+        text(`${SHAPES}
+cascade:BasisShape a sh:NodeShape ;
+    sh:targetSubjectsOf cascade:basis ;
+    sh:property [
+        sh:path cascade:basis ;
+        sh:in ( cascade:fromPrescription cascade:fromList cascade:fromScan )
+    ] .
+`),
+      );
+      things = await termPages(files, PLAIN);
+    });
+
+    it("names the property whose `sh:in` list holds it, linked, with the other values of that list", () => {
+      const scan = readPage(entry(things, `${CASCADE}fromScan`));
+      assert.match(scan.said, /Allowed value of.*cascade:basis/);
+      assert.ok(scan.hrefs.includes(termHref(BASIS, "../", true)));
+      assert.match(
+        scan.said,
+        /Other values of cascade:basis.*cascade:fromList.*cascade:fromPrescription/,
+      );
+      assert.doesNotMatch(scan.said, /Other values of cascade:basis.*fromScan/);
+    });
+
+    it("lists the other instances of its type when that type is a class of the vocabulary", () => {
+      const prescription = readPage(
+        entry(things, `${CASCADE}fromPrescription`),
+      );
+      assert.match(
+        prescription.said,
+        /Other instances of cascade:Source.*cascade:fromList/,
+      );
+      assert.doesNotMatch(
+        readPage(entry(things, `${CASCADE}fromScan`)).said,
+        /Other instances/,
+      );
+    });
+
+    it("lists no neighbours of a thing that is in no list and has no class of the vocabulary", () => {
+      assert.doesNotMatch(
+        readPage(entry(things, `${CASCADE}Orphan`)).said,
+        /Other (?:values|instances)|Allowed value/,
       );
     });
   });
@@ -560,9 +681,9 @@ describe("The term reference · termReference(), termsSection", () => {
     it("writes a page for each term under `terms/<prefix>/<Name>.html`", () => {
       for (const path of [
         "terms/cascade/Vaccination.html",
-        "terms/cascade/vaccineCode.html",
+        "terms/cascade/properties/vaccineCode.html",
         "terms/prov/Entity.html",
-        "terms/foaf/name.html",
+        "terms/foaf/properties/name.html",
       ])
         assert.ok(tree.has(path), path);
     });
@@ -572,7 +693,7 @@ describe("The term reference · termReference(), termsSection", () => {
         new TextDecoder().decode(tree.get(TERMS_JSON)),
       ) as { terms: Record<string, unknown>[] };
       const code = terms.find(({ id }) => id === "cascade:vaccineCode");
-      assert.equal(code?.["page"], "cascade/vaccineCode.html");
+      assert.equal(code?.["page"], "cascade/properties/vaccineCode.html");
       assert.equal(code?.["label"], "Vaccine Code");
       assert.deepEqual(code?.["domain"], [VACCINATION]);
       assert.equal(terms.length, 11);
@@ -643,6 +764,97 @@ describe("The term reference · termReference(), termsSection", () => {
             `${path}: ${href} lands on no page`,
           );
         }
+    });
+
+    it("keeps on the index the id of every shape a term's page shows whole, and `#classes`", () => {
+      const anchors = [...realPages.values()].flatMap((html) => [
+        ...html.matchAll(/<div class="shape" id="([^"]+)"/g),
+      ]);
+      assert.ok(anchors.length > 50, `${anchors.length} shapes`);
+      for (const [, id] of anchors)
+        assert.ok(ids.has(id ?? ""), `the index has no anchor ${id}`);
+      assert.ok(ids.has("classes"));
+    });
+
+    /**
+     * The named things the vocabulary declares as a bare `owl:NamedIndividual` that no `sh:in` list holds: the matcher's
+     * rules, the rules that name a record, the reasons a record is left out, and two others of one instance of their class.
+     * Typing them is the vocabulary's to do; none has a neighbour until it is.
+     */
+    const ALONE = [
+      "cascade:CascadeMatcher",
+      "cascade:ContainedRecordNamingRule",
+      "cascade:DifferentResultUnitsRule",
+      "cascade:DifferentResultValuesRule",
+      "cascade:DocumentNamingRule",
+      "cascade:EnteredInErrorAtSource",
+      "cascade:EnteredRecordNamingRule",
+      "cascade:FindingNamingRule",
+      "cascade:ImportJudgedErroneous",
+      "cascade:JudgedErroneous",
+      "cascade:MatcherJudgmentAssertionNamingRule",
+      "cascade:MatcherJudgmentNamingRule",
+      "cascade:NoPatient",
+      "cascade:OrganizationNamingRule",
+      "cascade:PatientProfileNotClaimed",
+      "cascade:RecordFromCcdaNamingRule",
+      "cascade:RecordFromCcdaWithoutIdNamingRule",
+      "cascade:RecordFromDocumentNamingRule",
+      "cascade:RecordFromServerNamingRule",
+      "cascade:RefutedAtSource",
+      "cascade:ReleaseRetractionNamingRule",
+      "cascade:RevisionNamingRule",
+      "cascade:SameBrandGenericRule",
+      "cascade:SameBusinessIdentifierAndTestCodeWithinOneOrganizationRule",
+      "cascade:SameCodeAndDateRule",
+      "cascade:SameCodeAndPeriodRule",
+      "cascade:SameCodeRule",
+      "cascade:SameConvertedCodeRule",
+      "cascade:SameMappedCodeAndDateRule",
+      "cascade:SameMappedCodeRule",
+      "cascade:SameMedicationCodeRule",
+      "cascade:SameNoteOrDocumentMasterIdentifierRule",
+      "cascade:SameNoteTypeAndTextGrownWithinOneOrganizationRule",
+      "cascade:SameNoteTypeAndTextRule",
+      "cascade:SameProductCodeRule",
+      "cascade:SameResultOnOneDayRule",
+      "cascade:SameResultRule",
+      "cascade:SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHostRule",
+      "cascade:SameVariationRule",
+      "cascade:SameVariationThroughTableRule",
+      "cascade:ServerNamingRule",
+      "cascade:SnapshotNamingRule",
+      "cascade:TableRowNamingRule",
+      "cascade:TableVersionNamingRule",
+      "cascade:VersionNamingRule",
+      "cascade:ViewEntryNamingRule",
+      "oa:classifying",
+    ];
+
+    it("gives every named thing neighbours but those the vocabulary leaves untyped: the other values of a list that holds it, the other instances of its class, or the other members of its scheme", async () => {
+      const { terms } = JSON.parse(await termsJson(files)) as {
+        terms: { kind: string; page: string; id: string }[];
+      };
+      const things = terms.filter(({ kind }) => kind === "thing");
+      assert.ok(things.length > 100, `${things.length} named things`);
+      const alone = things
+        .filter(
+          ({ page }) =>
+            !/<dt>(?:Other values of|Other instances of|Other members of|Members)[ <]/.test(
+              realPages.get(page) ?? "",
+            ),
+        )
+        .map(({ id }) => id);
+      assert.deepEqual(alone, ALONE);
+    });
+
+    it("writes no two pages at paths that differ only by case", () => {
+      const seen = new Map<string, string>();
+      for (const path of realPages.keys()) {
+        const other = seen.get(path.toLowerCase());
+        assert.equal(other, undefined, `${path} and ${other}`);
+        seen.set(path.toLowerCase(), path);
+      }
     });
 
     it("lists in `terms.json` each term that has a page, and names its page", async () => {

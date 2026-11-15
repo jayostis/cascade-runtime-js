@@ -82,6 +82,26 @@ describe("Linking a vocabulary term, a rule or a decision note · termHref(), ru
       );
     });
 
+    it("puts a property's page in `properties/` of its prefix's folder, so `cascade:Subject` and `cascade:subject` are two files on a disk that ignores case", () => {
+      const subject = "https://ns.cascadeprotocol.org/cascade#subject";
+      assert.equal(
+        termHref(subject, "terms/", true),
+        "terms/cascade/properties/subject.html",
+      );
+      assert.equal(
+        termHref("https://ns.cascadeprotocol.org/cascade#Subject", "terms/"),
+        "terms/cascade/Subject.html",
+      );
+      assert.equal(
+        termHref(FOAF_NAME, "../", true),
+        "../foaf/properties/name.html",
+      );
+      assert.equal(
+        termHref("http://example.org/a b#c", "terms/", true),
+        "terms/other/properties/http-example-org-a-b-c.html",
+      );
+    });
+
     it("takes the folder of the term pages as its base", () => {
       assert.equal(
         termHref("http://www.w3.org/ns/prov#wasDerivedFrom", "../"),

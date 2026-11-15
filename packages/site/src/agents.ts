@@ -115,8 +115,8 @@ export interface SearchRow {
 
 /** A term's page: its heading carries the term's id, then its name and its label. */
 const TERM_HEADING = /<h1 id="([^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h1>/;
-/** A page in a prefix's folder under the term reference: `terms/<prefix>/<Name>.html`. */
-const TERM_PAGE = /^terms\/[^/]+\/[^/]+\.html$/;
+/** A page in a prefix's folder under the term reference: `terms/<prefix>/<Name>.html`, or `terms/<prefix>/properties/<name>.html`. */
+const TERM_PAGE = /^terms\/[^/]+\/(?:properties\/)?[^/]+\.html$/;
 const RULE_ANCHOR =
   /<section class="rule" id="([^"]+)">\s*<h2>([\s\S]*?)<\/h2>/g;
 /** What the API page's render puts before the first inline code span that names a call, so a row can land on it. */

@@ -385,7 +385,9 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
 
     it("names a vocabulary term in every link to the term reference", () => {
       const known = new Set(
-        [...site.labels.keys()].map((iri) => `../terms/${termPage(iri)}`),
+        [...site.labels.keys()].map(
+          (iri) => `../terms/${termPage(iri, site.properties.has(iri))}`,
+        ),
       );
       const terms = [...pages.values()]
         .flatMap((one) => one.hrefs)
@@ -426,7 +428,9 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
         page("layout.html").blocks.some(
           ({ path, hrefs }) =>
             path === block.query.path &&
-            hrefs.includes(termHref(first, "../terms/")),
+            hrefs.includes(
+              termHref(first, "../terms/", site.properties.has(first)),
+            ),
         ),
       );
     });

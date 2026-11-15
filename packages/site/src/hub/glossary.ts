@@ -129,7 +129,11 @@ export class Links {
 }
 
 /** The glossary as a definition list, closed until the reader or a link opens it. */
-export function glossaryList(entries: readonly Entry[]): Html {
+export function glossaryList(
+  entries: readonly Entry[],
+  /** The terms of the vocabulary that are properties, whose pages are in `properties/`. */
+  properties: ReadonlySet<string> = new Set(),
+): Html {
   return markup`<details class="glossary"><summary>Glossary</summary>
 <input type="search" class="glossary-filter" data-glossary-filter hidden placeholder="Filter the glossary" aria-label="Filter the glossary">
 <dl>
@@ -141,7 +145,7 @@ ${entries.map(
     aliases,
     id,
   }) => markup`<dt id="${id}"><dfn>${term}</dfn>${aliases.length === 0 ? "" : markup` <span class="aliases">(${aliases.join(", ")})</span>`}</dt>
-<dd>${definition}${vocabulary === undefined ? "" : vocabularyLink(vocabulary)}</dd>
+<dd>${definition}${vocabulary === undefined ? "" : vocabularyLink(vocabulary, properties.has(vocabulary))}</dd>
 `,
 )}</dl>
 <p class="none-match" hidden>No entry matches.</p></details>
@@ -149,11 +153,11 @@ ${entries.map(
 }
 
 /** The term's entry on the terms page; the IRI itself where the site has no page for it, and no link where it does not resolve. */
-function vocabularyLink(iri: string): Html {
+function vocabularyLink(iri: string, property: boolean): Html {
   const name = prefixed(iri);
   const shown = markup`<code>${name ?? iri}</code>`;
   if (name !== undefined)
-    return markup` <a class="vocabulary" href="${termHref(iri, TERMS)}">${shown}</a>`;
+    return markup` <a class="vocabulary" href="${termHref(iri, TERMS, property)}">${shown}</a>`;
   return NAMESPACE_HOST.test(iri)
     ? markup` ${shown}`
     : markup` <a class="vocabulary" href="${iri}">${shown}</a>`;
