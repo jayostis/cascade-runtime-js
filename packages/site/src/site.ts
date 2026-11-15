@@ -37,7 +37,7 @@ import { addressesOf } from "./links.js";
 import { navOf, pages } from "./pages.js";
 import { numberOf } from "./spec.js";
 import { STYLESHEET } from "./stylesheet.js";
-import { CALLED, COPY, STATED, terms } from "./terms.js";
+import { CALLED, COPY, PROPERTY_TYPES, STATED, terms } from "./terms.js";
 
 export const STYLESHEET_FILE = "site.css";
 const CRATE = "ro-crate-metadata.json";
@@ -158,6 +158,8 @@ export class Site {
     readonly labels: ReadonlyMap<string, string>,
     /** The comment of each term of the vocabulary's own that has one. */
     readonly comments: ReadonlyMap<string, string>,
+    /** The terms of the vocabulary's own that are properties, whose pages are in `properties/`. */
+    readonly properties: ReadonlySet<string>,
     /** The code systems the vocabulary registers, which label a code. */
     readonly codeSystems: readonly CodeSystem[],
     things: ReadonlyMap<string, readonly Term[]>,
@@ -306,7 +308,7 @@ export class Site {
         ).size,
       });
     }
-    const { labels, comments } = await vocabularyLabels(
+    const { labels, comments, properties } = await vocabularyLabels(
       vocabulary,
       options.newStore,
       asked.get(CALLED),
@@ -318,6 +320,7 @@ export class Site {
       pipeline,
       labels,
       comments,
+      properties,
       (await tableTerms(vocabulary, options.newStore)).codeSystems,
       things,
       pages,
@@ -454,6 +457,7 @@ async function vocabularyLabels(
 ): Promise<{
   labels: Map<string, string>;
   comments: Map<string, string>;
+  properties: Set<string>;
 }> {
   if (called === undefined)
     throw new Error(`the vocabulary has no question ${CALLED}`);
@@ -501,5 +505,18 @@ async function vocabularyLabels(
     )
       comments.set(thing.value, comment.value);
   }
-  return { labels, comments };
+  const properties = new Set<string>();
+  const { rows: typed } = await ontologies.select(
+    `SELECT ?thing ?type WHERE { ?thing a ?type }`,
+  );
+  for (const row of typed) {
+    const [thing, type] = [row.get("thing"), row.get("type")];
+    if (
+      thing !== undefined &&
+      type !== undefined &&
+      PROPERTY_TYPES.has(type.value)
+    )
+      properties.add(thing.value);
+  }
+  return { labels, comments, properties };
 }

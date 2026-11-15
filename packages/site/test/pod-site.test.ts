@@ -18,7 +18,7 @@ import {
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
 import { PLAIN } from "../src/html.js";
-import { termHref, termId } from "../src/links.js";
+import { termHref, termPage } from "../src/links.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { namedInQuery } from "../src/term-reference.js";
 import { type Page, readPage } from "./page.js";
@@ -266,7 +266,9 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
       assert.ok(otherLens.length > 0);
       assert.ok(
         !cellsOf(otherLens).some(({ hrefs }) =>
-          hrefs.some((href) => href.endsWith(".html")),
+          hrefs.some(
+            (href) => href.endsWith(".html") && !href.startsWith("../terms/"),
+          ),
         ),
       );
     });
@@ -355,7 +357,7 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
     });
 
     it("links out of its own folder only to the term reference and the specification", () => {
-      const out = ["../terms/#", "../spec/"];
+      const out = ["../terms/", "../spec/"];
       const outside: string[] = [];
       for (const [path, { hrefs }] of pages)
         for (const href of hrefs)
@@ -382,16 +384,16 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
     });
 
     it("names a vocabulary term in every link to the term reference", () => {
-      const ids = new Set([...site.labels.keys()].map(termId));
+      const known = new Set(
+        [...site.labels.keys()].map(
+          (iri) => `../terms/${termPage(iri, site.properties.has(iri))}`,
+        ),
+      );
       const terms = [...pages.values()]
         .flatMap((one) => one.hrefs)
-        .filter((href) => href.startsWith("../terms/#"));
+        .filter((href) => href.startsWith("../terms/"));
       assert.ok(terms.length > 0);
-      for (const href of terms)
-        assert.ok(
-          ids.has(decodeURIComponent(href.slice("../terms/#".length))),
-          href,
-        );
+      for (const href of terms) assert.ok(known.has(href), href);
     });
 
     it("links each query's file on GitHub at the commit built", () => {
@@ -411,7 +413,7 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
 
     it("links, from a named question, a vocabulary term its query names", () => {
       const used = page("views/allergies.html").blocks.flatMap(({ hrefs }) =>
-        hrefs.filter((href) => href.startsWith("../terms/#")),
+        hrefs.filter((href) => href.startsWith("../terms/")),
       );
       assert.ok(
         used.length > 0,
@@ -426,7 +428,9 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
         page("layout.html").blocks.some(
           ({ path, hrefs }) =>
             path === block.query.path &&
-            hrefs.includes(termHref(first, "../terms/")),
+            hrefs.includes(
+              termHref(first, "../terms/", site.properties.has(first)),
+            ),
         ),
       );
     });

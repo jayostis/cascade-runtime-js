@@ -28,11 +28,25 @@ export const pageNameOf = (path: string): string =>
 export const termId = (iri: string): string => prefixed(iri) ?? iri;
 
 /**
- * A link to a term on the term reference's page, `base` being that page's address: `terms/` from the front page, `""` from
- * the page itself, an absolute address from a site built outside the hub.
+ * A term's page in the folder of term pages: `prefix/Name.html` for a term in a namespace this site knows, else
+ * `other/` and the IRI as a slug. A property's is in `properties/` of that folder, so `cascade:Subject` and
+ * `cascade:subject` are two files on a disk that ignores case.
  */
-export function termHref(iri: string, base: string): string {
-  return `${away(base)}#${prefixed(iri) ?? encodeURIComponent(iri)}`;
+export function termPage(iri: string, property = false): string {
+  const name = prefixed(iri);
+  const kind = property ? "properties/" : "";
+  if (name === undefined) return `other/${kind}${slugOf(iri)}.html`;
+  const at = name.indexOf(":");
+  return `${name.slice(0, at)}/${kind}${name.slice(at + 1)}.html`;
+}
+
+/**
+ * A link to a term's page, `base` being the folder of term pages: `terms/` from the front page, `""` from the term
+ * reference's own page, `../` from another term's page (`../../` from a property's), an absolute address from a site
+ * built outside the hub; `property` is whether the term is a property.
+ */
+export function termHref(iri: string, base: string, property = false): string {
+  return `${away(base)}${termPage(iri, property)}`;
 }
 
 /** A link to a rule on its feature's page, `base` being the folder of the spec's pages with its slash, `spec/` or `""`. */

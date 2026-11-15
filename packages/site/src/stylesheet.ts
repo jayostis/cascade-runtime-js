@@ -116,6 +116,7 @@ th, td { text-align: left; vertical-align: top; padding: .3rem .6rem; border-bot
          overflow-wrap: anywhere; }
 th { background: var(--paper); font: 600 .85rem/1.4 var(--mono); white-space: nowrap; }
 table.results th { white-space: normal; }
+.shape td:first-child { min-width: 14rem; overflow-wrap: break-word; }
 table.rows { width: max-content; min-width: 100%; }
 table.rows th, table.rows td { min-width: 6rem; max-width: 28rem; overflow-wrap: break-word; }
 #find-your-way ul { margin: 0; padding-left: 1.1rem; }

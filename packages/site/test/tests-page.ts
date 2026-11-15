@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { type Files } from "@cascade-runtime/runtime";
 import { hubFiles } from "../src/front-page.js";
 import { PLAIN } from "../src/html.js";
 import type { Suite, SuiteRun, TestRun } from "../src/hub/context.js";
@@ -115,6 +116,7 @@ export async function pageWith(
   reports: { readonly runtime?: TestRun; readonly vocabulary?: TestRun },
   others: readonly SuiteRun[] = [],
   runtime: Suite = RUNTIME,
+  vocabulary?: Files,
 ) {
   const runs: SuiteRun[] = [
     { suite: runtime, ...(reports.runtime ? { run: reports.runtime } : {}) },
@@ -126,7 +128,19 @@ export async function pageWith(
   ];
   const { tree } = await buildTree({
     sections: [testsSection],
-    ctx: { tests: async () => runs, chrome: PLAIN },
+    ctx: {
+      tests: async () => runs,
+      chrome: PLAIN,
+      ...(vocabulary === undefined
+        ? {}
+        : {
+            vocabulary: async () => ({
+              files: vocabulary,
+              builtFrom: [],
+              at: "",
+            }),
+          }),
+    },
     front: (rows) => hubFiles(["Records"], rows, PLAIN),
   });
   const markup = runs

@@ -13,6 +13,7 @@ import {
 } from "../junit.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
+import { queryFacts } from "../term-reference.js";
 import {
   ctrfEntry,
   glossaryList,
@@ -27,7 +28,8 @@ import { SPEC_FOLDER } from "./spec.js";
 export const TESTS_FOLDER = "conformance/tests/";
 
 /** What the section reads of the context. */
-export type TestsContext = Pick<PagesContext, "tests" | "chrome">;
+export type TestsContext = Pick<PagesContext, "tests" | "chrome"> &
+  Partial<Pick<PagesContext, "vocabulary">>;
 
 /** A suite's repository's name, which names its page's folder and its CTRF file. */
 export const nameOf = (suite: Suite): string =>
@@ -654,6 +656,7 @@ function packageSection(
   suite: Suite,
   run: TestRun,
   alone: boolean,
+  properties: ReadonlySet<string>,
 ): Packaged {
   const all = capabilitiesOf(cases, suite);
   const inBuild = (one: Capability): boolean =>
@@ -685,7 +688,7 @@ function packageSection(
     id: idOf(one),
     failed: count(one.cases, "failed") > 0,
   }));
-  const body = markup`${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}${spec.glossary.length === 0 ? "" : glossaryList(spec.glossary)}<ul class="tree top">
+  const body = markup`${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}${spec.glossary.length === 0 ? "" : glossaryList(spec.glossary, properties)}<ul class="tree top">
 ${main.map((one, at) => capability(one, suite, run, spec.glossary, ids[at]?.id ?? ""))}</ul>
 ${
   build.length === 0
@@ -819,6 +822,7 @@ function packageSections(
   packages: ReadonlyMap<string, PackageInfo>,
   suite: Suite,
   run: TestRun,
+  properties: ReadonlySet<string>,
 ): Html {
   const listed = byRank(suite.packages ?? []);
   const order = [...byPackage(cases, suite)].sort(
@@ -836,6 +840,7 @@ function packageSections(
       suite,
       run,
       alone,
+      properties,
     ),
   );
   return markup`${alone ? "" : packageTable(packaged)}${packaged.map((one) => one.section)}`;
@@ -985,7 +990,11 @@ function casesOf(suite: Suite, run: TestRun): JunitReport & CtrfTiming {
 }
 
 /** What a suite's page shows of its run: the summary, the counts and the tree, or why there is none. */
-function part(suite: Suite, run: TestRun | undefined): Part {
+function part(
+  suite: Suite,
+  run: TestRun | undefined,
+  properties: ReadonlySet<string>,
+): Part {
   if (run === undefined)
     return {
       html: markup`<p class="prose">Not available: this build was given no report of the newest run of ${titleInSentence(suite)} on <code>main</code>.</p>
@@ -1016,7 +1025,9 @@ function part(suite: Suite, run: TestRun | undefined): Part {
 `
       : "";
   const shownCases =
-    cases.length === 0 ? "" : packageSections(cases, packages, suite, run);
+    cases.length === 0
+      ? ""
+      : packageSections(cases, packages, suite, run, properties);
   // A CTRF report whose cases were not timed has a run time only where it gives its start and stop.
   const milliseconds: number | undefined =
     timing.start !== undefined && timing.stop !== undefined
@@ -1082,8 +1093,12 @@ export const testsSection: Section<TestsContext> = {
     "the JUnit reports of the newest runs on main of each repository packages/site/test-suites.json lists",
   async build(ctx) {
     const files = new Map<string, Uint8Array>();
+    const { properties } =
+      ctx.vocabulary === undefined
+        ? { properties: new Set<string>() }
+        : await queryFacts((await ctx.vocabulary()).files);
     for (const { suite, run } of await ctx.tests()) {
-      const shown = part(suite, run);
+      const shown = part(suite, run, properties);
       files.set(
         testsPageOf(suite),
         encoder.encode(page(suite, shown, ctx.chrome).text),

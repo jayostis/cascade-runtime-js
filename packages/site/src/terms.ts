@@ -37,6 +37,13 @@ export const PREFIXES: Readonly<Record<string, string>> = {
   void: "http://rdfs.org/ns/void#",
   xsd: "http://www.w3.org/2001/XMLSchema#",
 };
+/** The types that make a term a property: its page is in `properties/` of its prefix's folder. */
+export const PROPERTY_TYPES: ReadonlySet<string> = new Set([
+  "http://www.w3.org/2002/07/owl#ObjectProperty",
+  "http://www.w3.org/2002/07/owl#DatatypeProperty",
+  "http://www.w3.org/2002/07/owl#AnnotationProperty",
+  `${RDF}Property`,
+]);
 export const LOCAL_NAME = /^[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;
 
 /** The IRI as prefix:name, or undefined. */

@@ -44,7 +44,11 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
   const known = site.labels.get(value.value);
   const reference =
     known !== undefined && site.options.terms !== undefined
-      ? termHref(value.value, site.options.terms)
+      ? termHref(
+          value.value,
+          site.options.terms,
+          site.properties.has(value.value),
+        )
       : undefined;
   const plain =
     value.termType === "BlankNode"
@@ -100,7 +104,7 @@ function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
         );
   const using =
     uses.length > 0 &&
-    markup`<p>The terms it uses: ${uses.map((iri, at) => markup`${at === 0 ? "" : ", "}<a href="${termHref(iri, terms ?? "")}"><code>${prefixed(iri) ?? iri}</code></a>`)}.</p>`;
+    markup`<p>The terms it uses: ${uses.map((iri, at) => markup`${at === 0 ? "" : ", "}<a href="${termHref(iri, terms ?? "", site.properties.has(iri))}"><code>${prefixed(iri) ?? iri}</code></a>`)}.</p>`;
   const runIt =
     question !== undefined &&
     markup`

@@ -366,6 +366,7 @@ function queryPage(
   group: Group,
   facts: {
     readonly terms: ReadonlySet<string>;
+    readonly properties: ReadonlySet<string>;
     readonly naming: QueryNaming | undefined;
   },
   rows: Rows | undefined,
@@ -398,7 +399,7 @@ function queryPage(
 ${purpose === "" ? markup`<p class="about">The file states no purpose.</p>\n` : markup`<p class="prose">${purpose}</p>\n`}<h2>The query</h2>
 <pre class="code"><code>${highlighted(query.text)}</code></pre>
 <h2>Terms it reads</h2>
-${read.length === 0 ? markup`<p class="about">It names no term of the vocabulary.</p>\n` : markup`<p class="terms">${read.map(([name, iri], at) => markup`${at === 0 ? "" : " · "}<a href="${termHref(iri, `${up}${TERMS_FOLDER}`)}"><code>${name}</code></a>`)}</p>\n`}<h2>Rules and decision notes that name it</h2>
+${read.length === 0 ? markup`<p class="about">It names no term of the vocabulary.</p>\n` : markup`<p class="terms">${read.map(([name, iri], at) => markup`${at === 0 ? "" : " · "}<a href="${termHref(iri, `${up}${TERMS_FOLDER}`, facts.properties.has(iri))}"><code>${name}</code></a>`)}</p>\n`}<h2>Rules and decision notes that name it</h2>
 ${
   rules.length + notes.length === 0
     ? markup`<p class="about">No rule or decision note writes its path.</p>\n`
@@ -523,7 +524,7 @@ export async function queryPages({
   }));
   const addresses = await addressesOf(named);
   for (const query of queries) query.page = addresses.get(query.path) ?? "";
-  const { terms, naming } = await queryFacts(vocabulary);
+  const { terms, properties, naming } = await queryFacts(vocabulary);
   const rows = rowsOf(example);
   const tree = vocabulary.iri;
   const blob = tree.includes("/tree/")
@@ -539,7 +540,7 @@ export async function queryPages({
         queryPage(
           query,
           groups.find(({ id }) => id === query.group) as Group,
-          { terms, naming: naming.get(query.path) },
+          { terms, properties, naming: naming.get(query.path) },
           rows,
           blob,
           chrome,

@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
+import { MemoryFiles } from "@cascade-runtime/runtime";
 import { glossaryOf, Links } from "../src/hub/glossary.js";
+import { described, leafOf, packageProperty, report } from "./report.js";
 import {
   GLOSSARY,
   GROUPED,
   hrefsTo,
   pageWith,
   partOf,
+  pod,
   R,
   RUN,
   WITH_GLOSSARY,
@@ -47,7 +50,7 @@ describe("A package's glossary on its page · glossaryOf(), Links", () => {
     });
 
     it("links a term to the term reference when it names a term of the vocabulary", () => {
-      assert.ok(part.includes('href="../../../terms/#cascade:Claim"'));
+      assert.ok(part.includes('href="../../../terms/cascade/Claim.html"'));
     });
 
     it("links any other address as it is given", () => {
@@ -181,6 +184,59 @@ describe("A package's glossary on its page · glossaryOf(), Links", () => {
       assert.deepEqual(linked("Claims are kept"), [
         { text: "Claims", id: "glossary-cascade-runtime-claim" },
       ]);
+    });
+  });
+
+  describe("with a term of the vocabulary that is a property", () => {
+    it("links it to its page in `properties/`, a class's staying beside it", async () => {
+      const vocabulary = new MemoryFiles(
+        "https://github.com/jayostis/cascade-vocabulary/tree/abc123/",
+      );
+      await vocabulary.write(
+        "ontologies/cascade.ttl",
+        new TextEncoder()
+          .encode(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+cascade:Claim a owl:Class .
+cascade:answeredAsOf a owl:DatatypeProperty .
+`),
+      );
+      const { markup } = await pageWith(
+        {
+          runtime: {
+            report: report(
+              packageProperty("cascade-runtime", "cascade-runtime", "0.0.0", {
+                capabilities: ["Asking"],
+                glossary: [
+                  ...GLOSSARY,
+                  {
+                    term: "as-of date",
+                    definition: "The day a question is answered as of.",
+                    vocabulary:
+                      "https://ns.cascadeprotocol.org/cascade#answeredAsOf",
+                  },
+                ],
+              }),
+              described(
+                "Asking",
+                { description: "Asks a claim of the pod.", line: 20 },
+                leafOf("returns the export", pod, 22),
+              ),
+            ),
+            ...RUN,
+          },
+        },
+        [],
+        undefined,
+        vocabulary,
+      );
+      const part = partOf(markup, R);
+      assert.ok(
+        part.includes(
+          'href="../../../terms/cascade/properties/answeredAsOf.html"',
+        ),
+      );
+      assert.ok(part.includes('href="../../../terms/cascade/Claim.html"'));
     });
   });
 

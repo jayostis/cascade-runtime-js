@@ -207,7 +207,9 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
       const path = "queries/views/vaccines.html";
       const page = readPage(read(tree, path), path);
       assert.match(read(tree, path), /CONSTRUCT/);
-      assert.ok(page.hrefs.includes("terms/#cascade:vaccineCode"));
+      assert.ok(
+        page.hrefs.includes("terms/cascade/properties/vaccineCode.html"),
+      );
       assert.match(page.said, /cascade:vaccineCode/);
     });
 
