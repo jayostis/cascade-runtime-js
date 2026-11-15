@@ -74,7 +74,7 @@ describe("The MCP page · mcpPage(), mcpSection", () => {
         assert.ok(ids.has(toolAnchor(name)), `no row for the tool ${name}`);
     });
 
-    it("says of each tool that proposes a write that it needs the person's yes, and of no other", () => {
+    it("marks each tool that proposes a write as needing the person's yes, and no other", () => {
       for (const { name, tier } of tools) {
         const row = rowOf(page, name);
         assert.equal(
