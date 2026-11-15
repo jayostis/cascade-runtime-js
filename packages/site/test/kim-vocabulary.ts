@@ -7,7 +7,7 @@ import {
 import { hubFiles } from "../src/front-page.js";
 import { PLAIN } from "../src/html.js";
 import { specSection } from "../src/hub/spec.js";
-import { buildTree } from "../src/sections.js";
+import { buildTree, type Finisher } from "../src/sections.js";
 import { readSpecReport, type SpecPages, specPages } from "../src/spec.js";
 
 export const TREE = "https://github.com/jayostis/cascade-vocabulary/tree/abc/";
@@ -145,6 +145,7 @@ export async function hubWith(
   from: MemoryFiles,
   ran: readonly Assertion[],
   files: { readonly earl?: Uint8Array; readonly table?: Uint8Array } = {},
+  finishers: readonly Finisher<object>[] = [],
 ): Promise<ReadonlyMap<string, Uint8Array>> {
   const report = await readSpecReport(
     earl(ran, "cascade-runtime-js", RAN_WITH),
@@ -174,6 +175,7 @@ export async function hubWith(
       ],
     },
     front: (rows) => hubFiles(["Records"], rows, PLAIN),
+    finishers,
   });
   return tree;
 }

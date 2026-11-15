@@ -355,6 +355,11 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
       assert.match(llms, /`at`[^\n]*built|built[^\n]*`at`/);
       assert.match(llms, /`ranWith`/);
     });
+
+    it("calls the results by feature, which is how they are", () => {
+      assert.match(llms, /the latest run on main, by feature\./);
+      assert.doesNotMatch(llms, /by feature and rule/);
+    });
   });
 
   describe("with neither among the site's files", () => {

@@ -14,6 +14,7 @@ import {
   BLOB,
   FEATURE,
   hubWith,
+  KIT,
   kimVocabulary,
   oddVocabulary,
   pagesOf,
@@ -75,6 +76,101 @@ describe("The specification's pages · specPages()", () => {
       assert.match(
         readPage(pageText(built, "naming.html")).said,
         /N2: the revision has no name/,
+      );
+    });
+  });
+
+  describe("with a feature's list of its rules", () => {
+    const entries = (html: string): string[] =>
+      [...html.matchAll(/<li>(<a href="#[^"]+"[\s\S]*?)<\/li>/g)].map(
+        ([, entry]) =>
+          (entry ?? "")
+            .replace(/<[^>]*>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim(),
+      );
+
+    it("gives each rule's number and title, its example count and its result", () => {
+      assert.deepEqual(entries(pageText(built, "naming.html")), [
+        "N1. A version is named by its content 2 examples: 1 pass, 1 not run",
+        "N2. A revision is named by its own triples 1 example: 1 fail",
+        "N3. A pod declares its scheme once no example",
+        "N4. Files go where the layout says no example",
+      ]);
+    });
+
+    it("keeps the whole title on hover, for a title the list cuts at two lines", () => {
+      assert.match(
+        pageText(built, "naming.html"),
+        /<a href="#n2" title="N2\. A revision is named by its own triples">/,
+      );
+    });
+
+    it("is a sidebar from 1000 px wide, and the script marks the rule in view", () => {
+      const html = pageText(built, "naming.html");
+      assert.match(
+        html,
+        /<nav class="rules-nav" aria-label="The rules"[^>]*>\s*<ol class="contents">/,
+      );
+      const css = new TextDecoder().decode(built.files.get("spec.css"));
+      assert.match(
+        css,
+        /@media \(min-width: 1000px\)[^@]*\.rules-nav[^@]*position: sticky/,
+      );
+      assert.match(css, /-webkit-line-clamp: 2/);
+      assert.match(html, /<script>[^]*IntersectionObserver[^]*aria-current/);
+    });
+  });
+
+  describe("with a feature that opens on a scenario", () => {
+    let scenario: SpecPages;
+
+    before(async () => {
+      const vocabulary = await kimVocabulary();
+      await vocabulary.write(
+        "runtime/scenario.feature",
+        text(
+          "Feature: Scenario\n  Kim has one allergy, recorded twice.\n\n  Rule: S1. A rule\n\n    Example: an example\n      Given a pod\n",
+        ),
+      );
+      scenario = await pagesOf(vocabulary, ASSERTIONS, RAN_WITH);
+    });
+
+    it("keeps it behind a closed `details`, and shows the rules beside it", () => {
+      const html = pageText(scenario, "scenario.html");
+      const opening = html.indexOf('<details class="scenario">');
+      assert.ok(opening > 0);
+      assert.match(
+        html.slice(opening),
+        /^<details class="scenario">\s*<summary>The scenario the examples run<\/summary>[^]*Kim has one allergy, recorded twice\.[^]*<\/details>/,
+      );
+      assert.doesNotMatch(
+        html.slice(0, opening),
+        /Kim has one allergy, recorded twice/,
+      );
+    });
+
+    it("opens no `details` for a feature that has none", () => {
+      assert.doesNotMatch(pageText(built, "naming.html"), /class="scenario"/);
+    });
+  });
+
+  describe("with a feature file, for a tool", () => {
+    it("copies the feature file beside its page, and links that copy and not GitHub's page", () => {
+      const html = pageText(built, "naming.html");
+      assert.equal(pageText(built, "naming.feature"), FEATURE);
+      assert.match(
+        html,
+        /For tools: <a href="naming\.feature">runtime\/naming\.feature<\/a>/,
+      );
+      assert.ok(!html.includes(`${BLOB}runtime/naming.feature`));
+    });
+
+    it("does the same for a kit's feature file", () => {
+      assert.equal(pageText(built, "kim.feature"), KIT);
+      assert.match(
+        pageText(built, "kim.html"),
+        /For tools: <a href="kim\.feature">conformance\/kim\/kim\.feature<\/a>/,
       );
     });
   });
