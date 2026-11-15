@@ -19,9 +19,12 @@ import {
   R,
   RUN,
   RUNTIME,
+  rowsOf,
   suite,
   text,
+  THREE_PACKAGES,
   V,
+  verdictOf,
   versioned,
   WITH_GLOSSARY,
 } from "./tests-page.js";
@@ -75,6 +78,95 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
         "apple-health",
         "runtime",
       ]);
+    });
+  });
+
+  describe("with several packages: the table that opens the page", () => {
+    let markup: string;
+    let rows: ReturnType<typeof rowsOf>;
+
+    before(async () => {
+      ({ markup } = await pageWith({
+        runtime: { report: THREE_PACKAGES(), ...RUN },
+      }));
+      rows = rowsOf(markup, R);
+    });
+
+    it("has one row for each package, the one holding a failure first", () => {
+      assert.deepEqual(
+        rows.map((row) => row.package),
+        ["beta", "alpha", "gamma"],
+      );
+    });
+
+    it("turns the row of a package holding a failure red and says how many failed", () => {
+      assert.deepEqual(
+        rows.map((row) => [row.failing, row.failed]),
+        [
+          [true, 1],
+          [false, 0],
+          [false, 0],
+        ],
+      );
+      assert.match(rows[0]?.cases ?? "", /^2 .*1 failed/);
+      assert.doesNotMatch(rows[1]?.cases ?? "", /failed/);
+    });
+
+    it("says what each package is for, and its case count", () => {
+      assert.equal(rows[0]?.about, "Checks a record against its shape.");
+      assert.equal(rows[1]?.about, "Reads what a hospital sends.");
+      assert.equal(rows[2]?.about, "");
+      assert.match(rows[1]?.cases ?? "", /^3\b/);
+    });
+
+    it("links each capability, in the order the package's spec gives, to its id on the page", () => {
+      assert.deepEqual(
+        rows[1]?.capabilities.map((one) => one.label),
+        ["Reading a record", "Writing a record"],
+      );
+      for (const { id } of rows.flatMap((row) => row.capabilities))
+        assert.ok(
+          markup.includes(`<li class="capability" id="${id}"`),
+          `${id} is a capability of the page`,
+        );
+      assert.deepEqual(
+        rows[1]?.capabilities.map((one) => one.id),
+        [
+          "capability-alpha-reading-a-record",
+          "capability-alpha-writing-a-record",
+        ],
+      );
+    });
+
+    it("links each package to its section, which starts open only where a case failed", () => {
+      assert.equal(rows.length, 3);
+      for (const row of rows)
+        assert.ok(
+          partOf(markup, R).includes(
+            `<section class="pkg" id="${row.href}" data-failed="${row.failed}"><details${row.failing ? " open" : ""}>`,
+          ),
+          `${row.package}'s section`,
+        );
+    });
+
+    it("does not list the build capabilities among a package's", () => {
+      assert.equal(rows.length, 3);
+      assert.ok(
+        !rows[1]?.capabilities.some((one) => one.label === "Packing"),
+      );
+    });
+  });
+
+  describe("with one package", () => {
+    it("has no table and no package level: the page starts at the capabilities", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: GROUPED, ...RUN },
+      });
+      const part = partOf(markup, R);
+      assert.doesNotMatch(part, /<table class="packages">/);
+      assert.deepEqual(packagesOf(markup, R), []);
+      assert.match(text(part), /The library an app calls\./);
+      assert.match(part, /<li class="capability"/);
     });
   });
 
@@ -501,6 +593,44 @@ describe("The summary bar and its controls · testsSection", () => {
 
     it("adds up the cases' times for a report that declares none", () => {
       assert.match(barOf(markup, V).said, /212 ms/);
+    });
+  });
+
+  describe("with a run's verdict", () => {
+    it("says in one line that all cases pass, with the commit, when it was run and how long it took", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: GROUPED, ...RUN },
+      });
+      const { result, said } = verdictOf(markup, R);
+      assert.equal(result, "passed");
+      assert.match(said, /^All 6 cases pass\b/);
+      assert.match(said, /0123456/);
+      assert.match(said, /2026-11-04T22:12:35Z/);
+      assert.match(said, /\d+ ms/);
+    });
+
+    it("says in red how many of the cases fail", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: NODE, ...RUN },
+      });
+      const { result, said } = verdictOf(markup, R);
+      assert.equal(result, "failed");
+      assert.match(said, /^1 of 4 cases fail\b/);
+    });
+
+    it("counts a single case in the singular", async () => {
+      const one = await pageWith({
+        runtime: { report: versioned("1.2.0"), ...RUN },
+      });
+      assert.match(verdictOf(one.markup, R).said, /^The 1 case passes\b/);
+    });
+
+    it("gives the counts once: the verdict, and no sentence repeating them", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: NODE, ...RUN },
+      });
+      assert.doesNotMatch(text(partOf(markup, R)), /4 cases: 2 passed/);
+      assert.doesNotMatch(text(partOf(markup, R)), /No failures/);
     });
   });
 

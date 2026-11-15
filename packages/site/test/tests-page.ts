@@ -191,6 +191,41 @@ export const packagesOf = (markup: string, heading: string): string[] =>
     ),
   ].map(([, name]) => name ?? "");
 
+/** The verdict line of the suite whose part has that id: its class and what it says. */
+export function verdictOf(markup: string, heading: string) {
+  const found = /<span class="verdict (\w+)">([\s\S]*?)<\/span>\n/.exec(
+    partOf(markup, heading),
+  );
+  assert.ok(found, `${heading} has a verdict`);
+  return { result: found[1] ?? "", said: text(found[2] ?? "") };
+}
+
+/** The rows of the package table of the suite whose part has that id, in the page's order; none where there is no table. */
+export function rowsOf(markup: string, heading: string) {
+  const table = /<table class="packages">([\s\S]*?)<\/table>/.exec(
+    partOf(markup, heading),
+  )?.[1];
+  if (table === undefined) return [];
+  return [...table.matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g)]
+    .filter(([, , cells]) => !(cells ?? "").includes("<th scope=\"col\""))
+    .map(([, attributes = "", cells = ""]) => {
+      const [name = "", about = "", capabilities = "", cases = ""] = [
+        ...cells.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g),
+      ].map(([, cell]) => cell ?? "");
+      return {
+        failing: /class="failing"/.test(attributes),
+        failed: Number(/data-failed="(\d+)"/.exec(attributes)?.[1]),
+        package: text(name),
+        href: /href="#([^"]+)"/.exec(name)?.[1] ?? "",
+        about: text(about),
+        capabilities: [
+          ...capabilities.matchAll(/<a href="#([^"]+)">([\s\S]*?)<\/a>/g),
+        ].map(([, id = "", label = ""]) => ({ id, label: text(label) })),
+        cases: text(cases),
+      };
+    });
+}
+
 /** The cases of the tree after the heading, as their name, result and time, in the page's order. */
 export function casesOf(markup: string, heading: string): string[][] {
   const part = partOf(markup, heading);
@@ -398,6 +433,45 @@ export const FOUR_PACKAGES = (failing?: string): string =>
       )
       .join(""),
   );
+
+/**
+ * Three packages: `alpha` with two capabilities and a build one, `beta` with a failed case, and `gamma` with no `about`;
+ * `failing` is how many cases of `beta` failed.
+ */
+export const THREE_PACKAGES = (failing = 1): string => {
+  const at = (dir: string) => FILE(dir, "a.test");
+  return report(
+    packageProperty("alpha", "alpha", "1.0.0", {
+      about: "Reads what a hospital sends.",
+      capabilities: ["Reading a record", "Writing a record"],
+      build: ["Packing"],
+    }) +
+      packageProperty("beta", "beta", "1.0.0", {
+        about: "Checks a record against its shape.",
+      }) +
+      packageProperty("gamma", "gamma", "1.0.0", {}),
+    described(
+      "Reading a record · read",
+      {},
+      leafOf("one", at("alpha"), 3) + leafOf("two", at("alpha"), 4),
+    ) +
+      described("Writing a record", {}, leafOf("three", at("alpha"), 9)) +
+      described("Packing", {}, leafOf("four", at("alpha"), 12)) +
+      described(
+        "Checking a shape",
+        {},
+        Array.from({ length: 2 }, (_, n) =>
+          leafOf(
+            `shape ${n}`,
+            at("beta"),
+            3 + n,
+            n < failing ? { failure: "broke" } : {},
+          ),
+        ).join(""),
+      ) +
+      described("Anything at all", {}, leafOf("five", at("gamma"), 3)),
+  );
+};
 
 /**
  * An adapter's CTRF report as cascade-bridge-spec's start action writes it: the run is timed and its cases
