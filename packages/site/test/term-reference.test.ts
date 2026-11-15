@@ -16,7 +16,12 @@ import { termsSection } from "../src/hub/terms.js";
 import { ruleHref, termHref, termId } from "../src/links.js";
 import { buildTree } from "../src/sections.js";
 import { specPages } from "../src/spec.js";
-import { TERMS_PAGE, termReference } from "../src/term-reference.js";
+import {
+  GLOSS_LIMIT,
+  TERMS_PAGE,
+  gloss,
+  termReference,
+} from "../src/term-reference.js";
 import { readPage } from "./page.js";
 
 const TREE = "https://github.com/jayostis/cascade-vocabulary/tree/abc123/";
@@ -336,6 +341,36 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.doesNotMatch(acts, /Vaccination|Standalone/);
     });
 
+    it("cuts a gloss at the first colon or semicolon, or at a word before the limit, and ends a cut with an ellipsis", () => {
+      assert.equal(gloss("A vaccine given. It is once."), "A vaccine given.");
+      assert.equal(gloss("A set: the first and more."), "A set…");
+      assert.equal(gloss("A thing; or another."), "A thing…");
+      assert.equal(
+        gloss("Time 10:30 is not a cut."),
+        "Time 10:30 is not a cut.",
+      );
+      const long = `${"word ".repeat(40)}end.`;
+      const cut = gloss(long);
+      assert.ok(cut.length <= GLOSS_LIMIT, `${cut.length} characters`);
+      assert.ok(cut.endsWith("…"));
+      assert.ok(long.startsWith(cut.slice(0, -1)), "a prefix of the sentence");
+      assert.equal(
+        gloss(`${"x".repeat(150)}.`),
+        `${"x".repeat(GLOSS_LIMIT - 1)}…`,
+      );
+    });
+
+    it("does not end a gloss's sentence at an abbreviation's full stop", () => {
+      assert.equal(
+        gloss("Any cast, e.g. a plaster one. More follows."),
+        "Any cast, e.g. a plaster one.",
+      );
+      assert.equal(
+        gloss("A form, i.e. a paper one. More."),
+        "A form, i.e. a paper one.",
+      );
+    });
+
     it("lists the other classes of the vocabulary's own under other classes, and none copied from elsewhere", () => {
       const other = part(page, "other-classes");
       assert.match(other, /Standalone/);
@@ -440,6 +475,28 @@ describe("The term reference · termReference(), termsSection", () => {
       ));
       real = await termReference(files, PLAIN);
       ({ hrefs, ids } = readPage(real));
+    });
+
+    it("shows no gloss over the limit, and a cut gloss with its whole sentence on hover", () => {
+      const glosses = [
+        ...real.matchAll(
+          /<span class="gloss"( title="[^"]*")?>([^<]*)<\/span>/g,
+        ),
+      ];
+      assert.ok(glosses.length > 20, `${glosses.length} glosses`);
+      for (const [, title, escaped] of glosses) {
+        const shown = (escaped ?? "").replaceAll(/&#?\w+;/g, "x");
+        assert.ok(shown.length <= GLOSS_LIMIT, shown);
+        if (shown.endsWith("…")) assert.ok(title !== undefined, shown);
+      }
+    });
+
+    it("names no vocabulary by its address where a copied term says where it is from", () => {
+      const from = [
+        ...real.matchAll(/<p class="prose about">from ([^<]*)<\/p>/g),
+      ];
+      assert.ok(from.length > 0);
+      for (const [, source] of from) assert.doesNotMatch(source ?? "", /:\/\//);
     });
 
     it("gives every vocabulary term of `cascade#` an entry", async () => {

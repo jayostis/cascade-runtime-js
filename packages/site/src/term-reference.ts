@@ -100,6 +100,7 @@ const SOURCE_NAMES: Readonly<Record<string, string>> = {
   prov: "PROV-O",
   rdf: "RDF",
   rdfs: "RDF Schema",
+  semapv: "SEMAPV",
   skos: "SKOS",
   solid: "Solid terms",
   sssom: "SSSOM",
@@ -118,6 +119,21 @@ function firstSentence(comment: string): string {
     if (!ABBREVIATED.test(comment.slice(0, stop.index)))
       return comment.slice(0, stop.index + 1);
   return comment;
+}
+
+/** The longest a class's gloss on the index is, its closing "…" counted. */
+export const GLOSS_LIMIT = 100;
+
+/** A comment's first sentence cut at its first colon or semicolon, or at a word before GLOSS_LIMIT, and closed with "…" when cut. */
+export function gloss(comment: string): string {
+  const sentence = firstSentence(comment).trim();
+  const stop = sentence.search(/[:;](?=\s)/);
+  const head = stop === -1 ? sentence : sentence.slice(0, stop);
+  if (head.length <= GLOSS_LIMIT)
+    return stop === -1 ? head : `${head.trimEnd()}…`;
+  const room = head.slice(0, GLOSS_LIMIT - 1);
+  const word = room.slice(0, room.lastIndexOf(" ") + 1 || room.length);
+  return `${word.replace(/[\s,.:;]+$/, "")}…`;
 }
 
 type Kind = "class" | "property" | "thing";
@@ -701,12 +717,14 @@ class Reference {
       : markup`<p class="prose about">No definition yet.</p>\n`;
   }
 
-  /** A class of the index: its label, its name and the first sentence of its comment. */
+  /** A class of the index: its label, and under it its name and a short gloss of its comment, the whole first sentence on hover. */
   summary(entry: Entry): Html {
     const { iri } = entry;
     const label = this.texts(iri, LABEL)[0];
     const [comment] = this.texts(iri, COMMENT);
-    return markup`<li><a href="${termHref(iri, "")}">${label ?? this.name(iri)}</a> <code>${this.name(iri)}</code> ${comment === undefined ? markup`<span class="about">No definition yet.</span>` : firstSentence(comment)}</li>\n`;
+    const short = comment === undefined ? undefined : gloss(comment);
+    const whole = comment === undefined ? "" : firstSentence(comment).trim();
+    return markup`<li><a href="${termHref(iri, "")}">${label ?? this.name(iri)}</a><span class="about"><code>${this.name(iri)}</code> ${short === undefined ? "No definition yet." : markup`<span class="gloss"${short === whole ? "" : markup` title="${whole}"`}>${short}</span>`}</span></li>\n`;
   }
 
   /** The classes below the class, however far. */
@@ -1005,7 +1023,7 @@ async function referencePage(
     return markup`${classes.map(
       ([id, title, entries]) =>
         markup`<h2 id="${id}">${title}</h2>
-${entries.length === 0 ? markup`<p class="about">None.</p>\n` : markup`<ul>\n${entries.map((entry) => reference.summary(entry))}</ul>\n`}`,
+${entries.length === 0 ? markup`<p class="about">None.</p>\n` : markup`<ul class="classes">\n${entries.map((entry) => reference.summary(entry))}</ul>\n`}`,
     )}${names(grouped.filter(({ id }) => id !== "classes"))}`;
   };
   const opening = source.layout === undefined ? names(grouped) : await index();
@@ -1016,7 +1034,7 @@ ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : markup`<ul>\n${e
     hubRoot: "../",
     nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
     main: markup`<h1>${source.title}</h1>
-${source.lead(reference.blob, tree)}${opening}<h3><a href="#shapes">Shapes other shapes use</a></h3>
+${source.lead(reference.blob, tree)}${opening}<h2><a href="#shapes">Shapes other shapes use</a></h2>
 ${grouped.map(
   ({ id, title, about, entries }) =>
     markup`<h2 class="part" id="${id}">${title}</h2>

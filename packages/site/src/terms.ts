@@ -30,6 +30,7 @@ export const PREFIXES: Readonly<Record<string, string>> = {
   prov: "http://www.w3.org/ns/prov#",
   rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
   rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+  semapv: "https://w3id.org/semapv/vocab/",
   skos: "http://www.w3.org/2004/02/skos/core#",
   solid: "http://www.w3.org/ns/solid/terms#",
   sssom: "https://w3id.org/sssom/",
