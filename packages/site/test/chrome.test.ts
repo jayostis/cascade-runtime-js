@@ -104,7 +104,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       for (const [path, html] of pages) {
         assert.ok(
           html.includes(
-            `<div class="sx-strip">An open standard in progress, in alpha. <a href="${WEBSITE}/community/status/">See what works today →</a> · <a href="${WEBSITE}/contribute/">Help shape it →</a></div>`,
+            `<div class="sx-strip">Alpha: <a href="${WEBSITE}/community/status/">see what works today →</a></div>`,
           ),
           path,
         );
