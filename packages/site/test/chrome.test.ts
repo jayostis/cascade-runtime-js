@@ -14,11 +14,7 @@ import {
 import { hubFiles } from "../src/front-page.js";
 import { type Chrome, chromeStrings } from "../src/html.js";
 import { Site } from "../src/site.js";
-import {
-  chromeStyles,
-  STYLESHEET,
-  websiteChrome,
-} from "../src/stylesheet.js";
+import { chromeStyles, STYLESHEET, websiteChrome } from "../src/stylesheet.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const WEBSITE = "https://website.example";

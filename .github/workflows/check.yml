@@ -160,6 +160,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
+      # The website owns the chrome (red when packages/site/src/chrome.css differs from the website's;
+      # reported, not red, when the website's file cannot be read: offline, or a repository this run cannot see).
+      - run: node scripts/sync-chrome.mjs --check
       # Checks the vocabulary and the adapters out beside this repository, and merges into it the pull requests a
       # Depends-On: line names here, before the install reads the lockfile; the package and the pages read those.
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
