@@ -213,6 +213,7 @@ describe("Reading the report's front page · renderSite()", () => {
 
     it("counts an answer a later run reused once, in the run that gave it, in whatever order the runs come", () => {
       const later = asModel("fixture-2", "claude-opus-5-5");
+      (later.run as { id: string }).id = "fixture-2";
       for (const job of later.jobs as Job[])
         if (job.role === "subject") {
           job.status = "reused";
@@ -221,9 +222,7 @@ describe("Reading the report's front page · renderSite()", () => {
       const figures = (runs: { name: string; results: Results }[]) => {
         const front = renderSite(runs).get("index.html")!;
         return ARMS.map((which) =>
-          text(
-            element(front, new RegExp(`<[a-z]+[^>]*data-total="${which}"`)),
-          ),
+          text(element(front, new RegExp(`<[a-z]+[^>]*data-total="${which}"`))),
         );
       };
       const once = figures([{ name: "fixture-1", results: recorded }]);
