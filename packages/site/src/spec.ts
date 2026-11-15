@@ -243,7 +243,7 @@ interface Pointer {
   readonly rows: readonly string[];
 }
 
-const RULE_NUMBER = /^([A-Z]+\d+|Check \d+)\.\s*/;
+const RULE_NUMBER = /^([A-Z]+\d+[a-z]?|Check \d+)\.\s*/;
 /** The sentence a rule opens with when no note rules it (decisions/README.md). */
 const NO_NOTE = /^No note rules this\.\s*/;
 /** The rule's number, `R19` or `Check 3`, as its heading's anchor is made from, or undefined for a rule with none. */
@@ -333,7 +333,7 @@ function sectionsOf(text: string): Map<string, string[]> {
  */
 export function rulesNamedIn(cell: string): string[] {
   const named = cell.replace(
-    /\b(?:conformance-review|item|lean)\s+(?:item\s+)?(?:Check |[A-Z]{1,2})\d+/g,
+    /\b(?:conformance-review|item|lean)\s+(?:item\s+)?(?:Check |[A-Z]{1,2})\d+[a-z]?\b/g,
     "",
   );
   const pointed = [
@@ -342,22 +342,26 @@ export function rulesNamedIn(cell: string): string[] {
       .replace(/\([^()]*\)/g, ";")
       .split(";")
       .filter((clause) => clause.includes(".feature")),
-    ...[...named.matchAll(/\brules?\s+(?:Check |[A-Z]{1,2})\d+/g)].map(
+    ...[...named.matchAll(/\brules?\s+(?:Check |[A-Z]{1,2})\d+[a-z]?\b/g)].map(
       ([match]) => match,
     ),
-    ...[...named.matchAll(/\b(?:Check |[A-Z]{1,2})\d+(?='s\b)/g)].map(
+    ...[...named.matchAll(/\b(?:Check |[A-Z]{1,2})\d+[a-z]?(?='s\b)/g)].map(
       ([match]) => match,
     ),
   ];
   return pointed
     .flatMap((text) => [
-      ...text.matchAll(/\b(Check |[A-Z]{1,2})(\d+)(?: to \1(\d+))?\b/g),
-    ])
-    .flatMap(([, letters = "", from = "", to = from]) =>
-      Array.from(
-        { length: Math.max(0, Number(to) - Number(from)) + 1 },
-        (_, at) => `${letters}${Number(from) + at}`,
+      ...text.matchAll(
+        /\b(Check |[A-Z]{1,2})(\d+)([a-z]\b)?(?: to \1(\d+))?\b/g,
       ),
+    ])
+    .flatMap(([, letters = "", from = "", suffix, to = from]) =>
+      suffix === undefined
+        ? Array.from(
+            { length: Math.max(0, Number(to) - Number(from)) + 1 },
+            (_, at) => `${letters}${Number(from) + at}`,
+          )
+        : [`${letters}${from}${suffix}`],
     );
 }
 

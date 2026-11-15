@@ -4,6 +4,7 @@ import { earl, MemoryFiles } from "@cascade-runtime/runtime";
 import { PLAIN } from "../src/html.js";
 import {
   filesNamed,
+  numberOf,
   readSpecReport,
   rulesNamedIn,
   type SpecPages,
@@ -321,7 +322,7 @@ describe("The specification's pages · specPages()", () => {
  * warning for each that does not, and the specification's index lists them, so a decision with no rule, or a rule with no
  * reason, shows.
  */
-describe("Warnings about rules and decision notes · specPages().warnings, rulesNamedIn(), filesNamed()", () => {
+describe("Warnings about rules and decision notes · specPages().warnings, numberOf(), rulesNamedIn(), filesNamed()", () => {
   describe("`specPages()`", () => {
     let built: SpecPages;
 
@@ -436,6 +437,20 @@ describe("Warnings about rules and decision notes · specPages().warnings, rules
     });
   });
 
+  describe("`numberOf()`", () => {
+    const numbered = (name: string) =>
+      numberOf({ name, description: "", examples: [] });
+
+    it("reads the number of a rule's name, with or without a lower-case letter, and of a check", () => {
+      assert.equal(numbered("M4. Matcher."), "M4");
+      assert.equal(numbered("M4a. Matcher."), "M4a");
+      assert.equal(numbered("R12. Another."), "R12");
+      assert.equal(numbered("Check 3. A kit's."), "Check 3");
+      assert.equal(numbered("M4A. Not a number."), undefined);
+      assert.equal(numbered("A rule with none"), undefined);
+    });
+  });
+
   describe("`rulesNamedIn()`", () => {
     const named = (cell: string) => [...new Set(rulesNamedIn(cell))].sort();
 
@@ -472,6 +487,19 @@ describe("Warnings about rules and decision notes · specPages().warnings, rules
         ),
         ["N3"],
       );
+    });
+
+    it("finds a rule whose number ends in a lower-case letter, as `M4a`, beside the plain ones", () => {
+      assert.deepEqual(named("a hash (M4a, M4b and M5)"), ["M4a", "M4b", "M5"]);
+      assert.deepEqual(named("as rule M4a says"), ["M4a"]);
+      assert.deepEqual(named("kept as M4a's table says"), ["M4a"]);
+      assert.deepEqual(named("`runtime/matcher.feature` M4a says so"), ["M4a"]);
+      assert.deepEqual(named("(M1 to M3)"), ["M1", "M2", "M3"]);
+    });
+
+    it("finds none in a lettered code after an item, or in a letter with no number before it", () => {
+      assert.deepEqual(named("(item C1a)"), []);
+      assert.deepEqual(named("(M4 and 4a)"), ["M4"]);
     });
 
     it("finds none among bare codes", () => {
