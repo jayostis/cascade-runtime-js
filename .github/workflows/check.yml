@@ -238,6 +238,10 @@ jobs:
       - name: Run the hub's search box
         if: ${{ !cancelled() }}
         run: npm run test:search
+      # The specification pages' contents, run in a browser: the marked rule follows a scroll, an address, a click and the top.
+      - name: Run the specification pages
+        if: ${{ !cancelled() }}
+        run: npm run test:spec-pages
       # The packed browser build opens a pod over IndexedDB in Chromium, retitles it and opens it again, and checks the
       # secrets of known-answer 1.2 pods through its Argon2id worker.
       - name: Retitle a pod and check a secret in a browser
