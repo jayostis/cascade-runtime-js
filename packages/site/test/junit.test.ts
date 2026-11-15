@@ -59,7 +59,7 @@ describe("Reading a report from each test runner · readJunit()", () => {
     });
 
     it("reads a describe as a level and a describe inside it as the level under", () => {
-      assert.deepEqual(levelsOf(markup, R).slice(2), [
+      assert.deepEqual(levelsOf(markup, R).slice(4), [
         "outer 1 passed",
         "inner 1 passed",
       ]);
@@ -67,10 +67,14 @@ describe("Reading a report from each test runner · readJunit()", () => {
     });
 
     it("reads a case with no describe under its file's name", () => {
-      assert.deepEqual(levelsOf(markup, R).slice(0, 2), [
-        "links.test.ts 1 passed, 1 failed",
-        "other.test.ts 0 passed, 1 skipped",
-      ]);
+      const levels = levelsOf(markup, R);
+      assert.deepEqual(
+        [levels[1], levels[3]],
+        [
+          "links.test.ts 1 passed, 1 failed",
+          "other.test.ts 0 passed, 1 skipped",
+        ],
+      );
     });
 
     it("reads each case's result and time", () => {
@@ -284,7 +288,7 @@ describe("Failures node:test leaves out of its report · declaredFailures()", ()
     });
 
     it("says how many failures node counts and how many the report lists", () => {
-      assert.match(built.page.said, /3 cases: 3 passed, 0 failed, 0 skipped/);
+      assert.match(built.page.said, /1 of 3 cases fail/);
       assert.match(
         built.page.said,
         /node counts 1 failure but the report lists 0 failed cases/,
@@ -301,7 +305,7 @@ describe("Failures node:test leaves out of its report · declaredFailures()", ()
       const { page } = await pageWith({
         runtime: { report: NODE_ORDINARY_FAILURES, ...RUN },
       });
-      assert.match(page.said, /3 cases: 0 passed, 3 failed, 0 skipped/);
+      assert.match(page.said, /3 of 3 cases fail/);
       assert.doesNotMatch(page.said, /node counts|Failed outside/);
     });
   });

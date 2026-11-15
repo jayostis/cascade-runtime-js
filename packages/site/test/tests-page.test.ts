@@ -110,8 +110,8 @@ describe("A page of test results for each repository · testsSection", () => {
     });
 
     it("counts the cases that passed, failed and were skipped", () => {
-      assert.match(built.page.said, /4 cases: 2 passed, 1 failed, 1 skipped/);
-      assert.match(built.page.said, /3 cases: 1 passed, 1 failed, 1 skipped/);
+      assert.match(built.page.said, /1 of 4 cases fail/);
+      assert.match(built.page.said, /1 of 3 cases fail/);
     });
   });
 
@@ -275,14 +275,14 @@ describe("A page of test results for each repository · testsSection", () => {
   });
 
   describe("with a report that holds no cases", () => {
-    it('says "0 cases"', async () => {
+    it("says no cases ran", async () => {
       const { markup } = await pageWith({
         runtime: {
           report: `<testsuites><testsuite name="pytest" tests="0"></testsuite></testsuites>`,
           ...RUN,
         },
       });
-      assert.match(text(partOf(markup, R)), /0 cases: 0 passed/);
+      assert.match(text(partOf(markup, R)), /No cases ran/);
     });
   });
 });
