@@ -64,7 +64,7 @@ export const PLAIN: Chrome = {};
 
 /** A website page's path, or the hub's address, per nav item. */
 const NAV: readonly (readonly [string, string | null])[] = [
-  ["Understand", "/understand/"],
+  ["Architecture", "/#architecture"],
   ["Build", "/build/"],
   ["Standards", "/standards/"],
   ["Contribute", "/contribute/"],
@@ -99,9 +99,9 @@ const searchBox = (hubRoot: string) => markup`<div class="sx-find-wrap">
 /** The website's strip and header, the hub being the nav's "Reference"; with `hubRoot` (the address of the hub's root from the page) and `chrome.search`, the search box under the bar. */
 export function chromeHeader(chrome: Chrome, hubRoot?: string): Html {
   const { website } = chrome;
-  return markup`<div class="sx-strip">An open standard in progress, in alpha.${
+  return markup`<div class="sx-strip">Alpha${
     website !== undefined &&
-    markup` <a href="${website}/community/status/">See what works today →</a> · <a href="${website}/contribute/">Help shape it →</a>`
+    markup`: <a href="${website}/community/status/">see what works today →</a>`
   }</div>
 <header class="sx-header">
 <div class="sx-bar">
@@ -143,24 +143,23 @@ ${
   website !== undefined &&
   markup`<div class="sx-footer-cols">
 ${column(website, "Protocol", [
-  ["Understand Cascade", "/understand/"],
+  ["The architecture", "/#architecture"],
   ["Built on standards", "/standards/"],
-  ["How it's built", "/how-its-built/"],
   ["How we know it works", "/community/status/"],
-  ["Cascade in use", "/understand/apps/"],
+  ["Built on Cascade", "/case-studies/"],
   ["AI models", "/understand/models/"],
+  ["Site map", "/site-map/"],
 ])}${column(website, "Build", [
     ["Start building", "/build/"],
     ["Previous version", "/v0/"],
   ])}${column(website, "Community", [
     ["Help shape it", "/contribute/"],
-    ["Become a partner", "/community/partners/"],
+    ["Partner with us", "/community/partners/"],
     ["Talk with us", "/contribute/#talk"],
     ["Status", "/community/status/"],
     ["Build notes", "/blog/"],
     ["GitHub", "/contribute/#repos"],
   ])}<div><h2>§ Working toward a standard</h2>
-<p>Cascade is an open standard in progress. We build on existing standards, extend them only where they stop, and we're looking for people to build it with us.</p>
 <p><a href="${website}/contribute/" style="color: var(--link)">Help shape it →</a></p>
 </div>
 </div>
