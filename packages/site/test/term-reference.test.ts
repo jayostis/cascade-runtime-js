@@ -776,62 +776,39 @@ cascade:BasisShape a sh:NodeShape ;
       assert.ok(ids.has("classes"));
     });
 
-    /**
-     * The named things the vocabulary declares as a bare `owl:NamedIndividual` that no `sh:in` list holds: the matcher's
-     * rules, the rules that name a record, the reasons a record is left out, and two others of one instance of their class.
-     * Typing them is the vocabulary's to do; none has a neighbour until it is.
-     */
-    const ALONE = [
-      "cascade:CascadeMatcher",
-      "cascade:ContainedRecordNamingRule",
-      "cascade:DifferentResultUnitsRule",
-      "cascade:DifferentResultValuesRule",
-      "cascade:DocumentNamingRule",
-      "cascade:EnteredInErrorAtSource",
-      "cascade:EnteredRecordNamingRule",
-      "cascade:FindingNamingRule",
-      "cascade:ImportJudgedErroneous",
-      "cascade:JudgedErroneous",
-      "cascade:MatcherJudgmentAssertionNamingRule",
-      "cascade:MatcherJudgmentNamingRule",
-      "cascade:NoPatient",
-      "cascade:OrganizationNamingRule",
-      "cascade:PatientProfileNotClaimed",
-      "cascade:RecordFromCcdaNamingRule",
-      "cascade:RecordFromCcdaWithoutIdNamingRule",
-      "cascade:RecordFromDocumentNamingRule",
-      "cascade:RecordFromServerNamingRule",
-      "cascade:RefutedAtSource",
-      "cascade:ReleaseRetractionNamingRule",
-      "cascade:RevisionNamingRule",
-      "cascade:SameBrandGenericRule",
-      "cascade:SameBusinessIdentifierAndTestCodeWithinOneOrganizationRule",
-      "cascade:SameCodeAndDateRule",
-      "cascade:SameCodeAndPeriodRule",
-      "cascade:SameCodeRule",
-      "cascade:SameConvertedCodeRule",
-      "cascade:SameMappedCodeAndDateRule",
-      "cascade:SameMappedCodeRule",
-      "cascade:SameMedicationCodeRule",
-      "cascade:SameNoteOrDocumentMasterIdentifierRule",
-      "cascade:SameNoteTypeAndTextGrownWithinOneOrganizationRule",
-      "cascade:SameNoteTypeAndTextRule",
-      "cascade:SameProductCodeRule",
-      "cascade:SameResultOnOneDayRule",
-      "cascade:SameResultRule",
-      "cascade:SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHostRule",
-      "cascade:SameVariationRule",
-      "cascade:SameVariationThroughTableRule",
-      "cascade:ServerNamingRule",
-      "cascade:SnapshotNamingRule",
-      "cascade:TableRowNamingRule",
-      "cascade:TableVersionNamingRule",
-      "cascade:VersionNamingRule",
-      "cascade:ViewEntryNamingRule",
-      "oa:classifying",
-    ];
-
-    it("gives every named thing neighbours but those the vocabulary leaves untyped: the other values of a list that holds it, the other instances of its class, or the other members of its scheme", async () => {
+    it("gives every named thing neighbours but the sole instance of its class: the other values of a list that holds it, the other instances of its class, or the other members of its scheme", async () => {
+      const ontology = await new OxigraphStore().parse(
+        (await files.read("ontologies/cascade.ttl")) ?? new Uint8Array(),
+        `${files.iri}ontologies/cascade.ttl`,
+      );
+      const NAMED = "http://www.w3.org/2002/07/owl#NamedIndividual";
+      const instances = new Map<string, Set<string>>();
+      for (const [subject, predicate, object] of ontology)
+        if (
+          predicate.value === `${RDF}type` &&
+          subject.termType === "NamedNode" &&
+          object.termType === "NamedNode" &&
+          object.value !== NAMED
+        )
+          instances.set(
+            object.value,
+            (instances.get(object.value) ?? new Set()).add(subject.value),
+          );
+      const individuals = new Set(
+        ontology
+          .filter(
+            ([, predicate, object]) =>
+              predicate.value === `${RDF}type` && object.value === NAMED,
+          )
+          .map(([subject]) => subject.value),
+      );
+      const sole = [...instances.values()]
+        .filter((those) => those.size === 1)
+        .map(([only]) => only as string)
+        .filter((iri) => individuals.has(iri))
+        .map(termId)
+        .sort();
+      assert.ok(sole.length >= 2, `${sole.length} sole instances`);
       const { terms } = JSON.parse(await termsJson(files)) as {
         terms: { kind: string; page: string; id: string }[];
       };
@@ -844,8 +821,9 @@ cascade:BasisShape a sh:NodeShape ;
               realPages.get(page) ?? "",
             ),
         )
-        .map(({ id }) => id);
-      assert.deepEqual(alone, ALONE);
+        .map(({ id }) => id)
+        .sort();
+      assert.deepEqual(alone, sole);
     });
 
     it("writes no two pages at paths that differ only by case", () => {
