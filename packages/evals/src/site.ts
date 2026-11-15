@@ -10,8 +10,14 @@ import type { ArmSummary, Results } from "./results.js";
 import { runFolder } from "./results.js";
 import { valid } from "./schemas.js";
 import { type Chrome, hrefTo, page, withChrome } from "./site-page.js";
-import { type Calibration, calibrationPage } from "./site-calibration.js";
-import { type Above, type Entry, comparePage, tally } from "./site-compare.js";
+import { type RenderMarkdown, calibrationPage } from "./site-calibration.js";
+import {
+  type Above,
+  type Entry,
+  comparePage,
+  extras,
+  tally,
+} from "./site-compare.js";
 import { runPages, whereIs } from "./site-run.js";
 import {
   ARMS,
@@ -40,18 +46,6 @@ const dots = (t: ReturnType<typeof tally>) => {
     ),
   ];
   return `<span class="dots">${cells.map((c) => `<span class="dot ${c}"></span>`).join("")}${t.contradicted === 0 ? "" : `<span class="dot d-contra" title="said something the records contradict">!</span>`}</span>`;
-};
-
-const extras = (t: ReturnType<typeof tally>) => {
-  const parts = [
-    t.partly > 0 && `${t.partly} partly`,
-    t.split > 0 && `judges split on ${t.split}`,
-    t.ungraded > 0 && `${t.ungraded} not graded`,
-    t.unanswered > 0 && `${t.unanswered} unanswered`,
-    t.beyondSplit > 0 &&
-      `judges split on ${t.beyondSplit} raised beyond the key`,
-  ].filter((it) => it !== false);
-  return `${parts.length === 0 ? "" : `<div class="tiny muted">${parts.join(" · ")}</div>`}${t.contradicted === 0 ? "" : `<div class="tiny bad">${t.contradicted} said something the records contradict</div>`}`;
 };
 
 const perAnswer = (a: ArmSummary | undefined) =>
@@ -163,10 +157,11 @@ function frontPage(
 ): string {
   const from = "index.html";
   const latest = entries[0];
-  const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a> · <a href="${hrefTo(from, "compare.html")}">runs side by side</a>${calibration ? ` · <a href="${hrefTo(from, "calibration.html")}">judge calibration</a>` : ""}</p>
+  const compare = entries.length > 0;
+  const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a>${compare ? ` · <a href="${hrefTo(from, "compare.html")}">runs side by side</a>` : ""}${calibration ? ` · <a href="${hrefTo(from, "calibration.html")}">judge calibration</a>` : ""}</p>
 <h1>The same question, two ways of giving a model a person&rsquo;s records. Which answer would you rather build on?</h1>
 <p class="lead">Cascade joins a person's downloaded health records into one <b>pod</b>: one entry per real thing, with its history across sources, read by a model through tools. The <b>grab bag</b> is the same downloads read whole, as if pasted into the chat. The same model answers the same questions both ways. Below: how each model did, then every run, one row per model per sitting. Open a row to read both answers and the evidence behind each.</p>
-<div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a><a href="${hrefTo(from, "compare.html")}">Runs side by side</a>${calibration ? `<a href="${hrefTo(from, "calibration.html")}">How far the judges are trusted</a>` : ""}${people(
+<div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a>${compare ? `<a href="${hrefTo(from, "compare.html")}">Runs side by side</a>` : ""}${calibration ? `<a href="${hrefTo(from, "calibration.html")}">How far the judges are trusted</a>` : ""}${people(
     entries,
   )
     .map(
@@ -235,6 +230,7 @@ function howPage(
   runs: readonly { results: Results }[],
   above: Above,
   calibration: boolean,
+  compare: boolean,
 ): string {
   const body = `<h1>How the test works</h1>
 <p class="lead">A synthetic person with real-shaped downloads and an answer key written before any model ran. The same model answers the person's questions twice: once with the records joined into a Cascade pod and read through tools, once with the same downloads read whole, as if pasted into the chat. Judges score both blind. A program checks every cited fact.</p>
@@ -256,7 +252,7 @@ function howPage(
 ${builds(runs)}
 <p class="small muted">Wall time is the build as the harness timed it; any model calls would show their tokens and dollars the same way, per person and per question.</p>
 <h2>Scale and small numbers</h2>
-<p>A full run is cases × questions × 2 arms × models × repeats, a person's questions batched into chat sessions, in tiers (smoke, full). Results are counts and paired comparisons on the same question, never percentages of a small number. <a href="${hrefTo("how_it_works.html", "compare.html")}">The runs side by side</a> set each run's counts next to the others'.</p>
+<p>A full run is cases × questions × 2 arms × models × repeats, a person's questions batched into chat sessions, in tiers (smoke, full). Results are counts and paired comparisons on the same question, never percentages of a small number.${compare ? ` <a href="${hrefTo("how_it_works.html", "compare.html")}">The runs side by side</a> set each run's counts next to the others'.` : ""}</p>
 <h2>The key</h2>
 <p>Each person's key says what a careful reader would say and would not, with the records that support each line, written before any run. It is a reference, not the truth: what an answer raises beyond it is shown as possibly good, with the judges' view, never as wrong.</p>
 <p class="small muted">Case files and keys: <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals/cases">packages/evals/cases</a>. Harness: <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals#readme">packages/evals</a>.</p>`;
@@ -277,7 +273,8 @@ export function renderSite(
   runs: readonly { name: string; results: Results }[],
   history = runs.length !== 1,
   home?: string,
-  calibration?: { text: string; figures: Calibration },
+  calibration?: string,
+  renderMarkdown?: RenderMarkdown,
 ): Map<string, string> {
   const above: Above =
     home === undefined ? [] : [["Cascade Protocol reference", home]];
@@ -303,11 +300,11 @@ export function renderSite(
   if (calibration !== undefined)
     site.set(
       "calibration.html",
-      calibrationPage(calibration.text, calibration.figures, above),
+      calibrationPage(calibration, above, renderMarkdown),
     );
   site.set(
     "how_it_works.html",
-    howPage(runs, above, calibration !== undefined),
+    howPage(runs, above, calibration !== undefined, entries.length > 0),
   );
   return site;
 }
@@ -340,12 +337,7 @@ async function load(path: string): Promise<Results> {
 async function calibrationOf() {
   const dir = join(HISTORY, "..");
   if (!existsSync(join(dir, "calibration.md"))) return undefined;
-  return {
-    text: await readFile(join(dir, "calibration.md"), "utf8"),
-    figures: JSON.parse(
-      await readFile(join(dir, "calibration.json"), "utf8"),
-    ) as Calibration,
-  };
+  return readFile(join(dir, "calibration.md"), "utf8");
 }
 
 /** Builds the site of one run's folder, or of every run in history/, with a crumb to `home` when given and the pages inside `chrome` when given. Returns the index. */
@@ -354,6 +346,7 @@ export async function buildSite(
   out?: string,
   home?: string,
   chrome?: Chrome,
+  renderMarkdown?: RenderMarkdown,
 ): Promise<string> {
   if (from.history !== true) {
     const folder = runFolder(from.run ?? "");
@@ -371,7 +364,7 @@ export async function buildSite(
       if (existsSync(path)) runs.push({ name, results: await load(path) });
     }
   return write(
-    renderSite(runs, true, home, await calibrationOf()),
+    renderSite(runs, true, home, await calibrationOf(), renderMarkdown),
     resolve(out ?? join(HISTORY, "..", "site")),
     chrome,
   );

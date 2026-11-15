@@ -16,7 +16,7 @@ import { after, before, describe, it } from "node:test";
 import { instancesOf } from "../src/instances.js";
 import type { Results } from "../src/results.js";
 import { errorsOf } from "../src/schemas.js";
-import type { Calibration } from "../src/site-calibration.js";
+import type { RenderMarkdown } from "../src/site-calibration.js";
 import { buildSite, renderSite } from "../src/site.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-site-"));
@@ -1187,6 +1187,9 @@ describe("Publishing the report · renderSite(), buildSite()", () => {
  * One page sets every recorded run side by side, and one renders the judge calibration.
  */
 describe("Comparing the recorded runs, and reading the judges' calibration · renderSite()", () => {
+  /** What the hub injects, shrunk: the source shown in a block, and where a link written in it would go. */
+  const markdownStub: RenderMarkdown = (source, link) =>
+    `<div data-markdown data-link-file="${link("calibration.json")}" data-link-web="${link("https://example.org/x")}">${source.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</div>`;
   const saved = lazy(async () => {
     const names = (await readdir(HISTORY)).sort().reverse();
     const runs = await Promise.all(
@@ -1197,17 +1200,11 @@ describe("Comparing the recorded runs, and reading the judges' calibration · re
         ) as Results,
       })),
     );
-    const figures = JSON.parse(
-      await readFile(join(PACKAGE, "calibration.json"), "utf8"),
-    ) as Calibration;
-    const calibration = {
-      text: await readFile(join(PACKAGE, "calibration.md"), "utf8"),
-      figures,
-    };
+    const calibration = await readFile(join(PACKAGE, "calibration.md"), "utf8");
     return {
       runs,
-      figures,
-      site: renderSite(runs, true, undefined, calibration),
+      calibration,
+      site: renderSite(runs, true, undefined, calibration, markdownStub),
     };
   });
   const runsTable = async () =>
@@ -1217,6 +1214,35 @@ describe("Comparing the recorded runs, and reading the judges' calibration · re
     );
   const rowOf = (table: string, name: string) =>
     element(table, new RegExp(`<tr[^>]*data-run="${name}"`));
+  const cellOf = (row: string, which: string) =>
+    element(row, new RegExp(`<td[^>]*data-arm="${which}"`));
+  /** The run with every answer of one arm's jobs reworded, and the other arm's as they were. */
+  const reworded = (r: Results, arm: (typeof ARMS)[number]): Results => {
+    const jobs = new Set(
+      r.jobs
+        .filter((j) => j.role === "subject" && j.arm === arm)
+        .map((j) => j.id),
+    );
+    return {
+      ...r,
+      answers: Object.fromEntries(
+        Object.entries(r.answers).map(([job, byQuestion]) => [
+          job,
+          jobs.has(job)
+            ? Object.fromEntries(
+                Object.entries(byQuestion).map(([q, a]) => {
+                  const given = a as { answer: string };
+                  return [
+                    q,
+                    { ...given, answer: `${given.answer} (reworded)` },
+                  ];
+                }),
+              )
+            : byQuestion,
+        ]),
+      ),
+    };
+  };
   const countOf = (row: string, which: string) => {
     const m = /(\d+) of (\d+)/.exec(
       text(element(row, new RegExp(`<td[^>]*data-arm="${which}"`))),
@@ -1290,16 +1316,118 @@ describe("Comparing the recorded runs, and reading the judges' calibration · re
       }
     });
 
-    it("notes the two runs whose grab-bag counts repeat, with a link to the issue, and no other", async () => {
+    it("notes the recorded runs whose grab-bag answers repeat an earlier run's, from the answers", async () => {
       const { runs } = await saved();
       const table = await runsTable();
       const noted = runs
         .map((r) => r.name)
-        .filter((name) => rowOf(table, name).includes("/issues/783"));
-      assert.deepEqual(noted.sort(), [
-        "2026-11-04-1ea2f8f-custom",
-        "2026-11-04-3d96d2f-custom",
-      ]);
+        .filter((name) =>
+          cellOf(rowOf(table, name), "records").includes("/issues/783"),
+        );
+      assert.deepEqual(noted, ["2026-11-04-1ea2f8f-custom"]);
+      assert.match(
+        text(cellOf(rowOf(table, noted[0]!), "records")),
+        /answers identical to 2026-11-04-3d96d2f-custom/,
+      );
+    });
+
+    it("notes an arm whose every answer repeats an earlier run's, naming that run and linking the issue, and no arm whose answers differ", () => {
+      const older = {
+        ...recorded,
+        run: { ...recorded.run, finished: "2026-11-01T00:00:00.000Z" },
+      };
+      const middle = {
+        ...reworded(older, "pod"),
+        run: { ...recorded.run, finished: "2026-11-02T00:00:00.000Z" },
+      };
+      const newest = {
+        ...reworded(older, "records"),
+        run: { ...recorded.run, finished: "2026-11-03T00:00:00.000Z" },
+      };
+      const compare = page(
+        "compare.html",
+        renderSite([
+          { name: "newest", results: newest },
+          { name: "middle", results: middle },
+          { name: "older", results: older },
+        ]),
+      );
+      const table = element(compare, /<table[^>]*data-table="runs"/);
+      const noted = (name: string, arm: string) =>
+        cellOf(rowOf(table, name), arm);
+      assert.match(text(noted("middle", "records")), /identical to older/);
+      assert.match(noted("middle", "records"), /\/issues\/783/);
+      assert.match(text(noted("newest", "pod")), /identical to older/);
+      for (const [name, arm] of [
+        ["older", "pod"],
+        ["older", "records"],
+        ["middle", "pod"],
+        ["newest", "records"],
+      ] as const)
+        assert.ok(
+          !noted(name, arm).includes("identical"),
+          `${name} ${arm} has no note`,
+        );
+    });
+
+    it("puts each run's instance links in a details, summarised by their count, and sets each figure's own counts beside it", async () => {
+      const table = await runsTable();
+      const { runs } = await saved();
+      for (const r of runs) {
+        const first = element(rowOf(table, r.name), /<td>/);
+        const details = element(first, /<details/);
+        const n = r.results.instances.length;
+        assert.equal(
+          text(element(details, /<summary/)).trim(),
+          `${n} instance${n === 1 ? "" : "s"}`,
+        );
+        assert.equal(
+          [...first.matchAll(/href="runs\//g)].length,
+          [...details.matchAll(/href="runs\//g)].length,
+          "every instance link is inside the details",
+        );
+      }
+      const row = rowOf(
+        element(
+          page("compare.html", renderSite([{ name: "x", results: recorded }])),
+          /<table[^>]*data-table="runs"/,
+        ),
+        "x",
+      );
+      assert.match(text(cellOf(row, "records")), /1 partly/);
+      assert.match(text(cellOf(row, "records")), /unanswered/);
+    });
+
+    it("counts a run's questions by how many its sessions list", () => {
+      const shared = recorded.cases[0]!.sessions[0]!.questions[0]!;
+      const results = {
+        ...recorded,
+        cases: recorded.cases.map((c) => ({
+          ...c,
+          sessions: c.sessions.map((s) => ({
+            ...s,
+            questions: [shared, shared],
+          })),
+        })),
+      };
+      const listed = results.cases.flatMap((c) =>
+        c.sessions.flatMap((s) => s.questions),
+      ).length;
+      const compare = page(
+        "compare.html",
+        renderSite([{ name: "x", results }]),
+      );
+      assert.match(
+        text(rowOf(element(compare, /<table[^>]*data-table="runs"/), "x")),
+        new RegExp(` ${listed} questions`),
+      );
+    });
+
+    it("links the comparison only when it is written", () => {
+      const none = renderSite([]);
+      assert.ok(!none.has("compare.html"));
+      for (const path of ["index.html", "how_it_works.html"])
+        assert.ok(!page(path, none).includes("compare.html"), path);
     });
 
     it("breaks the figures down by model and by person across the runs", async () => {
@@ -1333,19 +1461,44 @@ describe("Comparing the recorded runs, and reading the judges' calibration · re
   });
 
   describe("given calibration.md and calibration.json", () => {
-    it("renders each judge's figures as a table and the markdown's headings, and links the page", async () => {
-      const { site, figures } = await saved();
+    it("hands calibration.md to the injected renderer whole, so its figures and date stand once", async () => {
+      const { site, calibration } = await saved();
       const cal = page("calibration.html", site);
-      const table = text(element(cal, /<table[^>]*data-table="calibration"/));
-      for (const j of figures.judges)
-        assert.ok(table.includes(`${j.agreed} of ${j.items}`), j.model);
-      const said = text(cal);
-      const md = await readFile(join(PACKAGE, "calibration.md"), "utf8");
-      for (const [, h] of md.matchAll(/^## (.*)$/gm))
-        assert.ok(said.includes(h!.replaceAll("`", "")), h);
-      assert.ok(!cal.includes("](") && !cal.includes("**"), "no markdown left");
+      assert.ok(!cal.includes('data-table="calibration"'), "no second table");
+      const body = text(element(cal, /<div data-markdown/));
+      for (const [, h] of calibration.matchAll(/^## (.*)$/gm))
+        assert.ok(body.includes(h!), h);
+      assert.ok(body.includes("| judge "), "the markdown's own table");
+      const done = /Done on \d{4}-\d{2}-\d{2}/.exec(calibration)![0];
+      assert.equal(text(cal).split(done).length - 1, 1, "the date once");
       for (const path of ["index.html", "how_it_works.html"])
         assert.match(page(path, site), /href="calibration\.html"/, path);
+    });
+
+    it("sends a link written in the markdown to where the file is kept, and leaves a web link as written", async () => {
+      const cal = page("calibration.html", (await saved()).site);
+      assert.match(
+        cal,
+        /data-link-file="https:\/\/github\.com\/jayostis\/cascade-runtime-js\/blob\/main\/packages\/evals\/calibration\.json"/,
+      );
+      assert.match(cal, /data-link-web="https:\/\/example\.org\/x"/);
+    });
+
+    it("shows calibration.md as escaped preformatted text when no renderer is given", async () => {
+      const { calibration } = await saved();
+      const cal = page(
+        "calibration.html",
+        renderSite(
+          [{ name: "x", results: recorded }],
+          false,
+          undefined,
+          `${calibration}\n<script>alert(1)</script>\n`,
+        ),
+      );
+      const block = element(cal, /<pre/);
+      assert.ok(block.includes("## What was measured"));
+      assert.ok(block.includes("&lt;script&gt;"));
+      assert.ok(!cal.includes("<script>alert"));
     });
   });
 
