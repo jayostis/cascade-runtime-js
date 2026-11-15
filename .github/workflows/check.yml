@@ -472,7 +472,7 @@ jobs:
   # business, and `build-pages` waits for the job and not for its verdict.
   conformance:
     name: conformance
-    if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     defaults:
       run:
