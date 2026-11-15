@@ -12,7 +12,7 @@
     "Every query of the vocabulary has a page · queryPages(), queriesSection",
     "The specification's pages · specPages()",
     "Decision notes as pages · specSection",
-    "Warnings about rules and decision notes · specPages().warnings, rulesNamedIn(), filesNamed()",
+    "Warnings about rules and decision notes · specPages().warnings, numberOf(), rulesNamedIn(), filesNamed()",
     "Conformance results on the specification · readSpecReport(), specSection",
     "The hub publishes each adapter's explorer as it is · adaptersSection",
     "The adapters page says what an adapter is on one screen · adaptersIndex()",

@@ -126,6 +126,13 @@ describe("Linking a vocabulary term, a rule or a decision note · termHref(), ru
       );
     });
 
+    it("links a rule numbered with a lower-case letter to its anchor, `m4a`", () => {
+      assert.equal(
+        ruleHref("runtime/matcher.feature", "M4a", "spec/"),
+        "spec/matcher.html#m4a",
+      );
+    });
+
     it("links a kit's check to the page named for the kit's folder", () => {
       assert.equal(
         ruleHref("conformance/alex-rivera/alex-rivera.feature", "Check 3", ""),
