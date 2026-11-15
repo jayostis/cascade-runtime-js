@@ -563,8 +563,14 @@ describe("The summary bar and its controls · testsSection", () => {
       const runtime = partOf(markup, R);
       assert.match(runtime, /<li class="case" data-result="failed">/);
       assert.match(runtime, /<li class="case" data-result="passed">/);
-      assert.match(runtime, /<li class="capability" data-failed="1">/);
-      assert.match(runtime, /<li class="capability" data-failed="0">/);
+      assert.match(
+        runtime,
+        /<li class="capability" id="[^"]+" data-failed="1">/,
+      );
+      assert.match(
+        runtime,
+        /<li class="capability" id="[^"]+" data-failed="0">/,
+      );
     });
   });
 
