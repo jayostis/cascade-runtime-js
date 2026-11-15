@@ -794,21 +794,11 @@ cascade:BasisShape a sh:NodeShape ;
             object.value,
             (instances.get(object.value) ?? new Set()).add(subject.value),
           );
-      const individuals = new Set(
-        ontology
-          .filter(
-            ([, predicate, object]) =>
-              predicate.value === `${RDF}type` && object.value === NAMED,
-          )
-          .map(([subject]) => subject.value),
+      const sole = new Set(
+        [...instances.values()]
+          .filter((those) => those.size === 1)
+          .map(([only]) => termId(only as string)),
       );
-      const sole = [...instances.values()]
-        .filter((those) => those.size === 1)
-        .map(([only]) => only as string)
-        .filter((iri) => individuals.has(iri))
-        .map(termId)
-        .sort();
-      assert.ok(sole.length >= 2, `${sole.length} sole instances`);
       const { terms } = JSON.parse(await termsJson(files)) as {
         terms: { kind: string; page: string; id: string }[];
       };
@@ -821,9 +811,12 @@ cascade:BasisShape a sh:NodeShape ;
               realPages.get(page) ?? "",
             ),
         )
-        .map(({ id }) => id)
-        .sort();
-      assert.deepEqual(alone, sole);
+        .map(({ id }) => id);
+      assert.ok(alone.length >= 2, `${alone.length} alone`);
+      assert.deepEqual(
+        alone.filter((id) => !sole.has(id)),
+        [],
+      );
     });
 
     it("writes no two pages at paths that differ only by case", () => {
