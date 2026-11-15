@@ -311,7 +311,7 @@ describe("The term reference · termReference(), termsSection", () => {
     });
   });
 
-  describe("its index of classes", () => {
+  describe("with its index of classes", () => {
     it("opens the page's lists, before the properties", () => {
       const { said } = readPage(page);
       assert.ok(
@@ -377,7 +377,7 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.doesNotMatch(other, /Vaccination|Immunize|Entity/);
     });
 
-    it("says of a class with no comment that it has no definition yet", async () => {
+    it("gives a class with no comment the line that it has no definition yet", async () => {
       const files = await fixture();
       await files.write(
         "ontologies/cascade.ttl",
