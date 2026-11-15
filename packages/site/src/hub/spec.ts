@@ -27,6 +27,9 @@ export type SpecContext = Pick<
 
 const encoder = new TextEncoder();
 
+/** Each feature's and kit's page, by the context the section built them for, for the rows that follow. */
+const built = new WeakMap<SpecContext, readonly FeatureResult[]>();
+
 const total = (
   listed: readonly FeatureResult[],
   which: "passed" | "failed" | "notRun",
@@ -73,6 +76,7 @@ export const specSection: Section<SpecContext> = {
       ...result,
       page: `${SPEC_FOLDER}${result.page}`,
     }));
+    built.set(ctx, features);
     const ran = total(features, "passed") + total(features, "failed") > 0;
     files.set(
       `${CONFORMANCE_FOLDER}${RESULTS_FILE}`,
@@ -153,8 +157,14 @@ ${ranWithList("The results are of the run with:", report.ranWith)}</footer>
     );
     return files;
   },
-  async rows() {
+  async rows(ctx) {
     return [
+      ...(built.get(ctx) ?? []).map(({ name, page }) => ({
+        href: page.replace(/\.html$/, ".feature"),
+        label: `${name}, the feature file`,
+        about: "as written, for a tool",
+        audience: "agents" as const,
+      })),
       {
         href: SPEC_FOLDER,
         label: "The runtime's rules",

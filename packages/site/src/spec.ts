@@ -548,6 +548,44 @@ const tallied = ({ passed, failed, notRun }: Tally): string =>
 const plural = (count: number, one: string, many = `${one}s`): string =>
   `${count} ${count === 1 ? one : many}`;
 
+/** A rule's line of the contents: its example count, and the results of those that have one. */
+const contentsTally = ({ passed, failed, notRun }: Tally): string =>
+  passed + failed + notRun === 0
+    ? "no example"
+    : `${plural(passed + failed + notRun, "example")}: ${[
+        passed > 0 ? `${passed} pass` : "",
+        failed > 0 ? `${failed} fail` : "",
+        notRun > 0 ? `${notRun} not run` : "",
+      ]
+        .filter((part) => part !== "")
+        .join(", ")}`;
+
+/** Marks, in the contents, the first rule whose section is in the top of the window. */
+const IN_VIEW = `
+(function () {
+  var nav = document.querySelector(".rules-nav");
+  var sections = document.querySelectorAll("section.rule[id]");
+  if (!nav || !sections.length || !("IntersectionObserver" in window)) return;
+  var links = {};
+  nav.querySelectorAll("a[href^='#']").forEach(function (a) { links[a.getAttribute("href").slice(1)] = a; });
+  var seen = {};
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) { seen[entry.target.id] = entry.isIntersecting; });
+    var current = null;
+    sections.forEach(function (section) { if (current === null && seen[section.id]) current = section.id; });
+    if (current === null) return;
+    Object.keys(links).forEach(function (id) {
+      if (id === current) links[id].setAttribute("aria-current", "true");
+      else links[id].removeAttribute("aria-current");
+    });
+    var a = links[current];
+    if (a && (a.offsetTop < nav.scrollTop || a.offsetTop + a.offsetHeight > nav.scrollTop + nav.clientHeight))
+      nav.scrollTop = a.offsetTop - nav.clientHeight / 3;
+  }, { rootMargin: "-90px 0px -60% 0px" });
+  sections.forEach(function (section) { observer.observe(section); });
+})();
+`;
+
 class Spec {
   readonly warnings: SpecWarning[] = [];
   readonly blob: string;
@@ -876,7 +914,12 @@ class Spec {
   }
 }
 
-function page(spec: Spec, title: string, main: Content): Uint8Array {
+function page(
+  spec: Spec,
+  title: string,
+  main: Content,
+  after?: Content,
+): Uint8Array {
   return new TextEncoder().encode(
     shell({
       chrome: spec.chrome,
@@ -887,9 +930,17 @@ function page(spec: Spec, title: string, main: Content): Uint8Array {
 <a href="${SPEC_INDEX}">The rules</a>
 ${spec.features.map((feature) => markup`<a href="${spec.pageOf(feature.path)}">${feature.name}</a>\n`)}`,
       main: markup`${main}\n`,
+      after,
     }).text,
   );
 }
+
+/** The feature file of a page, copied beside it for a tool. */
+const fileOfPage = (page: string): string =>
+  page.replace(/\.html$/, ".feature");
+
+const forTools = (spec: Spec, feature: WrittenFeature): Html =>
+  markup`<p class="kind">For tools: <a href="${fileOfPage(spec.pageOf(feature.path))}">${feature.path}</a></p>`;
 
 function prose(text: string): Html {
   return markup`${text
@@ -982,12 +1033,28 @@ function featurePage(spec: Spec, feature: WrittenFeature): Uint8Array {
   return page(
     spec,
     feature.name,
-    markup`<p class="kind"><a href="${spec.blob}${feature.path}">${feature.path}</a></p>
+    markup`${forTools(spec, feature)}
 <h1>${feature.name}</h1>
-${prose(feature.description)}<p class="count">${plural(feature.rules.length, "rule")}, ${plural(counted.passed + counted.failed + counted.notRun, "example")}: ${tallied(counted)}</p>
+${
+  feature.description.trim() === ""
+    ? ""
+    : markup`<details class="scenario">
+<summary>The scenario the examples run</summary>
+${prose(feature.description)}</details>
+`
+}<p class="count">${plural(feature.rules.length, "rule")}, ${plural(counted.passed + counted.failed + counted.notRun, "example")}: ${tallied(counted)}</p>
+<div class="rules-layout">
+<nav class="rules-nav" aria-label="The rules">
 <ol class="contents">
-${listed.map((rule) => markup`<li><a href="#${anchorOf(numberOf(rule) ?? "")}">${rule.name}</a></li>\n`)}</ol>
-${rulesPart(spec, feature, true)}`,
+${listed.map((rule) => {
+  const own = tally(rule.examples.map((e) => spec.result(e)));
+  return markup`<li><a href="#${anchorOf(numberOf(rule) ?? "")}" title="${rule.name}"><span class="title">${rule.name}</span></a> <span class="tally ${own.failed > 0 ? "failed" : own.notRun === 0 && own.passed > 0 ? "passed" : "not-run"}">${contentsTally(own)}</span></li>\n`;
+})}</ol>
+</nav>
+<div class="rules-body">
+${rulesPart(spec, feature, true)}</div>
+</div>`,
+    markup`<script>${new Html(IN_VIEW)}</script>\n`,
   );
 }
 
@@ -1008,7 +1075,7 @@ function kitPage(
   return page(
     spec,
     feature.name,
-    markup`<p class="kind"><a href="${spec.blob}${feature.path}">${feature.path}</a></p>
+    markup`${forTools(spec, feature)}
 <h1>${feature.name}</h1>
 ${prose(feature.description)}
 <h2 class="part">The result</h2>
@@ -1143,6 +1210,21 @@ details.example summary { color: var(--ink); }
 details.example pre { margin: .25rem 0 .75rem; }
 pre.failure { background: #fdf2f2; white-space: pre-wrap; }
 ol.contents { columns: 2 22rem; font-size: .9rem; }
+ol.contents li { break-inside: avoid; margin-bottom: .35rem; }
+.rules-nav .title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.tally { display: block; font-size: .78rem; color: var(--muted); }
+.tally.failed { color: #a3201f; }
+.rules-nav a[aria-current] { font-weight: 600; }
+details.scenario { margin: .5rem 0 1rem; max-width: 46rem; }
+details.scenario summary { cursor: pointer; }
+section.rule { scroll-margin-top: 90px; }
+@media (min-width: 1000px) {
+  .rules-layout { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: 2rem; align-items: start; }
+  .rules-nav { position: sticky; top: 90px; max-height: calc(100vh - 110px); overflow-y: auto; padding-right: .5rem; }
+  ol.contents { columns: 1; list-style: none; margin: 0; padding: 0; }
+  .rules-nav a[aria-current] { border-left: 3px solid var(--ink); margin-left: -.6rem; padding-left: .5rem; }
+  .rules-body section.rule:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+}
 ul.warnings { font-size: .9rem; }
 main footer { margin-top: 3rem; border-top: 1px solid var(--rule); }
 `;
@@ -1226,6 +1308,11 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
   const files = new Map<string, Uint8Array>();
   for (const feature of features)
     files.set(spec.pageOf(feature.path), featurePage(spec, feature));
+  for (const { path } of [...features, ...kits.map((kit) => kit.feature)])
+    files.set(
+      fileOfPage(spec.pageOf(path)),
+      new TextEncoder().encode(await readText(vocabulary, path)),
+    );
   spec.unruledRows();
   for (const { folder, feature } of kits) {
     const listed = await vocabulary.list(`${folder}/scripted-input`);

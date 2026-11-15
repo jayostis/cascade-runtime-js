@@ -321,7 +321,7 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
           item(
             "Conformance results as JSON",
             at(RESULTS_FILE),
-            "the latest run on main, by feature and rule. `at` is when this site was built, not when the run was made; the vocabulary the run used is the `cascade-vocabulary` entry of `ranWith`, while `vocabulary` is the one these pages were read from",
+            "the latest run on main, by feature. `at` is when this site was built, not when the run was made; the vocabulary the run used is the `cascade-vocabulary` entry of `ranWith`, while `vocabulary` is the one these pages were read from",
           ),
         ]
       : []),
