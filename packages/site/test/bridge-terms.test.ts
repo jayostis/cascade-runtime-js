@@ -241,6 +241,27 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
     });
   });
 
+  describe("given an unhomed shape named with an absolute IRI", () => {
+    it("keeps its full IRI under its heading", async () => {
+      const files = new MemoryFiles(TREE);
+      await files.write("vocab/bridge.ttl", text(ONTOLOGY));
+      await files.write(
+        "shapes/loose.shapes.ttl",
+        text(`@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+bridge:LooseShape a sh:NodeShape ;
+    sh:targetClass bridge:NoEntry .
+`),
+      );
+      const page = await bridgeTermReference(files, PLAIN);
+      assert.match(
+        page,
+        /<p class="iri">https:\/\/ns\.cascadeprotocol\.org\/bridge\/v1-draft#LooseShape<\/p>/,
+      );
+    });
+  });
+
   describe("`bridgeTermsSection`", () => {
     let tree: ReadonlyMap<string, Uint8Array>;
     let rows: SearchRow[];

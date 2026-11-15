@@ -333,6 +333,11 @@ class Reference {
     return iri.slice(this.#tree.length).replace(/^.*\//, "");
   }
 
+  /** Whether a file of the vocabulary names the IRI relatively, as `file#Name`, so it has no address of its own to show. */
+  relative(iri: string): boolean {
+    return this.#file(iri) !== undefined;
+  }
+
   /** The id an anchor of the IRI has: a shape of a file as `file#Name`, else the term's. */
   id(iri: string): string {
     return this.#file(iri) ?? termId(iri);
@@ -908,7 +913,7 @@ ${grouped.map(
 ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : entries.map((entry) => reference.entry(entry))}`,
 )}<h2 class="part" id="shapes">Shapes other shapes use</h2>
 <p class="prose">The shapes no entry above shows: those another shape sends a value to with <code>node</code>, and those whose class or property this page has no entry for.</p>
-${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n${reference.name(shape.value) === shape.value ? markup`<p class="iri">${shape.value}</p>\n` : ""}${reference.shape(shape, true)}</section>\n`)}`,
+${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n${reference.relative(shape.value) ? "" : markup`<p class="iri">${shape.value}</p>\n`}${reference.shape(shape, true)}</section>\n`)}`,
   }).text;
 }
 
