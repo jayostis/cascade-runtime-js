@@ -211,7 +211,7 @@ details.build > summary { font-weight: 600; color: var(--ink); }
 `;
 
 /** Wires the controls the markup carries hidden: without script they stay hidden and everything stays shown. */
-const SCRIPT = `
+export const SCRIPT = `
 document.querySelectorAll("[data-controls]").forEach(function (c) { c.hidden = false; });
 document.addEventListener("click", function (event) {
   var button = event.target.closest && event.target.closest("button[data-action]");

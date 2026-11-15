@@ -23,7 +23,9 @@ import {
   text,
   V,
   versioned,
+  WITH_GLOSSARY,
 } from "./tests-page.js";
+import { SCRIPT } from "../src/hub/tests.js";
 
 const A = FILE("cascade-runtime", "a.test");
 const BASE = `https://github.com/jayostis/cascade-runtime-js/blob/${RUN.commit}/packages/cascade-runtime/test/`;
@@ -563,6 +565,132 @@ describe("The summary bar and its controls · testsSection", () => {
       assert.match(runtime, /<li class="case" data-result="passed">/);
       assert.match(runtime, /<li class="capability" data-failed="1">/);
       assert.match(runtime, /<li class="capability" data-failed="0">/);
+    });
+  });
+
+  describe("with a run that holds no failure", () => {
+    it("opens no capability, situation or glossary", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: WITH_GLOSSARY, ...RUN },
+      });
+      const part = partOf(markup, R);
+      assert.match(part, /<details class="glossary">/);
+      assert.match(part, /<li class="capability"/);
+      assert.doesNotMatch(part, /<details[^>]* open[ >]/);
+    });
+  });
+
+  describe("with one failing case", () => {
+    it("opens that case's capability and situation and no other", async () => {
+      const { markup } = await pageWith({
+        runtime: {
+          report: report(
+            "",
+            described(
+              "Cap one",
+              { line: 1 },
+              described(
+                "when x",
+                { line: 3 },
+                leafOf("bad", A, 9, { failure: "broke" }),
+              ) + described("when y", { line: 11 }, leafOf("fine", A, 12)),
+            ) +
+              described(
+                "Cap two",
+                { line: 20 },
+                described("when z", { line: 21 }, leafOf("ok", A, 22)),
+              ),
+          ),
+          ...RUN,
+        },
+      });
+      const part = partOf(markup, R);
+      assert.equal(part.match(/<details open>/g)?.length, 2);
+      assert.match(
+        part,
+        /<details open><summary><span class="cap-name">Cap one</,
+      );
+      assert.match(
+        part,
+        /<details open><summary><span class="level-name">when x</,
+      );
+      assert.match(part, /<details><summary><span class="cap-name">Cap two</);
+    });
+  });
+
+  describe("with capabilities", () => {
+    it("gives each a readable id, unique on the page", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: GROUPED, ...RUN },
+      });
+      const part = partOf(markup, R);
+      const ids = [
+        ...part.matchAll(/<li class="capability"[^>]* id="([^"]+)"/g),
+      ].map((one) => one[1]);
+      const all = part.match(/<li class="capability"/g) ?? [];
+      assert.ok(ids.length > 0);
+      assert.equal(ids.length, all.length, "every capability has an id");
+      assert.equal(new Set(ids).size, ids.length, "ids are unique");
+      assert.ok(ids.includes("capability-cascade-runtime-looking-up-a-term"));
+    });
+  });
+
+  describe("with the page's script", () => {
+    interface Node {
+      readonly tagName: string;
+      open?: boolean;
+      readonly parentElement: Node | null;
+      scrollIntoView?: () => void;
+    }
+    const run = (hash: string) => {
+      const glossary: Node = {
+        tagName: "DETAILS",
+        open: false,
+        parentElement: null,
+      };
+      let scrolled = 0;
+      const entry: Node = {
+        tagName: "DT",
+        parentElement: glossary,
+        scrollIntoView: () => {
+          scrolled++;
+        },
+      };
+      const heard: Record<string, () => void> = {};
+      const location = { hash };
+      new Function("document", "location", "window", SCRIPT)(
+        {
+          querySelectorAll: () => [],
+          addEventListener: () => undefined,
+          getElementById: (id: string) => (id === "entry" ? entry : null),
+        },
+        location,
+        {
+          addEventListener: (type: string, fn: () => void) => {
+            heard[type] = fn;
+          },
+        },
+      );
+      return { glossary, heard, location, scrolled: () => scrolled };
+    };
+
+    it("opens every closed part around a link's target on load", () => {
+      const loaded = run("#entry");
+      assert.equal(loaded.glossary.open, true);
+      assert.equal(loaded.scrolled(), 1);
+    });
+
+    it("opens them again when the hash changes", () => {
+      const loaded = run("");
+      assert.equal(loaded.glossary.open, false);
+      loaded.location.hash = "#entry";
+      assert.ok(loaded.heard["hashchange"], "listens for hashchange");
+      loaded.heard["hashchange"]?.();
+      assert.equal(loaded.glossary.open, true);
+    });
+
+    it("does nothing for a hash that names nothing", () => {
+      assert.equal(run("#missing").glossary.open, false);
     });
   });
 });
