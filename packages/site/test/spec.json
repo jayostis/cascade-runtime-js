@@ -7,6 +7,7 @@
     "A newcomer's first pages · startSection, examplesSection, trySection",
     "The API page · apiSection",
     "The term reference · termReference(), termsSection",
+    "Every query of the vocabulary has a page · queryPages(), queriesSection",
     "The specification's pages · specPages()",
     "Decision notes as pages · specSection",
     "Warnings about rules and decision notes · specPages().warnings, rulesNamedIn(), filesNamed()",
