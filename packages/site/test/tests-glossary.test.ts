@@ -27,11 +27,11 @@ describe("A package's glossary on its page · glossaryOf(), Links", () => {
       part = partOf(markup, R);
     });
 
-    it("lists the glossary under the `about` line, open", () => {
+    it("lists the glossary under the `about` line, closed", () => {
       assert.ok(
         part.indexOf("The library an app calls.") < part.indexOf("<dl"),
       );
-      assert.match(part, /<details class="glossary" open>/);
+      assert.match(part, /<details class="glossary">/);
     });
 
     it("anchors each definition by its package and its term", () => {

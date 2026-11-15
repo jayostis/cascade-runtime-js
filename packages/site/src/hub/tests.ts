@@ -19,6 +19,7 @@ import {
   glossaryOf,
   type Entry,
   Links,
+  slug,
 } from "./glossary.js";
 import type { PagesContext, Suite, TestRun } from "./context.js";
 import { SPEC_FOLDER } from "./spec.js";
@@ -211,7 +212,7 @@ details.build > summary { font-weight: 600; color: var(--ink); }
 `;
 
 /** Wires the controls the markup carries hidden: without script they stay hidden and everything stays shown. */
-const SCRIPT = `
+export const SCRIPT = `
 document.querySelectorAll("[data-controls]").forEach(function (c) { c.hidden = false; });
 document.addEventListener("click", function (event) {
   var button = event.target.closest && event.target.closest("button[data-action]");
@@ -228,6 +229,16 @@ document.addEventListener("click", function (event) {
       part.querySelectorAll("[data-failed]:not([data-failed='0']) > details").forEach(function (d) { d.open = true; });
   }
 });
+function openTarget() {
+  var id;
+  try { id = decodeURIComponent(location.hash.slice(1)); } catch (e) { return; }
+  var target = id && document.getElementById(id);
+  if (!target) return;
+  var own = target.tagName === "DETAILS" ? target : target.querySelector && target.querySelector(":scope > details");
+  if (own) own.open = true;
+  for (var up = target.parentElement; up; up = up.parentElement) if (up.tagName === "DETAILS") up.open = true;
+  target.scrollIntoView();
+}
 document.querySelectorAll("input[data-glossary-filter]").forEach(function (input) {
   input.hidden = false;
   var box = input.closest("details");
@@ -244,6 +255,8 @@ document.querySelectorAll("input[data-glossary-filter]").forEach(function (input
     empty.hidden = shown !== 0;
   });
 });
+openTarget();
+window.addEventListener("hashchange", openTarget);
 `;
 
 const encoder = new TextEncoder();
@@ -532,6 +545,7 @@ function capability(
   suite: Suite,
   run: TestRun,
   glossary: readonly Entry[],
+  id: string,
 ): Html {
   const links = new Links(glossary);
   const said = prose(one.info?.description, links);
@@ -544,7 +558,7 @@ function capability(
     const href = `${repositoryUrl(suite)}/blob/${run.commit}/${file}${line === undefined ? "" : `#L${line}`}`;
     return markup`<a class="src" href="${href}">${placeOf(file, suite)[1] ?? file}</a>`;
   });
-  return markup`<li class="capability" data-failed="${String(count(one.cases, "failed"))}"><details open><summary>${title(one.name)} ${counts(one.cases)}</summary>
+  return markup`<li class="capability" id="${id}" data-failed="${String(count(one.cases, "failed"))}"><details${new Html(count(one.cases, "failed") > 0 ? " open" : "")}><summary>${title(one.name)} ${counts(one.cases)}</summary>
 ${said}<p class="source">${rulesOf(one.info?.rules ?? [])}<span class="label">Source</span> ${files.map((link, at) => markup`${at === 0 ? "" : ", "}${link}`)}</p>
 <ul class="tree">
 ${children}</ul></details></li>\n`;
@@ -607,6 +621,14 @@ function packageSection(
     spec.capabilities,
   );
   const build = arranged(all.filter(inBuild), spec.build);
+  const taken = new Set<string>();
+  const idOf = (one: Capability): string => {
+    const stem = `capability-${folder}-${slug(one.name.split(" · ")[0] ?? one.name)}`;
+    let id = stem;
+    for (let n = 2; taken.has(id); n++) id = `${stem}-${n}`;
+    taken.add(id);
+    return id;
+  };
   const buildCases = build.flatMap((one) => one.cases);
   const line =
     info === undefined
@@ -615,13 +637,13 @@ function packageSection(
   return markup`<section class="pkg" data-failed="${String(count(cases, "failed"))}">
 <h3 class="package"><code>${folder}</code> ${counts(cases)}</h3>
 ${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}${spec.glossary.length === 0 ? "" : glossaryList(spec.glossary)}<ul class="tree top">
-${main.map((one) => capability(one, suite, run, spec.glossary))}</ul>
+${main.map((one) => capability(one, suite, run, spec.glossary, idOf(one)))}</ul>
 ${
   build.length === 0
     ? ""
     : markup`<details class="build"${new Html(count(buildCases, "failed") > 0 ? " open" : "")}><summary>Build and packaging ${counts(buildCases)}</summary>
 <ul class="tree top">
-${build.map((one) => capability(one, suite, run, spec.glossary))}</ul></details>
+${build.map((one) => capability(one, suite, run, spec.glossary, idOf(one)))}</ul></details>
 `
 }</section>
 `;

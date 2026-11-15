@@ -16,7 +16,7 @@ export interface Entry {
 /** The terms page, from a repository's tests page. */
 const TERMS = "../../../terms/";
 
-const slug = (term: string): string =>
+export const slug = (term: string): string =>
   term
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, "-")
@@ -128,9 +128,9 @@ export class Links {
   }
 }
 
-/** The glossary as a definition list, open until the reader closes it. */
+/** The glossary as a definition list, closed until the reader or a link opens it. */
 export function glossaryList(entries: readonly Entry[]): Html {
-  return markup`<details class="glossary" open><summary>Glossary</summary>
+  return markup`<details class="glossary"><summary>Glossary</summary>
 <input type="search" class="glossary-filter" data-glossary-filter hidden placeholder="Filter the glossary" aria-label="Filter the glossary">
 <dl>
 ${entries.map(
