@@ -120,6 +120,7 @@ describe("The front page · hubFiles()", () => {
               "conformance/",
               "conformance/tests/cascade-runtime-js/",
               "conformance/tests/cascade-vocabulary/",
+              "terms/bridge.html",
             ],
           ],
           ["want-adapters", ["adapters/"]],
@@ -131,7 +132,7 @@ describe("The front page · hubFiles()", () => {
             ]),
           ],
           ["want-evals", ["evals/"]],
-          ["want-agent", ["AGENTS.md", "index.json", "llms.txt"]],
+          ["want-agent", ["AGENTS.md", "index.json", "llms.txt", "mcp/"]],
           ["want-contribute", ["#repositories", "decisions/#the-bar"]],
         ].map(([id, links]) => [id, [...(links as string[])].sort()]),
       );

@@ -21,7 +21,8 @@ import {
 } from "./sections.js";
 import { SEARCH_SCRIPT } from "./search-script.js";
 import { STYLESHEET_FILE } from "./site.js";
-import { TERMS_PAGE } from "./term-reference.js";
+import { MCP_PAGE } from "./mcp-page.js";
+import { BRIDGE_TERMS_PAGE, TERMS_PAGE } from "./term-reference.js";
 
 export const LLMS_FILE = "llms.txt";
 export const INDEX_FILE = "index.json";
@@ -101,7 +102,14 @@ export interface SearchRow {
   readonly path: string;
   readonly title: string;
   readonly kind:
-    "page" | "call" | "term" | "rule" | "decision" | "eval" | "query";
+    | "page"
+    | "call"
+    | "term"
+    | "rule"
+    | "decision"
+    | "eval"
+    | "query"
+    | "mcp-tool";
   /** What a term is called in words, beside its name. */
   readonly label?: string;
 }
@@ -113,6 +121,8 @@ const RULE_ANCHOR =
 /** What the API page's render puts before the first inline code span that names a call, so a row can land on it. */
 const CALL_ANCHOR_PREFIX = "call-";
 const CALL_ANCHOR = /<span id="call-([^"]+)"><\/span>/g;
+const TOOL_ANCHOR =
+  /<section class="term" id="(tool-[^"]+)">\s*<h3><code>([^<]*)<\/code>/g;
 const CALLED = /([A-Za-z_$][\w$]*)\(/g;
 const BARE = /^(?:await )?(?:[A-Za-z_$][\w$]*\.)*([A-Za-z_$][\w$]*)$/;
 
@@ -180,13 +190,29 @@ function searchRows(
             ? "query"
             : "page",
     });
-    if (path === TERMS_PAGE)
+    if (path === TERMS_PAGE || path === BRIDGE_TERMS_PAGE) {
+      /** A term the Bridge reuses is the term reference's to answer, so its entry on the Bridge's page is no row. */
+      const described = new Set<string>();
+      const terms = tree.get(TERMS_PAGE);
+      if (path === BRIDGE_TERMS_PAGE && terms !== undefined)
+        for (const [, id = ""] of new TextDecoder()
+          .decode(terms)
+          .matchAll(TERM_ANCHOR))
+          described.add(id);
       for (const [, id = "", label = ""] of html().matchAll(TERM_ANCHOR))
+        if (!described.has(id))
+          rows.push({
+            path: `${path}#${id}`,
+            title: id,
+            kind: "term",
+            label: words(label),
+          });
+    } else if (path === MCP_PAGE)
+      for (const [, id = "", name = ""] of html().matchAll(TOOL_ANCHOR))
         rows.push({
           path: `${path}#${id}`,
-          title: id,
-          kind: "term",
-          label: words(label),
+          title: words(name),
+          kind: "mcp-tool",
         });
     else if (path === API_PAGE) {
       for (const [, name = ""] of html().matchAll(CALL_ANCHOR))

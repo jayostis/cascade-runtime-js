@@ -19,6 +19,8 @@ import { expanded, LOCAL_NAME, prefixed } from "./terms.js";
 /** The term reference's page in the hub's tree; `termHref` links its entries from `terms/`. */
 export const TERMS_PAGE = "terms/index.html";
 export const TERMS_FOLDER = "terms/";
+/** The Bridge's own vocabulary, beside the term reference so a page of one reaches the other by its file name. */
+export const BRIDGE_TERMS_PAGE = "terms/bridge.html";
 
 const ONTOLOGY = "ontologies/cascade.ttl";
 const SHAPES = "ontologies/cascade.shapes.ttl";
@@ -250,8 +252,9 @@ class Reference {
   readonly #shapes: Graph;
   readonly #entries: ReadonlyMap<string, Entry>;
   readonly #prefixes: ReadonlyMap<string, string>;
-  readonly #used: UsedBy;
+  readonly #used: UsedBy | undefined;
   readonly #nodeShapes: readonly NamedNode[];
+  readonly #tree: string;
   /** The vocabulary's files on GitHub at the commit read, ending in a slash. */
   readonly blob: string;
 
@@ -260,9 +263,10 @@ class Reference {
     shapes: Graph,
     entries: ReadonlyMap<string, Entry>,
     prefixes: ReadonlyMap<string, string>,
-    used: UsedBy,
+    used: UsedBy | undefined,
     tree: string,
   ) {
+    this.#tree = tree;
     this.blob = tree.includes("/tree/")
       ? tree.replace("/tree/", "/blob/")
       : tree;
@@ -311,6 +315,8 @@ class Reference {
 
   /** The IRI as a prefixed name, by this site's prefixes or the files' own, or else whole. */
   name(iri: string): string {
+    const file = this.#file(iri);
+    if (file !== undefined) return file;
     const known = prefixed(iri);
     if (known !== undefined) return known;
     for (const [prefix, namespace] of this.#prefixes) {
@@ -321,16 +327,40 @@ class Reference {
     return iri;
   }
 
+  /** A name a file of the vocabulary gives with a relative IRI, as `file#Name` (or the file's own name), else undefined. */
+  #file(iri: string): string | undefined {
+    if (!iri.startsWith(this.#tree)) return undefined;
+    return iri.slice(this.#tree.length).replace(/^.*\//, "");
+  }
+
+  /** Whether a file of the vocabulary names the IRI relatively, as `file#Name`, so it has no address of its own to show. */
+  relative(iri: string): boolean {
+    return this.#file(iri) !== undefined;
+  }
+
+  /** The id an anchor of the IRI has: a shape of a file as `file#Name`, else the term's. */
+  id(iri: string): string {
+    return this.#file(iri) ?? termId(iri);
+  }
+
+  #href(iri: string): string {
+    const file = this.#file(iri);
+    return file === undefined
+      ? termHref(iri, "")
+      : `#${encodeURIComponent(file)}`;
+  }
+
   /** A term as a name: a link to its entry where it has one, else text. */
   term(iri: string): Html {
     return this.#entries.has(iri) || this.#homes.has(iri)
-      ? markup`<a href="${termHref(iri, "")}"><code>${this.name(iri)}</code></a>`
+      ? markup`<a href="${this.#href(iri)}"><code>${this.name(iri)}</code></a>`
       : markup`<code>${this.name(iri)}</code>`;
   }
 
   /** An address to follow: its entry, the page itself, or text where it is on the namespace's host. */
   link(iri: string): Html {
     if (this.#entries.has(iri) || this.#homes.has(iri)) return this.term(iri);
+    if (this.#file(iri) !== undefined) return this.term(iri);
     if (/^https?:\/\//i.test(iri) && !NAMESPACE_HOST.test(iri))
       return markup`<a href="${iri}">${iri}</a>`;
     return markup`<code>${iri}</code>`;
@@ -494,7 +524,7 @@ class Reference {
   shape(shape: NamedNode, home: boolean): Html {
     const wide = this.wide(shape);
     const properties = this.#shapes.objects(shape, `${SH}property`);
-    return markup`<div class="shape"${home ? markup` id="${termId(shape.value)}"` : ""}>${this.targets(shape)}${wide.length === 0 ? "" : markup`<p>On the whole node: ${wide.map(([predicate, object], i) => markup`${i === 0 ? "" : "; "}${this.constraint(predicate, object)}`)}${this.said(shape)}</p>\n`}${properties.length === 0 ? "" : markup`<ul>\n${properties.map((p) => this.propertyLine(p))}</ul>\n`}</div>\n`;
+    return markup`<div class="shape"${home ? markup` id="${this.id(shape.value)}"` : ""}>${this.targets(shape)}${wide.length === 0 ? "" : markup`<p>On the whole node: ${wide.map(([predicate, object], i) => markup`${i === 0 ? "" : "; "}${this.constraint(predicate, object)}`)}${this.said(shape)}</p>\n`}${properties.length === 0 ? "" : markup`<ul>\n${properties.map((p) => this.propertyLine(p))}</ul>\n`}</div>\n`;
   }
 
   /** The shapes at home on the property's entry, each whole. */
@@ -618,8 +648,8 @@ class Reference {
           ? this.propertyShapes(iri)
           : [];
     const homed = kind === "property" ? this.homedOn(iri) : [];
-    const queries = this.#used.queries.get(iri) ?? [];
-    const rules = this.#used.rules.get(iri) ?? [];
+    const queries = this.#used?.queries.get(iri) ?? [];
+    const rules = this.#used?.rules.get(iri) ?? [];
     return markup`<section class="term">
 <h3 id="${termId(iri)}"><code>${this.name(iri)}</code>${label.length === 0 ? "" : markup` ${label.join(" / ")}`}</h3>
 <p class="iri">${iri}</p>
@@ -677,36 +707,46 @@ ${this.field("Type", this.values(this.objects(iri, [TYPE]), "none stated"))}${
             "Also stated",
             markup`<ul>\n${rest.map(([, predicate, object]) => markup`<li>${this.term(predicate.value)} ${this.value(this.#ontology, object)}</li>\n`)}</ul>`,
           )
-    }${this.field(
-      "Queries",
-      queries.length === 0
-        ? markup`<span class="about">No query names it.</span>`
-        : this.folded(
-            queries.length,
-            "queries",
-            markup`<ul>\n${queries.map((path) => markup`<li><a href="${this.blob}${encodeURI(path)}">${path}</a></li>\n`)}</ul>`,
-          ),
-    )}${this.field(
-      "Rules",
-      rules.length === 0
-        ? markup`<span class="about">No rule names it.</span>`
-        : this.folded(
-            rules.length,
-            "rules",
-            markup`<ul>\n${rules.map(({ href, path, name }) => markup`<li><a href="${href}">${name}</a> <span class="about">${path}</span></li>\n`)}</ul>`,
-          ),
-    )}</dl>
+    }${
+      this.#used === undefined
+        ? ""
+        : this.field(
+            "Queries",
+            queries.length === 0
+              ? markup`<span class="about">No query names it.</span>`
+              : this.folded(
+                  queries.length,
+                  "queries",
+                  markup`<ul>\n${queries.map((path) => markup`<li><a href="${this.blob}${encodeURI(path)}">${path}</a></li>\n`)}</ul>`,
+                ),
+          )
+    }${
+      this.#used === undefined
+        ? ""
+        : this.field(
+            "Rules",
+            rules.length === 0
+              ? markup`<span class="about">No rule names it.</span>`
+              : this.folded(
+                  rules.length,
+                  "rules",
+                  markup`<ul>\n${rules.map(({ href, path, name }) => markup`<li><a href="${href}">${name}</a> <span class="about">${path}</span></li>\n`)}</ul>`,
+                ),
+          )
+    }</dl>
 </section>
 `;
   }
 }
 
-const GROUPS: readonly {
-  id: string;
-  title: string;
-  about: string;
-  holds: (entry: Entry) => boolean;
-}[] = [
+interface Group {
+  readonly id: string;
+  readonly title: string;
+  readonly about: string;
+  readonly holds: (entry: Entry) => boolean;
+}
+
+const GROUPS: readonly Group[] = [
   {
     id: "classes",
     title: "Classes",
@@ -762,8 +802,20 @@ function parse(vocabulary: Files, path: string): Promise<[Graph, string]> {
   return read;
 }
 
+/** Files read as one graph, each parsed against its own address so a relative IRI names the file it is in, and their text. */
+async function parseAll(
+  vocabulary: Files,
+  ...paths: readonly [string, ...string[]]
+): Promise<[Graph, string]> {
+  const read = await Promise.all(paths.map((path) => parse(vocabulary, path)));
+  return [
+    new Graph(read.flatMap(([graph]) => graph.triples)),
+    read.map(([, text]) => text).join("\n"),
+  ];
+}
+
 /** The terms the ontology declares, each with the entry the page gives it. */
-function entriesOf(ontology: Graph): Map<string, Entry> {
+function entriesOf(ontology: Graph, own: string): Map<string, Entry> {
   const typed = new Map<string, Term[]>();
   for (const [subject, predicate, object] of ontology.triples)
     if (subject.termType === "NamedNode" && predicate.value === TYPE)
@@ -774,7 +826,7 @@ function entriesOf(ontology: Graph): Map<string, Entry> {
       entries.set(iri, {
         iri,
         kind: kindOf(types),
-        copied: !iri.startsWith(CASCADE),
+        copied: !iri.startsWith(own),
       });
   return entries;
 }
@@ -789,27 +841,38 @@ export async function queryFacts(vocabulary: Files): Promise<{
   readonly naming: ReadonlyMap<string, QueryNaming>;
 }> {
   const [ontology] = await parse(vocabulary, ONTOLOGY);
-  const terms = new Set(entriesOf(ontology).keys());
+  const terms = new Set(entriesOf(ontology, CASCADE).keys());
   return { terms, naming: (await usedByOnce(vocabulary, terms)).naming };
 }
 
-/**
- * The term reference: an entry for each term `ontologies/cascade.ttl` declares, this vocabulary's own and those it copies,
- * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
- * `termHref` links.
- */
-export async function termReference(
+/** What tells the term reference of one vocabulary from another's: where it is read, how it is worded and what it is checked by. */
+interface Source {
+  readonly ontology: string;
+  readonly shapes: readonly [string, ...string[]];
+  /** The namespace the vocabulary is its own in; a term outside it is one copied from another vocabulary. */
+  readonly namespace: string;
+  /** Whether queries and rules are read from the files, which the Bridge's vocabulary has none of. */
+  readonly used: boolean;
+  readonly title: string;
+  readonly groups: readonly Group[];
+  readonly lead: (blob: string, tree: string) => Html;
+}
+
+async function referencePage(
   vocabulary: Files,
   chrome: Chrome,
+  source: Source,
 ): Promise<string> {
-  const [ontology, ontologyText] = await parse(vocabulary, ONTOLOGY);
-  const [shapes, shapesText] = await parse(vocabulary, SHAPES);
-  const entries = entriesOf(ontology);
+  const [ontology, ontologyText] = await parse(vocabulary, source.ontology);
+  const [shapes, shapesText] = await parseAll(vocabulary, ...source.shapes);
+  const entries = entriesOf(ontology, source.namespace);
   const prefixes = new Map([
     ...declaredIn(ontologyText),
     ...declaredIn(shapesText),
   ]);
-  const used = await usedByOnce(vocabulary, new Set(entries.keys()));
+  const used = source.used
+    ? await usedByOnce(vocabulary, new Set(entries.keys()))
+    : undefined;
   const tree = vocabulary.iri;
   const reference = new Reference(
     ontology,
@@ -825,31 +888,24 @@ export async function termReference(
       .toLowerCase()
       .localeCompare(reference.name(b.iri).toLowerCase()),
   );
-  const grouped = GROUPS.map((group) => ({
+  const grouped = source.groups.map((group) => ({
     ...group,
     entries: sorted.filter(group.holds),
   }));
   const { unhomed } = reference;
   return shell({
     chrome,
-    title: "Cascade terms",
+    title: source.title,
     stylesheet: `../${STYLESHEET_FILE}`,
     hubRoot: "../",
     nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
-    main: markup`<h1>Cascade terms</h1>
-<p class="prose">Every term a Cascade pod carries, as cascade-vocabulary declares it in
-<a href="${reference.blob}${ONTOLOGY}">${ONTOLOGY}</a>: what it is, the shapes in
-<a href="${reference.blob}${SHAPES}">${SHAPES}</a> that check it, and each query and each rule of the spec that names it.</p>
-<p class="prose">A term's IRI is shown as text: the names under https://ns.cascadeprotocol.org/ do not resolve yet, so this
-page is where a term is described.</p>
-<p class="about">Read from cascade-vocabulary at <a href="${tree}">${tree}</a>; the example pods may have been built from
-another commit.</p>
-${grouped.map(
-  ({ id, title, entries }) =>
-    markup`<h3><a href="#${id}">${title}</a></h3>
+    main: markup`<h1>${source.title}</h1>
+${source.lead(reference.blob, tree)}${grouped.map(
+      ({ id, title, entries }) =>
+        markup`<h3><a href="#${id}">${title}</a></h3>
 <p class="terms">${entries.map((entry, index) => markup`${index === 0 ? "" : " · "}<a href="${termHref(entry.iri, "")}">${reference.name(entry.iri)}</a>`)}</p>
 `,
-)}<h3><a href="#shapes">Shapes other shapes use</a></h3>
+    )}<h3><a href="#shapes">Shapes other shapes use</a></h3>
 ${grouped.map(
   ({ id, title, about, entries }) =>
     markup`<h2 class="part" id="${id}">${title}</h2>
@@ -857,6 +913,103 @@ ${grouped.map(
 ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : entries.map((entry) => reference.entry(entry))}`,
 )}<h2 class="part" id="shapes">Shapes other shapes use</h2>
 <p class="prose">The shapes no entry above shows: those another shape sends a value to with <code>node</code>, and those whose class or property this page has no entry for.</p>
-${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n<p class="iri">${shape.value}</p>\n${reference.shape(shape, true)}</section>\n`)}`,
+${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n${reference.relative(shape.value) ? "" : markup`<p class="iri">${shape.value}</p>\n`}${reference.shape(shape, true)}</section>\n`)}`,
   }).text;
+}
+
+/**
+ * The term reference: an entry for each term `ontologies/cascade.ttl` declares, this vocabulary's own and those it copies,
+ * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
+ * `termHref` links.
+ */
+export const termReference = (vocabulary: Files, chrome: Chrome) =>
+  referencePage(vocabulary, chrome, {
+    ontology: ONTOLOGY,
+    shapes: [SHAPES],
+    namespace: CASCADE,
+    used: true,
+    title: "Cascade terms",
+    groups: GROUPS,
+    lead: (
+      blob,
+      tree,
+    ) => markup`<p class="prose">Every term a Cascade pod carries, as cascade-vocabulary declares it in
+<a href="${blob}${ONTOLOGY}">${ONTOLOGY}</a>: what it is, the shapes in
+<a href="${blob}${SHAPES}">${SHAPES}</a> that check it, and each query and each rule of the spec that names it.
+The terms of the Bridge, which judges an adapter, are on <a href="bridge.html">their own page</a>.</p>
+<p class="prose">A term's IRI is shown as text: the names under https://ns.cascadeprotocol.org/ do not resolve yet, so this
+page is where a term is described.</p>
+<p class="about">Read from cascade-vocabulary at <a href="${tree}">${tree}</a>; the example pods may have been built from
+another commit.</p>
+`,
+  });
+
+const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+const BRIDGE_ONTOLOGY = "vocab/bridge.ttl";
+const BRIDGE_SHAPES = "shapes";
+
+/**
+ * The Bridge's term reference, from cascade-bridge-spec: an entry for each term `vocab/bridge.ttl` declares, the Bridge's own
+ * and those of other vocabularies it declares as its own, saying what it is and the shapes of `shapes/` that use it. It is
+ * the term reference's page made over the Bridge's files, so an entry reads as one there does.
+ */
+export async function bridgeTermReference(
+  bridgeSpec: Files,
+  chrome: Chrome,
+): Promise<string> {
+  const [first, ...rest] = (await bridgeSpec.list(BRIDGE_SHAPES))
+    .filter((path) => path.endsWith(".shapes.ttl"))
+    .sort();
+  if (first === undefined)
+    throw new Error(`${bridgeSpec.iri} has no shapes under ${BRIDGE_SHAPES}/`);
+  const shapes: readonly [string, ...string[]] = [first, ...rest];
+  return referencePage(bridgeSpec, chrome, {
+    ontology: BRIDGE_ONTOLOGY,
+    shapes,
+    namespace: BRIDGE,
+    used: false,
+    title: "Cascade Bridge terms",
+    groups: [
+      {
+        id: "classes",
+        title: "Classes",
+        about:
+          "What a Bridge, an adapter and a test of either are made of, and the kinds of test and of failure.",
+        holds: ({ kind, copied }) => !copied && kind === "class",
+      },
+      {
+        id: "properties",
+        title: "Properties",
+        about:
+          "What an adapter, a test case, a result and a record's finding say.",
+        holds: ({ kind, copied }) => !copied && kind === "property",
+      },
+      {
+        id: "named-things",
+        title: "Named things",
+        about:
+          "The profiles, verdicts, schemes and concepts the Bridge names, which an adapter or a test case points at.",
+        holds: ({ kind, copied }) => !copied && kind === "thing",
+      },
+      {
+        id: "copied",
+        title: "Terms from other vocabularies",
+        about:
+          "Terms of other vocabularies that the Bridge declares as its own, such as Web Annotation's, each with where it is defined.",
+        holds: ({ copied }) => copied,
+      },
+    ],
+    lead: (
+      blob,
+      tree,
+    ) => markup`<p class="prose">The Bridge's own vocabulary, as cascade-bridge-spec declares it in
+<a href="${blob}${BRIDGE_ONTOLOGY}">${BRIDGE_ONTOLOGY}</a>: the test types, verdicts, gap and accounting terms that an adapter and an
+engine are judged by, and the shapes in
+${shapes.map((path, index) => markup`${index === 0 ? "" : index === shapes.length - 1 ? ", and " : ", "}<a href="${blob}${path}">${path}</a>`)}
+that use each.</p>
+<p class="prose">The terms a pod carries are on <a href="index.html">the term reference</a>. The Bridge's draft namespace
+does not resolve yet either, so this page is where a term is described.</p>
+<p class="about">Read from cascade-bridge-spec at <a href="${tree}">${tree}</a>.</p>
+`,
+  });
 }
