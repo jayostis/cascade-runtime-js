@@ -25,6 +25,7 @@ export const BRIDGE_TERMS_PAGE = "terms/bridge.html";
 const ONTOLOGY = "ontologies/cascade.ttl";
 const SHAPES = "ontologies/cascade.shapes.ttl";
 const QUERIES = "queries";
+const NOTES = "decisions";
 /** A list of queries or rules longer than this is folded behind a summary. */
 const FOLD_AFTER = 10;
 /** The spec's pages, from this page. */
@@ -91,9 +92,29 @@ interface Entry {
   readonly copied: boolean;
 }
 
+/** A rule of a feature file whose text writes a query's path. */
+export interface RuleNaming {
+  readonly path: string;
+  readonly number: string;
+  readonly name: string;
+}
+
+/** A decision note whose text writes a query's path. */
+export interface NoteNaming {
+  readonly path: string;
+  readonly title: string;
+}
+
+export interface QueryNaming {
+  readonly rules: RuleNaming[];
+  readonly notes: NoteNaming[];
+}
+
 interface UsedBy {
   readonly queries: Map<string, string[]>;
   readonly rules: Map<string, { href: string; path: string; name: string }[]>;
+  /** For each query's path, the rules and decision notes that write it. */
+  readonly naming: Map<string, QueryNaming>;
 }
 
 /** `PREFIX p: <iri>` or `@prefix p: <iri> .`, as Turtle and SPARQL declare one. */
@@ -164,6 +185,13 @@ async function usedBy(
     string,
     { href: string; path: string; name: string }[]
   >();
+  const naming = new Map<string, QueryNaming>(
+    paths.map((path) => [path, { rules: [], notes: [] }]),
+  );
+  const writing = (text: string): string[] => {
+    const flat = text.replace(/\s+/g, " ");
+    return paths.filter((path) => flat.includes(path));
+  };
   for (const path of (await featuresOf(vocabulary)).sort()) {
     const feature = await readWrittenFeature(vocabulary, path);
     for (const rule of feature.rules) {
@@ -181,9 +209,36 @@ async function usedBy(
             path,
             name: rule.name,
           });
+      for (const written of writing(text))
+        naming.get(written)?.rules.push({ path, number, name: rule.name });
     }
   }
-  return { queries, rules };
+  for (const path of (await vocabulary.list(NOTES))
+    .filter((note) => note.endsWith(".md"))
+    .sort()) {
+    const text = await readText(vocabulary, path);
+    const title = /^# +(.+)$/m.exec(text)?.[1]?.trim() ?? path;
+    for (const written of writing(text))
+      naming.get(written)?.notes.push({ path, title });
+  }
+  return { queries, rules, naming };
+}
+
+const used = new WeakMap<Files, Promise<UsedBy>>();
+
+/**
+ * What names each term and each query, read once for a vocabulary: the term reference and the query pages share it. The
+ * cache is per `Files` object, which is assumed not to change after it is first read.
+ */
+function usedByOnce(
+  vocabulary: Files,
+  terms: ReadonlySet<string>,
+): Promise<UsedBy> {
+  const held = used.get(vocabulary);
+  if (held !== undefined) return held;
+  const made = usedBy(vocabulary, terms);
+  used.set(vocabulary, made);
+  return made;
 }
 
 const isString = (term: Term): boolean =>
@@ -721,21 +776,38 @@ function kindOf(types: readonly Term[]): Kind {
   return "thing";
 }
 
-/** The files read as one graph, each as Turtle with its own prefixes, and their text. */
-const parse = async (
+const parsed = new WeakMap<Files, Map<string, Promise<[Graph, string]>>>();
+
+/** A Turtle file of the vocabulary, read once. The cache is per `Files` object, which is assumed not to change. */
+function parse(vocabulary: Files, path: string): Promise<[Graph, string]> {
+  const held = parsed.get(vocabulary) ?? new Map();
+  parsed.set(vocabulary, held);
+  const read =
+    held.get(path) ??
+    (async (): Promise<[Graph, string]> => {
+      const text = await readText(vocabulary, path);
+      return [
+        new Graph(
+          await new OxigraphStore().parse(text, `${vocabulary.iri}${path}`),
+        ),
+        text,
+      ];
+    })();
+  held.set(path, read);
+  return read;
+}
+
+/** Files read as one graph, each parsed against its own address so a relative IRI names the file it is in, and their text. */
+async function parseAll(
   vocabulary: Files,
   ...paths: readonly [string, ...string[]]
-): Promise<[Graph, string]> => {
-  const texts = await Promise.all(
-    paths.map((path) => readText(vocabulary, path)),
-  );
-  const triples = await Promise.all(
-    texts.map((text, index) =>
-      new OxigraphStore().parse(text, `${vocabulary.iri}${paths[index]}`),
-    ),
-  );
-  return [new Graph(triples.flat()), texts.join("\n")];
-};
+): Promise<[Graph, string]> {
+  const read = await Promise.all(paths.map((path) => parse(vocabulary, path)));
+  return [
+    new Graph(read.flatMap(([graph]) => graph.triples)),
+    read.map(([, text]) => text).join("\n"),
+  ];
+}
 
 /** The terms the ontology declares, each with the entry the page gives it. */
 function entriesOf(ontology: Graph, own: string): Map<string, Entry> {
@@ -752,6 +824,20 @@ function entriesOf(ontology: Graph, own: string): Map<string, Entry> {
         copied: !iri.startsWith(own),
       });
   return entries;
+}
+
+/**
+ * What the query pages read of the vocabulary beside the queries themselves: the IRIs of the terms the term reference
+ * has an entry for, and each query's path with the rules and decision notes that write it. Read once, shared with
+ * `termReference()`.
+ */
+export async function queryFacts(vocabulary: Files): Promise<{
+  readonly terms: ReadonlySet<string>;
+  readonly naming: ReadonlyMap<string, QueryNaming>;
+}> {
+  const [ontology] = await parse(vocabulary, ONTOLOGY);
+  const terms = new Set(entriesOf(ontology, CASCADE).keys());
+  return { terms, naming: (await usedByOnce(vocabulary, terms)).naming };
 }
 
 /** What tells the term reference of one vocabulary from another's: where it is read, how it is worded and what it is checked by. */
@@ -773,14 +859,14 @@ async function referencePage(
   source: Source,
 ): Promise<string> {
   const [ontology, ontologyText] = await parse(vocabulary, source.ontology);
-  const [shapes, shapesText] = await parse(vocabulary, ...source.shapes);
+  const [shapes, shapesText] = await parseAll(vocabulary, ...source.shapes);
   const entries = entriesOf(ontology, source.namespace);
   const prefixes = new Map([
     ...declaredIn(ontologyText),
     ...declaredIn(shapesText),
   ]);
   const used = source.used
-    ? await usedBy(vocabulary, new Set(entries.keys()))
+    ? await usedByOnce(vocabulary, new Set(entries.keys()))
     : undefined;
   const tree = vocabulary.iri;
   const reference = new Reference(

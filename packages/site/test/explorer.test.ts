@@ -823,6 +823,20 @@ describe("The pod explorer's page · explorerPage(), Site.files()", () => {
     assert.match(text("layout.html"), /How this pod is laid out/);
   });
 
+  it("shows an answer's every column, though the first row lacks some a later row has", () => {
+    const source = /function answerColumns\([^)]*\) \{[\s\S]*?\n\}\n/.exec(
+      text("explorer.js"),
+    )?.[0];
+    assert.ok(source, "the app has answerColumns()");
+    const answerColumns = new Function(
+      `${source}; return answerColumns;`,
+    )() as (rows: readonly object[]) => string[];
+    assert.deepEqual(
+      answerColumns([{ a: 1 }, { a: 2, b: 3 }, { c: 4, b: 5 }]),
+      ["a", "b", "c"],
+    );
+  });
+
   it("writes an app that parses, with no template placeholder left in it", () => {
     assert.doesNotThrow(() => new Function(text("explorer.js")));
     assert.ok(!text("explorer.js").includes("${"));

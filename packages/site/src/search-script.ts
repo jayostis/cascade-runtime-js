@@ -6,8 +6,8 @@
 export const SEARCH_SCRIPT = String.raw`'use strict';
 (function () {
 var SHOWN = 8;
-var KIND = { call: 'Call', term: 'Term', rule: 'Rule', decision: 'Decision', page: 'Page', eval: 'Eval', 'mcp-tool': 'MCP tool' };
-var ORDER = { call: 0, term: 1, rule: 2, decision: 3, page: 4, eval: 5, 'mcp-tool': 6 };
+var KIND = { call: 'Call', term: 'Term', rule: 'Rule', decision: 'Decision', query: 'Query', page: 'Page', eval: 'Eval', 'mcp-tool': 'MCP tool' };
+var ORDER = { call: 0, term: 1, rule: 2, decision: 3, query: 4, page: 5, eval: 6, 'mcp-tool': 7 };
 var PREFIXED = /^([a-z][a-z0-9-]*):(\S+)$/;
 
 function plain(text) {

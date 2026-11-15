@@ -102,7 +102,14 @@ export interface SearchRow {
   readonly path: string;
   readonly title: string;
   readonly kind:
-    "page" | "call" | "term" | "rule" | "decision" | "eval" | "mcp-tool";
+    | "page"
+    | "call"
+    | "term"
+    | "rule"
+    | "decision"
+    | "eval"
+    | "query"
+    | "mcp-tool";
   /** What a term is called in words, beside its name. */
   readonly label?: string;
 }
@@ -143,6 +150,7 @@ export function callsNamed(
 const NOTE_FOLDER = "decisions/";
 const RULES_FOLDER = "spec/";
 const EVALS_FOLDER = "evals/";
+const QUERIES_FOLDER = "queries/";
 const SITE_NAME = / [·—] Cascade [^·—]*$/;
 const REDIRECT = /http-equiv="refresh"/i;
 /** An adapter explorer's data of one test case, which its page fetches when a reader opens the case: no file to find by name. */
@@ -173,7 +181,14 @@ function searchRows(
     rows.push({
       path,
       title: title.replace(SITE_NAME, ""),
-      kind: note ? "decision" : path.startsWith(EVALS_FOLDER) ? "eval" : "page",
+      kind: note
+        ? "decision"
+        : path.startsWith(EVALS_FOLDER)
+          ? "eval"
+          : path.startsWith(QUERIES_FOLDER) &&
+              path !== `${QUERIES_FOLDER}index.html`
+            ? "query"
+            : "page",
     });
     if (path === TERMS_PAGE || path === BRIDGE_TERMS_PAGE) {
       /** A term the Bridge reuses is the term reference's to answer, so its entry on the Bridge's page is no row. */

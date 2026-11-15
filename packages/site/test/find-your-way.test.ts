@@ -111,7 +111,7 @@ describe("The front page · hubFiles()", () => {
         [
           ["want-see", ["examples.html", STARTER_TRY]],
           ["want-build", ["api/", "start.html"]],
-          ["want-model", ["terms/"]],
+          ["want-model", ["queries/", "terms/"]],
           ["want-why", ["decisions/"]],
           ["want-rules", ["spec/"]],
           [

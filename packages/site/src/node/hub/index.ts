@@ -1,6 +1,7 @@
 import { adaptersSection } from "../../hub/adapters.js";
 import { examplesSection } from "../../hub/examples.js";
 import type { PagesContext } from "../../hub/context.js";
+import { queriesSection } from "../../hub/queries.js";
 import { specSection } from "../../hub/spec.js";
 import { bridgeTermsSection } from "../../hub/bridge-terms.js";
 import { startSection } from "../../hub/start.js";
@@ -20,6 +21,7 @@ export const SECTIONS: readonly Section<PagesContext>[] = [
   mcpSection,
   termsSection,
   bridgeTermsSection,
+  queriesSection,
   examplesSection,
   specSection,
   adaptersSection,
