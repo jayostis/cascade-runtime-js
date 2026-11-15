@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { HISTORY, PACKAGE } from "../src/paths.js";
 import { after, before, describe, it } from "node:test";
 import { instancesOf } from "../src/instances.js";
-import type { Results } from "../src/results.js";
+import type { Job, Results } from "../src/results.js";
 import { errorsOf } from "../src/schemas.js";
 import type { RenderMarkdown } from "../src/site-calibration.js";
 import { buildSite, renderSite } from "../src/site.js";
@@ -209,6 +209,30 @@ describe("Reading the report's front page · renderSite()", () => {
           which,
         );
       }
+    });
+
+    it("counts an answer a later run reused once, in the run that gave it, in whatever order the runs come", () => {
+      const later = asModel("fixture-2", "claude-opus-5-5");
+      for (const job of later.jobs as Job[])
+        if (job.role === "subject") {
+          job.status = "reused";
+          job.reusedFrom = `fixture-1/${job.id}`;
+        }
+      const figures = (runs: { name: string; results: Results }[]) => {
+        const front = renderSite(runs).get("index.html")!;
+        return ARMS.map((which) =>
+          text(
+            element(front, new RegExp(`<[a-z]+[^>]*data-total="${which}"`)),
+          ),
+        );
+      };
+      const once = figures([{ name: "fixture-1", results: recorded }]);
+      const both = [
+        { name: "fixture-2", results: later },
+        { name: "fixture-1", results: recorded },
+      ];
+      assert.deepEqual(figures(both), once);
+      assert.deepEqual(figures([...both].reverse()), once);
     });
 
     it("states the totals' limit and that runs vary", () => {
