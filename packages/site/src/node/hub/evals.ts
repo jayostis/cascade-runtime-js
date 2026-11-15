@@ -6,6 +6,7 @@ import { FolderFiles } from "@cascade-runtime/runtime/node";
 import { chromeStrings } from "../../html.js";
 import { FRONT_PAGE } from "../../links.js";
 import type { PagesContext } from "../../hub/context.js";
+import { renderMarkdown } from "../../markdown.js";
 import type { Section } from "../../sections.js";
 
 /** The part of the evals package that writes its report; the site package does not depend on it, so the compiled module is imported by path. */
@@ -15,6 +16,10 @@ interface Evals {
     out: string,
     home: string,
     chrome: ReturnType<typeof chromeStrings>,
+    renderMarkdown: (
+      source: string,
+      link: (href: string) => string | undefined,
+    ) => string,
   ): Promise<string>;
 }
 
@@ -39,6 +44,7 @@ export const evalsSection: Section<PagesContext> = {
         out,
         `../${FRONT_PAGE}`,
         chromeStrings(chrome),
+        (source, link) => renderMarkdown(source, { link }).text,
       );
       const folder = new FolderFiles(out);
       const files = new Map<string, Uint8Array>();

@@ -12,7 +12,7 @@ a{color:var(--link)}
 h1{font:500 clamp(30px,4vw,44px)/1.1 'Newsreader',Georgia,'Times New Roman',serif;margin:.3em 0 .35em;letter-spacing:-.01em}
 h2{font-size:1.18rem;margin:2.2em 0 .6em}h3{font-size:1rem;margin:0 0 .4em}h4{font-size:.9rem;margin:10px 0 6px}
 p{margin:.4em 0}.muted{color:var(--muted)}.small{font-size:.86rem}.tiny{font-size:.78rem}
-code,pre,.mono{font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:.85em;word-break:break-all}
+code,pre,.mono{font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:.85em;overflow-wrap:break-word}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--soft);padding:12px 14px;border-radius:8px;max-height:460px;overflow:auto;font-size:.78rem;line-height:1.45}
 .top{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.86rem;color:var(--muted);padding:6px 0 14px}
 .top .crumbs a{text-decoration:none}.top .crumbs span{margin:0 6px;opacity:.6}
@@ -31,6 +31,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--soft);padding:12
 .hl th,.hl td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:.92rem}
 .hl th{font-size:.76rem;color:var(--muted);font-weight:600;background:var(--soft)}.hl tr:last-child td{border-bottom:0}
 .hl td.money{font-variant-numeric:tabular-nums;white-space:nowrap}
+.hl table.cmp{min-width:0}.cmp td b{white-space:nowrap}.cmp details{margin-top:4px}.cmp summary{cursor:pointer;color:var(--link)}
 .dots{display:inline-flex;flex-wrap:wrap;gap:3px;vertical-align:middle;margin-left:4px}
 .dot{display:inline-block;width:14px;height:14px;border-radius:4px;font-size:.66rem;line-height:14px;text-align:center;font-weight:800}
 .d-yes{background:var(--yes-bg);box-shadow:inset 0 0 0 1px var(--yes)}.d-part{background:var(--part-bg);box-shadow:inset 0 0 0 1px var(--part)}
