@@ -639,6 +639,33 @@ describe("The summary bar and its controls · testsSection", () => {
       assert.equal(new Set(ids).size, ids.length, "ids are unique");
       assert.ok(ids.includes("capability-cascade-runtime-looking-up-a-term"));
     });
+
+    it("keeps an id when functions are added to the heading, and suffixes the second of two with one name", async () => {
+      const idsOf = async (...names: string[]): Promise<string[]> => {
+        const { markup } = await pageWith({
+          runtime: {
+            report: report(
+              "",
+              names
+                .map((name) => described(name, {}, leafOf("ok", A, 3)))
+                .join(""),
+            ),
+            ...RUN,
+          },
+        });
+        return [
+          ...partOf(markup, R).matchAll(
+            /<li class="capability"[^>]* id="([^"]+)"/g,
+          ),
+        ].map((one) => one[1] ?? "");
+      };
+      const [plain = ""] = await idsOf("Looking up");
+      assert.deepEqual(await idsOf("Looking up · lookUp"), [plain]);
+      assert.deepEqual(
+        await idsOf("Looking up · lookUp", "Looking up · find"),
+        [plain, `${plain}-2`],
+      );
+    });
   });
 
   describe("with the page's script", () => {

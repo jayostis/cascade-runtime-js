@@ -128,7 +128,7 @@ export class Links {
   }
 }
 
-/** The glossary as a definition list, open until the reader closes it. */
+/** The glossary as a definition list, closed until the reader or a link opens it. */
 export function glossaryList(entries: readonly Entry[]): Html {
   return markup`<details class="glossary"><summary>Glossary</summary>
 <input type="search" class="glossary-filter" data-glossary-filter hidden placeholder="Filter the glossary" aria-label="Filter the glossary">

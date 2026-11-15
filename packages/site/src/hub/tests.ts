@@ -230,14 +230,15 @@ document.addEventListener("click", function (event) {
   }
 });
 function openTarget() {
-  var id = decodeURIComponent(location.hash.slice(1));
+  var id;
+  try { id = decodeURIComponent(location.hash.slice(1)); } catch (e) { return; }
   var target = id && document.getElementById(id);
   if (!target) return;
+  var own = target.tagName === "DETAILS" ? target : target.querySelector && target.querySelector(":scope > details");
+  if (own) own.open = true;
   for (var up = target.parentElement; up; up = up.parentElement) if (up.tagName === "DETAILS") up.open = true;
   target.scrollIntoView();
 }
-openTarget();
-window.addEventListener("hashchange", openTarget);
 document.querySelectorAll("input[data-glossary-filter]").forEach(function (input) {
   input.hidden = false;
   var box = input.closest("details");
@@ -254,6 +255,8 @@ document.querySelectorAll("input[data-glossary-filter]").forEach(function (input
     empty.hidden = shown !== 0;
   });
 });
+openTarget();
+window.addEventListener("hashchange", openTarget);
 `;
 
 const encoder = new TextEncoder();
@@ -620,7 +623,7 @@ function packageSection(
   const build = arranged(all.filter(inBuild), spec.build);
   const taken = new Set<string>();
   const idOf = (one: Capability): string => {
-    const stem = `capability-${folder}-${slug(one.name)}`;
+    const stem = `capability-${folder}-${slug(one.name.split(" · ")[0] ?? one.name)}`;
     let id = stem;
     for (let n = 2; taken.has(id); n++) id = `${stem}-${n}`;
     taken.add(id);
