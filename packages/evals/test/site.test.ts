@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HISTORY, PACKAGE } from "../src/paths.js";
 import { after, before, describe, it } from "node:test";
 import { instancesOf } from "../src/instances.js";
 import type { Results } from "../src/results.js";
 import { errorsOf } from "../src/schemas.js";
+import type { Calibration } from "../src/site-calibration.js";
 import { buildSite, renderSite } from "../src/site.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-site-"));
@@ -1170,6 +1179,182 @@ describe("Publishing the report · renderSite(), buildSite()", () => {
     it("gives no page that breadcrumb", () => {
       for (const [path, html] of one)
         assert.ok(!html.includes("Cascade Protocol reference"), path);
+    });
+  });
+});
+
+/**
+ * One page sets every recorded run side by side, and one renders the judge calibration.
+ */
+describe("Comparing the recorded runs, and reading the judges' calibration · renderSite()", () => {
+  const saved = lazy(async () => {
+    const names = (await readdir(HISTORY)).sort().reverse();
+    const runs = await Promise.all(
+      names.map(async (name) => ({
+        name,
+        results: JSON.parse(
+          await readFile(join(HISTORY, name, "results.json"), "utf8"),
+        ) as Results,
+      })),
+    );
+    const figures = JSON.parse(
+      await readFile(join(PACKAGE, "calibration.json"), "utf8"),
+    ) as Calibration;
+    const calibration = {
+      text: await readFile(join(PACKAGE, "calibration.md"), "utf8"),
+      figures,
+    };
+    return {
+      runs,
+      figures,
+      site: renderSite(runs, true, undefined, calibration),
+    };
+  });
+  const runsTable = async () =>
+    element(
+      page("compare.html", (await saved()).site),
+      /<table[^>]*data-table="runs"/,
+    );
+  const rowOf = (table: string, name: string) =>
+    element(table, new RegExp(`<tr[^>]*data-run="${name}"`));
+  const countOf = (row: string, which: string) => {
+    const m = /(\d+) of (\d+)/.exec(
+      text(element(row, new RegExp(`<td[^>]*data-arm="${which}"`))),
+    );
+    assert.ok(m !== null, `a ${which} figure`);
+    return [Number(m[1]), Number(m[2])] as const;
+  };
+
+  describe("given every run in the history", () => {
+    it("has one row per run, each arm's figure the sum of what the run's own instance rows show", async () => {
+      const { runs, site } = await saved();
+      assert.ok(runs.length >= 3, "the history holds runs");
+      const front = page("index.html", site);
+      const table = await runsTable();
+      assert.deepEqual(
+        [...table.matchAll(/<tr[^>]*data-run="([^"]+)"/g)].map((m) => m[1]),
+        runs.map((r) => r.name),
+      );
+      for (const { name } of runs) {
+        const own = [
+          ...front.matchAll(
+            new RegExp(
+              `<a class="runrow"[^>]*href="runs/${name}/[^"]*"[\\s\\S]*?</a>`,
+              "g",
+            ),
+          ),
+        ].map((m) => m[0]);
+        assert.ok(own.length > 0, name);
+        for (const which of ARMS) {
+          let right = 0;
+          let of = 0;
+          for (const r of own) {
+            const [, a, b] =
+              new RegExp(
+                `data-arm="${which}"><div>.*?<b>(\\d+) of (\\d+)</b>`,
+              ).exec(r) ?? [];
+            assert.ok(a !== undefined, `${name} ${which} in an instance row`);
+            right += Number(a);
+            of += Number(b);
+          }
+          assert.deepEqual(
+            countOf(rowOf(table, name), which),
+            [right, of],
+            `${name} ${which}`,
+          );
+        }
+      }
+    });
+
+    it("links every run to its instances' pages, each a page of the site", async () => {
+      const { runs, site } = await saved();
+      const table = await runsTable();
+      for (const { name } of runs) {
+        const links = [...rowOf(table, name).matchAll(/href="(runs\/[^"]+)"/g)];
+        assert.ok(links.length > 0, name);
+        for (const [, l] of links) assert.ok(site.has(l!), l);
+      }
+    });
+
+    it("gives the difference as the pod's count minus the grab bag's", async () => {
+      const { runs } = await saved();
+      const table = await runsTable();
+      for (const { name } of runs) {
+        const row = rowOf(table, name);
+        const d = countOf(row, "pod")[0] - countOf(row, "records")[0];
+        assert.equal(
+          text(element(row, /<td[^>]*data-cell="difference"/)).trim(),
+          d > 0 ? `+${d}` : d < 0 ? `−${-d}` : "0",
+          name,
+        );
+      }
+    });
+
+    it("notes the two runs whose grab-bag counts repeat, with a link to the issue, and no other", async () => {
+      const { runs } = await saved();
+      const table = await runsTable();
+      const noted = runs
+        .map((r) => r.name)
+        .filter((name) => rowOf(table, name).includes("/issues/783"));
+      assert.deepEqual(noted.sort(), [
+        "2026-11-04-1ea2f8f-custom",
+        "2026-11-04-3d96d2f-custom",
+      ]);
+    });
+
+    it("breaks the figures down by model and by person across the runs", async () => {
+      const { runs, site } = await saved();
+      const compare = page("compare.html", site);
+      const models = element(compare, /<table[^>]*data-table="models"/);
+      const people = element(compare, /<table[^>]*data-table="people"/);
+      for (const m of new Set(
+        runs.flatMap((r) => r.results.instances.map((i) => i.model)),
+      ))
+        assert.ok(models.includes(`data-group="${m}"`), m);
+      for (const id of new Set(
+        runs.flatMap((r) => r.results.cases.map((c) => c.id)),
+      ))
+        assert.ok(people.includes(`data-group="${id}"`), id);
+      assert.equal(
+        [...people.matchAll(/data-group=/g)].length,
+        new Set(
+          runs.flatMap((r) => r.results.cases.map((c) => `${r.name}/${c.id}`)),
+        ).size,
+        "a row for each person in each run",
+      );
+    });
+
+    it("is linked from the front page and how the test works, and shows no percentage", async () => {
+      const { site } = await saved();
+      for (const path of ["index.html", "how_it_works.html"])
+        assert.match(page(path, site), /href="compare\.html"/, path);
+      assert.equal(/\d%/.test(text(page("compare.html", site))), false);
+    });
+  });
+
+  describe("given calibration.md and calibration.json", () => {
+    it("renders each judge's figures as a table and the markdown's headings, and links the page", async () => {
+      const { site, figures } = await saved();
+      const cal = page("calibration.html", site);
+      const table = text(element(cal, /<table[^>]*data-table="calibration"/));
+      for (const j of figures.judges)
+        assert.ok(table.includes(`${j.agreed} of ${j.items}`), j.model);
+      const said = text(cal);
+      const md = await readFile(join(PACKAGE, "calibration.md"), "utf8");
+      for (const [, h] of md.matchAll(/^## (.*)$/gm))
+        assert.ok(said.includes(h!.replaceAll("`", "")), h);
+      assert.ok(!cal.includes("](") && !cal.includes("**"), "no markdown left");
+      for (const path of ["index.html", "how_it_works.html"])
+        assert.match(page(path, site), /href="calibration\.html"/, path);
+    });
+  });
+
+  describe("given one run and no calibration", () => {
+    it("writes no calibration page and links none", () => {
+      assert.equal(one.has("calibration.html"), false);
+      for (const [path, html] of one)
+        assert.ok(!html.includes("calibration.html"), path);
+      assert.ok(one.has("compare.html"));
     });
   });
 });
