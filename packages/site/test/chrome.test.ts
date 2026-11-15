@@ -349,7 +349,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       const header = text.slice(0, text.indexOf("\n"));
       assert.match(
         header,
-        /^\/\* the-cascade-protocol\/cascadeprotocol\.org, branch site-docs, css\/chrome\.css, at [0-9a-f]{40} \*\/$/,
+        /^\/\* https:\/\/\S+\/css\/chrome\.css, copied \d{4}-\d{2}-\d{2} \*\/$/,
       );
       return text.slice(text.indexOf("\n") + 1);
     };

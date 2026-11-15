@@ -11,12 +11,10 @@ export const websiteChrome = (scope: string): string =>
   COPY.slice(COPY.indexOf("\n") + 1).replaceAll(/:root(?=\s*\{)/g, scope);
 
 /**
- * What the hub adds to the website's chrome: the skip link, the banner, the search box, and the rules of the nav,
- * menu and footer the website's pages have no use for.
+ * What the hub adds to the website's chrome: the search box, and the rules of the nav, menu and footer the
+ * website's pages have no use for.
  */
-const HUB_ADDITIONS = `.b-skip { position: absolute; left: -9999px; }
-.b-skip:focus { left: 16px; top: 8px; z-index: 100; background: #ffffff; padding: 8px 12px; }
-.sx-nav { padding: 0; margin: 0; border: 0; }
+const HUB_ADDITIONS = `.sx-nav { padding: 0; margin: 0; border: 0; }
 .sx-nav span, .sx-menu nav span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--ink);
             font-family: var(--sans); font-size: 15px; text-decoration: none; border-bottom: 2px solid transparent; }
 .sx-menu, .sx-menu nav { margin: 0; }
@@ -41,7 +39,6 @@ const HUB_ADDITIONS = `.b-skip { position: absolute; left: -9999px; }
 .sx-find-where { grid-column: 2; font: 12px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .sx-find-none { padding: 12px 14px; color: var(--ink-2); font-family: var(--sans); font-size: 15px; }
 @media (max-width: 760px) { .sx-find li a { grid-template-columns: 4.5rem 1fr; gap: 0 8px; } }
-.sx-footer { margin: 0; }
 .sx-footer-inner > .sx-footer-legal:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .sx-footer p.sx-footer-built { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
 `;

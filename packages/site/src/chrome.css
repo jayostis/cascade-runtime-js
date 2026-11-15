@@ -1,4 +1,4 @@
-/* the-cascade-protocol/cascadeprotocol.org, branch site-docs, css/chrome.css, at 06ee47e3a8cdfeca8f35f367f0e5e13f190d5008 */
+/* https://site-s36-skip-link-chrome.cascadeprotocol-org.pages.dev/css/chrome.css, copied 2026-11-15 */
 /* 1. Tokens ---------------------------------------------------------------- */
 
 :root {
@@ -24,6 +24,9 @@
 }
 
 /* 2. Shared chrome: alpha strip, header, footer ----------------------------- */
+
+.b-skip { position: absolute; left: -9999px; }
+.b-skip:focus { left: 16px; top: 8px; z-index: 100; background: #ffffff; padding: 8px 12px; }
 
 .sx-strip {
     background: var(--ink);
