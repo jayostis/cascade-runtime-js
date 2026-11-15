@@ -602,7 +602,7 @@ jobs:
   build-pages:
     name: build-pages
     needs: [conformance]
-    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     # `actions` lets the test reports' lookup list this repository's runs, which a private one would refuse by default.
     permissions:
@@ -722,8 +722,8 @@ jobs:
   pages:
     name: pages
     needs: [build-pages, release]
-    # A push deploys what its release built; the nightly run has no release, only the tree to redeploy.
-    if: ${{ !cancelled() && needs.build-pages.result == 'success' && (needs.release.result == 'success' || (github.event_name == 'schedule' && needs.release.result == 'skipped')) }}
+    # A push deploys what its release built; the nightly run and a manual run have no release, only the tree to redeploy.
+    if: ${{ !cancelled() && needs.build-pages.result == 'success' && (needs.release.result == 'success' || ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.release.result == 'skipped')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
