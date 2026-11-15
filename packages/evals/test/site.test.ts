@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { HISTORY, PACKAGE } from "../src/paths.js";
 import { after, before, describe, it } from "node:test";
 import { instancesOf } from "../src/instances.js";
-import type { Results } from "../src/results.js";
+import type { Job, Results } from "../src/results.js";
 import { errorsOf } from "../src/schemas.js";
 import type { RenderMarkdown } from "../src/site-calibration.js";
 import { buildSite, renderSite } from "../src/site.js";
@@ -39,7 +39,7 @@ const asModel = (name: string, model: string): Results => {
   const text = JSON.stringify(recorded)
     .replaceAll("opus-5-5", model.replace(/^claude-/, ""))
     .replaceAll("claude-opus-5-5", model)
-    .replace('"id": "fixture-1"', `"id": "${name}"`);
+    .replace('"id":"fixture-1"', `"id":"${name}"`);
   return JSON.parse(text) as Results;
 };
 
@@ -209,6 +209,50 @@ describe("Reading the report's front page · renderSite()", () => {
           which,
         );
       }
+    });
+
+    const reusing = (from: (id: string) => string) => {
+      const later = asModel("fixture-2", "claude-opus-5-5");
+      for (const job of later.jobs as Job[])
+        if (job.role === "subject") {
+          job.status = "reused";
+          job.reusedFrom = from(job.id);
+        }
+      return later;
+    };
+    const frontOf = (runs: { name: string; results: Results }[]) =>
+      renderSite(runs).get("index.html")!;
+    const figures = (front: string) =>
+      ARMS.map((which) =>
+        text(element(front, new RegExp(`<[a-z]+[^>]*data-total="${which}"`))),
+      );
+    const totalsOf = (front: string) =>
+      text(element(front, /<section[^>]*class="totals"/));
+    const COUNTED_ONCE = /counted once, in the run that gave them/;
+    const first = { name: "fixture-1", results: recorded };
+
+    it("counts an answer a later run reused once, in the run that gave it, in whatever order the runs come", () => {
+      const later = reusing((id) => `fixture-1/${id}`);
+      const once = figures(frontOf([first]));
+      const both = [{ name: "fixture-2", results: later }, first];
+      assert.deepEqual(figures(frontOf(both)), once);
+      assert.deepEqual(figures(frontOf([...both].reverse())), once);
+      assert.match(totalsOf(frontOf(both)), COUNTED_ONCE);
+      assert.doesNotMatch(totalsOf(frontOf([first])), COUNTED_ONCE);
+    });
+
+    it("counts an answer in full when the run that gave it is not on the page", () => {
+      const later = reusing((id) => `fixture-1/${id}`);
+      const front = frontOf([{ name: "fixture-2", results: later }]);
+      assert.deepEqual(figures(front), figures(frontOf([first])));
+      assert.doesNotMatch(totalsOf(front), COUNTED_ONCE);
+    });
+
+    it("counts an answer in full when a job reuses from its own run", () => {
+      const own = reusing((id) => `fixture-2/${id}`);
+      const front = frontOf([{ name: "fixture-2", results: own }]);
+      assert.deepEqual(figures(front), figures(frontOf([first])));
+      assert.doesNotMatch(totalsOf(front), COUNTED_ONCE);
     });
 
     it("states the totals' limit and that runs vary", () => {

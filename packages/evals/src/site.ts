@@ -74,14 +74,31 @@ function headline(entries: readonly Entry[]): string {
 
 /** Each arm's cited facts borne out, added up over every run on the page, with what the totals rest on. */
 function citationTotals(entries: readonly Entry[]): string {
+  const shown = new Set(entries.map((e) => e.results.run.id));
+  const repeated = new Set<string>();
   const total = (which: Arm) => {
     let held = 0;
     let failed = 0;
     for (const e of entries) {
       const a = e.instance.arms[which];
       if (a === undefined) continue;
-      held += a.citations.held;
-      failed += a.citations.failed;
+      for (const id of a.sessions) {
+        const job = e.results.jobs.find((it) => it.id === id);
+        const from = job?.reusedFrom?.split("/")[0];
+        if (
+          from !== undefined &&
+          from !== e.results.run.id &&
+          shown.has(from)
+        ) {
+          repeated.add(`${e.results.run.id}/${id}`);
+          continue;
+        }
+        for (const one of Object.values(e.results.checks[id] ?? {}))
+          for (const { ok } of one.citations) {
+            if (ok) held += 1;
+            else failed += 1;
+          }
+      }
     }
     return { held, of: held + failed };
   };
@@ -97,7 +114,7 @@ function citationTotals(entries: readonly Entry[]): string {
     return `<span data-total="${which}">${badge(which)} <b>${t.held} of ${t.of}</b></span>`;
   }).join(" · ");
   return `<section class="totals"><h2>Cited facts borne out, in all</h2>
-<p>A program checks each fact an answer cites against the record it names. Over ${many(entries.length, "run", "runs")} on this page, added up here from the recorded runs: ${sums} cited facts borne out. The same figures stand under each run below.</p>
+<p>A program checks each fact an answer cites against the record it names. Over ${many(entries.length, "run", "runs")} on this page, added up here from the recorded runs: ${sums} cited facts borne out.${repeated.size === 0 ? " The same figures stand under each run below." : ` ${many(repeated.size, "session", "sessions")} of answers a later run reused from an earlier run on this page are counted once, in the run that gave them; each run below shows all of its own.`}</p>
 <p class="small muted">The limit: these are ${many(people.size, "made-up person", "made-up people")} and ${many(models.size, "model", "models")} (${named.join(", ")}); runs vary, so read a total as what happened in these runs, not as a rate to expect.</p></section>`;
 }
 
