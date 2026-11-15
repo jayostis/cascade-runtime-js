@@ -148,7 +148,9 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
 
     it("writes the index and one page for each query, a name with spaces given a slug", () => {
       assert.deepEqual(
-        [...tree.keys()].map((path) => path.replace(/--[0-9a-f]+/, "--DIGEST")).sort(),
+        [...tree.keys()]
+          .map((path) => path.replace(/--[0-9a-f]+/, "--DIGEST"))
+          .sort(),
         [
           "queries/derivations/no-comment-here.html",
           "queries/index.html",
@@ -171,7 +173,10 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
     });
 
     it("lists each query on the index under its kind, with the first sentence of its leading comment", () => {
-      const index = readPage(read(tree, "queries/index.html"), "queries/index.html");
+      const index = readPage(
+        read(tree, "queries/index.html"),
+        "queries/index.html",
+      );
       for (const id of ["questions", "views", "derivations", "labels"])
         assert.ok(index.ids.has(id), `no #${id}`);
       assert.match(
@@ -180,7 +185,10 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
         "the view's purpose",
       );
       assert.doesNotMatch(index.said, /read from the view alone/);
-      assert.match(index.said, /Every vaccine the person has had, newest first\./);
+      assert.match(
+        index.said,
+        /Every vaccine the person has had, newest first\./,
+      );
       assert.doesNotMatch(index.said, /A second sentence/);
       assert.ok(index.hrefs.includes("queries/views/vaccines.html"));
     });
@@ -188,7 +196,9 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
     it("says a query with no comment by its filename as a phrase, and nothing more", () => {
       const index = readPage(read(tree, "queries/index.html"));
       assert.match(index.said, /no comment here/);
-      const page = readPage(read(tree, "queries/derivations/no-comment-here.html"));
+      const page = readPage(
+        read(tree, "queries/derivations/no-comment-here.html"),
+      );
       assert.equal(page.h1, "no comment here");
     });
 
@@ -282,9 +292,32 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
       );
       assert.ok(page);
       const html = read(tree, page);
-      assert.equal((html.match(/<tr>/g) ?? []).length, 100 + 0);
+      assert.equal((html.match(/<tr><td/g) ?? []).length, 100);
       assert.match(readPage(html).said, /first 100 of 130 rows/);
-      assert.ok(readPage(html, page).hrefs.includes("alex-rivera/answers.json"));
+      assert.ok(
+        readPage(html, page).hrefs.includes("alex-rivera/answers.json"),
+      );
+    });
+  });
+
+  describe("given a query whose comment is one sentence longer than a line", () => {
+    it("cuts its line of the index at a word with an ellipsis, and keeps the whole comment on its page", async () => {
+      const files = await vocabulary();
+      const long = `Each ${"entry of a very long kind ".repeat(20)}ends here.`;
+      await files.write(
+        "queries/lenses/long.rq",
+        text(`# ${long}
+SELECT ?s WHERE { ?s ?p ?o }
+`),
+      );
+      const tree = await build(files, alex());
+      const line = readPage(read(tree, "queries/index.html")).said;
+      assert.match(line, /Each entry of a very long kind .*[a-z]…/);
+      assert.ok(!line.includes("ends here"));
+      assert.match(
+        readPage(read(tree, "queries/lenses/long.html")).said,
+        /ends here./,
+      );
     });
   });
 
@@ -320,7 +353,9 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
       const sources = new Map<string, number>();
       for (const [path, bytes] of tree) {
         if (path === "queries/index.html") continue;
-        const link = readPage(new TextDecoder().decode(bytes), path).hrefs.at(-1);
+        const link = readPage(new TextDecoder().decode(bytes), path).hrefs.at(
+          -1,
+        );
         const source = decodeURI(link ?? "").replace(/^.*\/blob\/[^/]+\//, "");
         sources.set(source, (sources.get(source) ?? 0) + 1);
       }
@@ -390,7 +425,9 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
         ),
       );
       assert.match(read(tree, "llms.txt"), /queries\//);
-      assert.ok(read(tree, "index.json").includes('"queries/views/vaccines.html"'));
+      assert.ok(
+        read(tree, "index.json").includes('"queries/views/vaccines.html"'),
+      );
       assert.ok(typeof agentFiles === "function");
     });
 

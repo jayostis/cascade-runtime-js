@@ -1,6 +1,7 @@
 import { adaptersSection } from "../../hub/adapters.js";
 import { examplesSection } from "../../hub/examples.js";
 import type { PagesContext } from "../../hub/context.js";
+import { queriesSection } from "../../hub/queries.js";
 import { specSection } from "../../hub/spec.js";
 import { startSection } from "../../hub/start.js";
 import { testsSection } from "../../hub/tests.js";
@@ -16,6 +17,7 @@ export const SECTIONS: readonly Section<PagesContext>[] = [
   startSection,
   apiSection,
   termsSection,
+  queriesSection,
   examplesSection,
   specSection,
   adaptersSection,

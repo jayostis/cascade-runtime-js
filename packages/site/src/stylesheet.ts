@@ -164,6 +164,13 @@ summary { cursor: pointer; color: var(--link); }
 .document pre { background: var(--paper); padding: .75rem; overflow-x: auto; border-radius: 4px; }
 .document :not(pre) > code { background: var(--paper); padding: 0 .2rem; border-radius: 3px; }
 .document li { margin: .15rem 0; }
+pre.code { background: var(--paper); padding: .75rem; overflow-x: auto; max-width: 100%; border-radius: 4px; }
+.tk-c { color: var(--muted); }
+.tk-i, .tk-s { color: var(--link); }
+.tk-v { color: var(--ink); font-weight: 500; }
+.tk-k { font-weight: 600; }
+ul.queries { padding-left: 1.1rem; }
+ul.queries li { margin: .25rem 0; }
 details pre { background: var(--paper); padding: .75rem; overflow-x: auto; border-radius: 4px; }
 @media (max-width: 40rem) {
   .layout { grid-template-columns: minmax(0, 1fr); }
