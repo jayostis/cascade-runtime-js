@@ -25,6 +25,7 @@ const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const VACCINE_CODE = `${CASCADE}vaccineCode`;
 const VACCINATION = `${CASCADE}Vaccination`;
 const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
+const PROV = "http://www.w3.org/ns/prov#";
 const CVX_SHAPE = `${CASCADE}CvxCodeShape`;
 const SPEC = "../spec/";
 
@@ -32,11 +33,26 @@ const ONTOLOGY = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <https://ns.cascadeprotocol.org/cascade#> a owl:Ontology .
+
+cascade:Immunize a owl:Class ;
+    rdfs:label "Immunize"@en ;
+    rdfs:comment "Giving a vaccine. It happens once."@en ;
+    rdfs:subClassOf prov:Activity .
+
+cascade:Standalone a owl:Class ;
+    rdfs:label "Standalone"@en ;
+    rdfs:comment "Something else entirely. More words follow."@en .
+
+prov:Entity a owl:Class ;
+    rdfs:label "Entity" ;
+    rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> ;
+    dct:source <https://www.w3.org/ns/prov-o-20130430> .
 
 cascade:Vaccination a owl:Class ;
     rdfs:label "Vaccination"@en ;
@@ -79,6 +95,13 @@ cascade:CvxCodeShape a sh:NodeShape ;
     sh:nodeKind sh:IRI .
 `;
 
+const LAYOUT = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix solid: <http://www.w3.org/ns/solid/terms#> .
+
+[] a cascade:Placement ; solid:forClass cascade:Vaccination ; solid:instanceContainer <records/immunizations/> ; cascade:holdsRecords true .
+[] a cascade:Placement ; solid:forClass cascade:Immunize ; solid:instanceContainer <records/acts/> .
+`;
+
 const PREFIXED = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 SELECT ?code WHERE { ?v cascade:vaccineCode ?code }
 `;
@@ -112,8 +135,20 @@ async function fixture(): Promise<Files> {
   await files.write("queries/questions/latest-vaccine.rq", text(WHOLE));
   await files.write("queries/views/vaccine-systems.rq", text(NEITHER));
   await files.write("runtime/vaccines.feature", text(FEATURE));
+  await files.write("runtime/pod-layout.ttl", text(LAYOUT));
   return files;
 }
+
+/** The markup of the part of a page from the heading with the id to the next heading of its level. */
+function partOf(page: string, id: string): string {
+  const from = page.split(`id="${id}"`)[1];
+  assert.ok(from !== undefined, `no heading has the id ${id}`);
+  return from.split(/<h2[ >]/)[0] ?? "";
+}
+
+/** The text of that part. */
+const part = (page: string, id: string): string =>
+  readPage(partOf(page, id)).said;
 
 /** The markup of the entry whose heading carries the id. */
 function entry(page: string, id: string): string {
@@ -170,12 +205,30 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.ok(!readPage(page).ids.has(CASCADE));
     });
 
-    it('shows a vocabulary term\'s name, its type, its domain as a link, and "none stated" for a range it lacks', () => {
+    it("shows a vocabulary term's name, its type and its domain as a link, and no row for a range it lacks", () => {
       const shown = readPage(entry(page, termId(VACCINE_CODE)));
       assert.match(shown.said, /Vaccine Code/);
       assert.match(shown.said, /owl:ObjectProperty/);
       assert.ok(shown.hrefs.includes(termHref(VACCINATION, "")), "its domain");
-      assert.match(shown.said, /Range none stated/);
+      assert.doesNotMatch(shown.said, /Range|Subproperty of|License/);
+      assert.match(
+        readPage(entry(page, termId(`${CASCADE}vaccineCodeSystem`))).said,
+        /Range/,
+      );
+    });
+
+    it("says none stated nowhere", () => {
+      assert.doesNotMatch(readPage(page).said, /none stated|no property/i);
+    });
+
+    it('says "No definition yet" of its own term with no comment, and of no term copied from another vocabulary', () => {
+      assert.match(
+        readPage(entry(page, termId(VACCINE_CODE))).said,
+        /No definition yet/,
+      );
+      const copied = readPage(entry(page, termId(`${PROV}Entity`))).said;
+      assert.doesNotMatch(copied, /No definition yet/);
+      assert.match(copied, /from PROV-O/);
     });
 
     it("shows a vocabulary term's comment, its see-also link, its source and its licence", () => {
@@ -250,6 +303,65 @@ describe("The term reference · termReference(), termsSection", () => {
 
     it("names the commit of the vocabulary it was read at", () => {
       assert.ok(page.includes(TREE));
+    });
+  });
+
+  describe("its index of classes", () => {
+    it("opens the page's lists, before the properties", () => {
+      const { said } = readPage(page);
+      assert.ok(
+        said.indexOf("What a pod holds") < said.indexOf("Properties"),
+        "classes first",
+      );
+    });
+
+    it("lists under what a pod holds each class the pod layout says holds records, with its label, its name and its first sentence", () => {
+      const held = part(page, "what-a-pod-holds");
+      assert.match(
+        held,
+        /Vaccination.*cascade:Vaccination.*A vaccine given to the person\./,
+      );
+      assert.doesNotMatch(held, /Immunize|Standalone/);
+      assert.ok(
+        readPage(partOf(page, "what-a-pod-holds")).hrefs.includes(
+          termHref(VACCINATION, ""),
+        ),
+      );
+    });
+
+    it("lists the subclasses of prov:Activity under acts, with only the first sentence of their comment", () => {
+      const acts = part(page, "acts");
+      assert.match(acts, /Immunize.*cascade:Immunize.*Giving a vaccine\./);
+      assert.doesNotMatch(acts, /It happens once/);
+      assert.doesNotMatch(acts, /Vaccination|Standalone/);
+    });
+
+    it("lists the other classes of the vocabulary's own under other classes, and none copied from elsewhere", () => {
+      const other = part(page, "other-classes");
+      assert.match(other, /Standalone/);
+      assert.doesNotMatch(other, /Vaccination|Immunize|Entity/);
+    });
+
+    it("says of a class with no comment that it has no definition yet", async () => {
+      const files = await fixture();
+      await files.write(
+        "ontologies/cascade.ttl",
+        text(`${ONTOLOGY}\ncascade:Bare a owl:Class .\n`),
+      );
+      assert.match(
+        part(await termReference(files, PLAIN), "other-classes"),
+        /cascade:Bare.*No definition yet/,
+      );
+    });
+
+    it("links every name of a list to an entry of the page", () => {
+      const { ids } = readPage(page);
+      for (const id of ["what-a-pod-holds", "acts", "other-classes"]) {
+        const linked = readPage(partOf(page, id)).hrefs;
+        assert.ok(linked.length > 0, id);
+        for (const href of linked)
+          assert.ok(ids.has(decodeURIComponent(href.slice(1))), href);
+      }
     });
   });
 
@@ -351,6 +463,40 @@ describe("The term reference · termReference(), termsSection", () => {
         [...declared].filter((iri) => !ids.has(termId(iri))),
         [],
       );
+    });
+
+    it("lists under what a pod holds every class the pod layout says holds records", async () => {
+      const layout = await new OxigraphStore().parse(
+        (await files.read("runtime/pod-layout.ttl")) ?? new Uint8Array(),
+        `${files.iri}runtime/pod-layout.ttl`,
+      );
+      const holders = new Set(
+        layout
+          .filter(
+            ([, p, o]) =>
+              p.value === `${CASCADE}holdsRecords` && o.value === "true",
+          )
+          .map(([s]) => s.value),
+      );
+      const classes = layout
+        .filter(
+          ([s, p]) =>
+            holders.has(s.value) &&
+            p.value === "http://www.w3.org/ns/solid/terms#forClass",
+        )
+        .map(([, , o]) => o.value);
+      assert.ok(classes.length > 5);
+      const held = readPage(partOf(real, "what-a-pod-holds")).hrefs;
+      assert.deepEqual(
+        classes.filter((iri) => !held.includes(termHref(iri, ""))),
+        [],
+      );
+    });
+
+    it("says none stated nowhere, and of no term copied from PROV-O that it has no definition yet", () => {
+      assert.doesNotMatch(readPage(real).said, /none stated/);
+      const activity = readPage(entry(real, termId(`${PROV}Activity`))).said;
+      assert.doesNotMatch(activity, /No definition yet/);
     });
 
     it("links a query from the entry of `cascade:vaccineCode`", () => {
