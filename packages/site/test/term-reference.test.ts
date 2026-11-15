@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { dirname } from "node:path";
+import { dirname, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { before, describe, it } from "node:test";
 import {
@@ -13,14 +13,17 @@ import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
 import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { termsSection } from "../src/hub/terms.js";
-import { ruleHref, termHref, termId } from "../src/links.js";
+import { ruleHref, termHref, termId, termPage } from "../src/links.js";
 import { buildTree } from "../src/sections.js";
 import { specPages } from "../src/spec.js";
 import {
   GLOSS_LIMIT,
+  TERMS_JSON,
   TERMS_PAGE,
   gloss,
+  termPages,
   termReference,
+  termsJson,
 } from "../src/term-reference.js";
 import { readPage } from "./page.js";
 
@@ -32,7 +35,7 @@ const VACCINATION = `${CASCADE}Vaccination`;
 const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
 const PROV = "http://www.w3.org/ns/prov#";
 const CVX_SHAPE = `${CASCADE}CvxCodeShape`;
-const SPEC = "../spec/";
+const SPEC = "../../spec/";
 
 const ONTOLOGY = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix dct: <http://purl.org/dc/terms/> .
@@ -76,7 +79,18 @@ cascade:vaccineCodeSystem a owl:DatatypeProperty ;
     rdfs:range xsd:string .
 
 cascade:Given a skos:Concept ;
-    skos:prefLabel "Given"@en .
+    skos:prefLabel "Given"@en ;
+    skos:inScheme cascade:Outcomes .
+
+cascade:Outcomes a skos:ConceptScheme ;
+    skos:prefLabel "Outcomes"@en .
+
+cascade:Refused a skos:Concept ;
+    skos:prefLabel "Refused"@en ;
+    skos:inScheme cascade:Outcomes .
+
+cascade:Alone a skos:Concept ;
+    skos:prefLabel "Alone"@en .
 
 foaf:name a owl:DatatypeProperty ;
     rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/> ;
@@ -85,6 +99,7 @@ foaf:name a owl:DatatypeProperty ;
 
 const SHAPES = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 cascade:VaccinationShape a sh:NodeShape ;
     sh:targetClass cascade:Vaccination ;
@@ -94,6 +109,12 @@ cascade:VaccinationShape a sh:NodeShape ;
         sh:node cascade:CvxCodeShape ;
         sh:maxCount 1 ;
         sh:message "A vaccine code is one IRI."@en
+    ] ;
+    sh:property [
+        sh:path cascade:vaccineCodeSystem ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 3
     ] .
 
 cascade:CvxCodeShape a sh:NodeShape ;
@@ -155,28 +176,27 @@ function partOf(page: string, id: string): string {
 const part = (page: string, id: string): string =>
   readPage(partOf(page, id)).said;
 
-/** The markup of the entry whose heading carries the id. */
-function entry(page: string, id: string): string {
-  const found = page
-    .split('<section class="term"')
-    .slice(1)
-    .map((part) => part.split("</section>")[0] ?? "")
-    .find((part) => part.includes(` id="${id}"`));
-  assert.ok(found !== undefined, `no entry has the id ${id}`);
+/** The markup of the page of the term with the IRI. */
+function entry(pages: ReadonlyMap<string, string>, iri: string): string {
+  const found = pages.get(termPage(iri));
+  assert.ok(found !== undefined, `no page for ${iri}`);
   return found;
 }
 
 /**
- * The term reference is one page with an entry for every vocabulary term: what it is, the shapes that check it, and each
- * query and rule that names it. Every other page's link to a vocabulary term lands here.
+ * The term reference is an index and a page for every vocabulary term: what it is, the shapes that check it, and each
+ * query and rule that names it. Every other page's link to a vocabulary term lands on its page.
  */
 describe("The term reference · termReference(), termsSection", () => {
   let page: string;
-  /** The page of a vocabulary with one more shape, and eleven more queries that name `cascade:vaccineCodeSystem`. */
-  let many: string;
+  let pages: ReadonlyMap<string, string>;
+  /** The pages of a vocabulary with one more shape, and eleven more queries that name `cascade:vaccineCodeSystem`. */
+  let many: ReadonlyMap<string, string>;
+  let manyFiles: Files;
 
   before(async () => {
     page = await termReference(await fixture(), PLAIN);
+    pages = await termPages(await fixture(), PLAIN);
     const system = `${CASCADE}vaccineCodeSystem`;
     const files = await fixture();
     await files.write(
@@ -190,11 +210,12 @@ describe("The term reference · termReference(), termsSection", () => {
         `queries/views/many-${n}.rq`,
         text(`SELECT ?s WHERE { ?v <${system}> ?s } # ${n}`),
       );
-    many = await termReference(files, PLAIN);
+    manyFiles = files;
+    many = await termPages(files, PLAIN);
   });
 
-  describe("`termReference()`", () => {
-    it("gives each vocabulary term an entry at the anchor `termHref()` links, one copied from elsewhere too", () => {
+  describe("`termPages()`", () => {
+    it("gives each vocabulary term a page at the address `termHref()` links, one copied from elsewhere too", () => {
       const { ids } = readPage(page);
       for (const iri of [
         VACCINATION,
@@ -202,22 +223,37 @@ describe("The term reference · termReference(), termsSection", () => {
         `${CASCADE}vaccineCodeSystem`,
         `${CASCADE}Given`,
         FOAF_NAME,
-      ])
-        assert.ok(ids.has(termId(iri)), `no anchor for ${iri}`);
+      ]) {
+        assert.ok(pages.has(termHref(iri, "")), `no page for ${iri}`);
+        assert.ok(ids.has(termId(iri)), `the index has no row for ${iri}`);
+      }
+      assert.ok(pages.has("cascade/Vaccination.html"));
+      assert.ok(pages.has("foaf/name.html"));
     });
 
-    it("gives the vocabulary's own namespace no entry", () => {
+    it("gives the vocabulary's own namespace no page", () => {
       assert.ok(!readPage(page).ids.has(CASCADE));
+      assert.ok(![...pages.keys()].some((path) => path.endsWith("/.html")));
+    });
+
+    it("gives each page the id of its term on its heading, so a search row lands on it", () => {
+      assert.match(
+        entry(pages, VACCINE_CODE),
+        /<h1 id="cascade:vaccineCode"><code>cascade:vaccineCode<\/code> Vaccine Code<\/h1>/,
+      );
     });
 
     it("shows a vocabulary term's name, its type and its domain as a link, and no row for a range it lacks", () => {
-      const shown = readPage(entry(page, termId(VACCINE_CODE)));
+      const shown = readPage(entry(pages, VACCINE_CODE));
       assert.match(shown.said, /Vaccine Code/);
       assert.match(shown.said, /owl:ObjectProperty/);
-      assert.ok(shown.hrefs.includes(termHref(VACCINATION, "")), "its domain");
+      assert.ok(
+        shown.hrefs.includes(termHref(VACCINATION, "../")),
+        "its domain",
+      );
       assert.doesNotMatch(shown.said, /Range|Subproperty of|License/);
       assert.match(
-        readPage(entry(page, termId(`${CASCADE}vaccineCodeSystem`))).said,
+        readPage(entry(pages, `${CASCADE}vaccineCodeSystem`)).said,
         /Range/,
       );
     });
@@ -228,16 +264,16 @@ describe("The term reference · termReference(), termsSection", () => {
 
     it('says "No definition yet" of its own term with no comment, and of no term copied from another vocabulary', () => {
       assert.match(
-        readPage(entry(page, termId(VACCINE_CODE))).said,
+        readPage(entry(pages, VACCINE_CODE)).said,
         /No definition yet/,
       );
-      const copied = readPage(entry(page, termId(`${PROV}Entity`))).said;
+      const copied = readPage(entry(pages, `${PROV}Entity`)).said;
       assert.doesNotMatch(copied, /No definition yet/);
       assert.match(copied, /from PROV-O/);
     });
 
     it("shows a vocabulary term's comment, its see-also link, its source and its licence", () => {
-      const vaccination = readPage(entry(page, termId(VACCINATION)));
+      const vaccination = readPage(entry(pages, VACCINATION));
       assert.match(vaccination.said, /A vaccine given to the person\./);
       assert.ok(
         vaccination.hrefs.includes("https://hl7.org/fhir/R4/immunization.html"),
@@ -248,61 +284,113 @@ describe("The term reference · termReference(), termsSection", () => {
           "https://creativecommons.org/licenses/by/4.0/",
         ),
       );
-      const name = readPage(entry(page, termId(FOAF_NAME)));
+      const name = readPage(entry(pages, FOAF_NAME));
       assert.ok(name.hrefs.includes("http://xmlns.com/foaf/spec/20140114.rdf"));
     });
 
     it("shows the shape that checks a vocabulary term: its name, its limits and its message", () => {
-      const { said } = readPage(entry(page, termId(VACCINE_CODE)));
+      const { said } = readPage(entry(pages, VACCINE_CODE));
       assert.match(said, /cascade:VaccinationShape/);
       assert.match(said, /maxCount 1/);
       assert.match(said, /A vaccine code is one IRI\./);
     });
 
-    it("links a shape that another shape sends a value to, at an anchor of its own", () => {
-      const shown = readPage(entry(page, termId(VACCINE_CODE)));
-      assert.ok(shown.hrefs.includes(termHref(CVX_SHAPE, "")));
+    it("links a shape that another shape sends a value to, at an anchor of its own on the index", () => {
+      const shown = readPage(entry(pages, VACCINE_CODE));
+      assert.ok(shown.hrefs.includes(`../index.html#${termId(CVX_SHAPE)}`));
       assert.ok(readPage(page).ids.has(termId(CVX_SHAPE)));
     });
 
+    it("shows a class's shape as a table of each property, its value type, how many and what it says when it is not met", () => {
+      const { said, hrefs } = readPage(entry(pages, VACCINATION));
+      assert.match(said, /Property.*Value type.*How many.*When it is not met/);
+      assert.match(
+        said,
+        /cascade:vaccineCode.*cascade:CvxCodeShape.*at most 1.*A vaccine code is one IRI\./,
+      );
+      assert.match(said, /cascade:vaccineCodeSystem.*xsd:string.*1 to 3/);
+      assert.ok(hrefs.includes(termHref(VACCINE_CODE, "../")));
+    });
+
+    it("leaves out what a term has none of, so a term with no query, rule or source has no closed section", () => {
+      assert.doesNotMatch(
+        readPage(entry(pages, `${CASCADE}vaccineCodeSystem`)).said,
+        /No query|No rule|Source|License/,
+      );
+      assert.doesNotMatch(
+        entry(pages, `${CASCADE}Standalone`),
+        /Where it comes from/,
+      );
+    });
+
+    it("puts the rules, what a class is a subclass of, its source and its licence in a section that is closed", () => {
+      const html = entry(pages, VACCINATION);
+      assert.ok(!/<details open/.test(html));
+      const [open = "", closed = ""] = html.split("<details>");
+      assert.match(closed, /Where it comes from/);
+      for (const label of ["Rules", "Source", "License"]) {
+        assert.ok(closed.includes(`<dt>${label}</dt>`), label);
+        assert.ok(!open.includes(`<dt>${label}</dt>`), label);
+      }
+      assert.match(
+        entry(pages, `${CASCADE}Immunize`).split("<details>")[1] ?? "",
+        /Subclass of/,
+      );
+    });
+
+    it("lists the other members of the scheme a named thing is in, and the members on the scheme's own page", () => {
+      const given = readPage(entry(pages, `${CASCADE}Given`));
+      assert.match(given.said, /In the scheme.*cascade:Outcomes/);
+      assert.match(
+        given.said,
+        /Other members of cascade:Outcomes.*cascade:Refused/,
+      );
+      assert.ok(given.hrefs.includes("../cascade/Refused.html"));
+      assert.doesNotMatch(given.said, /Other members.*cascade:Given/);
+      const scheme = readPage(entry(pages, `${CASCADE}Outcomes`));
+      assert.match(scheme.said, /Members.*cascade:Given.*cascade:Refused/);
+      assert.doesNotMatch(
+        readPage(entry(pages, `${CASCADE}Alone`)).said,
+        /scheme|Members/,
+      );
+    });
+
     it("links each query that names the vocabulary term, by prefix or by whole IRI", () => {
-      const { hrefs } = readPage(entry(page, termId(VACCINE_CODE)));
+      const { hrefs } = readPage(entry(pages, VACCINE_CODE));
       assert.ok(hrefs.includes(`${BLOB}queries/views/vaccines.rq`));
       assert.ok(hrefs.includes(`${BLOB}queries/questions/latest-vaccine.rq`));
     });
 
     it("leaves out a query that names only a longer name, or names it in a comment", () => {
-      const { hrefs } = readPage(entry(page, termId(VACCINE_CODE)));
+      const { hrefs } = readPage(entry(pages, VACCINE_CODE));
       assert.ok(!hrefs.includes(`${BLOB}queries/views/vaccine-systems.rq`));
     });
 
     it("links each rule whose text names the vocabulary term, by prefix or by whole IRI", () => {
       const v1 = ruleHref("runtime/vaccines.feature", "V1", SPEC);
       const v2 = ruleHref("runtime/vaccines.feature", "V2", SPEC);
-      const vaccineCode = readPage(entry(page, termId(VACCINE_CODE)));
+      const vaccineCode = readPage(entry(pages, VACCINE_CODE));
       assert.ok(vaccineCode.hrefs.includes(v1));
       assert.ok(!vaccineCode.hrefs.includes(v2));
-      assert.ok(readPage(entry(page, termId(VACCINATION))).hrefs.includes(v2));
-    });
-
-    it("says when no query names a vocabulary term", () => {
-      assert.match(
-        readPage(entry(page, termId(VACCINATION))).said,
-        /No query names it\./,
-      );
+      assert.ok(readPage(entry(pages, VACCINATION)).hrefs.includes(v2));
     });
 
     it("shows an IRI on `ns.cascadeprotocol.org` as text, never as a link", () => {
-      const { hrefs, said } = readPage(page);
-      assert.deepEqual(
-        hrefs.filter((href) =>
-          /^https?:\/\/ns\.cascadeprotocol\.org/i.test(href),
-        ),
-        [],
-      );
-      assert.ok(said.includes(VACCINE_CODE), "the IRI as text");
+      for (const html of [page, ...pages.values()])
+        assert.deepEqual(
+          readPage(html).hrefs.filter((href) =>
+            /^https?:\/\/ns\.cascadeprotocol\.org/i.test(href),
+          ),
+          [],
+        );
       assert.ok(
-        said.includes("https://ns.cascadeprotocol.org/bridge/v1-draft#Run"),
+        readPage(entry(pages, VACCINE_CODE)).said.includes(VACCINE_CODE),
+        "the IRI as text",
+      );
+      assert.ok(
+        readPage(entry(pages, VACCINATION)).said.includes(
+          "https://ns.cascadeprotocol.org/bridge/v1-draft#Run",
+        ),
       );
     });
 
@@ -389,14 +477,25 @@ describe("The term reference · termReference(), termsSection", () => {
       );
     });
 
-    it("links every name of a list to an entry of the page", () => {
-      const { ids } = readPage(page);
+    it("links every name of a list to the page of a term", () => {
       for (const id of ["what-a-pod-holds", "acts", "other-classes"]) {
         const linked = readPage(partOf(page, id)).hrefs;
         assert.ok(linked.length > 0, id);
-        for (const href of linked)
-          assert.ok(ids.has(decodeURIComponent(href.slice(1))), href);
+        for (const href of linked) assert.ok(pages.has(href), href);
       }
+    });
+
+    it("gives every term a row with the id its anchor had, so an old link to `terms/#cascade:Name` lands on the row", () => {
+      const { ids } = readPage(page);
+      for (const path of pages.keys()) {
+        const found = /<h1 id="([^"]+)"/.exec(pages.get(path) ?? "")?.[1] ?? "";
+        assert.ok(ids.has(found), `${path}: the index has no row ${found}`);
+      }
+      assert.match(page, /<li id="cascade:Vaccination">/);
+      assert.match(
+        page,
+        /<a id="cascade:vaccineCode" href="cascade\/vaccineCode\.html">/,
+      );
     });
   });
 
@@ -405,7 +504,7 @@ describe("The term reference · termReference(), termsSection", () => {
     const alone = `${CASCADE}SystemShape`;
 
     it("shows the shape whole in that property's entry", () => {
-      const shown = entry(many, termId(system));
+      const shown = entry(many, system);
       assert.ok(shown.includes(`id="${termId(alone)}"`), "the shape's anchor");
       assert.match(
         readPage(shown).said,
@@ -413,8 +512,9 @@ describe("The term reference · termReference(), termsSection", () => {
       );
     });
 
-    it("leaves it out of the list of shapes that only another shape reaches", () => {
-      const part = many.split('id="shapes"')[1] ?? "";
+    it("leaves it out of the list of shapes that only another shape reaches", async () => {
+      const part =
+        (await termReference(manyFiles, PLAIN)).split('id="shapes"')[1] ?? "";
       assert.ok(!part.includes(`id="${termId(alone)}"`));
       assert.ok(part.includes(`id="${termId(CVX_SHAPE)}"`));
     });
@@ -423,7 +523,7 @@ describe("The term reference · termReference(), termsSection", () => {
   describe("with more than ten queries that name one vocabulary term", () => {
     it("folds them under their count", () => {
       assert.match(
-        entry(many, termId(`${CASCADE}vaccineCodeSystem`)),
+        entry(many, `${CASCADE}vaccineCodeSystem`),
         /<details><summary>12 queries<\/summary>/,
       );
     });
@@ -431,7 +531,7 @@ describe("The term reference · termReference(), termsSection", () => {
 
   describe("with two queries that name one vocabulary term", () => {
     it("lists them unfolded", () => {
-      assert.ok(!entry(many, termId(VACCINE_CODE)).includes("<details>"));
+      assert.doesNotMatch(entry(many, VACCINE_CODE), /<summary>\d+ queries/);
     });
   });
 
@@ -457,6 +557,50 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.ok(tree.has(TERMS_PAGE));
     });
 
+    it("writes a page for each term under `terms/<prefix>/<Name>.html`", () => {
+      for (const path of [
+        "terms/cascade/Vaccination.html",
+        "terms/cascade/vaccineCode.html",
+        "terms/prov/Entity.html",
+        "terms/foaf/name.html",
+      ])
+        assert.ok(tree.has(path), path);
+    });
+
+    it("writes `terms/terms.json` with every term's fields, and the vocabulary's two files beside it", () => {
+      const { terms } = JSON.parse(
+        new TextDecoder().decode(tree.get(TERMS_JSON)),
+      ) as { terms: Record<string, unknown>[] };
+      const code = terms.find(({ id }) => id === "cascade:vaccineCode");
+      assert.equal(code?.["page"], "cascade/vaccineCode.html");
+      assert.equal(code?.["label"], "Vaccine Code");
+      assert.deepEqual(code?.["domain"], [VACCINATION]);
+      assert.equal(terms.length, 11);
+      assert.equal(
+        new TextDecoder().decode(tree.get("terms/cascade.ttl")),
+        ONTOLOGY,
+      );
+      assert.equal(
+        new TextDecoder().decode(tree.get("terms/cascade.shapes.ttl")),
+        SHAPES,
+      );
+      assert.ok(
+        readPage(new TextDecoder().decode(tree.get(TERMS_PAGE))).hrefs.includes(
+          "terms.json",
+        ),
+        "linked as for tools",
+      );
+    });
+
+    it("writes no JSON for a term of its own", () => {
+      assert.deepEqual(
+        [...tree.keys()].filter(
+          (path) => path.endsWith(".json") && path !== TERMS_JSON,
+        ),
+        [],
+      );
+    });
+
     it("links it from the front page as `terms/`", () => {
       const front = readPage(new TextDecoder().decode(tree.get(FRONT_PAGE)));
       assert.ok(front.hrefs.includes("terms/"));
@@ -466,6 +610,7 @@ describe("The term reference · termReference(), termsSection", () => {
   describe("given the vocabulary itself", () => {
     let files: Files;
     let real: string;
+    let realPages: ReadonlyMap<string, string>;
     let hrefs: readonly string[];
     let ids: ReadonlySet<string>;
 
@@ -474,7 +619,40 @@ describe("The term reference · termReference(), termsSection", () => {
         findRoot(dirname(fileURLToPath(import.meta.url))),
       ));
       real = await termReference(files, PLAIN);
+      realPages = await termPages(files, PLAIN);
       ({ hrefs, ids } = readPage(real));
+    });
+
+    it("keeps the index under 200 KB on disk", () => {
+      assert.ok(
+        Buffer.byteLength(real) < 200_000,
+        `${Buffer.byteLength(real)} bytes`,
+      );
+    });
+
+    it("gives every term a page of its own, and every link to one lands on a page", () => {
+      assert.ok(realPages.size > 300, `${realPages.size} pages`);
+      for (const [path, html] of realPages)
+        for (const href of readPage(html).hrefs) {
+          if (/^[a-z]+:|^#/i.test(href)) continue;
+          const target = posix.normalize(posix.join(posix.dirname(path), href));
+          if (target.startsWith("..")) continue;
+          const file = target.replace(/#.*$/, "");
+          assert.ok(
+            realPages.has(file) || file === "index.html",
+            `${path}: ${href} lands on no page`,
+          );
+        }
+    });
+
+    it("lists in `terms.json` each term that has a page, and names its page", async () => {
+      const { terms } = JSON.parse(await termsJson(files)) as {
+        terms: { page: string }[];
+      };
+      assert.deepEqual(
+        terms.map(({ page }) => page).sort(),
+        [...realPages.keys()].sort(),
+      );
     });
 
     it("shows no gloss over the limit, and a cut gloss with its whole sentence on hover", () => {
@@ -492,9 +670,9 @@ describe("The term reference · termReference(), termsSection", () => {
     });
 
     it("names no vocabulary by its address where a copied term says where it is from", () => {
-      const from = [
-        ...real.matchAll(/<p class="prose about">from ([^<]*)<\/p>/g),
-      ];
+      const from = [...realPages.values()].flatMap((html) => [
+        ...html.matchAll(/<p class="prose about">from ([^<]*)<\/p>/g),
+      ]);
       assert.ok(from.length > 0);
       for (const [, source] of from) assert.doesNotMatch(source ?? "", /:\/\//);
     });
@@ -552,13 +730,13 @@ describe("The term reference · termReference(), termsSection", () => {
 
     it("says none stated nowhere, and of no term copied from PROV-O that it has no definition yet", () => {
       assert.doesNotMatch(real, /<dd><span class="about">none stated/);
-      const activity = readPage(entry(real, termId(`${PROV}Activity`))).said;
+      const activity = readPage(entry(realPages, `${PROV}Activity`)).said;
       assert.doesNotMatch(activity, /No definition yet/);
     });
 
-    it("links a query from the entry of `cascade:vaccineCode`", () => {
+    it("links a query from the page of `cascade:vaccineCode`", () => {
       const blob = files.iri.replace("/tree/", "/blob/");
-      const { hrefs: linked } = readPage(entry(real, termId(VACCINE_CODE)));
+      const { hrefs: linked } = readPage(entry(realPages, VACCINE_CODE));
       assert.ok(
         linked.some(
           (href) => href.startsWith(`${blob}queries/`) && href.endsWith(".rq"),
@@ -574,7 +752,9 @@ describe("The term reference · termReference(), termsSection", () => {
         at: "2026-11-04T00:00:00Z",
         chrome: PLAIN,
       });
-      const rules = hrefs.filter((href) => href.startsWith(SPEC));
+      const rules = [...realPages.values()]
+        .flatMap((html) => readPage(html).hrefs)
+        .filter((href) => href.startsWith(SPEC));
       assert.ok(rules.length > 0);
       for (const href of new Set(rules)) {
         const [file, anchor] = href.slice(SPEC.length).split("#");

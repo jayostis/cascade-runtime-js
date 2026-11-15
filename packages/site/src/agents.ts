@@ -22,7 +22,6 @@ import {
 import { SEARCH_SCRIPT } from "./search-script.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { MCP_PAGE } from "./mcp-page.js";
-import { BRIDGE_TERMS_PAGE, TERMS_PAGE } from "./term-reference.js";
 
 export const LLMS_FILE = "llms.txt";
 export const INDEX_FILE = "index.json";
@@ -114,8 +113,10 @@ export interface SearchRow {
   readonly label?: string;
 }
 
-const TERM_ANCHOR =
-  /<h3 id="([a-z][a-z0-9-]*:[^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h3>/g;
+/** A term's page: its heading carries the term's id, then its name and its label. */
+const TERM_HEADING = /<h1 id="([^"]+)"><code>[^<]*<\/code>\s*([^<]*)<\/h1>/;
+/** A page in a prefix's folder under the term reference: `terms/<prefix>/<Name>.html`. */
+const TERM_PAGE = /^terms\/[^/]+\/[^/]+\.html$/;
 const RULE_ANCHOR =
   /<section class="rule" id="([^"]+)">\s*<h2>([\s\S]*?)<\/h2>/g;
 /** What the API page's render puts before the first inline code span that names a call, so a row can land on it. */
@@ -176,6 +177,18 @@ function searchRows(
     if (kind !== "page") continue;
     const html = (): string => new TextDecoder().decode(tree.get(path));
     if (REDIRECT.test(html())) continue;
+    const heading = TERM_PAGE.test(path)
+      ? TERM_HEADING.exec(html())
+      : undefined;
+    if (heading !== null && heading !== undefined) {
+      rows.push({
+        path,
+        title: heading[1] ?? "",
+        kind: "term",
+        label: words(heading[2] ?? ""),
+      });
+      continue;
+    }
     const note =
       path.startsWith(NOTE_FOLDER) && path !== `${NOTE_FOLDER}index.html`;
     rows.push({
@@ -190,24 +203,7 @@ function searchRows(
             ? "query"
             : "page",
     });
-    if (path === TERMS_PAGE || path === BRIDGE_TERMS_PAGE) {
-      /** A term the Bridge reuses is the term reference's to answer, so its entry on the Bridge's page is no row. */
-      const described = new Set<string>();
-      const terms = tree.get(TERMS_PAGE);
-      if (path === BRIDGE_TERMS_PAGE && terms !== undefined)
-        for (const [, id = ""] of new TextDecoder()
-          .decode(terms)
-          .matchAll(TERM_ANCHOR))
-          described.add(id);
-      for (const [, id = "", label = ""] of html().matchAll(TERM_ANCHOR))
-        if (!described.has(id))
-          rows.push({
-            path: `${path}#${id}`,
-            title: id,
-            kind: "term",
-            label: words(label),
-          });
-    } else if (path === MCP_PAGE)
+    if (path === MCP_PAGE)
       for (const [, id = "", name = ""] of html().matchAll(TOOL_ANCHOR))
         rows.push({
           path: `${path}#${id}`,

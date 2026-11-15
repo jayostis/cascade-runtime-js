@@ -38,12 +38,13 @@ const page = (title: string, body = "") =>
 
 const TERMS = page(
   "Term reference",
-  `<h3 id="cascade:Attachment"><code>cascade:Attachment</code> attachment</h3>
-<h3 id="cascade:AttachmentShape"><code>cascade:AttachmentShape</code> Attachment shape</h3>
-<h3 id="cascade:abatementDate"><code>cascade:abatementDate</code> Abatement Date</h3>
-<h3 id="prov:wasDerivedFrom"><code>prov:wasDerivedFrom</code> was derived from</h3>
+  `<a id="cascade:Attachment" href="cascade/Attachment.html">cascade:Attachment</a>
 <div id="cascade:AttachmentShape-node">a node, not a term</div>`,
 );
+
+/** A term's page: its heading carries the term's id, then its name and its label. */
+const term = (id: string, label: string) =>
+  page(id, `<h1 id="${id}"><code>${id}</code> ${label}</h1>`);
 
 const RULES = page(
   "Consent · Cascade runtime rules",
@@ -65,6 +66,19 @@ const section = (files: Record<string, Uint8Array>): Section<object> => ({
 
 const SITE: Record<string, Uint8Array> = {
   "terms/index.html": TERMS,
+  "terms/cascade/Attachment.html": term("cascade:Attachment", "attachment"),
+  "terms/cascade/AttachmentShape.html": term(
+    "cascade:AttachmentShape",
+    "Attachment shape",
+  ),
+  "terms/cascade/abatementDate.html": term(
+    "cascade:abatementDate",
+    "Abatement Date",
+  ),
+  "terms/prov/wasDerivedFrom.html": term(
+    "prov:wasDerivedFrom",
+    "was derived from",
+  ),
   "spec/consent.html": RULES,
   "decisions/consent-tiers.html": NOTE,
   "guide/attachments.html": page("Attaching a file"),
@@ -129,28 +143,24 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
         );
     });
 
-    it("lists each term of the term page, of any namespace, as an anchor of it, by name and by label, and no other id", () => {
+    it("lists each term's page, of any namespace, as a term by name and by label, and the index and a node that is no term as none", () => {
       const terms = rows.filter(({ kind }) => kind === "term");
       assert.deepEqual(
         terms.map(({ path, title, label }) => [path, title, label]),
         [
+          ["terms/cascade/Attachment.html", "cascade:Attachment", "attachment"],
           [
-            "terms/index.html#cascade:Attachment",
-            "cascade:Attachment",
-            "attachment",
-          ],
-          [
-            "terms/index.html#cascade:AttachmentShape",
+            "terms/cascade/AttachmentShape.html",
             "cascade:AttachmentShape",
             "Attachment shape",
           ],
           [
-            "terms/index.html#cascade:abatementDate",
+            "terms/cascade/abatementDate.html",
             "cascade:abatementDate",
             "Abatement Date",
           ],
           [
-            "terms/index.html#prov:wasDerivedFrom",
+            "terms/prov/wasDerivedFrom.html",
             "prov:wasDerivedFrom",
             "was derived from",
           ],
@@ -166,7 +176,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       ])
         assert.equal(
           rank(rows, query)[0]?.path,
-          "terms/index.html#prov:wasDerivedFrom",
+          "terms/prov/wasDerivedFrom.html",
           query,
         );
       assert.deepEqual(rank(rows, "cascade:wasDerivedFrom"), []);
@@ -224,7 +234,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       ])
         assert.equal(
           rank(rows, query)[0]?.path,
-          "terms/index.html#cascade:Attachment",
+          "terms/cascade/Attachment.html",
           query,
         );
     });
@@ -241,8 +251,8 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       assert.deepEqual(
         rank(rows, "attachment").map(({ path }) => path),
         [
-          "terms/index.html#cascade:Attachment",
-          "terms/index.html#cascade:AttachmentShape",
+          "terms/cascade/Attachment.html",
+          "terms/cascade/AttachmentShape.html",
           "guide/attachments.html",
         ],
       );
@@ -251,7 +261,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     it("finds a term by a word of its label, every word of the query having to be found", () => {
       assert.equal(
         rank(rows, "abatement date")[0]?.path,
-        "terms/index.html#cascade:abatementDate",
+        "terms/cascade/abatementDate.html",
       );
       assert.deepEqual(rank(rows, "attachment abatement"), []);
     });
@@ -483,7 +493,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       for (const query of ["wasDerivedFrom", "prov:wasDerivedFrom"])
         assert.equal(
           rank(rows, query)[0]?.path,
-          "terms/index.html#prov:wasDerivedFrom",
+          "terms/prov/wasDerivedFrom.html",
           query,
         );
     });
@@ -526,7 +536,7 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       assert.ok(boxed > 30);
     });
 
-    it("lands the name of a term of the vocabulary on its anchor in the term page, first", () => {
+    it("lands the name of a term of the vocabulary on its page, first", () => {
       const terms = rows.filter(({ kind }) => kind === "term");
       assert.ok(terms.length > 400, `${terms.length} terms`);
       for (const { path, title } of terms.filter((_, at) => at % 25 === 0)) {
@@ -537,10 +547,9 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
           title,
           name,
         );
-        const [file = "", id] = path.split("#");
-        assert.match(file, /^terms\/[a-z-]+\.html$/, path);
+        assert.match(path, /^terms\/[a-z]+\/[^/]+\.html$/, path);
         assert.ok(
-          readFileSync(join(out, file), "utf8").includes(`id="${id}"`),
+          readFileSync(join(out, path), "utf8").includes(`<h1 id="${title}">`),
           path,
         );
       }

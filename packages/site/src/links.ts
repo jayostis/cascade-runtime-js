@@ -28,11 +28,22 @@ export const pageNameOf = (path: string): string =>
 export const termId = (iri: string): string => prefixed(iri) ?? iri;
 
 /**
- * A link to a term on the term reference's page, `base` being that page's address: `terms/` from the front page, `""` from
- * the page itself, an absolute address from a site built outside the hub.
+ * A term's page in the folder of term pages: `prefix/Name.html` for a term in a namespace this site knows, else
+ * `other/` and the IRI as a slug.
+ */
+export function termPage(iri: string): string {
+  const name = prefixed(iri);
+  if (name === undefined) return `other/${slugOf(iri)}.html`;
+  const at = name.indexOf(":");
+  return `${name.slice(0, at)}/${name.slice(at + 1)}.html`;
+}
+
+/**
+ * A link to a term's page, `base` being the folder of term pages: `terms/` from the front page, `""` from the term
+ * reference's own page, `../` from another term's page, an absolute address from a site built outside the hub.
  */
 export function termHref(iri: string, base: string): string {
-  return `${away(base)}#${prefixed(iri) ?? encodeURIComponent(iri)}`;
+  return `${away(base)}${termPage(iri)}`;
 }
 
 /** A link to a rule on its feature's page, `base` being the folder of the spec's pages with its slash, `spec/` or `""`. */

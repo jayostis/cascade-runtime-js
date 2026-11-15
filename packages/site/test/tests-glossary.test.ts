@@ -47,7 +47,7 @@ describe("A package's glossary on its page · glossaryOf(), Links", () => {
     });
 
     it("links a term to the term reference when it names a term of the vocabulary", () => {
-      assert.ok(part.includes('href="../../../terms/#cascade:Claim"'));
+      assert.ok(part.includes('href="../../../terms/cascade/Claim.html"'));
     });
 
     it("links any other address as it is given", () => {

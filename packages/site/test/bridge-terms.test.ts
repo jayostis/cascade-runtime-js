@@ -10,10 +10,12 @@ import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
 import { PLAIN } from "../src/html.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { bridgeTermsSection } from "../src/hub/bridge-terms.js";
-import { termHref, termId } from "../src/links.js";
-import { buildTree, type Section } from "../src/sections.js";
+import { termHref, termId, termPage } from "../src/links.js";
+import { buildTree } from "../src/sections.js";
+import { termsSection } from "../src/hub/terms.js";
 import {
   BRIDGE_TERMS_PAGE,
+  bridgeTermPages,
   bridgeTermReference,
   TERMS_PAGE,
   termReference,
@@ -90,30 +92,28 @@ async function fixture(): Promise<Files> {
   return files;
 }
 
-/** The markup of the entry whose heading carries the id. */
-function entry(page: string, id: string): string {
-  const found = page
-    .split('<section class="term"')
-    .slice(1)
-    .map((part) => part.split("</section>")[0] ?? "")
-    .find((part) => part.includes(` id="${id}"`));
-  assert.ok(found !== undefined, `no entry has the id ${id}`);
+/** The markup of the page of the term with the IRI. */
+function entry(pages: ReadonlyMap<string, string>, iri: string): string {
+  const found = pages.get(termPage(iri));
+  assert.ok(found !== undefined, `no page for ${iri}`);
   return found;
 }
 
 /**
- * The Bridge's own vocabulary has a page beside the term reference: an entry for each term `vocab/bridge.ttl` of
- * cascade-bridge-spec declares, and the Bridge's shapes that use it, with the component the term reference is made with.
+ * The Bridge's own vocabulary has a page beside the term reference, and a page for each term `vocab/bridge.ttl` of
+ * cascade-bridge-spec declares, with the shapes that use it, made with the component the term reference is made with.
  */
 describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () => {
   let page: string;
+  let pages: ReadonlyMap<string, string>;
 
   before(async () => {
     page = await bridgeTermReference(await fixture(), PLAIN);
+    pages = await bridgeTermPages(await fixture(), PLAIN, new Set());
   });
 
-  describe("`bridgeTermReference()`", () => {
-    it("gives each term of `bridge.ttl` an entry at an anchor of its own, a term copied from elsewhere too", () => {
+  describe("`bridgeTermPages()`", () => {
+    it("gives each term of `bridge.ttl` a page, and a row of the index at its old anchor, a term copied from elsewhere too", () => {
       const { ids } = readPage(page);
       for (const iri of [
         ADAPTER,
@@ -122,37 +122,56 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
         SPARQL,
         LIFT_TEST,
         FOREIGN,
-      ])
+      ]) {
         assert.ok(ids.has(termId(iri)), `no anchor for ${iri}`);
+        assert.ok(pages.has(termPage(iri)), `no page for ${iri}`);
+      }
+      assert.ok(pages.has("bridge/Adapter.html"));
       assert.ok(!ids.has(BRIDGE), "the ontology is no entry");
     });
 
+    it("leaves out the terms it is told another page describes", async () => {
+      const left = await bridgeTermPages(
+        await fixture(),
+        PLAIN,
+        new Set([FOREIGN]),
+      );
+      assert.ok(!left.has(termPage(FOREIGN)));
+      assert.ok(left.has(termPage(ADAPTER)));
+    });
+
+    it("links back to the Bridge's index, not the term reference's", () => {
+      const { hrefs } = readPage(entry(pages, ADAPTER));
+      assert.ok(hrefs.includes("../bridge.html"));
+      assert.ok(!hrefs.includes("../index.html"));
+    });
+
     it("shows a term's label, comment, domain and range, the domain and range as links to their entries", () => {
-      const shown = readPage(entry(page, termId(REQUIRES)));
+      const shown = readPage(entry(pages, REQUIRES));
       assert.match(shown.said, /requires profile/);
       assert.match(shown.said, /owl:ObjectProperty/);
-      assert.ok(shown.hrefs.includes(termHref(ADAPTER, "")), "its domain");
-      assert.ok(shown.hrefs.includes(termHref(PROFILE, "")), "its range");
+      assert.ok(shown.hrefs.includes(termHref(ADAPTER, "../")), "its domain");
+      assert.ok(shown.hrefs.includes(termHref(PROFILE, "../")), "its range");
       assert.match(
-        readPage(entry(page, termId(ADAPTER))).said,
+        readPage(entry(pages, ADAPTER)).said,
         /The root entity of an adapter package's RO-Crate\./,
       );
     });
 
     it("shows the shapes of any of the Bridge's shape files that use a term, with their messages", () => {
-      const { said } = readPage(entry(page, termId(REQUIRES)));
+      const { said } = readPage(entry(pages, REQUIRES));
       assert.match(said, /bridge:AdapterShape/);
       assert.match(said, /A required profile is a bridge:Profile\./);
       assert.match(
-        readPage(entry(page, termId(LIFT_TEST))).said,
+        readPage(entry(pages, LIFT_TEST)).said,
         /bridge:LiftTestShape checks each bridge:LiftTest/,
       );
     });
 
-    it("says no shape checks a class none uses", () => {
-      assert.match(
-        readPage(entry(page, termId(PROFILE))).said,
-        /No shape checks it\./,
+    it("shows a class no shape checks with no shape", () => {
+      assert.doesNotMatch(
+        readPage(entry(pages, PROFILE)).said,
+        /shape|Shapes/i,
       );
     });
 
@@ -167,8 +186,8 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
     });
 
     it("names no query and no rule, which the Bridge's vocabulary has none of", () => {
-      assert.ok(!/No query names it/.test(page));
-      assert.ok(!/No rule names it/.test(page));
+      for (const html of [page, ...pages.values()])
+        assert.doesNotMatch(html, /<dt>(?:Queries|Rules)<\/dt>/);
     });
 
     it("links the source files at the commit it was read at", () => {
@@ -225,10 +244,13 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
         "shapes/loose.shapes.ttl",
         text(RELATIVE("Loose", "NoEntry")),
       );
-      relative = await bridgeTermReference(files, PLAIN);
+      relative = [
+        await bridgeTermReference(files, PLAIN),
+        ...(await bridgeTermPages(files, PLAIN, new Set())).values(),
+      ].join("\n");
     });
 
-    it("names each by its file and its own name, at an anchor of that name", () => {
+    it("names each by its file and its own name, at an anchor of that name on the page of the class it checks", () => {
       const { ids, said } = readPage(relative);
       assert.ok(ids.has("bridge.shapes.ttl#Act"));
       assert.ok(ids.has("facts.shapes.ttl#Fact"));
@@ -264,26 +286,53 @@ bridge:LooseShape a sh:NodeShape ;
   });
 
   describe("`bridgeTermsSection`", () => {
-    let tree: ReadonlyMap<string, Uint8Array>;
-    let rows: SearchRow[];
+    /** A vocabulary that declares `oa:hasSource` when `declaring`, which the Bridge's ontology also declares. */
+    async function cascade(declaring: boolean): Promise<Files> {
+      const vocabulary = new MemoryFiles(
+        "https://github.com/jayostis/cascade-vocabulary/tree/abc123/",
+      );
+      await vocabulary.write(
+        "ontologies/cascade.ttl",
+        text(`@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<https://ns.cascadeprotocol.org/cascade#> a owl:Ontology .
+${declaring ? "oa:hasSource a owl:ObjectProperty .\n" : ""}`),
+      );
+      await vocabulary.write(
+        "ontologies/cascade.shapes.ttl",
+        text("@prefix sh: <http://www.w3.org/ns/shacl#> .\n"),
+      );
+      await vocabulary.write("runtime/pod-layout.ttl", text("\n"));
+      return vocabulary;
+    }
 
-    before(async () => {
+    async function built(declaring: boolean) {
       const files = await fixture();
+      const vocabulary = await cascade(declaring);
       const ctx = {
         root: "",
         log: () => undefined,
         bridgeSpec: async () => ({ files, commit: "abc123" }),
+        vocabulary: async () => ({ files: vocabulary, builtFrom: [], at: "" }),
         chrome: PLAIN,
       } as unknown as PagesContext;
-      ({ tree } = await buildTree({
-        sections: [bridgeTermsSection],
+      const { tree } = await buildTree({
+        sections: [termsSection, bridgeTermsSection],
         ctx,
         front: (rows) => hubFiles([], rows, PLAIN),
         finishers: [agentFiles],
-      }));
-      rows = JSON.parse(
+      });
+      const rows = JSON.parse(
         new TextDecoder().decode(tree.get(SEARCH_FILE)),
       ) as SearchRow[];
+      return { tree, rows };
+    }
+
+    let tree: ReadonlyMap<string, Uint8Array>;
+    let rows: SearchRow[];
+
+    before(async () => {
+      ({ tree, rows } = await built(false));
     });
 
     it("writes the page at `terms/bridge.html`, beside the term reference's", () => {
@@ -297,16 +346,22 @@ bridge:LooseShape a sh:NodeShape ;
       assert.ok(front.hrefs.includes(BRIDGE_TERMS_PAGE));
     });
 
-    it("lists each of its terms in `search.json` as a term, at its anchor", () => {
+    it("writes a page for each of its terms, and lists each in `search.json` as a term at its page", () => {
       const terms = rows
-        .filter(
-          ({ kind, path }) =>
-            kind === "term" && path.startsWith(BRIDGE_TERMS_PAGE),
-        )
+        .filter(({ kind }) => kind === "term")
         .map(({ path }) => path);
-      assert.ok(terms.includes(`${BRIDGE_TERMS_PAGE}#bridge:Adapter`));
-      assert.ok(terms.includes(`${BRIDGE_TERMS_PAGE}#bridge:requiresProfile`));
-      assert.ok(terms.includes(`${BRIDGE_TERMS_PAGE}#oa:hasSource`));
+      assert.ok(terms.includes("terms/bridge/Adapter.html"));
+      assert.ok(terms.includes("terms/bridge/requiresProfile.html"));
+      assert.ok(terms.includes("terms/oa/hasSource.html"));
+      for (const path of terms) assert.ok(tree.has(path), path);
+    });
+
+    it("lists a term's name and its label in `search.json`", () => {
+      const adapter = rows.find(
+        ({ path }) => path === "terms/bridge/Adapter.html",
+      );
+      assert.equal(adapter?.title, "bridge:Adapter");
+      assert.equal(adapter?.label, "Adapter");
     });
 
     it("lists the page itself in `llms.txt`", () => {
@@ -316,43 +371,20 @@ bridge:LooseShape a sh:NodeShape ;
       );
     });
 
-    it("lists no term the term reference already describes, so that page stays the first answer for it", async () => {
-      const files = await fixture();
-      const ctx = {
-        root: "",
-        log: () => undefined,
-        bridgeSpec: async () => ({ files, commit: "abc123" }),
-        chrome: PLAIN,
-      } as unknown as PagesContext;
-      const reference: Section<PagesContext> = {
-        path: TERMS_PAGE,
-        title: "Cascade terms",
-        want: "conformance",
-        build: async () =>
-          new Map([
-            [
-              TERMS_PAGE,
-              text(`<h3 id="oa:hasSource"><code>oa:hasSource</code></h3>\n`),
-            ],
-          ]),
-        rows: async () => [],
-      };
-      const built = await buildTree({
-        sections: [reference, bridgeTermsSection],
-        ctx,
-        front: (rows) => hubFiles([], rows, PLAIN),
-        finishers: [agentFiles],
-      });
-      const paths = (
-        JSON.parse(
-          new TextDecoder().decode(built.tree.get(SEARCH_FILE)),
-        ) as SearchRow[]
-      )
+    it("writes no page for a term the term reference describes, so that page is the one answer for it", async () => {
+      const both = await built(true);
+      const paths = both.rows
         .filter(({ kind }) => kind === "term")
         .map(({ path }) => path);
-      assert.ok(paths.includes(`${TERMS_PAGE}#oa:hasSource`));
-      assert.ok(!paths.includes(`${BRIDGE_TERMS_PAGE}#oa:hasSource`));
-      assert.ok(paths.includes(`${BRIDGE_TERMS_PAGE}#bridge:Adapter`));
+      assert.equal(
+        paths.filter((path) => path === "terms/oa/hasSource.html").length,
+        1,
+      );
+      assert.ok(paths.includes("terms/bridge/Adapter.html"));
+      assert.match(
+        new TextDecoder().decode(both.tree.get("terms/oa/hasSource.html")),
+        /Cascade terms/,
+      );
     });
   });
 

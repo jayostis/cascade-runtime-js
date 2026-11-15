@@ -23,64 +23,73 @@ function refusesHost(call: (base: string) => unknown): void {
  */
 describe("Linking a vocabulary term, a rule or a decision note · termHref(), ruleHref(), noteHref(), noteLinkOf()", () => {
   describe("`termHref()`", () => {
-    it("keeps the namespace's prefix in the anchor, as in `terms/#foaf:name`", () => {
+    it("keeps the namespace's prefix in the folder of a term's page, as in `terms/foaf/name.html`", () => {
       const known: [string, string][] = [
-        [FOAF_NAME, "terms/#foaf:name"],
-        ["http://purl.org/pav/version", "terms/#pav:version"],
+        [FOAF_NAME, "terms/foaf/name.html"],
+        ["http://purl.org/pav/version", "terms/pav/version.html"],
         [
           "http://www.w3.org/ns/prov#wasDerivedFrom",
-          "terms/#prov:wasDerivedFrom",
+          "terms/prov/wasDerivedFrom.html",
         ],
-        ["http://www.w3.org/ns/solid/terms#account", "terms/#solid:account"],
-        ["https://ns.cascadeprotocol.org/cascade#name", "terms/#cascade:name"],
+        [
+          "http://www.w3.org/ns/solid/terms#account",
+          "terms/solid/account.html",
+        ],
+        [
+          "https://ns.cascadeprotocol.org/cascade#name",
+          "terms/cascade/name.html",
+        ],
         [
           "https://ns.cascadeprotocol.org/bridge/v1-draft#Source",
-          "terms/#bridge:Source",
+          "terms/bridge/Source.html",
         ],
         [
           "http://www.w3.org/2004/02/skos/core#prefLabel",
-          "terms/#skos:prefLabel",
+          "terms/skos/prefLabel.html",
         ],
-        ["http://www.w3.org/2004/02/skos/core#Concept", "terms/#skos:Concept"],
-        ["http://www.w3.org/2002/07/owl#sameAs", "terms/#owl:sameAs"],
+        [
+          "http://www.w3.org/2004/02/skos/core#Concept",
+          "terms/skos/Concept.html",
+        ],
+        ["http://www.w3.org/2002/07/owl#sameAs", "terms/owl/sameAs.html"],
         [
           "http://purl.obolibrary.org/obo/BFO_0000050",
-          "terms/#obo:BFO_0000050",
+          "terms/obo/BFO_0000050.html",
         ],
-        ["http://rdfs.org/ns/void#inDataset", "terms/#void:inDataset"],
+        ["http://rdfs.org/ns/void#inDataset", "terms/void/inDataset.html"],
         [
           "https://w3id.org/sssom/mapping_justification",
-          "terms/#sssom:mapping_justification",
+          "terms/sssom/mapping_justification.html",
         ],
-        ["http://www.w3.org/ns/org#identifier", "terms/#org:identifier"],
-        ["http://www.w3.org/ns/dcat#Dataset", "terms/#dcat:Dataset"],
+        ["http://www.w3.org/ns/org#identifier", "terms/org/identifier.html"],
+        ["http://www.w3.org/ns/dcat#Dataset", "terms/dcat/Dataset.html"],
       ];
       for (const [iri, href] of known)
         assert.equal(termHref(iri, "terms/"), href, iri);
     });
 
-    it("gives two vocabulary terms of one name two anchors, one for each namespace", () => {
+    it("gives two vocabulary terms of one name two pages, one for each namespace", () => {
       assert.notEqual(
         termHref(FOAF_NAME, "terms/"),
         termHref("https://ns.cascadeprotocol.org/cascade#name", "terms/"),
       );
     });
 
-    it("writes a vocabulary term of a namespace it does not know as its whole IRI, escaped", () => {
+    it("writes a vocabulary term of a namespace it does not know as a slug of its IRI under `other/`", () => {
       assert.equal(
         termHref("http://example.org/a b#c", "terms/"),
-        "terms/#http%3A%2F%2Fexample.org%2Fa%20b%23c",
+        "terms/other/http-example-org-a-b-c.html",
       );
     });
 
-    it("takes the address of whichever page holds the term reference as its base", () => {
+    it("takes the folder of the term pages as its base", () => {
       assert.equal(
         termHref("http://www.w3.org/ns/prov#wasDerivedFrom", "../"),
-        "../#prov:wasDerivedFrom",
+        "../prov/wasDerivedFrom.html",
       );
       assert.equal(
         termHref("http://www.w3.org/ns/solid/terms#account", ""),
-        "#solid:account",
+        "solid/account.html",
       );
     });
 

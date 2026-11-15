@@ -11,7 +11,13 @@ import {
   XSD,
 } from "@cascade-runtime/runtime";
 import { type Chrome, type Content, Html, markup, shell } from "./html.js";
-import { NAMESPACE_HOST, ruleHref, termHref, termId } from "./links.js";
+import {
+  NAMESPACE_HOST,
+  ruleHref,
+  termHref,
+  termId,
+  termPage,
+} from "./links.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { numberOf } from "./spec.js";
 import { expanded, LOCAL_NAME, prefixed } from "./terms.js";
@@ -56,8 +62,10 @@ const DOMAIN = `${RDFS}domain`;
 const RANGE = `${RDFS}range`;
 const SUBCLASS = `${RDFS}subClassOf`;
 const SUBPROPERTY = `${RDFS}subPropertyOf`;
+const IN_SCHEME = `${SKOS}inScheme`;
 /** What an entry shows in a field of its own, so its other statements are the rest. */
 const SHOWN = new Set([
+  IN_SCHEME,
   TYPE,
   ...LABEL,
   ...COMMENT,
@@ -164,7 +172,7 @@ export interface QueryNaming {
 
 interface UsedBy {
   readonly queries: Map<string, string[]>;
-  readonly rules: Map<string, { href: string; path: string; name: string }[]>;
+  readonly rules: Map<string, { path: string; number: string; name: string }[]>;
   /** For each query's path, the rules and decision notes that write it. */
   readonly naming: Map<string, QueryNaming>;
 }
@@ -235,7 +243,7 @@ async function usedBy(
       if (terms.has(iri)) pushTo(queries, iri, path);
   const rules = new Map<
     string,
-    { href: string; path: string; name: string }[]
+    { path: string; number: string; name: string }[]
   >();
   const naming = new Map<string, QueryNaming>(
     paths.map((path) => [path, { rules: [], notes: [] }]),
@@ -257,7 +265,7 @@ async function usedBy(
       for (const iri of namedInText(text))
         if (terms.has(iri))
           pushTo(rules, iri, {
-            href: ruleHref(path, number, SPEC),
+            number,
             path,
             name: rule.name,
           });
@@ -317,6 +325,11 @@ class Reference {
     prefixes: ReadonlyMap<string, string>,
     used: UsedBy | undefined,
     tree: string,
+    /** The folder of term pages from the page being written: `""` on the index, `../` on a term's page. */
+    readonly base: string,
+    /** The index page's file name in the folder of term pages, and its title. */
+    readonly index: string,
+    readonly title: string,
   ) {
     this.#tree = tree;
     this.blob = tree.includes("/tree/")
@@ -395,11 +408,19 @@ class Reference {
     return this.#file(iri) ?? termId(iri);
   }
 
+  /**
+   * Where a link to the IRI goes from this page: a term's page, a shape another shape sends a value to on the page of
+   * the entry it is at home on, a shape of a file on the index.
+   */
   #href(iri: string): string {
     const file = this.#file(iri);
-    return file === undefined
-      ? termHref(iri, "")
-      : `#${encodeURIComponent(file)}`;
+    if (file !== undefined)
+      return `${this.base === "" ? "" : `${this.base}${this.index}`}#${encodeURIComponent(file)}`;
+    const home = this.#homes.get(iri);
+    if (this.#entries.has(iri)) return termHref(iri, this.base);
+    return home === undefined
+      ? `${this.base === "" ? "" : `${this.base}${this.index}`}#${termId(iri)}`
+      : `${termHref(home, this.base)}#${termId(iri)}`;
   }
 
   /** A term as a name: a link to its entry where it has one, else text. */
@@ -569,7 +590,7 @@ class Reference {
           .objects(shape, `${SH}targetClass`)
           .some((target) => target.value === iri),
       )
-      .map((shape) => this.shape(shape, this.#homes.get(shape.value) === iri));
+      .map((shape) => this.table(shape, this.#homes.get(shape.value) === iri));
   }
 
   /** The shape whole: what it checks, its whole-node constraints and its property shapes; its anchor where it is at home. */
@@ -724,7 +745,7 @@ class Reference {
     const [comment] = this.texts(iri, COMMENT);
     const short = comment === undefined ? undefined : gloss(comment);
     const whole = comment === undefined ? "" : firstSentence(comment).trim();
-    return markup`<li><a href="${termHref(iri, "")}">${label ?? this.name(iri)}</a><span class="about"><code>${this.name(iri)}</code> ${short === undefined ? "No definition yet." : markup`<span class="gloss"${short === whole ? "" : markup` title="${whole}"`}>${short}</span>`}</span></li>\n`;
+    return markup`<li id="${termId(iri)}"><a href="${termHref(iri, "")}">${label ?? this.name(iri)}</a><span class="about"><code>${this.name(iri)}</code> ${short === undefined ? "No definition yet." : markup`<span class="gloss"${short === whole ? "" : markup` title="${whole}"`}>${short}</span>`}</span></li>\n`;
   }
 
   /** The classes below the class, however far. */
@@ -743,30 +764,142 @@ class Reference {
     return found;
   }
 
-  entry(entry: Entry): Html {
+  /** How many of a value a property shape allows, in words, or "" when it says nothing. */
+  count(propertyShape: Term): string {
+    const number = (predicate: string): string | undefined =>
+      this.#shapes.objects(propertyShape, `${SH}${predicate}`)[0]?.value;
+    const min = number("minCount");
+    const max = number("maxCount");
+    if (min === undefined && max === undefined) return "";
+    if (min !== undefined && min === max) return `exactly ${min}`;
+    if (max === undefined) return `at least ${min}`;
+    if (min === undefined || min === "0") return `at most ${max}`;
+    return `${min} to ${max}`;
+  }
+
+  /** A property shape as a row: its property, the value type it takes, how many, and what it says when it is not met. */
+  row(propertyShape: Term): Html {
+    const of = (...names: string[]): Term[] =>
+      names.flatMap((name) =>
+        this.#shapes.objects(propertyShape, `${SH}${name}`),
+      );
+    const types = of("datatype", "class", "node", "nodeKind");
+    const shown = new Set(
+      [
+        "path",
+        "message",
+        "severity",
+        "minCount",
+        "maxCount",
+        "datatype",
+        "class",
+        "node",
+        "nodeKind",
+      ].map((name) => `${SH}${name}`),
+    );
+    const others = this.#shapes
+      .match(propertyShape)
+      .some(([, predicate]) => !shown.has(predicate.value));
+    return markup`<tr><td>${of("path").map((path, index) => markup`${index === 0 ? "" : ", "}${this.value(this.#shapes, path)}`)}</td><td>${this.names(types)}${others ? markup`${types.length === 0 ? "" : " "}${this.statements(this.#shapes, propertyShape, shown)}` : ""}</td><td>${this.count(propertyShape)}</td><td>${this.said(propertyShape)}</td></tr>\n`;
+  }
+
+  /** The shape whole, as a table of its properties; its anchor where it is at home. */
+  table(shape: NamedNode, home: boolean): Html {
+    const wide = this.wide(shape);
+    const properties = this.#shapes.objects(shape, `${SH}property`);
+    return markup`<div class="shape"${home ? markup` id="${this.id(shape.value)}"` : ""}>${this.targets(shape)}${
+      properties.length === 0
+        ? ""
+        : markup`<table>
+<thead><tr><th>Property</th><th>Value type</th><th>How many</th><th>When it is not met</th></tr></thead>
+<tbody>
+${properties.map((property) => this.row(property))}</tbody></table>
+`
+    }${wide.length === 0 ? "" : markup`<p>On the whole node: ${wide.map(([predicate, object], i) => markup`${i === 0 ? "" : "; "}${this.constraint(predicate, object)}`)}${this.said(shape)}</p>\n`}</div>\n`;
+  }
+
+  /** What the term is stated to belong to and what belongs with it, where it is in a scheme or is one. */
+  scheme(iri: string): Html[] {
+    const schemes = this.objects(iri, [IN_SCHEME]);
+    const members = this.pointing(IN_SCHEME, iri);
+    return [
+      ...(schemes.length === 0
+        ? []
+        : [
+            this.field("In the scheme", this.links(schemes)),
+            ...schemes.map((scheme) => {
+              const others = this.pointing(IN_SCHEME, scheme.value).filter(
+                ({ value }) => value !== iri,
+              );
+              return others.length === 0
+                ? markup``
+                : this.field(
+                    `Other members of ${this.name(scheme.value)}`,
+                    this.folded(
+                      others.length,
+                      "members",
+                      markup`<p class="terms">${others.map((member, at) => markup`${at === 0 ? "" : " · "}${this.term(member.value)}`)}</p>`,
+                    ),
+                  );
+            }),
+          ]),
+      ...(members.length === 0
+        ? []
+        : [
+            this.field(
+              "Members",
+              this.folded(
+                members.length,
+                "members",
+                markup`<p class="terms">${members.map((member, at) => markup`${at === 0 ? "" : " · "}${this.term(member.value)}`)}</p>`,
+              ),
+            ),
+          ]),
+    ];
+  }
+
+  /** What `terms.json` says of an entry. */
+  fields({ iri, kind, copied }: Entry): Record<string, unknown> {
+    const values = (predicates: readonly string[]): string[] =>
+      this.objects(iri, predicates).map(({ value }) => value);
+    return {
+      id: termId(iri),
+      iri,
+      name: this.name(iri),
+      kind,
+      copied,
+      page: termPage(iri),
+      label: this.texts(iri, LABEL)[0] ?? null,
+      comment: this.texts(iri, COMMENT)[0] ?? null,
+      type: values([TYPE]),
+      subClassOf: values([SUBCLASS]),
+      subPropertyOf: values([SUBPROPERTY]),
+      domain: values([DOMAIN]),
+      range: values([RANGE]),
+      inScheme: values([IN_SCHEME]),
+      source: values(SOURCE),
+      license: values([LICENSE]),
+      seeAlso: values([SEE_ALSO]),
+    };
+  }
+
+  /** The page of one term: what it is, the shape that checks it, then, closed, where it comes from and what uses it. */
+  entry(entry: Entry, chrome: Chrome): string {
     const { iri, kind } = entry;
     const label = this.texts(iri, LABEL);
     const subject = { termType: "NamedNode", value: iri } as const;
     const rest = this.#ontology
       .match(subject)
       .filter(([, predicate]) => !SHOWN.has(predicate.value));
-    const shapes =
-      kind === "class"
-        ? this.classShapes(iri)
-        : kind === "property"
-          ? this.propertyShapes(iri)
-          : [];
+    const shapes = kind === "property" ? this.propertyShapes(iri) : [];
     const homed = kind === "property" ? this.homedOn(iri) : [];
+    const tables = kind === "class" ? this.classShapes(iri) : [];
     const queries = this.#used?.queries.get(iri) ?? [];
     const rules = this.#used?.rules.get(iri) ?? [];
-    return markup`<section class="term">
-<h3 id="${termId(iri)}"><code>${this.name(iri)}</code>${label.length === 0 ? "" : markup` ${label.join(" / ")}`}</h3>
-<p class="iri">${iri}</p>
-${this.definition(entry)}<dl class="layout">
-${this.listed("Type", this.objects(iri, [TYPE]))}${
-      kind === "class"
+    const open = [
+      this.listed("Type", this.objects(iri, [TYPE])),
+      ...(kind === "class"
         ? [
-            this.listed("Subclass of", this.objects(iri, [SUBCLASS])),
             this.listed("Domain of", this.pointing(DOMAIN, iri)),
             this.listed("Range of", this.pointing(RANGE, iri)),
           ]
@@ -776,54 +909,61 @@ ${this.listed("Type", this.objects(iri, [TYPE]))}${
               this.listed("Range", this.objects(iri, [RANGE])),
               this.listed("Subproperty of", this.objects(iri, [SUBPROPERTY])),
             ]
-          : ""
-    }${
-      kind === "thing"
+          : this.scheme(iri)),
+      shapes.length + homed.length === 0
         ? ""
         : this.field(
             "Shapes",
-            shapes.length + homed.length === 0
-              ? markup`<span class="about">No shape checks it.</span>`
-              : kind === "class"
-                ? shapes
-                : markup`${shapes.length === 0 ? "" : markup`<ul>\n${shapes}</ul>\n`}${homed}`,
-          )
-    }${this.linked("Source", this.objects(iri, SOURCE))}${this.linked("License", this.objects(iri, [LICENSE]))}${this.linked("See also", this.objects(iri, [SEE_ALSO]))}${
+            markup`${shapes.length === 0 ? "" : markup`<ul>\n${shapes}</ul>\n`}${homed}`,
+          ),
+    ].filter((field) => field !== "");
+    const closed = [
+      kind === "class"
+        ? this.listed("Subclass of", this.objects(iri, [SUBCLASS]))
+        : "",
+      this.linked("Source", this.objects(iri, SOURCE)),
+      this.linked("License", this.objects(iri, [LICENSE])),
+      this.linked("See also", this.objects(iri, [SEE_ALSO])),
       rest.length === 0
         ? ""
         : this.field(
             "Also stated",
             markup`<ul>\n${rest.map(([, predicate, object]) => markup`<li>${this.term(predicate.value)} ${this.value(this.#ontology, object)}</li>\n`)}</ul>`,
-          )
-    }${
-      this.#used === undefined
+          ),
+      queries.length === 0
         ? ""
         : this.field(
             "Queries",
-            queries.length === 0
-              ? markup`<span class="about">No query names it.</span>`
-              : this.folded(
-                  queries.length,
-                  "queries",
-                  markup`<ul>\n${queries.map((path) => markup`<li><a href="${this.blob}${encodeURI(path)}">${path}</a></li>\n`)}</ul>`,
-                ),
-          )
-    }${
-      this.#used === undefined
+            this.folded(
+              queries.length,
+              "queries",
+              markup`<ul>\n${queries.map((path) => markup`<li><a href="${this.blob}${encodeURI(path)}">${path}</a></li>\n`)}</ul>`,
+            ),
+          ),
+      rules.length === 0
         ? ""
         : this.field(
             "Rules",
-            rules.length === 0
-              ? markup`<span class="about">No rule names it.</span>`
-              : this.folded(
-                  rules.length,
-                  "rules",
-                  markup`<ul>\n${rules.map(({ href, path, name }) => markup`<li><a href="${href}">${name}</a> <span class="about">${path}</span></li>\n`)}</ul>`,
-                ),
-          )
-    }</dl>
-</section>
-`;
+            this.folded(
+              rules.length,
+              "rules",
+              markup`<ul>\n${rules.map(({ path, number, name }) => markup`<li><a href="${ruleHref(path, number, `${this.base}${SPEC}`)}">${name}</a> <span class="about">${path}</span></li>\n`)}</ul>`,
+            ),
+          ),
+    ].filter((field) => field !== "");
+    const name = this.name(iri);
+    return shell({
+      chrome,
+      title: name,
+      stylesheet: `../../${STYLESHEET_FILE}`,
+      hubRoot: "../../",
+      nav: markup`<a href="../../index.html">Cascade Protocol reference</a> · <a href="../${this.index}">${this.title}</a>\n`,
+      main: markup`<section class="term">
+<h1 id="${termId(iri)}"><code>${name}</code>${label.length === 0 ? "" : markup` ${label.join(" / ")}`}</h1>
+<p class="iri">${iri}</p>
+${this.definition(entry)}${open.length === 0 ? "" : markup`<dl class="layout">\n${open}</dl>\n`}${tables}${closed.length === 0 ? "" : markup`<details>\n<summary>Where it comes from and what uses it</summary>\n<dl class="layout">\n${closed}</dl>\n</details>\n`}</section>
+`,
+    }).text;
   }
 }
 
@@ -944,15 +1084,14 @@ interface Source {
   /** The file that places each class in a pod; where there is one, the page opens on an index of the classes. */
   readonly layout?: string;
   readonly title: string;
+  /** The file of the index page in the folder of term pages. */
+  readonly index: string;
   readonly groups: readonly Group[];
   readonly lead: (blob: string, tree: string) => Html;
 }
 
-async function referencePage(
-  vocabulary: Files,
-  chrome: Chrome,
-  source: Source,
-): Promise<string> {
+/** The vocabulary read for one page: `base` is the folder of term pages from the page being written. */
+async function load(vocabulary: Files, source: Source, base: string) {
   const [ontology, ontologyText] = await parse(vocabulary, source.ontology);
   const [shapes, shapesText] = await parseAll(vocabulary, ...source.shapes);
   const entries = entriesOf(ontology, source.namespace);
@@ -963,14 +1102,16 @@ async function referencePage(
   const used = source.used
     ? await usedByOnce(vocabulary, new Set(entries.keys()))
     : undefined;
-  const tree = vocabulary.iri;
   const reference = new Reference(
     ontology,
     shapes,
     entries,
     prefixes,
     used,
-    tree,
+    vocabulary.iri,
+    base,
+    source.index,
+    source.title,
   );
   const sorted = [...entries.values()].sort((a, b) =>
     reference
@@ -978,6 +1119,15 @@ async function referencePage(
       .toLowerCase()
       .localeCompare(reference.name(b.iri).toLowerCase()),
   );
+  return { reference, sorted };
+}
+
+async function referencePage(
+  vocabulary: Files,
+  chrome: Chrome,
+  source: Source,
+): Promise<string> {
+  const { reference, sorted } = await load(vocabulary, source, "");
   const grouped = source.groups.map((group) => ({
     ...group,
     entries: sorted.filter(group.holds),
@@ -985,9 +1135,10 @@ async function referencePage(
   const { unhomed } = reference;
   const names = (groups: typeof grouped): Html =>
     markup`${groups.map(
-      ({ id, title, entries }) =>
-        markup`<h2><a href="#${id}">${title}</a></h2>
-<p class="terms">${entries.map((entry, index) => markup`${index === 0 ? "" : " · "}<a href="${termHref(entry.iri, "")}">${reference.name(entry.iri)}</a>`)}</p>
+      ({ id, title, about, entries }) =>
+        markup`<h2 id="${id}">${title}</h2>
+<p class="prose">${about}</p>
+<p class="terms">${entries.map((entry, index) => markup`${index === 0 ? "" : " · "}<a id="${termId(entry.iri)}" href="${termHref(entry.iri, "")}">${reference.name(entry.iri)}</a>`)}</p>
 `,
     )}`;
   const index = async (): Promise<Html> => {
@@ -1034,45 +1185,79 @@ ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : markup`<ul class
     hubRoot: "../",
     nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
     main: markup`<h1>${source.title}</h1>
-${source.lead(reference.blob, tree)}${opening}<h2><a href="#shapes">Shapes other shapes use</a></h2>
-${grouped.map(
-  ({ id, title, about, entries }) =>
-    markup`<h2 class="part" id="${id}">${title}</h2>
-<p class="prose">${about}</p>
-${entries.length === 0 ? markup`<p class="about">None.</p>\n` : entries.map((entry) => reference.entry(entry))}`,
-)}<h2 class="part" id="shapes">Shapes other shapes use</h2>
-<p class="prose">The shapes no entry above shows: those another shape sends a value to with <code>node</code>, and those whose class or property this page has no entry for.</p>
+${source.lead(reference.blob, vocabulary.iri)}${opening}<h2 class="part" id="shapes">Shapes other shapes use</h2>
+<p class="prose">The shapes no term's page shows: those another shape sends a value to with <code>node</code>, and those whose class or property has no page.</p>
 ${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n${reference.relative(shape.value) ? "" : markup`<p class="iri">${shape.value}</p>\n`}${reference.shape(shape, true)}</section>\n`)}`,
   }).text;
 }
 
-/**
- * The term reference: an entry for each term `ontologies/cascade.ttl` declares, this vocabulary's own and those it copies,
- * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
- * `termHref` links.
- */
-export const termReference = (vocabulary: Files, chrome: Chrome) =>
-  referencePage(vocabulary, chrome, {
-    ontology: ONTOLOGY,
-    shapes: [SHAPES],
-    namespace: CASCADE,
-    used: true,
-    layout: LAYOUT,
-    title: "Cascade terms",
-    groups: GROUPS,
-    lead: (
-      blob,
-      tree,
-    ) => markup`<p class="prose">Every term a Cascade pod carries, as cascade-vocabulary declares it in
+/** Each term's page, by its path in the folder of term pages, but the terms `skip` holds. */
+async function termPagesOf(
+  vocabulary: Files,
+  chrome: Chrome,
+  source: Source,
+  skip: ReadonlySet<string> = new Set(),
+): Promise<Map<string, string>> {
+  const { reference, sorted } = await load(vocabulary, source, "../");
+  return new Map(
+    sorted
+      .filter(({ iri }) => !skip.has(iri))
+      .map((entry) => [termPage(entry.iri), reference.entry(entry, chrome)]),
+  );
+}
+
+/** Each term of the vocabulary's page, by its path in the folder of term pages. */
+export const termPages = (
+  vocabulary: Files,
+  chrome: Chrome,
+): Promise<Map<string, string>> =>
+  termPagesOf(vocabulary, chrome, CASCADE_SOURCE);
+
+/** `terms.json`: every term the vocabulary declares, with the fields its page shows. */
+export async function termsJson(vocabulary: Files): Promise<string> {
+  const { reference, sorted } = await load(vocabulary, CASCADE_SOURCE, "");
+  return `${JSON.stringify({ terms: sorted.map((entry) => reference.fields(entry)) }, null, 1)}\n`;
+}
+
+/** The files of the vocabulary that `terms/` offers tools whole, by name in that folder. */
+export const TERM_FILES: readonly [name: string, path: string][] = [
+  ["cascade.ttl", ONTOLOGY],
+  ["cascade.shapes.ttl", SHAPES],
+];
+export const TERMS_JSON = "terms/terms.json";
+
+const CASCADE_SOURCE: Source = {
+  ontology: ONTOLOGY,
+  shapes: [SHAPES],
+  namespace: CASCADE,
+  used: true,
+  layout: LAYOUT,
+  title: "Cascade terms",
+  index: "index.html",
+  groups: GROUPS,
+  lead: (
+    blob,
+    tree,
+  ) => markup`<p class="prose">Every term a Cascade pod carries, as cascade-vocabulary declares it in
 <a href="${blob}${ONTOLOGY}">${ONTOLOGY}</a>: what it is, the shapes in
-<a href="${blob}${SHAPES}">${SHAPES}</a> that check it, and each query and each rule of the spec that names it.
+<a href="${blob}${SHAPES}">${SHAPES}</a> that check it, and each query and each rule of the spec that names it. Each
+term has a page of its own.
 The terms of the Bridge, which judges an adapter, are on <a href="bridge.html">their own page</a>.</p>
 <p class="prose">A term's IRI is shown as text: the names under https://ns.cascadeprotocol.org/ do not resolve yet, so this
 page is where a term is described.</p>
+<p class="about">For tools: <a href="terms.json">terms.json</a> has every term's fields, and
+${TERM_FILES.map(([name], index) => markup`${index === 0 ? "" : " and "}<a href="${name}">${name}</a>`)} are the vocabulary's files as built.</p>
 <p class="about">Read from cascade-vocabulary at <a href="${tree}">${tree}</a>; the example pods may have been built from
 another commit.</p>
 `,
-  });
+};
+
+/**
+ * The term reference's index: every term as a link to its page, this vocabulary's own and those it copies, the classes with
+ * a line of what each is; each row carries the id the term's old anchor had.
+ */
+export const termReference = (vocabulary: Files, chrome: Chrome) =>
+  referencePage(vocabulary, chrome, CASCADE_SOURCE);
 
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const BRIDGE_ONTOLOGY = "vocab/bridge.ttl";
@@ -1087,18 +1272,32 @@ export async function bridgeTermReference(
   bridgeSpec: Files,
   chrome: Chrome,
 ): Promise<string> {
+  return referencePage(bridgeSpec, chrome, await bridgeSource(bridgeSpec));
+}
+
+/** The pages of the Bridge's terms, by path in the folder of term pages, but the terms `skip` holds, which the term reference describes. */
+export async function bridgeTermPages(
+  bridgeSpec: Files,
+  chrome: Chrome,
+  skip: ReadonlySet<string>,
+): Promise<Map<string, string>> {
+  return termPagesOf(bridgeSpec, chrome, await bridgeSource(bridgeSpec), skip);
+}
+
+async function bridgeSource(bridgeSpec: Files): Promise<Source> {
   const [first, ...rest] = (await bridgeSpec.list(BRIDGE_SHAPES))
     .filter((path) => path.endsWith(".shapes.ttl"))
     .sort();
   if (first === undefined)
     throw new Error(`${bridgeSpec.iri} has no shapes under ${BRIDGE_SHAPES}/`);
   const shapes: readonly [string, ...string[]] = [first, ...rest];
-  return referencePage(bridgeSpec, chrome, {
+  return {
     ontology: BRIDGE_ONTOLOGY,
     shapes,
     namespace: BRIDGE,
     used: false,
     title: "Cascade Bridge terms",
+    index: "bridge.html",
     groups: [
       {
         id: "classes",
@@ -1141,5 +1340,5 @@ that use each.</p>
 does not resolve yet either, so this page is where a term is described.</p>
 <p class="about">Read from cascade-bridge-spec at <a href="${tree}">${tree}</a>.</p>
 `,
-  });
+  };
 }
