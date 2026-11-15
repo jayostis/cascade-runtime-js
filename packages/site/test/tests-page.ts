@@ -219,12 +219,70 @@ export function rowsOf(markup: string, heading: string) {
         href: /href="#([^"]+)"/.exec(name)?.[1] ?? "",
         about: text(about),
         capabilities: [
-          ...capabilities.matchAll(/<a href="#([^"]+)">([\s\S]*?)<\/a>/g),
-        ].map(([, id = "", label = ""]) => ({ id, label: text(label) })),
+          ...capabilities.matchAll(
+            /<a href="#([^"]+)"( class="failed")?>([\s\S]*?)<\/a>/g,
+          ),
+        ].map(([, id = "", failed, label = ""]) => ({
+          id,
+          label: text(label),
+          failed: failed !== undefined,
+        })),
+        more: (() => {
+          const found = /<a class="more" href="#([^"]+)">([\s\S]*?)<\/a>/.exec(
+            capabilities,
+          );
+          return found === null
+            ? undefined
+            : { href: found[1] ?? "", said: text(found[2] ?? "") };
+        })(),
         cases: text(cases),
+        labels: [...cells.matchAll(/<td data-label="([^"]*)"/g)].map(
+          ([, label]) => label ?? "",
+        ),
       };
     });
 }
+
+/** The heading above the package table of the suite whose part has that id, with what follows it on its line; none where there is no table. */
+export const promisesOf = (markup: string, heading: string): string =>
+  text(
+    /<h2 class="promises">([\s\S]*?)<\/h2>/.exec(
+      partOf(markup, heading),
+    )?.[1] ?? "",
+  );
+
+/**
+ * A package with nine capabilities that its spec lists in order, `failing` the number of the one whose case failed, and a
+ * package with two: the table cuts the first's links to six.
+ */
+export const WIDE_PACKAGE = (failing?: number): string => {
+  const names = Array.from({ length: 9 }, (_, n) => `Capability ${n + 1}`);
+  return report(
+    packageProperty("wide", "wide", "1.0.0", {
+      about: "Says what it does. Then says it again at length.",
+      capabilities: names,
+    }) +
+      packageProperty("narrow", "narrow", "1.0.0", {
+        capabilities: ["Only one", "Only two"],
+      }),
+    names
+      .map((name, n) =>
+        described(
+          name,
+          {},
+          leafOf(
+            "does it",
+            FILE("wide", "a.test"),
+            3 + n,
+            n + 1 === failing ? { failure: "broke" } : {},
+          ),
+        ),
+      )
+      .join("") +
+      described("Only one", {}, leafOf("one", FILE("narrow", "a.test"), 3)) +
+      described("Only two", {}, leafOf("two", FILE("narrow", "a.test"), 9)),
+  );
+};
 
 /** The cases of the tree after the heading, as their name, result and time, in the page's order. */
 export function casesOf(markup: string, heading: string): string[][] {

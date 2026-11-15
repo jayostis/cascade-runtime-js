@@ -16,6 +16,7 @@ import {
   pageWith,
   partOf,
   pod,
+  promisesOf,
   R,
   RUN,
   RUNTIME,
@@ -26,6 +27,7 @@ import {
   V,
   verdictOf,
   versioned,
+  WIDE_PACKAGE,
   WITH_GLOSSARY,
 } from "./tests-page.js";
 import { SCRIPT } from "../src/hub/tests.js";
@@ -152,6 +154,83 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
     it("does not list the build capabilities among a package's", () => {
       assert.equal(rows.length, 3);
       assert.ok(!rows[1]?.capabilities.some((one) => one.label === "Packing"));
+    });
+
+    it("heads the table with what each package promises, and how many packages and capabilities there are", () => {
+      assert.equal(
+        promisesOf(markup, R),
+        "What each package promises · 3 packages, 4 capabilities",
+      );
+    });
+
+    it("labels each cell, so that the table stacked on a narrow screen says what a number is", () => {
+      for (const row of rows)
+        assert.deepEqual(row.labels, [
+          "What it is for",
+          "Capabilities",
+          "Cases",
+        ]);
+    });
+
+    it("turns red the link of the capability that failed, and no other", () => {
+      assert.deepEqual(
+        rows.flatMap((row) =>
+          row.capabilities.filter((one) => one.failed).map((one) => one.label),
+        ),
+        ["Checking a shape"],
+      );
+    });
+  });
+
+  describe("with a package of more capabilities than a row shows", () => {
+    const shown = async (failing?: number) => {
+      const rows = rowsOf(
+        (
+          await pageWith({
+            runtime: { report: WIDE_PACKAGE(failing), ...RUN },
+          })
+        ).markup,
+        R,
+      );
+      return {
+        wide: rows.find((row) => row.package === "wide"),
+        narrow: rows.find((row) => row.package === "narrow"),
+      };
+    };
+
+    it("shows the first six, and says how many more there are, linking the package", async () => {
+      const { wide, narrow } = await shown();
+      assert.deepEqual(
+        wide?.capabilities.map((one) => one.label),
+        Array.from({ length: 6 }, (_, n) => `Capability ${n + 1}`),
+      );
+      assert.deepEqual(wide?.more, {
+        href: "package-wide",
+        said: "and 3 more",
+      });
+      assert.equal(narrow?.capabilities.length, 2);
+      assert.equal(narrow?.more, undefined);
+    });
+
+    it("gives only the first sentence of what a package is for", async () => {
+      const { wide } = await shown();
+      assert.equal(wide?.about, "Says what it does.");
+    });
+
+    it("shows a capability that failed, before the others, though it is beyond the sixth", async () => {
+      const { wide } = await shown(9);
+      assert.deepEqual(
+        wide?.capabilities.map((one) => [one.label, one.failed]),
+        [
+          ["Capability 9", true],
+          ["Capability 1", false],
+          ["Capability 2", false],
+          ["Capability 3", false],
+          ["Capability 4", false],
+          ["Capability 5", false],
+        ],
+      );
+      assert.equal(wide?.more?.said, "and 3 more");
     });
   });
 
@@ -596,8 +675,23 @@ describe("The summary bar and its controls · testsSection", () => {
       assert.equal(result, "passed");
       assert.match(said, /^All 6 cases pass\b/);
       assert.match(said, /0123456/);
-      assert.match(said, /2026-11-04T22:12:35Z/);
+      assert.match(said, /2026-11-04 22:12 UTC/);
+      assert.doesNotMatch(said, /T22:12:35Z/);
       assert.match(said, /\d+ ms/);
+    });
+
+    it("links the run in that line, and says nothing of the run again below it", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: GROUPED, ...RUN },
+      });
+      const part = partOf(markup, R);
+      const line = /<span class="verdict[\s\S]*?<\/span>\n/.exec(part)?.[0];
+      assert.ok(
+        line?.includes(`<a href="${RUN.url}">the run</a>`),
+        "the verdict links the run",
+      );
+      assert.equal(part.split(`href="${RUN.url}"`).length - 1, 1);
+      assert.doesNotMatch(text(part), /run at|The run of commit/);
     });
 
     it("says in red how many of the cases fail", async () => {
