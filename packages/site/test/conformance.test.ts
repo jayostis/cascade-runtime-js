@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import type { MemoryFiles } from "@cascade-runtime/runtime";
+import { agentFiles } from "../src/agents.js";
 import type { SpecPages } from "../src/spec.js";
 import {
   ASSERTIONS,
+  FEATURE,
   hubWith,
   kimVocabulary,
   NAMING,
@@ -132,6 +134,22 @@ describe("Conformance results on the specification · readSpecReport(), specSect
         "conformance/table.md",
       ])
         assert.ok(tree.has(path), path);
+    });
+
+    it("writes each feature file beside its page, and lists it in `index.json` and `llms.txt` with the other files for an agent", async () => {
+      assert.equal(treeText(tree, "spec/naming.feature"), FEATURE);
+      assert.ok(tree.has("spec/kim.feature"));
+      const withFinisher = await hubWith(vocabulary, ASSERTIONS, {}, [
+        agentFiles,
+      ]);
+      const index = JSON.parse(treeText(withFinisher, "index.json")) as {
+        files: { path: string; kind: string }[];
+      };
+      assert.ok(index.files.some(({ path }) => path === "spec/naming.feature"));
+      assert.match(
+        treeText(withFinisher, "llms.txt"),
+        /- \[[^\]]*Naming[^\]]*\]\(spec\/naming\.feature\)/,
+      );
     });
 
     it("copies the table it is given byte for byte", () => {
