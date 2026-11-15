@@ -8,14 +8,14 @@ import { Refusal } from "./step.js";
 export const TOKEN =
   /"""(?:[^"\\]|\\.|"(?!""))*"""|'''(?:[^'\\]|\\.|'(?!''))*'''|#[^\n]*|<(?:[^<>"{}|^`\\\s0-9?$=!&|()+-][^<>"{}|^`\\\s]*)?>|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\\.|\{/g;
 
-/** The comment line that marks a group, and what may stand between it and the group's brace (M4). */
+/** The comment line that marks a group, and what may stand between it and the group's brace (M4a). */
 const MARK = /^#\s*bound:\s*\?record\s*$/;
 const BEFORE_BRACE = /^\s*(?:WHERE\s*)?$/i;
 
 /**
  * The comparison with `VALUES ?record { … }` opening its outermost group and each group a `# bound: ?record` line
  * marks: Oxigraph's JavaScript build takes no initial binding, and a comparison binds ?record in those groups before
- * any other sub-select or MINUS reads it, so this evaluates it once with ?record bound to each record given (M4). A
+ * any other sub-select or MINUS reads it, so this evaluates it once with ?record bound to each record given (M4a). A
  * marked group is the record's side of a comparison that works each side out in a sub-select, which would otherwise
  * read every record in the pod.
  */

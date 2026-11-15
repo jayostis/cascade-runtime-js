@@ -16,7 +16,7 @@ interface Code {
  * A record's code joins the reference tables and the matcher's rules as an IRI: its code system's URI space, then the
  * code percent-encoded as SPARQL's `ENCODE_FOR_URI` does. `codeIri()` writes that IRI, so a code this runtime encodes is
  * the IRI a query of the vocabulary gives the same code.
- * @rule runtime/matcher.feature M4
+ * @rule runtime/matcher.feature M4c
  */
 describe("Writing a code as an IRI · codeIri()", () => {
   /** The vocabulary's `tests/vectors/clinvar/code-iris.json`: a code system, a code, and the IRI each runtime must write. */
