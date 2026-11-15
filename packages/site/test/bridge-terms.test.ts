@@ -191,6 +191,7 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
         "ontologies/cascade.shapes.ttl",
         text("@prefix sh: <http://www.w3.org/ns/shacl#> .\n"),
       );
+      await files.write("runtime/pod-layout.ttl", text("\n"));
       assert.ok(
         readPage(await termReference(files, PLAIN)).hrefs.includes(
           "bridge.html",

@@ -494,7 +494,7 @@ describe("The term reference · termReference(), termsSection", () => {
     });
 
     it("says none stated nowhere, and of no term copied from PROV-O that it has no definition yet", () => {
-      assert.doesNotMatch(readPage(real).said, /none stated/);
+      assert.doesNotMatch(real, /<dd><span class="about">none stated/);
       const activity = readPage(entry(real, termId(`${PROV}Activity`))).said;
       assert.doesNotMatch(activity, /No definition yet/);
     });
