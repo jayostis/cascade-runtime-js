@@ -529,7 +529,6 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
     it("lands the name of a term of the vocabulary on its anchor in the term page, first", () => {
       const terms = rows.filter(({ kind }) => kind === "term");
       assert.ok(terms.length > 400, `${terms.length} terms`);
-      const termPage = readFileSync(join(out, "terms", "index.html"), "utf8");
       for (const { path, title } of terms.filter((_, at) => at % 25 === 0)) {
         const name = title.replace(/^cascade:/, "");
         const first = rank(rows, name)[0];
@@ -538,7 +537,12 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
           title,
           name,
         );
-        assert.ok(termPage.includes(`id="${path.split("#")[1]}"`), path);
+        const [file = "", id] = path.split("#");
+        assert.match(file, /^terms\/[a-z-]+\.html$/, path);
+        assert.ok(
+          readFileSync(join(out, file), "utf8").includes(`id="${id}"`),
+          path,
+        );
       }
     });
 
