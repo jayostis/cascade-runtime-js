@@ -14,7 +14,11 @@ import {
 import { hubFiles } from "../src/front-page.js";
 import { type Chrome, chromeStrings } from "../src/html.js";
 import { Site } from "../src/site.js";
-import { STYLESHEET } from "../src/stylesheet.js";
+import {
+  chromeStyles,
+  STYLESHEET,
+  websiteChrome,
+} from "../src/stylesheet.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const WEBSITE = "https://website.example";
@@ -337,6 +341,46 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
       assert.match(stylesheet, /\nmain, nav\.hub-nav \{ max-width: 68rem;/);
       assert.ok(!/\nnav \{/.test(stylesheet));
       assert.ok(!/\nbody \{[^}]*max-width/.test(stylesheet));
+    });
+  });
+
+  describe("with the website's chrome copied into the hub", () => {
+    const copy = () => {
+      const text = readFileSync(
+        join(ROOT, "packages", "site", "src", "chrome.css"),
+        "utf8",
+      );
+      const header = text.slice(0, text.indexOf("\n"));
+      assert.match(
+        header,
+        /^\/\* the-cascade-protocol\/cascadeprotocol\.org, branch site-docs, css\/chrome\.css, at [0-9a-f]{40} \*\/$/,
+      );
+      return text.slice(text.indexOf("\n") + 1);
+    };
+
+    it("gives the copy's text for `:root`, and the hub's own additions after it", () => {
+      assert.equal(websiteChrome(":root"), copy());
+      assert.ok(chromeStyles(":root").startsWith(copy()));
+      assert.ok(chromeStyles(":root").includes(".sx-find-wrap {"));
+    });
+
+    it("puts every token under the scope and none under `:root` when scoped", () => {
+      const tokens = [...copy().matchAll(/^\s+(--[a-z0-9-]+):/gm)].map(
+        (match) => match[1],
+      );
+      assert.ok(tokens.length >= 13);
+      for (const sheet of [
+        chromeStyles(".sx-scope"),
+        websiteChrome(".sx-scope"),
+      ]) {
+        assert.ok(!sheet.includes(":root"));
+        const declared = sheet.slice(
+          sheet.indexOf(".sx-scope {"),
+          sheet.indexOf("}", sheet.indexOf(".sx-scope {")),
+        );
+        for (const token of tokens) assert.ok(declared.includes(`${token}:`));
+        assert.match(sheet, /@media \(max-width: 760px\) \{\s*\.sx-scope \{/);
+      }
     });
   });
 
