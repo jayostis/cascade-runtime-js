@@ -7,7 +7,13 @@ import {
 import { type Answer, withoutComment } from "./answer.js";
 import { type Content, Html, markup, shell } from "./html.js";
 import { namedInQuery } from "./term-reference.js";
-import { noteHref, ruleHref, sharedPageOf, slugOf, termHref } from "./links.js";
+import {
+  noteHref,
+  QUERIES_FOLDER,
+  ruleHref,
+  sharedPageOf,
+  termHref,
+} from "./links.js";
 import type { Site } from "./site.js";
 import {
   CALLED,
@@ -144,12 +150,11 @@ ${answer.rows.map((row) => markup`<tr>${columns.map((column) => cell(row, column
 /** A question that returned no row, in one line: its title, none, and the question's own page when the site knows where the queries are. */
 function none(site: Site, answer: Answer, lensed: boolean): Html {
   const { queries } = site.options;
-  const name = answer.question;
-  const at = name?.lastIndexOf("/") ?? -1;
+  const address = site.queryPages.get(answer.query.path);
   const href =
-    queries === undefined || name === undefined
+    queries === undefined || address === undefined
       ? undefined
-      : `${queries}questions/${name.slice(0, at + 1)}${slugOf(name.slice(at + 1))}.html`;
+      : `${queries}${address.slice(QUERIES_FOLDER.length)}`;
   return markup`<p class="none"><strong>${answer.title}</strong>: none${lensed && ` under the ${answer.lens} lens`}.${href !== undefined && markup` <a href="${href}">The question</a>`}</p>
 `;
 }

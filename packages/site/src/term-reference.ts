@@ -6,6 +6,7 @@ import {
   OxigraphStore,
   RDF,
   readText,
+  RULE_LIST,
   readWrittenFeature,
   type Term,
   XSD,
@@ -1182,6 +1183,8 @@ export async function queryFacts(vocabulary: Files): Promise<{
   /** The terms that are properties, whose pages are in `properties/`. */
   readonly properties: ReadonlySet<string>;
   readonly naming: ReadonlyMap<string, QueryNaming>;
+  /** The label of each class a matcher rule applies to, by the rule's query path, from the vocabulary's rule lists. */
+  readonly appliesTo: ReadonlyMap<string, readonly string[]>;
 }> {
   const [ontology] = await parse(vocabulary, ONTOLOGY);
   const entries = entriesOf(ontology, CASCADE);
@@ -1194,7 +1197,46 @@ export async function queryFacts(vocabulary: Files): Promise<{
         .map(({ iri }) => iri),
     ),
     naming: (await usedByOnce(vocabulary, terms)).naming,
+    appliesTo: await appliesToOf(vocabulary, ontology),
   };
+}
+
+/**
+ * The label of each class each matcher rule applies to, by the rule's query path, over every version of the rule list: a
+ * rule of the current version is in the rows of an older one too, and a version may add a class to it.
+ */
+async function appliesToOf(
+  vocabulary: Files,
+  ontology: Graph,
+): Promise<Map<string, string[]>> {
+  const label = (iri: string): string => {
+    const subject = { termType: "NamedNode", value: iri } as const;
+    const found = LABEL.flatMap((predicate) =>
+      ontology
+        .objects(subject, predicate)
+        .filter((term) => term.termType === "Literal"),
+    );
+    const named = found.find((term) => term.language === "en") ?? found[0];
+    return named?.value ?? prefixed(iri) ?? iri;
+  };
+  const classes = new Map<string, Set<string>>();
+  for (const path of (await vocabulary.list(RULE_LIST))
+    .filter((file) => file.endsWith(".ttl"))
+    .sort()) {
+    const [rows] = await parse(vocabulary, path);
+    for (const row of rows.subjects(`${CASCADE}queryPath`)) {
+      const query = rows.objects(row, `${CASCADE}queryPath`)[0]?.value;
+      if (query === undefined) continue;
+      const key = `${QUERIES}/${query}`;
+      const held = classes.get(key) ?? new Set<string>();
+      classes.set(key, held);
+      for (const { value } of rows.objects(row, `${CASCADE}appliesToClass`))
+        held.add(label(value));
+    }
+  }
+  return new Map(
+    [...classes].map(([path, labels]) => [path, [...labels].sort()]),
+  );
 }
 
 /** What tells the term reference of one vocabulary from another's: where it is read, how it is worded and what it is checked by. */

@@ -18,7 +18,8 @@ import {
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
 import { PLAIN } from "../src/html.js";
-import { slugOf, termHref, termPage } from "../src/links.js";
+import { termHref, termPage } from "../src/links.js";
+import { QUERIES_PAGE, queryPages } from "../src/query-pages.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { namedInQuery } from "../src/term-reference.js";
 import { type Page, readPage } from "./page.js";
@@ -51,6 +52,8 @@ let options: SiteOptions;
 let site: Site;
 let files: Map<string, Uint8Array>;
 let pages: Map<string, Page>;
+/** Each query's page from the site's root, read off the query pages as they are built, by the query's path. */
+const queryPageOf = new Map<string, string>();
 
 /**
  * The pod is built from the matcher's example in which two records a person called different are joined and two called the
@@ -85,6 +88,20 @@ before(async () => {
   site = await Site.build(options);
   files = await site.files();
   pages = readPages(files);
+  const paths = [...(await questions(vocabulary.files)).values()].map(
+    ({ path }) => path,
+  );
+  const built = await queryPages({
+    vocabulary: vocabulary.files,
+    chrome: PLAIN,
+  });
+  for (const [page, bytes] of built) {
+    if (page === QUERIES_PAGE) continue;
+    const source = readPage(new TextDecoder().decode(bytes), page).hrefs.at(-1);
+    for (const path of paths)
+      if (decodeURI(source ?? "").endsWith(`/${path}`))
+        queryPageOf.set(path, page);
+  }
 });
 
 const page = (path: string | undefined): Page => {
@@ -129,10 +146,10 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
           assert.equal(given, text.replace(/^(?:#[^\n]*\n)+\s*/, ""), path);
           continue;
         }
-        const name = path.split("/").at(-1)?.replace(/\.rq$/, "") ?? "";
-        const folder = path.slice(0, path.lastIndexOf("/") + 1);
+        const page = queryPageOf.get(path);
+        assert.ok(page, `${path} has no page among the query pages`);
         assert.ok(
-          lines.has(`../${folder}${slugOf(name)}.html`),
+          lines.has(`../${page}`),
           `${path} is shown neither with rows nor in one line`,
         );
       }

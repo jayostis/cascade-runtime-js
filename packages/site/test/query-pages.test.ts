@@ -427,75 +427,113 @@ SELECT ?s WHERE {
     });
   });
 
-  describe("given matcher rules, some of one family", () => {
+  describe("given a query whose comment numbers its steps", () => {
+    it("shows the steps as a numbered list, each step on its wrapped lines one item, and the rest as paragraphs", async () => {
+      const files = await vocabulary();
+      await files.write(
+        "queries/tables/steps.rq",
+        text(`# Each class of a code. A join is made on exact evidence:
+#   1. a row on the code itself is the code's class;
+#   2. else, the code maps to an ingredient, and
+#      the ingredient bears the class;
+#   3. else, none.
+#
+# A second paragraph.
+SELECT ?s WHERE { ?s ?p ?o }
+`),
+      );
+      const html = read(
+        await build(files, alex()),
+        "queries/tables/steps.html",
+      );
+      const items = [...html.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(
+        ([, item]) => item,
+      );
+      assert.deepEqual(items, [
+        "a row on the code itself is the code&#39;s class;",
+        "else, the code maps to an ingredient, and the ingredient bears the class;",
+        "else, none.",
+      ]);
+      assert.match(html, /<ol[^>]*>\s*<li>a row/);
+      assert.match(
+        html,
+        /<p class="prose">Each class of a code\. A join is made on exact evidence:<\/p>/,
+      );
+      assert.match(html, /<p class="prose">A second paragraph\.<\/p>/);
+    });
+  });
+
+  describe("given matcher rules whose rule list says the class each applies to", () => {
     const run = (what: string) =>
       `# Two ${what} match when their current versions share a code, the documents they come from name one organization, and the shorter text begins the longer, a record its source sends again as it grows, a long run-on sentence that never stops for a full stop in all its length and keeps going.
 SELECT ?s WHERE { ?s ?p ?o }
 `;
-    it("folds each family of rules under its root's name, with a count, and lists a rule of no family by itself", async () => {
+    const LIST = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination , cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-code-and-date.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-result.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code.rq" .
+`;
+    const folded = (html: string, summary: string) =>
+      new RegExp(
+        `<details class="family"><summary>${summary}</summary>([\\s\\S]*?)</details>`,
+      ).exec(html)?.[0];
+    const names = (html: string | undefined) =>
+      readPage(html ?? "").hrefs.map((href) => href.split("/").at(-1));
+
+    it("folds the rules under the label of the class each applies to, with a count, a rule of two classes under both, and a rule of none under Other", async () => {
       const files = await vocabulary();
+      await files.write(
+        "ontologies/cascade.ttl",
+        text(
+          `${ONTOLOGY}cascade:LaboratoryTestResult a owl:Class ; rdfs:label "Laboratory test result"@en .\n`,
+        ),
+      );
+      await files.write("runtime/rule-list/v1.ttl", text(LIST));
       for (const name of [
         "same-code",
         "same-code-and-date",
-        "same-code-key-joined-first",
+        "same-result",
         "same-ndc-code",
       ])
         await files.write(`queries/matcher/${name}.rq`, text(run(name)));
-      const tree = await build(files, alex());
-      const html = read(tree, "queries/index.html");
-      const family =
-        /<details class="family"><summary>same-code[^<]*<\/summary>([\s\S]*?)<\/details>/.exec(
-          html,
-        );
-      assert.ok(family, "same-code's family is folded");
-      assert.match(
-        html,
-        /<details class="family"><summary>same-code · 3 rules<\/summary>/,
-      );
-      const inside = readPage(family[0]).hrefs;
+      const html = read(await build(files, alex()), "queries/index.html");
       assert.deepEqual(
-        inside.map((href) => href.split("/").at(-1)),
-        [
-          "same-code.html",
-          "same-code-and-date.html",
-          "same-code-key-joined-first.html",
-        ],
+        names(folded(html, "Laboratory test result · 2 rules")),
+        ["same-code-and-date.html", "same-result.html"],
       );
-      assert.ok(!family[0].includes("same-ndc-code.html"));
-      assert.ok(html.includes('<li><a href="matcher/same-ndc-code.html">'));
+      assert.deepEqual(names(folded(html, "Vaccination · 2 rules")), [
+        "same-code.html",
+        "same-code-and-date.html",
+      ]);
+      assert.deepEqual(names(folded(html, "Other · 1 rule")), [
+        "same-ndc-code.html",
+      ]);
+      const order = ["Laboratory test result", "Vaccination", "Other"].map(
+        (label) => html.indexOf(`<summary>${label} · `),
+      );
+      assert.deepEqual(
+        order,
+        [...order].sort((a, b) => a - b),
+      );
+      assert.ok(order.every((at) => at > 0));
     });
 
-    it("ends each rule's line at a clause of its first sentence, never at a half word", async () => {
+    it("shows each rule's whole first sentence, so rules that differ late in it read differently", async () => {
       const files = await vocabulary();
-      await files.write("queries/matcher/same-code.rq", text(run("codes")));
-      const tree = await build(files, alex());
-      const line = readPage(read(tree, "queries/index.html")).said;
-      assert.match(
-        line,
-        /Two codes match when their current versions share a code…/,
-      );
-      assert.doesNotMatch(line, /a record its source sends again/);
-    });
-  });
-
-  describe("given a query whose comment is one sentence longer than a line", () => {
-    it("cuts its line of the index at a word with an ellipsis, and keeps the whole comment on its page", async () => {
-      const files = await vocabulary();
-      const long = `Each ${"entry of a very long kind ".repeat(20)}ends here.`;
-      await files.write(
-        "queries/lenses/long.rq",
-        text(`# ${long}
+      for (const name of ["a", "b"])
+        await files.write(
+          `queries/matcher/same-code-${name}.rq`,
+          text(`# ${"Two records of one kind give a finding when their current versions give one test code, ".repeat(3)}and ${name === "a" ? "one value" : "two values"} bound per side.
 SELECT ?s WHERE { ?s ?p ?o }
 `),
-      );
-      const tree = await build(files, alex());
-      const line = readPage(read(tree, "queries/index.html")).said;
-      assert.match(line, /Each entry of a very long kind .*[a-z]…/);
-      assert.ok(!line.includes("ends here"));
-      assert.match(
-        readPage(read(tree, "queries/lenses/long.html")).said,
-        /ends here./,
-      );
+        );
+      const line = readPage(
+        read(await build(files, alex()), "queries/index.html"),
+      ).said;
+      assert.match(line, /and one value bound per side\./);
+      assert.match(line, /and two values bound per side\./);
+      assert.doesNotMatch(line, /…/);
     });
   });
 
