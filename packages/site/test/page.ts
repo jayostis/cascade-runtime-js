@@ -140,14 +140,16 @@ export function readPage(whole: string, page?: string): Page {
       ),
     ].map(([, open, title, rest]) => ({
       title: unescaped(title ?? ""),
-      said: said(`${title}${rest}`),
+      said: said(`${title}${rest}`).trim(),
       open: open !== undefined,
     })),
     groups: markup
       .split('<details class="group"')
       .slice(1)
       .map((part) => ({
-        said: said(/<summary>([\s\S]*?)<\/summary>/.exec(part)?.[1] ?? ""),
+        said: said(
+          /<summary>([\s\S]*?)<\/summary>/.exec(part)?.[1] ?? "",
+        ).trim(),
         open: /^\s*open/.test(part),
         ids: [...part.matchAll(/<section class="query" id="([^"]*)"/g)].map(
           ([, id]) => unescaped(id ?? ""),
