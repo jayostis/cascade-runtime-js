@@ -807,7 +807,7 @@ describe("Seeing what an answer's citations cite · renderSite()", () => {
 
     it("shows each fact as the answer wrote it", () => {
       assert.match(
-        text(element(section("medications", html), /<div[^>]*data-arm="pod"/)),
+        text(drill("medications", "pod", bare())),
         /Jardiance 10 mg is active/,
       );
     });

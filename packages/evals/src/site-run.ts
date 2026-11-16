@@ -1,5 +1,6 @@
 // One run instance of one model, as pages: the run page (the person's questions, both answers, the key as a reference, the
-// run's own folds) and, for each arm, a print view of every doctor card.
+// run's own folds); for each arm and question, a page of its reasoning and evidence and a page of its doctor's card; and,
+// for each arm, a print view of every doctor card.
 import type { Arm } from "./prompts.js";
 import type {
   BeyondVerdict,
@@ -45,6 +46,10 @@ type KeyItem = Results["cases"][number]["key"][number];
 export interface Where {
   readonly run: string;
   readonly print: Readonly<Record<Arm, string>>;
+  /** One arm's reasoning and evidence for a question. */
+  readonly reasoning: (arm: Arm, question: string) => string;
+  /** One arm's doctor's card for a question. */
+  readonly card: (arm: Arm, question: string) => string;
 }
 
 export const whereIs = (base: string, id: string): Where => ({
@@ -53,6 +58,9 @@ export const whereIs = (base: string, id: string): Where => ({
     pod: `${base}${id}.print-pod.html`,
     records: `${base}${id}.print-records.html`,
   },
+  reasoning: (arm, question) =>
+    `${base}${id}.reasoning-${arm}-${question}.html`,
+  card: (arm, question) => `${base}${id}.card-${arm}-${question}.html`,
 });
 
 const isTrap = (kind: string) => kind === "trap" || kind === "near-trap";
@@ -209,58 +217,59 @@ function promptHtml(s: Sitting, q: string): string {
   return `<details class="fold prompt"><summary>The exact prompt <span class="sum">· what each agent was handed for this question</span></summary><div class="body"><div class="two">${parts}</div></div></details>`;
 }
 
-const TABS = [
-  ["answer", "Answer"],
-  ["reasoning", "Reasoning"],
-  ["doctor", "The doctor's card"],
-] as const;
-
-const groupOf = (arm: Arm, q: string) => `t-${arm}-${esc(q)}`;
-
-/** One arm's tab choice for a question: before the arms, so CSS sibling selectors reach both its tabs and the full-width Reasoning panel. */
-function tabInputs(s: Sitting, arm: Arm, q: string): string {
-  if (turnOf(s, arm, q) === undefined) return "";
-  return TABS.map(
-    ([name], at) =>
-      `<input type="radio" class="tab" name="${groupOf(arm, q)}" id="${groupOf(arm, q)}-${name}" data-arm="${arm}" value="${name}"${at === 0 ? " checked" : ""}>`,
-  ).join("");
-}
-
-function armHtml(
-  s: Sitting,
-  arm: Arm,
-  q: string,
-  asks: string,
-  today: string,
-): string {
+/** An arm's answer to one question, with links to its reasoning and its doctor's card: those have pages of their own. */
+function armHtml(s: Sitting, arm: Arm, q: string, where: Where): string {
   const t = turnOf(s, arm, q);
   const head = `<div class="head"><b>${ARM_NAME[arm]}</b><span class="how">${ARM_HOW[arm]}</span></div>`;
   if (t === undefined)
     return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="chat" style="padding:12px 16px">${notAnswered}</div></div>`;
-  const panels = {
-    answer: replyHtml(t),
-    doctor: doctorCardHtml(t, asks, day(today)),
-  };
-  const group = groupOf(arm, q);
-  return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="tabset">${TABS.map(
-    ([name, label]) =>
-      `<label for="${group}-${name}" data-tab-label="${name}">${label}</label>`,
-  ).join("")}${TABS.filter(([name]) => name !== "reasoning")
-    .map(
-      ([name]) =>
-        `<div class="panel" data-tab="${name}">${panels[name as "answer" | "doctor"]}</div>`,
-    )
-    .join("")}</div>${costHtml(t)}</div>`;
+  const more =
+    t.answer === undefined
+      ? ""
+      : `<p class="more"><a data-more="reasoning" data-point-prefix="${arm}-${esc(q)}-" href="${hrefTo(where.run, where.reasoning(arm, q))}">The reasoning and the evidence behind each point</a><a data-more="card" href="${hrefTo(where.run, where.card(arm, q))}">The doctor's card</a></p>`;
+  return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="panel" data-part="answer">${replyHtml(t)}</div>${more}${costHtml(t)}</div>`;
 }
 
-/** Each arm's Reasoning tab for a question opens here, full width under both arms: the graph is wider than half a page. */
-function drillHtml(s: Sitting, q: string): string {
-  return `<div class="drills">${ARMS.map((arm) => {
-    const t = turnOf(s, arm, q);
-    return t === undefined
-      ? ""
+type Question = ReturnType<typeof questionsOf>[number];
+
+/** The page of one arm's reasoning for a question, or of its doctor's card: the graph is wider than half a page. */
+function detailPage(
+  kind: "reasoning" | "card",
+  s: Sitting,
+  arm: Arm,
+  q: Question,
+  at: number,
+  found: Results["cases"][number],
+  where: Where,
+  crumbs: readonly (readonly [string, string?])[],
+  title: string,
+  person: string,
+): readonly [string, string] | undefined {
+  const t = turnOf(s, arm, q.id);
+  if (t?.answer === undefined) return undefined;
+  const path = where[kind](arm, q.id);
+  const other = kind === "card" ? "reasoning" : "card";
+  const label = kind === "card" ? "The doctor's card" : "The reasoning";
+  const content =
+    kind === "card"
+      ? doctorCardHtml(t, q.asks, day(found.today))
       : `<div class="drill" data-arm="${arm}"><h3><b class="${arm}">${ARM_NAME[arm]}</b>: the reasoning and the evidence behind each point</h3>${reasoningHtml(t)}</div>`;
-  }).join("")}</div>`;
+  return [
+    path,
+    page({
+      path,
+      title: `${label}, ${ARM_NAME[arm]}, question ${at + 1} — ${title} — Cascade evals`,
+      crumbs: [
+        ...crumbs,
+        [title, where.run],
+        [`Question ${at + 1}: ${label.toLowerCase()}`],
+      ],
+      body: `<p class="small muted"><a href="${hrefTo(path, where.run)}#q_${esc(q.id)}">Back to question ${at + 1} on the run's page</a> · <a href="${hrefTo(path, where[other](arm, q.id))}">${other === "card" ? "The doctor's card" : "The reasoning and the evidence"}</a> · ${esc(ARM_NAME[arm])}</p>
+<h1>${label}: ${esc(ARM_NAME[arm])}, question ${at + 1}</h1>
+<div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble"><span class="from">${esc(person)} asks</span><span data-recorded>${esc(q.asks)}</span></div></div>
+${content}`,
+    }),
+  ];
 }
 
 /** The letters one judge saw the answers under, each with the arm and question it stood for. */
@@ -375,13 +384,13 @@ export function runPages(
       (q, at) =>
         `<section class="question" id="q_${esc(q.id)}"><h2 class="qh">Question ${at + 1}</h2>
 <div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble"><span class="from">${esc(person)} asks</span><span data-recorded>${esc(q.asks)}</span></div></div>
-${ARMS.map((arm) => tabInputs(s, arm, q.id)).join("")}<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, found.today)).join("")}</div>
-${drillHtml(s, q.id)}${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
+<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, where)).join("")}</div>
+${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
     )
     .join("\n");
   const body = `<p class="small muted"><a href="${hrefTo(where.run, "index.html")}">All runs</a> · run ${esc(r.run.id)} · ${esc(day(r.run.finished))} · <a href="${hrefTo(where.run, personPath(instance.case))}">${esc(person)}</a>, a synthetic person · <a href="${hrefTo(where.run, "how_it_works.html")}">how the test works</a></p>
 <h1>${esc(title)}: With Cascade and the grab bag, side by side</h1>
-<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer three tabs: the answer, the reasoning and the evidence graph behind it (which opens full width under both answers), and the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor. The exact prompt each agent was handed is one click away under each question.</p>
+<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer two links, to the reasoning and the evidence graph behind it and to the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor, each on a page of its own. The exact prompt each agent was handed is one click away under each question.</p>
 ${head}
 <p class="printlinks noprint">The cards, on paper: <a href="${hrefTo(where.run, where.print.pod)}">every card, With Cascade</a> · <a href="${hrefTo(where.run, where.print.records)}">every card, Grab bag</a></p>
 ${sections}
@@ -397,6 +406,24 @@ ${foldsHtml(s, where.run)}`;
       body,
     }),
   );
+  questions.forEach((q, at) => {
+    for (const arm of ARMS)
+      for (const kind of ["reasoning", "card"] as const) {
+        const made = detailPage(
+          kind,
+          s,
+          arm,
+          q,
+          at,
+          found,
+          where,
+          crumbs,
+          title,
+          person,
+        );
+        if (made !== undefined) out.set(...made);
+      }
+  });
   for (const arm of ARMS) {
     const cards = questions
       .map((q) => {
