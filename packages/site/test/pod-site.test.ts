@@ -18,7 +18,7 @@ import {
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
 import { PLAIN } from "../src/html.js";
-import { termHref, termPage } from "../src/links.js";
+import { slugOf, termHref, termPage } from "../src/links.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { namedInQuery } from "../src/term-reference.js";
 import { type Page, readPage } from "./page.js";
@@ -78,6 +78,7 @@ before(async () => {
     ask: "npm run ask -- matching",
     blob: BLOB,
     terms: "../terms/",
+    queries: "../queries/",
     spec: "../spec/",
     chrome: PLAIN,
   };
@@ -105,14 +106,90 @@ const blockOf = (on: Page, title: string) => {
  */
 describe("The pages of a pod · Site.build(), Site.files()", () => {
   describe("given a pod in which the matcher found two records to be one thing", () => {
-    it("shows every named question of the vocabulary with its query's text", async () => {
+    it("shows every named question of the vocabulary with its query's text less the comment its section prints as prose, or in one line when it has no rows", async () => {
       const shown = new Map(
         [...pages.values()].flatMap(({ blocks }) =>
           blocks.map((block) => [block.path, block.text] as const),
         ),
       );
-      for (const { path, text } of (await questions(vocabulary.files)).values())
-        assert.equal(shown.get(path), text, path);
+      const lines = new Set(
+        [...pages.values()].flatMap(({ nones }) =>
+          nones.map(({ href }) => href),
+        ),
+      );
+      assert.ok(
+        shown.size > 0 && lines.size > 0,
+        "rows and no rows both occur",
+      );
+      for (const { path, text } of (
+        await questions(vocabulary.files)
+      ).values()) {
+        const given = shown.get(path);
+        if (given !== undefined) {
+          assert.equal(given, text.replace(/^(?:#[^\n]*\n)+\s*/, ""), path);
+          continue;
+        }
+        const name = path.split("/").at(-1)?.replace(/\.rq$/, "") ?? "";
+        const folder = path.slice(0, path.lastIndexOf("/") + 1);
+        assert.ok(
+          lines.has(`../${folder}${slugOf(name)}.html`),
+          `${path} is shown neither with rows nor in one line`,
+        );
+      }
+    });
+
+    it("shows a section whose question returns no row as one line, its title, none and a link to the question's page, with neither its prose nor its query", () => {
+      const emptied = [...pages].filter(([, { nones }]) => nones.length > 0);
+      assert.ok(emptied.length > 0, "a page has a section without rows");
+      for (const [path, { blocks, nones, said }] of emptied) {
+        assert.doesNotMatch(said, /No rows\./, path);
+        for (const { line, title, said: words, href } of nones) {
+          assert.ok(line.length < 400, line);
+          assert.equal(words, `${title}: none. The question`);
+          assert.match(href, /^\.\.\/queries\/questions\/.+\.html$/);
+          assert.ok(
+            !blocks.some(
+              (block) => block.title === title && block.rows.length === 0,
+            ),
+            `${path} still has a section for ${title}`,
+          );
+        }
+      }
+    });
+
+    it("keeps a section that has rows whole, with its prose and its query", () => {
+      const full = [...pages.values()].flatMap(({ blocks }) =>
+        blocks.filter((block) => block.rows.length > 0),
+      );
+      assert.ok(full.length > 0);
+      for (const block of full) {
+        assert.ok(block.text.length > 0, block.title);
+        assert.ok(block.said.includes("The query:"), block.title);
+      }
+    });
+
+    it("leaves a query's leading comment out of the query shown under its prose", async () => {
+      const commented = new Map(
+        [...(await questions(vocabulary.files)).values()]
+          .filter(({ text }) => text.startsWith("#"))
+          .map(({ path, text }) => [path, text.split("\n")[0] ?? ""]),
+      );
+      const shown = [...pages.values()]
+        .flatMap(({ blocks }) => blocks)
+        .filter((block) => commented.has(block.path));
+      assert.ok(shown.length > 0);
+      for (const block of shown) {
+        const first = commented.get(block.path) ?? "";
+        assert.ok(!block.text.startsWith("#"), `${block.path} starts with #`);
+        assert.ok(
+          !block.text.includes(first),
+          `${block.path} repeats its comment`,
+        );
+        assert.ok(
+          block.said.includes(first.replace(/^#+\s*/, "").slice(0, 30)),
+          `${block.path} lost its prose`,
+        );
+      }
     });
   });
 
