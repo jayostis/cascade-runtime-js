@@ -64,6 +64,8 @@ export interface SiteOptions {
   readonly terms?: string;
   /** The hub's front page's address from the site's root; without one, the site's pages link nowhere back. */
   readonly front?: string;
+  /** The query pages' folder from the site's root, with its slash; without one, a question with no rows links no page. */
+  readonly queries?: string;
   /** The spec's pages' folder from the site's root, with its slash; without one, a view names no rule. */
   readonly spec?: string;
   /** The vocabulary's conformance kit the pod was built from, `conformance/<kit>/<kit>.feature`; a pod built from none, or a person's own, has none. */

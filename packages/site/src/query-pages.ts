@@ -7,6 +7,7 @@ import {
   markup,
   shell,
 } from "./html.js";
+import { withoutComment } from "./answer.js";
 import {
   addressesOf,
   frontPageLink,
@@ -30,8 +31,8 @@ export const QUERIES_PAGE = `${QUERIES_FOLDER}index.html`;
 
 /** The example pod whose rows the pages show. */
 export const ROWS_OF = { folder: "alex-rivera", name: "Alex Rivera" } as const;
-/** How many rows of a question a page shows; the rest are in the pod's `answers.json`. */
-export const ROWS_SHOWN = 100;
+/** How many rows of a question or entries of a view a page shows, enough to see the shape of an answer; the rest are in the pod's explorer and `answers.json`. */
+export const ROWS_SHOWN = 10;
 /** How many of an entry's fields a view's row says. */
 const FIELDS_SHOWN = 6;
 
@@ -133,13 +134,16 @@ const purposeOf = (text: string): string => prose(text).trim();
 const LINE = 200;
 
 /**
- * The comment's first sentence: up to the first stop followed by a capital letter or a bracket, cut at a word with an
- * ellipsis when it is longer than a line of the index.
+ * The comment's first sentence: up to the first stop followed by a capital letter or a bracket. One longer than a line of
+ * the index is cut with an ellipsis at its first clause, after the first comma, semicolon or colon that leaves at least
+ * a few words, or at a word when it has none.
  */
 export function firstSentence(comment: string): string {
   const sentence =
     /^[\s\S]*?[.?!](?=\s+[A-Z(]|$)/.exec(comment)?.[0] ?? comment;
   if (sentence.length <= LINE) return sentence;
+  const clause = /^[\s\S]{30,}?(?=[,;:]\s)/.exec(sentence)?.[0];
+  if (clause !== undefined && clause.length <= LINE) return `${clause}…`;
   const cut = sentence.slice(0, LINE);
   return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[,;:]$/, "")}…`;
 }
@@ -397,7 +401,7 @@ function queryPage(
     main: markup`<p class="kind">${kind}</p>
 <h1>${query.name}</h1>
 ${purpose === "" ? markup`<p class="about">The file states no purpose.</p>\n` : markup`<p class="prose">${purpose}</p>\n`}<h2>The query</h2>
-<pre class="code"><code>${highlighted(query.text)}</code></pre>
+<pre class="code"><code>${highlighted(withoutComment(query.text))}</code></pre>
 <h2>Terms it reads</h2>
 ${read.length === 0 ? markup`<p class="about">It names no term of the vocabulary.</p>\n` : markup`<p class="terms">${read.map(([name, iri], at) => markup`${at === 0 ? "" : " · "}<a href="${termHref(iri, `${up}${TERMS_FOLDER}`, facts.properties.has(iri))}"><code>${name}</code></a>`)}</p>\n`}<h2>Rules and decision notes that name it</h2>
 ${
@@ -420,6 +424,22 @@ ${
 
 const fold = (text: string): string => text.toLowerCase();
 
+/**
+ * Queries, sorted by name, in families: each query under the shortest name that is its own or that begins its name
+ * and a hyphen, so a rule and its variants are together, the families in the order of their roots.
+ */
+function familiesOf(sorted: readonly Query[]): Query[][] {
+  const roots = new Map<string, Query[]>();
+  for (const query of sorted) {
+    const root =
+      sorted.find(
+        ({ name }) => name === query.name || query.name.startsWith(`${name}-`),
+      )?.name ?? query.name;
+    roots.set(root, [...(roots.get(root) ?? []), query]);
+  }
+  return [...roots.values()];
+}
+
 function indexPage(
   queries: readonly Query[],
   groups: readonly Group[],
@@ -434,6 +454,16 @@ function indexPage(
       );
   const line = (query: Query): Html =>
     markup`<li><a href="${query.page.slice(QUERIES_FOLDER.length)}">${query.name}</a> <span class="about">${summaryOf(query)}</span></li>\n`;
+  const family = (rules: readonly Query[]): Html => {
+    const [root] = rules;
+    return rules.length === 1 && root !== undefined
+      ? line(root)
+      : markup`<li><details class="family"><summary>${root?.name} · ${rules.length} rules</summary>
+<ul class="queries">
+${rules.map(line)}</ul>
+</details></li>
+`;
+  };
   return shell({
     chrome,
     title: "Cascade queries",
@@ -450,7 +480,7 @@ ${groups.map(({ id, title, about }) => {
     return markup`<h2 class="part" id="${id}">${title}</h2>
 <p class="prose">${about}</p>
 <ul class="queries">
-${by(id).map(line)}</ul>
+${id === "matcher" ? familiesOf(by(id)).map(family) : by(id).map(line)}</ul>
 `;
   const subjects = [
     ...new Set(by(id).map(({ subject }) => subject ?? "")),

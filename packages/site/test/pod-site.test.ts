@@ -145,7 +145,12 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
         assert.doesNotMatch(said, /No rows\./, path);
         for (const { line, title, said: words, href } of nones) {
           assert.ok(line.length < 400, line);
-          assert.equal(words, `${title}: none. The question`);
+          assert.match(
+            words,
+            new RegExp(
+              `^${title}: none( under the [^ ]+ lens)?[.] The question$`,
+            ),
+          );
           assert.match(href, /^\.\.\/queries\/questions\/.+\.html$/);
           assert.ok(
             !blocks.some(
@@ -433,8 +438,8 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
       assert.deepEqual(broken, []);
     });
 
-    it("links out of its own folder only to the term reference and the specification", () => {
-      const out = ["../terms/", "../spec/"];
+    it("links out of its own folder only to the term reference, the specification and the question pages", () => {
+      const out = ["../terms/", "../spec/", "../queries/"];
       const outside: string[] = [];
       for (const [path, { hrefs }] of pages)
         for (const href of hrefs)
