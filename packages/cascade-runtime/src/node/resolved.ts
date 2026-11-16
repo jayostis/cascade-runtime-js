@@ -29,6 +29,7 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { bridgeLoaded, type Parts } from "../pod.js";
 import { Tables } from "../tables.js";
+import { acceptOptions } from "../options.js";
 import { builderAt, localBuilds, withFiles } from "./builders.js";
 import { withKeptRows } from "./rowCache.js";
 
@@ -155,6 +156,11 @@ export async function partsOf(
   components: Components,
   options: PartsOptions = {},
 ): Promise<ResolvedParts> {
+  acceptOptions("partsOf", options, {
+    starter: true,
+    fetch: true,
+    tables: true,
+  });
   const found = await vocabularyOf(components);
   const config = withTables(found.config, options.tables ?? {});
   const local = { ...found, config };

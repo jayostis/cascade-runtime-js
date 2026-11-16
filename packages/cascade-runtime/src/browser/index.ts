@@ -39,7 +39,10 @@ import {
 import { ANSWERS, Answers, DESCRIBED } from "../answers.js";
 import { LOOKUPS, type Lookups, lookupsOf, withLookups } from "../lookups.js";
 import { podKey, secretChecked } from "../encrypted.js";
+import { acceptOptions } from "../options.js";
 import {
+  acceptAskOptions,
+  acceptImportOptions,
   bridgeLoaded,
   type Done,
   type Exported,
@@ -160,6 +163,7 @@ export interface RuntimeSettings {
  * Bridge and the engine's module. Without it they are read beside this module, as the package lays them out.
  */
 export function configureRuntime(settings: RuntimeSettings): void {
+  acceptOptions("configureRuntime", settings, { base: true });
   if (tablesMade)
     throw new Error(
       "configureRuntime comes before the first pod opens: the runtime is already reading its components",
@@ -637,6 +641,7 @@ class BrowserPod implements Pod {
     exported: string | Exported,
     options: ImportOptions = {},
   ): Promise<Imported> {
+    acceptImportOptions(options);
     const { onProgress } = options;
     return (await this.#pod()).import(
       exported,
@@ -653,10 +658,12 @@ class BrowserPod implements Pod {
   }
 
   async connect(saved: Exported, options?: { match?: boolean }): Promise<Done> {
+    acceptOptions("pod.connect", options, { match: true });
     return (await this.#pod()).connect(saved, options);
   }
 
   async enter(turtle: string, options?: { match?: boolean }): Promise<Done> {
+    acceptOptions("pod.enter", options, { match: true });
     return (await this.#pod()).enter(turtle, options);
   }
 
@@ -680,6 +687,7 @@ class BrowserPod implements Pod {
     question: string | { query: string },
     options: { lens?: string } = {},
   ): Promise<Row[]> {
+    acceptAskOptions(options);
     if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
     if (this.#opened === undefined && typeof question === "string") {
       const rows = await this.#kept?.rows(question, options.lens);
@@ -819,6 +827,7 @@ export async function openPod(
   name?: string,
   options: { title?: string; from?: string; secret?: string } = {},
 ): Promise<Pod> {
+  acceptOptions("openPod", options, { title: true, from: true, secret: true });
   const { from, secret, ...rest } = options;
   if (secret !== undefined && from !== undefined)
     throw new Refusal(

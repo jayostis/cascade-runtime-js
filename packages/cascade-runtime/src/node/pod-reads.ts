@@ -17,6 +17,7 @@ import {
 } from "../pod-tools.js";
 import { proposedTurtle } from "../propose-tools.js";
 import { checkProposal } from "./proposal-check.js";
+import { acceptOptions } from "../options.js";
 
 export { proposer } from "./proposer.js";
 
@@ -61,6 +62,7 @@ export function podReads(
   host: PodsHost,
   options: { tables?: boolean } = {},
 ): PodReads & { close(): Promise<void> } {
+  acceptOptions("podReads", options, { tables: true });
   const opened = new Map<string, Promise<Pod>>();
 
   /** The pod named, which must be one there is, opened once; a failed opening is forgotten. */

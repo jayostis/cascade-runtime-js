@@ -3,6 +3,7 @@ import { cp, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { HtmlTagDescriptor, Plugin } from "vite";
+import { acceptOptions } from "../options.js";
 
 /** Where the runtime's files go under the base, as `configureRuntime({ base })` names them. */
 export const RUNTIME_FOLDER = "cascade-runtime/";
@@ -68,11 +69,13 @@ async function components(folder: string): Promise<string[]> {
  * `cascade-runtime` external; the build copies the package's browser build and the components it reads under the
  * base, and an import map in the page loads the entry from there, so the runtime keeps its own `import.meta.url`.
  */
-export function cascadeRuntime({
-  browser = true,
-  folder = RUNTIME_FOLDER,
-  from,
-}: CascadeRuntimeOptions = {}): Plugin {
+export function cascadeRuntime(options: CascadeRuntimeOptions = {}): Plugin {
+  acceptOptions("cascadeRuntime", options, {
+    browser: true,
+    folder: true,
+    from: true,
+  });
+  const { browser = true, folder = RUNTIME_FOLDER, from } = options;
   const source = from ?? installed();
   let base = "/";
   let out = "";

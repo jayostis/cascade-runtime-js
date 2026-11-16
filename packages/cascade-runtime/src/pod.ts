@@ -46,6 +46,7 @@ import {
   type Described,
 } from "./answers.js";
 import { checkJudgment, judged } from "./judging.js";
+import { acceptOptions } from "./options.js";
 import { THIS_JUDGMENT } from "./proposals.js";
 import { currentOf, shipped, type Tables } from "./tables.js";
 
@@ -79,6 +80,20 @@ export interface ImportOptions {
   readonly match?: boolean;
   /** Told as each part of the import begins, with what is done so far; the import goes on once what it returns settles. */
   readonly onProgress?: (progress: ImportProgress) => void | Promise<void>;
+}
+
+/** Throws for an option `pod.import` does not take; the browser's pod checks before it loads the engine. */
+export function acceptImportOptions(options: ImportOptions): void {
+  acceptOptions("pod.import", options, {
+    claimProfiles: true,
+    match: true,
+    onProgress: true,
+  });
+}
+
+/** Throws for an option `pod.ask` does not take; the browser's pod checks before it reads its kept answers. */
+export function acceptAskOptions(options: { lens?: string }): void {
+  acceptOptions("pod.ask", options, { lens: true });
 }
 
 export interface Pod {
@@ -593,14 +608,19 @@ class OpenPod implements Pod {
     return this.#next(() => this.#look(exported));
   }
 
-  import(
+  async import(
     exported: string | Exported,
     options: ImportOptions = {},
   ): Promise<Imported> {
+    acceptImportOptions(options);
     return this.#next(() => this.#import(exported, options));
   }
 
-  connect(saved: Exported, options: { match?: boolean } = {}): Promise<Done> {
+  async connect(
+    saved: Exported,
+    options: { match?: boolean } = {},
+  ): Promise<Done> {
+    acceptOptions("pod.connect", options, { match: true });
     return this.#next(async () => {
       let names: string[];
       try {
@@ -630,7 +650,11 @@ class OpenPod implements Pod {
     });
   }
 
-  enter(turtle: string, options: { match?: boolean } = {}): Promise<Done> {
+  async enter(
+    turtle: string,
+    options: { match?: boolean } = {},
+  ): Promise<Done> {
+    acceptOptions("pod.enter", options, { match: true });
     return this.#next(async () => {
       const entered = await this.#core.enter({
         bytes: new TextEncoder().encode(turtle),
@@ -683,10 +707,11 @@ class OpenPod implements Pod {
     return this.#next(() => this.#core.match(activity));
   }
 
-  ask(
+  async ask(
     question: string | { query: string },
     options: { lens?: string } = {},
   ): Promise<Row[]> {
+    acceptAskOptions(options);
     return this.#next(() => this.#ask(question, options));
   }
 
