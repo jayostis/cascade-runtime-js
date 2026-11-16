@@ -251,6 +251,56 @@ describe("The specification's pages · specPages()", () => {
     });
   });
 
+  describe("with a rule whose description holds paragraphs and a list", () => {
+    const LISTED = `Feature: Listed
+  Rule: L1. Says no note rules it
+    No note rules this.
+    First paragraph, which
+    wraps.
+
+    The rows are:
+
+    - R1, one: first.
+    - R2, two: second,
+      which wraps.
+
+    Last paragraph.
+
+  Rule: L2. Names a note
+    decisions/naming.md, row "version". Rows follow.
+
+    - R1: a.
+    - R2: b.
+`;
+    let page: string;
+
+    before(async () => {
+      const vocabulary = await kimVocabulary();
+      await vocabulary.write("runtime/listed.feature", text(LISTED));
+      page = pageText(await pagesOf(vocabulary, [], RAN_WITH), "listed.html");
+    });
+
+    const rule = (id: string) => {
+      const html = page.slice(page.indexOf(`id="${id}"`));
+      return html.slice(0, html.indexOf("</section>"));
+    };
+
+    it("keeps its paragraphs, and shows a list as a list, whether a note rules the rule or not", () => {
+      for (const id of ["l1", "l2"]) {
+        const html = page.slice(page.indexOf(`id="${id}"`));
+        const section = html.slice(0, html.indexOf("</section>"));
+        assert.match(section, /<ul[^>]*>\s*<li>R1[^]*<li>R2/);
+      }
+      const first = rule("l1");
+      assert.match(
+        first,
+        /<p class="prose">First paragraph, which wraps\.<\/p>/,
+      );
+      assert.match(first, /<li>R2, two: second, which wraps\.<\/li>/);
+      assert.match(first, /<p class="prose">Last paragraph\.<\/p>/);
+    });
+  });
+
   describe("with a Choice row that names the issue that will write its rule", () => {
     it("lists it in `waiting`, apart from the warnings", () => {
       assert.deepEqual(built.waiting, [

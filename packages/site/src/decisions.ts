@@ -30,6 +30,7 @@ const DECISION_STYLES = `
 .note :not(pre) > code { background: var(--paper); padding: 0 .2rem; border-radius: 3px; }
 .note table { font-size: .9rem; }
 .note tr:target { background: #fff6cc; }
+.note details.fold > summary { cursor: pointer; color: var(--muted); }
 ul.cited { margin: 0; padding-left: 1.1rem; }
 .none { color: var(--muted); }
 `;
@@ -100,6 +101,44 @@ const linkFrom =
       }) ?? "",
     ) || undefined;
 
+/** A note this long is folded: its prior art and its tables of more than `FOLD_ROWS` rows, but never the Choice table. */
+const LONG_NOTE = 30_000;
+const FOLD_ROWS = 12;
+
+const fold = (summary: string, body: string): string =>
+  `<details class="fold"><summary>${summary}</summary>${body}</details>\n`;
+
+/** The page of a long note with its prior art and its long tables, which a rule does not link into, under a summary each. */
+function foldLong(html: string): string {
+  const [first = "", ...sections] = html.split(/(?=<h2 )/);
+  return (
+    first +
+    sections
+      .map((section) => {
+        const end = section.indexOf("</h2>") + "</h2>".length;
+        const heading = section.slice(0, end);
+        const body = section.slice(end);
+        const id = /^<h2 id="([^"]*)"/.exec(heading)?.[1];
+        if (id === "what-others-do")
+          return `${heading}${fold(`Show what others do (${body.match(/<li>/g)?.length ?? 0} entries)`, body)}`;
+        if (id === "choice") return section;
+        return `${heading}${body.replace(
+          /<table>[^]*?<\/table>\n?/g,
+          (table) => {
+            const rows = (table.match(/<tr[ >]/g)?.length ?? 1) - 1;
+            const columns = [...table.matchAll(/<th[^>]*>(.*?)<\/th>/g)]
+              .map(([, name]) => (name ?? "").replace(/<[^>]+>/g, ""))
+              .join(", ");
+            return rows > FOLD_ROWS
+              ? fold(`Show the table: ${rows} rows of ${columns}`, table)
+              : table;
+          },
+        )}`;
+      })
+      .join("")
+  );
+}
+
 function notePage(
   note: DecisionNote,
   {
@@ -128,7 +167,7 @@ function notePage(
     chrome,
     note.title,
     { href: noteHref(note.path, decisions.blob), path: note.path },
-    html,
+    note.text.length > LONG_NOTE ? new Html(foldLong(html.text)) : html,
   );
 }
 

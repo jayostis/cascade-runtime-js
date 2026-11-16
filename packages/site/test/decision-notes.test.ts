@@ -273,4 +273,52 @@ describe("Decision notes as pages · specSection", () => {
       );
     });
   });
+
+  describe("with a note over 30 000 characters", () => {
+    const table = (rows: number) =>
+      `| thing | what we do |\n|---|---|\n${Array.from({ length: rows }, (_, at) => `| t${at} | does ${at} |`).join("\n")}\n`;
+    const note = (rows: number, padding: number) =>
+      `# A long note\n\n## Question\n\nWhy?\n\n## What others do\n\n- **A** does it.\n- **B** does not.\n\n## Choice\n\n${table(rows)}\n## Why\n\n${table(rows)}\n${"A reason, at length. ".repeat(padding)}\n`;
+    let long: string;
+    let short: string;
+
+    before(async () => {
+      const files = await currencyVocabulary();
+      await files.write("decisions/long.md", text(note(14, 1500)));
+      await files.write("decisions/short.md", text(note(14, 1)));
+      const tree = await hubWith(files, []);
+      long = treeText(tree, "decisions/long.html");
+      short = treeText(tree, "decisions/short.html");
+    });
+
+    /** The `<details>` blocks of a page, each with its summary and its body. */
+    const folds = (html: string) =>
+      [
+        ...html.matchAll(
+          /<details class="fold">\s*<summary>(.*?)<\/summary>([^]*?)<\/details>/g,
+        ),
+      ].map(([, summary, body]) => ({
+        summary: summary ?? "",
+        body: body ?? "",
+      }));
+
+    it("folds what others do and each table of over 12 rows but the Choice table, each under a summary that says what it holds", () => {
+      const found = folds(long);
+      assert.equal(found.length, 2);
+      assert.match(found[0]?.body ?? "", /<strong>A<\/strong> does it/);
+      assert.match(found[1]?.body ?? "", /<td[^>]*>t13<\/td>/);
+      for (const { summary } of found) assert.ok(summary.length > 10, summary);
+    });
+
+    it("keeps the headings and the Choice table, with its row anchors, open", () => {
+      assert.match(long, /<h2 id="what-others-do">/);
+      assert.match(long, /<h2 id="choice">/);
+      const open = long.replace(/<details class="fold"[^]*?<\/details>/g, "");
+      assert.match(open, /id="row-t13"/);
+    });
+
+    it("folds nothing in a note under it", () => {
+      assert.deepEqual(folds(short), []);
+    });
+  });
 });
