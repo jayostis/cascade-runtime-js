@@ -5,11 +5,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { openPod, sixWords } from "cascade-runtime";
-import { replayKit } from "cascade-runtime/fixtures";
+import type * as Fixtures from "cascade-runtime/fixtures";
 import { TOOLS } from "cascade-runtime/tools";
 
 /** A folder cascade-mcp's and cascade-runtime's tarballs are installed in, to run the `cascade-mcp` bin they installed. */
@@ -35,6 +36,16 @@ const CLI =
           ) as { bin: { "cascade-mcp": string } }
         ).bin["cascade-mcp"],
       );
+
+/**
+ * A module of cascade-runtime, from the installed package when there is one: the pods the installed bin is asked about are
+ * built by the vocabulary that package carries, not by whatever checkout of it sits beside this one.
+ */
+async function runtimeModule<T>(specifier: string): Promise<T> {
+  if (APP === undefined) return (await import(specifier)) as T;
+  const path = createRequire(join(APP, "package.json")).resolve(specifier);
+  return (await import(pathToFileURL(path).href)) as T;
+}
 
 /** The command, its arguments and its folder that start cascade-mcp with `args`, as the tests start it. */
 const command = (args: string[]) => ({
@@ -82,9 +93,19 @@ const USAGE = "usage: cascade-mcp --pods <folder> [--check-tables]";
 before(
   async () => {
     folder = await mkdtemp(join(tmpdir(), "cascade-mcp-"));
-    await replayKit("alex-rivera", join(folder, "alex-rivera"), {
-      through: "J1",
-    });
+    const { replayKit } = await runtimeModule<typeof Fixtures>(
+      "cascade-runtime/fixtures",
+    );
+    // An app runs in its own folder, whose settings its runtime reads; this checkout's folder has the repository's.
+    const here = process.cwd();
+    if (APP !== undefined) process.chdir(APP);
+    try {
+      await replayKit("alex-rivera", join(folder, "alex-rivera"), {
+        through: "J1",
+      });
+    } finally {
+      process.chdir(here);
+    }
     await (
       await openPod(join(folder, "locked"), { secret: sixWords() })
     ).close();

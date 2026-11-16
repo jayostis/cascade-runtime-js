@@ -173,6 +173,8 @@ export class Site {
     readonly rules: ReadonlyMap<string, readonly SpecRule[]>,
     /** Each query's page from the site's root, as the query pages are named, by its path in the vocabulary. */
     readonly queryPages: ReadonlyMap<string, string>,
+    /** The sections the pipeline page folds its steps under, in order, each with the paths of the queries it holds. */
+    readonly sections: readonly PipelineSection[],
   ) {
     this.questions = answers.get(options.lens) ?? new Map();
     this.things = things;
@@ -335,6 +337,7 @@ export class Site {
       await queryAddresses(
         (await vocabulary.list(QUERIES)).filter((path) => path.endsWith(".rq")),
       ),
+      await pipelineSections(vocabulary),
     );
   }
 
@@ -453,7 +456,39 @@ function thingsWithPages(
 
 interface CrateEntity {
   readonly "@id"?: string;
+  readonly "@type"?: string;
   readonly about?: { readonly "@id"?: string };
+  readonly name?: string;
+  readonly position?: number;
+  readonly mentions?: readonly { readonly "@id"?: string }[];
+  readonly itemListElement?: readonly { readonly "@id"?: string }[];
+}
+
+/** One section of the pipeline: its name and the paths of its queries, in the order the vocabulary lists them. */
+export interface PipelineSection {
+  readonly name: string;
+  readonly steps: readonly string[];
+}
+
+/** The pipeline's sections: the HowToSection entities the crate's root mentions, by position. */
+async function pipelineSections(vocabulary: Files): Promise<PipelineSection[]> {
+  const { "@graph": graph } = JSON.parse(await readText(vocabulary, CRATE)) as {
+    "@graph": readonly CrateEntity[];
+  };
+  const mentioned = new Set(
+    graph
+      .find((one) => one["@id"] === "./")
+      ?.mentions?.map((one) => one["@id"]),
+  );
+  return graph
+    .filter(
+      (one) => one["@type"] === "HowToSection" && mentioned.has(one["@id"]),
+    )
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    .map((one) => ({
+      name: one.name ?? "",
+      steps: (one.itemListElement ?? []).flatMap((step) => step["@id"] ?? []),
+    }));
 }
 
 /** The labels the vocabulary's own ontologies give their terms, read with the question that names everything, and their comments. */

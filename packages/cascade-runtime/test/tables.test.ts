@@ -3434,7 +3434,7 @@ describe("Asking a pod what the reference tables say of its records · pod.medic
           index,
           "cascade:LaboratoryTestResult",
           `cascade:testCode <${LOINC}2823-3> ; cascade:testName "Potassium" ;
-  cascade:resultValueKind cascade:TextResultValue ; cascade:resultValue "4.${index}" ;
+  cascade:resultValueKind cascade:TextResultValue ; cascade:resultValueText "4.${index}" ;
   cascade:resultClinicallyRelevantTime "${day}T12:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime>`,
           pod,
         );

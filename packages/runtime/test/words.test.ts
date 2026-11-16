@@ -30,12 +30,12 @@ async function wordsOver(
   await store.loadTurtle(
     `@prefix cascade: <${CASCADE}> . @prefix prov: <${PROV}> .
 <urn:test:coded> a cascade:AllergyOrIntolerance . <urn:test:coded-v> prov:specializationOf <urn:test:coded> ; cascade:allergenCode <urn:test:snomed/373270004> .
-<urn:test:literal> a cascade:AllergyOrIntolerance . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; cascade:snomedCode "1234" .
+<urn:test:literal> a cascade:AllergyOrIntolerance . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; cascade:allergenCode "1234" .
 <urn:test:brand> a cascade:PrescribedOrReportedMedication . <urn:test:brand-v> prov:specializationOf <urn:test:brand> ; <${CASCADE}ndcCode> <urn:test:ndc/00378520905> .
 <urn:test:generic> a cascade:PrescribedOrReportedMedication . <urn:test:generic-v> prov:specializationOf <urn:test:generic> ; <${CASCADE}ndcCode> <urn:test:ndc/00093101301> .
 <urn:test:martin> a <${CASCADE}GeneticVariantFinding> . <urn:test:martin-v> prov:specializationOf <urn:test:martin> ; <${CASCADE}hgvsCodingDnaExpression> "NM_000249.4:c.2042C>T" ; <${CASCADE}clinvarVariationId> "90011" .
 <urn:test:panel> a <${CASCADE}GeneticVariantFinding> . <urn:test:panel-v> prov:specializationOf <urn:test:panel> ; <${CASCADE}hgvsCodingDnaExpression> "NM_000249.3:c.2042C>T" .
-<urn:test:report> a <${CASCADE}VariantInterpretation> . <urn:test:report-v> prov:specializationOf <urn:test:report> ; <${CASCADE}variantInterpreted> <urn:test:martin> .
+<urn:test:report> a <${CASCADE}VariantInterpretation> . <urn:test:report-v> prov:specializationOf <urn:test:report> ; <${CASCADE}subjectVariant> <urn:test:martin> .
 <urn:test:variation> <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${CASCADE}SameVariation> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
 <urn:test:through> <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${CASCADE}SameVariationThroughTable> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
 <urn:test:said> <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${CASCADE}SameBrandGeneric> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .

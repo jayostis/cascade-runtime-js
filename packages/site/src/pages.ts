@@ -87,25 +87,6 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
   ]);
 }
 
-/** The phases of the steps, each from the step that begins it: a step's file name, or `lens` for the lens. */
-export const PHASES: readonly (readonly [string, string])[] = [
-  ["records", "Reading what arrived"],
-  ["lens", "Which judgments count"],
-  ["different-pairs", "Which records are the same"],
-  ["excluded-at-source", "What no view shows"],
-  ["entries", "Joining records into entries"],
-  ["medication-lifecycles", "Medications and notes"],
-];
-
-/** The key a step goes by in `PHASES`: `lens` for the lens, else its query's file name. */
-const stepStem = (answer: Answer): string =>
-  answer.query.path.startsWith(LENSES)
-    ? "lens"
-    : answer.query.path.slice(
-        answer.query.path.lastIndexOf("/") + 1,
-        -".rq".length,
-      );
-
 function block(
   site: Site,
   answer: Answer,
@@ -327,17 +308,16 @@ function pipeline(site: Site): Html {
       ),
     );
   const ran = site.pipeline.get(lens) ?? [];
-  for (const [first] of PHASES) {
-    if (!ran.some(({ answer }) => stepStem(answer) === first))
-      throw new Error(
-        `the pipeline page's phases begin at "${first}", which no step of the ${lens} lens is`,
-      );
-  }
   const phases: { title: string; steps: Content[] }[] = [];
   for (const { answer, added } of ran) {
-    const title = PHASES.find(([first]) => first === stepStem(answer))?.[1];
-    if (title !== undefined || phases.length === 0)
-      phases.push({ title: title ?? "Steps", steps: [] });
+    const title = site.sections.find(({ steps }) =>
+      steps.includes(answer.query.path),
+    )?.name;
+    if (title === undefined)
+      throw new Error(
+        `${answer.query.path} sits in no section of the vocabulary's ro-crate-metadata.json, which the pipeline page folds its steps under`,
+      );
+    if (phases.at(-1)?.title !== title) phases.push({ title, steps: [] });
     phases
       .at(-1)
       ?.steps.push([

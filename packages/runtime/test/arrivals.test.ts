@@ -65,7 +65,7 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
       .encode(`<${session}> a <http://www.w3.org/ns/prov#Activity> .
 <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
-  <https://ns.cascadeprotocol.org/cascade#allergen> ${allergen} .`);
+  <https://ns.cascadeprotocol.org/cascade#allergenName> ${allergen} .`);
   await source.write(
     "s/blank.ttl",
     entry(
@@ -354,7 +354,7 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
           .encode(`<urn:uuid:2d7f4b18-6e35-4c90-b1a2-8f0c3e9d5a67> a <${CASCADE}HandEntrySession> .
 <urn:cascade:output-0> a <${CASCADE}AllergyOrIntolerance> .
 <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
-  <${CASCADE}allergen> "Peanut" .`),
+  <${CASCADE}allergenName> "Peanut" .`),
       );
       const story: Story = {
         address: "https://pod.example/",
@@ -499,7 +499,7 @@ const BAD_INPUT = {
   ],
   "blank allergen": [
     { kind: "entry", file: "blank-allergen.ttl" },
-    /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*cascade#allergen: /,
+    /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*cascade#allergenName: /,
   ],
   "made-up criticality": [
     { kind: "entry", file: "made-up-criticality.ttl" },
@@ -558,7 +558,7 @@ async function badInputReplay(): Promise<Replayed> {
 <urn:uuid:7d4a1c9e-3b6f-4e28-8a15-c0f2e9b7d364> a prov:Activity .
 <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
-  <https://ns.cascadeprotocol.org/cascade#allergen> "${allergen}" ;
+  <https://ns.cascadeprotocol.org/cascade#allergenName> "${allergen}" ;
   <https://ns.cascadeprotocol.org/cascade#allergyCriticality> "${criticality}" .`),
     );
   await source.write(
