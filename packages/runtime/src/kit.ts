@@ -33,7 +33,7 @@ const PROV = "http://www.w3.org/ns/prov#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const PAV = "http://purl.org/pav/";
-const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
+const ENTRY_MEMBER = "https://ns.cascadeprotocol.org/cascade#entryMember";
 const MEMBER_CURRENT_VALUES =
   "https://ns.cascadeprotocol.org/cascade#memberCurrentValues";
 const TYPE = `${RDF}type`;
@@ -104,7 +104,9 @@ function entriesOf(
   triples: readonly Triple[],
 ): Triple[] {
   const kept = new Set(
-    triples.filter(([, p]) => p.value === MERGED_FROM).map(([s]) => written(s)),
+    triples
+      .filter(([, p]) => p.value === ENTRY_MEMBER)
+      .map(([s]) => written(s)),
   );
   const node = (term: Term): Term =>
     term.termType === "NamedNode" &&
@@ -122,9 +124,9 @@ function entriesOf(
 function byMembers(triples: readonly Triple[]): Map<string, Set<string>> {
   const graph = new Graph(triples);
   const found = new Map<string, Set<string>>();
-  for (const entry of graph.subjects(MERGED_FROM)) {
+  for (const entry of graph.subjects(ENTRY_MEMBER)) {
     const members = graph
-      .objects(entry, MERGED_FROM)
+      .objects(entry, ENTRY_MEMBER)
       .map(written)
       .sort()
       .join(" ");

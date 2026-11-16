@@ -315,7 +315,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
       );
       const { rows } = await store.select(`${PREFIXES}
         SELECT ?thing ?label WHERE {
-          GRAPH ?view { ?thing cascade:mergedFrom [] } FILTER (STRSTARTS(STR(?view), "${views}"))
+          GRAPH ?view { ?thing cascade:entryMember [] } FILTER (STRSTARTS(STR(?view), "${views}"))
           OPTIONAL { GRAPH <${labels}> { ?thing rdfs:label ?label } }
         }`);
       assert.ok(rows.length > 0, "no view has an entry");
@@ -335,7 +335,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
     const texts = new Map<string, string>();
     before(async () => {
       const { rows } = await store.select(
-        `SELECT ?view ?entry ?member WHERE { GRAPH ?view { ?view a <https://ns.cascadeprotocol.org/cascade#View> . ?entry <https://ns.cascadeprotocol.org/cascade#mergedFrom> ?member } }`,
+        `SELECT ?view ?entry ?member WHERE { GRAPH ?view { ?view a <https://ns.cascadeprotocol.org/cascade#View> . ?entry <https://ns.cascadeprotocol.org/cascade#entryMember> ?member } }`,
       );
       for (const row of rows) {
         const entry = row.get("entry")?.value ?? "";
@@ -411,8 +411,8 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
       const { rows } = await martin.select(
         `${PREFIXES}
         SELECT ?interpretation ?variant ?member WHERE {
-          GRAPH ?view { ?view a cascade:View . ?interpretation cascade:mergedFrom [] ; cascade:variantInterpreted ?variant }
-          OPTIONAL { GRAPH <${variants}> { ?variant cascade:mergedFrom ?member } }
+          GRAPH ?view { ?view a cascade:View . ?interpretation cascade:entryMember [] ; cascade:variantInterpreted ?variant }
+          OPTIONAL { GRAPH <${variants}> { ?variant cascade:entryMember ?member } }
         }`,
       );
       assert.ok(rows.length > 0);

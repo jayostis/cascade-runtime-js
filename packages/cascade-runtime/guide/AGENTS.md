@@ -250,7 +250,7 @@ async function search(word) {
   const found = await pod.ask({
     query: `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
       SELECT DISTINCT ?entry ?view ?field ?value WHERE {
-        GRAPH ?view { ?entry cascade:mergedFrom [] ; ?field ?value }
+        GRAPH ?view { ?entry cascade:entryMember [] ; ?field ?value }
         FILTER (isLiteral(?value) && CONTAINS(LCASE(STR(?value)), LCASE(${JSON.stringify(word)})))
       } ORDER BY ?entry ?field`,
   });

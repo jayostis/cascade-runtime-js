@@ -46,9 +46,9 @@ export type Derive = (
 /** The software a pod's manifest says built it. */
 export const RUNTIME = "cascade-runtime-js";
 
-const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
+const ENTRY_MEMBER = "https://ns.cascadeprotocol.org/cascade#entryMember";
 
-/** Each entry placeholder a view gives members (`cascade:mergedFrom`), by the view's address. */
+/** Each entry placeholder a view gives members (`cascade:entryMember`), by the view's address. */
 function entryViews(
   views: readonly { view: string; triples: readonly Triple[] }[],
 ): Map<string, string> {
@@ -56,7 +56,7 @@ function entryViews(
   for (const { view, triples } of views)
     for (const [subject, predicate] of triples)
       if (
-        predicate.value === MERGED_FROM &&
+        predicate.value === ENTRY_MEMBER &&
         subject.value.startsWith(ENTRY_PLACEHOLDER)
       )
         owner.set(subject.value, view);

@@ -46,7 +46,7 @@ import {
 } from "./words.js";
 
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const MERGED_FROM = `${CASCADE}mergedFrom`;
+const ENTRY_MEMBER = `${CASCADE}entryMember`;
 const FINDING = `${CASCADE}FindingForReview`;
 const OA = "http://www.w3.org/ns/oa#";
 const NO_LONGER_REACHED_UNDER = `${CASCADE}noLongerReachedUnderRuleListVersion`;
@@ -898,7 +898,7 @@ const entryShows =
       const views = `${reading.replayed.story.address}${reading.layout.viewsFolder}`;
       const entries = await selected(
         reading.store,
-        `SELECT DISTINCT ?view ?entry WHERE { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } FILTER (STRSTARTS(STR(?view), "${views}")) }`,
+        `SELECT DISTINCT ?view ?entry WHERE { GRAPH ?view { ?entry <${ENTRY_MEMBER}> <${record}> } FILTER (STRSTARTS(STR(?view), "${views}")) }`,
       );
       if (entries.length !== 1)
         return `${entries.length} entries hold ${String(words)}`;
@@ -919,7 +919,7 @@ const entryShows =
             `${row.field ?? ""} | ${await cellShown(reading, row.value ?? "", FIELDS[row.field ?? ""])}`,
           );
       for (const [predicate, value] of said) {
-        if (predicate === MERGED_FROM) continue;
+        if (predicate === ENTRY_MEMBER) continue;
         const field = ENTRY_FIELDS.find(([, { predicates }]) =>
           predicates.includes(predicate),
         );
@@ -1742,7 +1742,7 @@ const DEFINITIONS: Definition[] = [
       const entries = new Map<string, string[]>();
       for (const [entry, member] of await selected(
         reading.store,
-        `SELECT ?entry ?member WHERE { GRAPH <${viewGraph(reading, view)}> { ?entry <${MERGED_FROM}> ?member } }`,
+        `SELECT ?entry ?member WHERE { GRAPH <${viewGraph(reading, view)}> { ?entry <${ENTRY_MEMBER}> ?member } }`,
       ))
         entries.set(entry ?? "", [
           ...(entries.get(entry ?? "") ?? []),
@@ -1766,7 +1766,7 @@ const DEFINITIONS: Definition[] = [
     ([view]) =>
       async (reading) =>
         (await reading.store.ask(
-          `ASK { GRAPH <${viewGraph(reading, view)}> { ?entry <${MERGED_FROM}> ?member } }`,
+          `ASK { GRAPH <${viewGraph(reading, view)}> { ?entry <${ENTRY_MEMBER}> ?member } }`,
         ))
           ? "it has an entry"
           : undefined,
@@ -1779,7 +1779,7 @@ const DEFINITIONS: Definition[] = [
       const name = await reading.words.thing(thing);
       if (
         await reading.store.ask(
-          `ASK { GRAPH ?view { ?entry <${MERGED_FROM}> <${name}> } }`,
+          `ASK { GRAPH ?view { ?entry <${ENTRY_MEMBER}> <${name}> } }`,
         )
       )
         shown.push(thing);
@@ -1799,7 +1799,7 @@ const DEFINITIONS: Definition[] = [
         const record = await reading.words.record(words);
         if (
           await reading.store.ask(
-            `ASK { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } }`,
+            `ASK { GRAPH ?view { ?entry <${ENTRY_MEMBER}> <${record}> } }`,
           )
         )
           found.push(`${words} is in a view`);

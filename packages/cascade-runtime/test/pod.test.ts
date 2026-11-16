@@ -314,7 +314,7 @@ async function enteredPod(
   assert.ok(entered.activity);
   const [peanuts] = await select(
     pod,
-    `SELECT ?entry ?record WHERE { ?entry cascade:allergen "Peanuts" ; cascade:mergedFrom ?record }`,
+    `SELECT ?entry ?record WHERE { ?entry cascade:allergen "Peanuts" ; cascade:entryMember ?record }`,
   );
   const { entry = "", record = "" } = peanuts ?? {};
   assert.ok(entry && record);
@@ -885,7 +885,7 @@ describe("Entering a record by hand · pod.enter()", () => {
     entered = await owned.enter(a1);
     peanuts = await select(
       owned,
-      `SELECT ?entry ?record WHERE { ?entry cascade:allergen "Peanuts" ; cascade:mergedFrom ?record }`,
+      `SELECT ?entry ?record WHERE { ?entry cascade:allergen "Peanuts" ; cascade:entryMember ?record }`,
     );
     claims = await select(
       owned,
