@@ -61,17 +61,8 @@ aside.overhead b{font-size:1.4rem;font-variant-numeric:tabular-nums}
 .arm.pod .head{border-top:4px solid var(--pod)}.arm.records .head{border-top:4px solid var(--records)}
 .arm .head b{font-size:1rem}.arm.pod .head b{color:var(--pod)}.arm.records .head b{color:var(--records)}
 .arm .head .how{font-size:.8rem;color:var(--muted);text-align:right}
-.question>input.tab{position:absolute;opacity:0;pointer-events:none}
-.tabset>label{display:inline-block;margin:10px 0 0 12px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);font-size:.86rem;font-weight:600;color:var(--muted);cursor:pointer}
-.tabset>.panel,.drills>.drill{display:none}.tabset>.panel{padding:12px 16px 6px}
-.question>input[data-arm=pod][value=answer]:checked~.arms .arm.pod .panel[data-tab=answer],.question>input[data-arm=pod][value=doctor]:checked~.arms .arm.pod .panel[data-tab=doctor]{display:block}
-.question>input[data-arm=pod][value=reasoning]:checked~.drills>.drill[data-arm=pod]{display:block}
-.question>input[data-arm=pod][value=answer]:checked~.arms .arm.pod label[data-tab-label=answer],.question>input[data-arm=pod][value=reasoning]:checked~.arms .arm.pod label[data-tab-label=reasoning],.question>input[data-arm=pod][value=doctor]:checked~.arms .arm.pod label[data-tab-label=doctor]{color:var(--fg);border-color:var(--fg)}
-.question>input[data-arm=pod][value=answer]:focus-visible~.arms .arm.pod label[data-tab-label=answer],.question>input[data-arm=pod][value=reasoning]:focus-visible~.arms .arm.pod label[data-tab-label=reasoning],.question>input[data-arm=pod][value=doctor]:focus-visible~.arms .arm.pod label[data-tab-label=doctor]{outline:2px solid var(--link)}
-.question>input[data-arm=records][value=answer]:checked~.arms .arm.records .panel[data-tab=answer],.question>input[data-arm=records][value=doctor]:checked~.arms .arm.records .panel[data-tab=doctor]{display:block}
-.question>input[data-arm=records][value=reasoning]:checked~.drills>.drill[data-arm=records]{display:block}
-.question>input[data-arm=records][value=answer]:checked~.arms .arm.records label[data-tab-label=answer],.question>input[data-arm=records][value=reasoning]:checked~.arms .arm.records label[data-tab-label=reasoning],.question>input[data-arm=records][value=doctor]:checked~.arms .arm.records label[data-tab-label=doctor]{color:var(--fg);border-color:var(--fg)}
-.question>input[data-arm=records][value=answer]:focus-visible~.arms .arm.records label[data-tab-label=answer],.question>input[data-arm=records][value=reasoning]:focus-visible~.arms .arm.records label[data-tab-label=reasoning],.question>input[data-arm=records][value=doctor]:focus-visible~.arms .arm.records label[data-tab-label=doctor]{outline:2px solid var(--link)}
+.arm .panel{padding:12px 16px 6px}
+.arm .more{margin:6px 16px 0;font-size:.86rem}.arm .more a{margin-right:14px}
 .drill{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 16px 12px;margin-top:14px}.drill h3{font-size:1rem;margin:10px 0 6px}.drill h3 b.pod{color:var(--pod)}.drill h3 b.records{color:var(--records)}
 .reply{border-radius:4px 16px 16px 16px;background:var(--soft);padding:12px 14px;font-size:.95rem}
 .reply p{margin:.3em 0}.reply ol{margin:.4em 0 .2em;padding-left:1.3em}.reply li{margin:.35em 0}
@@ -163,7 +154,20 @@ export const SCRIPT = `
     n.addEventListener('click',function(){show(n)});
     n.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); show(n); } });
   });
+  function land(id){
+    var el=id?document.getElementById(id):null; if(!el) return false;
+    if(el.tagName==='DETAILS') el.open=true;
+    el.scrollIntoView(); return true;
+  }
+  function hash(){ try{ land(decodeURIComponent(location.hash.slice(1))); }catch(e){} }
+  window.addEventListener('hashchange',hash); hash();
   var open=new URLSearchParams(location.search).get('open');
-  if(open){var el=document.getElementById(open); if(el){ el.open=true; var dr=el.closest('.drill'); if(dr){var rd=el.closest('.question').querySelector('input.tab[data-arm='+dr.getAttribute('data-arm')+'][value=reasoning]'); if(rd) rd.checked=true;} var s=el.closest('.question'); if(s) s.scrollIntoView(); }}
+  if(!open){ try{ open=decodeURIComponent(location.hash.slice(1)); }catch(e){} }
+  if(open && !land(open)){
+    var question=open.replace(/-[0-9]+$/,'');
+    document.querySelectorAll('a[data-point-question]').forEach(function(a){
+      if(a.getAttribute('data-point-question')===question) location.replace(a.getAttribute('href')+'#'+encodeURIComponent(open));
+    });
+  }
 })();
 `;

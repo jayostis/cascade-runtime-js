@@ -590,7 +590,7 @@ const NOTES: Readonly<Record<Arm, string>> = {
     "Left to right: what the answer raises, then the facts, absences and knowledge the agent itself wrote, then the file and resource it cited, then that passage of the file with its download's date. The graph stops where the agent's citations stop: no link between files exists unless the agent wrote one. Dashed: the model's own knowledge.",
 };
 
-/** The Reasoning tab: each point of the answer with its chain and the graph of what it cited. */
+/** The reasoning page: each point of the answer with its chain and the graph of what it cited. */
 export function reasoningHtml(t: Turn): string {
   const a = t.answer;
   if (a === undefined) return notAnswered;
