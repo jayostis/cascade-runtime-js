@@ -266,6 +266,89 @@ describe("Reading the report's front page · renderSite()", () => {
       assert.doesNotMatch(totalsOf(front), COUNTED_ONCE);
     });
 
+    /** Each arm's marks on every run row of a front page: what the row adds to the total, and the sessions left out. */
+    const marks = (front: string) =>
+      [...front.matchAll(/<div[^>]*class="res"[^>]*>/g)].map((m) => {
+        const read = (name: string) => {
+          const v = new RegExp(`data-${name}="(\\d+)"`).exec(m[0]);
+          assert.ok(v !== null, `${m[0]} carries data-${name}`);
+          return Number(v[1]);
+        };
+        return {
+          arm: /data-arm="(\w+)"/.exec(m[0])![1]!,
+          held: read("counted-held"),
+          cited: read("counted-cited"),
+          reused: read("reused-sessions"),
+        };
+      });
+    const addedUp = (front: string, which: string) => {
+      const own = marks(front).filter((it) => it.arm === which);
+      return {
+        held: own.reduce((n, it) => n + it.held, 0),
+        cited: own.reduce((n, it) => n + it.cited, 0),
+      };
+    };
+
+    it("marks on each run's row, for each arm, the cited facts it adds to the total, so the rows add up to the total", () => {
+      const front = frontOf([
+        first,
+        {
+          name: "fixture-2",
+          results: asModel("fixture-2", "claude-sonnet-5-5"),
+        },
+      ]);
+      for (const which of ARMS) {
+        const { held, cited } = addedUp(front, which);
+        assert.ok(cited > 0, "the rows cite facts");
+        assert.match(
+          text(element(front, new RegExp(`<[a-z]+[^>]*data-total="${which}"`))),
+          new RegExp(`${held} of ${cited}`),
+          which,
+        );
+      }
+      assert.deepEqual(
+        marks(front).map((it) => it.reused),
+        [0, 0, 0, 0],
+      );
+    });
+
+    it("marks the share of an arm only some of whose sessions a later run reused, and the rows still add up to the total", () => {
+      const later = reusing((id) => `fixture-1/${id}`);
+      for (const job of later.jobs as Job[])
+        if (job.id.includes(".worries.")) {
+          job.status = "done";
+          delete job.reusedFrom;
+        }
+      const front = frontOf([{ name: "fixture-2", results: later }, first]);
+      const [reusing2] = marks(front);
+      assert.deepEqual(
+        marks(front).map((it) => `${it.arm}:${it.reused}`),
+        ["pod:1", "records:1", "pod:0", "records:0"],
+      );
+      assert.deepEqual(
+        { held: reusing2!.held, cited: reusing2!.cited },
+        { held: 0, cited: 1 },
+        "the later run's pod arm adds only the session it answered itself",
+      );
+      for (const which of ARMS) {
+        const { held, cited } = addedUp(front, which);
+        assert.match(
+          text(element(front, new RegExp(`<[a-z]+[^>]*data-total="${which}"`))),
+          new RegExp(`${held} of ${cited}`),
+          which,
+        );
+      }
+    });
+
+    it("marks nothing as left out when the run that gave an answer is not on the page", () => {
+      const later = reusing((id) => `fixture-1/${id}`);
+      const front = frontOf([{ name: "fixture-2", results: later }]);
+      assert.deepEqual(
+        marks(front).map((it) => it.reused),
+        [0, 0],
+      );
+    });
+
     it("states the totals' limit and that runs vary", () => {
       const totals = text(element(index, /<section[^>]*class="totals"/));
       assert.match(totals, /1 made-up person\b/);

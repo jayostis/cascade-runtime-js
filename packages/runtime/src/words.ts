@@ -22,7 +22,7 @@ export const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
-const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
+const ENTRY_MEMBER = "https://ns.cascadeprotocol.org/cascade#entryMember";
 
 export const KINDS: Readonly<Record<string, string>> = {
   allergy: `${CASCADE}AllergyOrIntolerance`,
@@ -527,7 +527,7 @@ export class Words {
       const record = await this.record(entry[1] ?? "");
       return this.#one(
         words,
-        `SELECT DISTINCT ?entry WHERE { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } }`,
+        `SELECT DISTINCT ?entry WHERE { GRAPH ?view { ?entry <${ENTRY_MEMBER}> <${record}> } }`,
         "entry",
       );
     }

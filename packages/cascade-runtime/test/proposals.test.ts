@@ -728,8 +728,8 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
         }),
         `Test client 1.2.3 proposes to add this entry to the pod p:
 
-Problem or Diagnosis
-- Condition Name: Asthma
+problem or diagnosis
+- condition name: Asthma
 - patient: the person this pod is about
 
 Say yes to write it; nothing is written otherwise.`,

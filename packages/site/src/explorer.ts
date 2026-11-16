@@ -603,7 +603,7 @@ function valueOf(site: Site, used: Used, term: Term): string {
 
 const STRUCTURE = new Set([
   TYPE,
-  `${CASCADE}mergedFrom`,
+  `${CASCADE}entryMember`,
   `${CASCADE}memberCurrentValues`,
   `${CASCADE}leadMember`,
   `${CASCADE}statusFrom`,
@@ -1109,13 +1109,13 @@ export async function explorerData(site: Site): Promise<ExplorerData> {
     const entries: ExplorerEntry[] = [];
     if (graph !== undefined && index !== undefined && kinds[index] === "view") {
       const subjects = graph
-        .match(undefined, `${CASCADE}mergedFrom`)
+        .match(undefined, `${CASCADE}entryMember`)
         .map(([subject]) => subject);
       for (const subject of new Map(
         subjects.map((each) => [each.value, each]),
       ).values()) {
         const merged = graph
-          .objects(subject, `${CASCADE}mergedFrom`)
+          .objects(subject, `${CASCADE}entryMember`)
           .map(({ value }) => value);
         const members = merged.flatMap((value) => fileOf(value) ?? []);
         const others = [

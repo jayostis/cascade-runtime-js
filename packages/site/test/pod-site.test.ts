@@ -28,7 +28,7 @@ const FEATURE = "runtime/matcher.feature";
 const EXAMPLE =
   "the matcher joins the pair a person called different, and not the pair a person called the same";
 const THROUGH = "entry";
-const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
+const ENTRY_MEMBER = "https://ns.cascadeprotocol.org/cascade#entryMember";
 const RECORD = "https://ns.cascadeprotocol.org/cascade#Record";
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/0123abc/";
@@ -253,7 +253,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
       const [view] = site.views.filter((view) =>
         (
           site.pod.built.get(view.value.slice(site.pod.address.length)) ?? []
-        ).some(([, predicate]) => predicate.value === MERGED_FROM),
+        ).some(([, predicate]) => predicate.value === ENTRY_MEMBER),
       );
       assert.ok(view, "no view lists an entry");
       const shows = blockOf(page(site.page(view)), "What it shows");
@@ -282,7 +282,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
     it("links the page of each record the view entry is made of", () => {
       const joined = [...site.pod.built.values()]
         .flat()
-        .filter(([, predicate]) => predicate.value === MERGED_FROM);
+        .filter(([, predicate]) => predicate.value === ENTRY_MEMBER);
       assert.ok(joined.length > 0);
       for (const [entry, , record] of joined)
         assert.ok(

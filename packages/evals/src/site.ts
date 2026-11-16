@@ -72,35 +72,48 @@ function headline(entries: readonly Entry[]): string {
     .join("")}</tbody></table></div>`;
 }
 
-/** Each arm's cited facts borne out, added up over every run on the page, with what the totals rest on. */
-function citationTotals(entries: readonly Entry[]): string {
+/**
+ * What a run's arm adds to the page's totals: its cited facts borne out and cited, less those of the sessions it reused
+ * from another run on the page, which that run's own row gives, and how many sessions that is. The totals and each
+ * row's marks are both this.
+ */
+function shareOf(entries: readonly Entry[]) {
   const shown = new Set(entries.map((e) => e.results.run.id));
-  const repeated = new Set<string>();
-  const total = (which: Arm) => {
+  return (e: Entry, which: Arm) => {
     let held = 0;
     let failed = 0;
-    for (const e of entries) {
-      const a = e.instance.arms[which];
-      if (a === undefined) continue;
-      for (const id of a.sessions) {
-        const job = e.results.jobs.find((it) => it.id === id);
-        const from = job?.reusedFrom?.split("/")[0];
-        if (
-          from !== undefined &&
-          from !== e.results.run.id &&
-          shown.has(from)
-        ) {
-          repeated.add(`${e.results.run.id}/${id}`);
-          continue;
-        }
-        for (const one of Object.values(e.results.checks[id] ?? {}))
-          for (const { ok } of one.citations) {
-            if (ok) held += 1;
-            else failed += 1;
-          }
+    let reused = 0;
+    for (const id of e.instance.arms[which]?.sessions ?? []) {
+      const job = e.results.jobs.find((it) => it.id === id);
+      const from = job?.reusedFrom?.split("/")[0];
+      if (from !== undefined && from !== e.results.run.id && shown.has(from)) {
+        reused += 1;
+        continue;
       }
+      for (const one of Object.values(e.results.checks[id] ?? {}))
+        for (const { ok } of one.citations) {
+          if (ok) held += 1;
+          else failed += 1;
+        }
     }
-    return { held, of: held + failed };
+    return { held, of: held + failed, reused };
+  };
+}
+
+/** Each arm's cited facts borne out, added up over every run on the page, with what the totals rest on. */
+function citationTotals(entries: readonly Entry[]): string {
+  const share = shareOf(entries);
+  let repeated = 0;
+  const total = (which: Arm) => {
+    let held = 0;
+    let of = 0;
+    for (const e of entries) {
+      const s = share(e, which);
+      held += s.held;
+      of += s.of;
+      repeated += s.reused;
+    }
+    return { held, of };
   };
   const people = new Set(
     entries.flatMap((e) => e.results.cases.map((c) => c.id)),
@@ -114,18 +127,24 @@ function citationTotals(entries: readonly Entry[]): string {
     return `<span data-total="${which}">${badge(which)} <b>${t.held} of ${t.of}</b></span>`;
   }).join(" · ");
   return `<section class="totals"><h2>Cited facts borne out, in all</h2>
-<p>A program checks each fact an answer cites against the record it names. Over ${many(entries.length, "run", "runs")} on this page, added up here from the recorded runs: ${sums} cited facts borne out.${repeated.size === 0 ? " The same figures stand under each run below." : ` ${many(repeated.size, "session", "sessions")} of answers a later run reused from an earlier run on this page are counted once, in the run that gave them; each run below shows all of its own.`}</p>
+<p>A program checks each fact an answer cites against the record it names. Over ${many(entries.length, "run", "runs")} on this page, added up here from the recorded runs: ${sums} cited facts borne out.${repeated === 0 ? " The same figures stand under each run below." : ` ${many(repeated, "session", "sessions")} of answers a later run reused from an earlier run on this page are counted once, in the run that gave them; each run below shows all of its own.`}</p>
 <p class="small muted">The limit: these are ${many(people.size, "made-up person", "made-up people")} and ${many(models.size, "model", "models")} (${named.join(", ")}); runs vary, so read a total as what happened in these runs, not as a rate to expect.</p></section>`;
 }
 
-function runRow(from: string, e: Entry): string {
+function runRow(
+  from: string,
+  e: Entry,
+  share: ReturnType<typeof shareOf>,
+): string {
   const { instance: i } = e;
   const arm = (which: Arm) => {
     const a = i.arms[which];
+    const s = share(e, which);
+    const open = `<div class="res" data-counted-held="${s.held}" data-counted-cited="${s.of}" data-reused-sessions="${s.reused}" data-arm="${which}">`;
     if (a === undefined)
-      return `<div class="res" data-arm="${which}">${badge(which)} <span class="small muted">did not run</span></div>`;
+      return `${open}${badge(which)} <span class="small muted">did not run</span></div>`;
     const t = tally([a]);
-    return `<div class="res" data-arm="${which}"><div>${badge(which)} ${dots(t)} <span class="small"><b>${t.right} of ${t.of}</b>${t.beyond === 0 ? "" : ` · +${t.beyond} beyond the key`}</span></div>${extras(t)}<div class="money"><b>${dollars(a.usd)}</b> · ${seconds(a.seconds)} · ${thousands(a.tokens)} tokens</div><div class="tiny muted">${a.citations.held} of ${a.citations.held + a.citations.failed} cited facts borne out</div></div>`;
+    return `${open}<div>${badge(which)} ${dots(t)} <span class="small"><b>${t.right} of ${t.of}</b>${t.beyond === 0 ? "" : ` · +${t.beyond} beyond the key`}</span></div>${extras(t)}<div class="money"><b>${dollars(a.usd)}</b> · ${seconds(a.seconds)} · ${thousands(a.tokens)} tokens</div><div class="tiny muted">${a.citations.held} of ${a.citations.held + a.citations.failed} cited facts borne out</div></div>`;
   };
   return `<a class="runrow" data-instance="${esc(i.id)}" href="${hrefTo(from, e.where.run)}"><div class="who"><b>${esc(modelName(i.model))} · run ${i.repeat}</b><div class="tiny muted">${esc(personIn(e.results, i.case).name)} · ${esc(e.name)} · ${esc(e.results.run.finished.slice(0, 10))}</div></div>${ARMS.map(arm).join("")}<div class="overhead">judging ${dollars(i.judging.usd)} (the test's overhead, charged to neither arm)</div></a>`;
 }
@@ -157,7 +176,7 @@ function personPage(
 <h2>Runs about ${esc(name)}</h2>
 <div class="runs">${own
     .filter((e) => e.instance.case === id)
-    .map((e) => runRow(path, e))
+    .map((e) => runRow(path, e, shareOf(entries)))
     .join("")}</div>`;
   return page({
     path,
@@ -194,7 +213,7 @@ ${
 ${headline(entries)}
 ${citationTotals(entries)}
 <h2>Every run</h2>
-<div class="runs">${entries.map((e) => runRow(from, e)).join("")}</div>
+<div class="runs">${entries.map((e) => runRow(from, e, shareOf(entries))).join("")}</div>
 <div class="legend"><span>Marks used inside a run:</span>${mark("yes", "said what we expected")}${mark("part", "part of it")}${mark("no", "missed it")}${mark("beyond", "beyond the key: not wrong, possibly good")}${mark("none", "not counted: judges split, unanswered or not graded")}${mark("contra", "said something the records contradict")}</div>`
 }`;
   return page({

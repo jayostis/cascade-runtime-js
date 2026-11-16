@@ -908,7 +908,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
           ).startsWith("Loading"),
       );
       const turtle = (await tab.locator("#ins pre.turtle").textContent()) ?? "";
-      assert.ok(turtle.includes("mergedFrom"), "the entry's own statements");
+      assert.ok(turtle.includes("entryMember"), "the entry's own statements");
       const siblings = joined.views
         .flatMap((view) => view.entries)
         .filter(
@@ -1712,7 +1712,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
                 .locator("#ins table.et tbody tr.diff td:first-child")
                 .allTextContents()
             ).map((text) => text.trim());
-            for (const field of ["Allergen", "Allergen Code"])
+            for (const field of ["allergen", "allergen code"])
               assert.ok(shaded.includes(field), `${field} in ${shaded}`);
             assert.equal(entry.within.length, 3, "three judgments join them");
             assert.equal(await tab.locator("#ins .within li").count(), 3);

@@ -501,6 +501,142 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
     });
   });
 
+  describe("with more than 30 cases directly under one level", () => {
+    const FIRST = FILE("cascade-runtime", "one.test");
+    const SECOND = FILE("cascade-runtime", "two.test");
+    /** `n` cases of one test run with different parameters, as a parametrized test reports them. */
+    const params = (
+      name: string,
+      file: string,
+      line: number,
+      n: number,
+      failing = 0,
+    ) =>
+      Array.from({ length: n }, (_, at) =>
+        leafOf(
+          `${name} [p${at + 1}]`,
+          file,
+          line,
+          at + 1 === failing ? { failure: "broke" } : {},
+        ),
+      ).join("");
+    const pageOfLevel = async (inner: string) =>
+      (
+        await pageWith({
+          runtime: {
+            report: report(
+              "",
+              described("Cap", {}, described("when many", {}, inner)),
+            ),
+            ...RUN,
+          },
+        })
+      ).markup;
+
+    it("folds the cases of each test run with parameters under a level of that test's name", async () => {
+      const markup = await pageOfLevel(
+        params("does a", FIRST, 3, 12) +
+          params("does b", FIRST, 9, 12) +
+          params("does c", FIRST, 15, 12),
+      );
+      assert.deepEqual(levelsOf(markup, R), [
+        "Cap 36 passed",
+        "when many 36 passed",
+        "does a 12 passed",
+        "does b 12 passed",
+        "does c 12 passed",
+      ]);
+      assert.equal(casesOf(markup, R).length, 36);
+    });
+
+    it("leaves 30 cases as they are", async () => {
+      const markup = await pageOfLevel(
+        params("does a", FIRST, 3, 15) + params("does b", FIRST, 9, 15),
+      );
+      assert.deepEqual(levelsOf(markup, R), [
+        "Cap 30 passed",
+        "when many 30 passed",
+      ]);
+    });
+
+    it("opens, and shows first, the folded level that holds a failed case", async () => {
+      const markup = await pageOfLevel(
+        params("does a", FIRST, 3, 12) +
+          params("does b", FIRST, 9, 12, 5) +
+          params("does c", FIRST, 15, 12),
+      );
+      assert.deepEqual(levelsOf(markup, R).slice(2), [
+        "does b 11 passed, 1 failed",
+        "does a 12 passed",
+        "does c 12 passed",
+      ]);
+      assert.match(
+        markup,
+        /<details open><summary><span class="level-name">does b</,
+      );
+      assert.match(
+        markup,
+        /<details><summary><span class="level-name">does a</,
+      );
+    });
+
+    it("marks a folded level that failed nothing, so that `failures only` hides it", async () => {
+      const markup = await pageOfLevel(
+        params("does a", FIRST, 3, 20) + params("does b", FIRST, 9, 20, 1),
+      );
+      assert.match(
+        markup,
+        /<li data-group data-failed="0"><details><summary><span class="level-name">does a</,
+      );
+      assert.match(
+        markup,
+        /<li data-group data-failed="1"><details open><summary><span class="level-name">does b</,
+      );
+    });
+
+    it("leaves a test that ran once outside every folded level", async () => {
+      const markup = await pageOfLevel(
+        params("does a", FIRST, 3, 15) +
+          params("does b", FIRST, 9, 15) +
+          leafOf("stands alone", FIRST, 20),
+      );
+      assert.deepEqual(levelsOf(markup, R).slice(2), [
+        "does a 15 passed",
+        "does b 15 passed",
+      ]);
+      assert.deepEqual(
+        casesOf(markup, R).filter(([name]) => name === "stands alone"),
+        [["stands alone", "passed", "1 ms"]],
+      );
+    });
+
+    it("folds the cases of different tests by their file when none is run with parameters", async () => {
+      const once = (file: string, from: number, n: number) =>
+        Array.from({ length: n }, (_, at) =>
+          leafOf(`does ${file.slice(-9)} ${at}`, file, from + at),
+        ).join("");
+      const markup = await pageOfLevel(
+        once(FIRST, 1, 16) + once(SECOND, 1, 15),
+      );
+      assert.deepEqual(levelsOf(markup, R).slice(2), [
+        "one.test.ts 16 passed",
+        "two.test.ts 15 passed",
+      ]);
+    });
+
+    it("leaves the cases of different tests of one file as they are", async () => {
+      const markup = await pageOfLevel(
+        Array.from({ length: 40 }, (_, at) =>
+          leafOf(`does ${at}`, FIRST, at + 1),
+        ).join(""),
+      );
+      assert.deepEqual(levelsOf(markup, R), [
+        "Cap 40 passed",
+        "when many 40 passed",
+      ]);
+    });
+  });
+
   describe("with a suite that names its test folder", () => {
     it("shows its files without the folder", async () => {
       const given = {

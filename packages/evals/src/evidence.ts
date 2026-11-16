@@ -44,7 +44,7 @@ async function turtleFiles(folder: string): Promise<string[]> {
 }
 
 /**
- * A pod's entries, each followed through its own triples: `mergedFrom` to its member records, `revisionOf` to their
+ * A pod's entries, each followed through its own triples: `entryMember` to its member records, `revisionOf` to their
  * revisions, `wasDerivedFrom` to the source document, its `retrievedOn`, server and author. A pod writes one triple a
  * line; a blank node is its file's own, and `<#…>` is its file's IRI.
  */
@@ -95,7 +95,7 @@ export async function podProvenance(
   const SKIP = new Set([
     "type",
     "leadMember",
-    "mergedFrom",
+    "entryMember",
     "statusFrom",
     "memberCurrentValues",
     "valuesOfMember",
@@ -131,7 +131,7 @@ export async function podProvenance(
       fields: of(entry)
         .filter((it) => !SKIP.has(it.p))
         .map((it) => [it.p, it.literal ?? local(it.o ?? "")] as const),
-      members: nodes(entry, "mergedFrom").map((record) => ({
+      members: nodes(entry, "entryMember").map((record) => ({
         record,
         ...pick({
           sourceId: value(record, "sourceRecordId"),

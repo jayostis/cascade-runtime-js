@@ -362,6 +362,8 @@ interface Level {
   /** Whether a case under it failed, and the position of the first case written under it; kept as cases are added. */
   failing: boolean;
   first: string;
+  /** A level made on the page to fold cases that a report holds side by side, not one the report has. */
+  readonly folded?: true;
 }
 
 const isLevel = (entry: Level | TestCase): entry is Level => "levels" in entry;
@@ -447,9 +449,61 @@ const failing = (entry: Level | TestCase): boolean =>
 const firstOf = (entry: Level | TestCase): string =>
   isLevel(entry) ? entry.first : positionOf(entry);
 
+/** More cases than this directly under one level are folded by the test that ran them, or else by their file. */
+const FOLD_OVER = 30;
+
+/** A parametrized test's name without its parameters. */
+const withoutParameters = (name: string): string =>
+  name.replace(/\s*\[[^\]]*\]$/, "");
+
+/** The cases that share a key, for each key two cases or more share, in the order the keys first appear. */
+function sharing(
+  cases: readonly TestCase[],
+  key: (one: TestCase) => string,
+): TestCase[][] {
+  const groups = new Map<string, TestCase[]>();
+  for (const one of cases)
+    groups.set(key(one), [...(groups.get(key(one)) ?? []), one]);
+  return [...groups.values()].filter((held) => held.length > 1);
+}
+
+/**
+ * What a level holds: its own entries, except that when more than `FOLD_OVER` cases sit directly in it they are folded
+ * under a level for each test that ran with parameters (the cases that share a file and a line), and, where no test
+ * did, under one for each file. A case that ran once stays where it is. Nothing is folded into a single level.
+ */
+function entriesOf(level: Level, suite: Suite): (Level | TestCase)[] {
+  const cases = level.entries.filter(
+    (entry): entry is TestCase => !isLevel(entry),
+  );
+  if (cases.length <= FOLD_OVER) return level.entries;
+  const tests = sharing(cases, (one) => `${one.file}\0${one.line ?? one.name}`);
+  const byTest =
+    tests.length > 0 && tests.length + (cases.length - tests.flat().length) > 1;
+  const files = sharing(cases, (one) => one.file);
+  const groups = byTest ? tests : files.length > 1 ? files : [];
+  if (groups.length === 0) return level.entries;
+  const named = (held: TestCase[]): string =>
+    byTest
+      ? withoutParameters(held[0]!.name)
+      : (placeOf(held[0]!.file, suite)[1] ?? held[0]!.file);
+  const folded = new Set(groups.flat());
+  return [
+    ...level.entries.filter((entry) => isLevel(entry) || !folded.has(entry)),
+    ...groups.map((held): Level => ({
+      ...levelOf(named(held)),
+      entries: held,
+      cases: held,
+      failing: held.some((one) => one.result === "failed"),
+      first: held.map(positionOf).sort(before)[0] ?? "￿",
+      folded: true,
+    })),
+  ];
+}
+
 /** A level's entries, failures first, then in the order they are written. */
-function inOrder(level: Level): (Level | TestCase)[] {
-  return level.entries
+function inOrder(level: Level, suite: Suite): (Level | TestCase)[] {
+  return entriesOf(level, suite)
     .map((entry, index) => ({ entry, index }))
     .sort(
       (a, b) =>
@@ -513,12 +567,12 @@ function leaf(one: TestCase, suite: Suite, run: TestRun, links: Links): Html {
 function branch(level: Level, suite: Suite, run: TestRun, links: Links): Html {
   const name = links.link(level.name);
   const said = prose(level.info?.description, links);
-  const children = inOrder(level).map((entry) =>
+  const children = inOrder(level, suite).map((entry) =>
     isLevel(entry)
       ? branch(entry, suite, run, links)
       : leaf(entry, suite, run, links),
   );
-  return markup`<li data-failed="${String(count(level.cases, "failed"))}"><details${new Html(failing(level) ? " open" : "")}><summary><span class="level-name">${name}</span> ${counts(level.cases)}</summary>
+  return markup`<li${new Html(level.folded === true ? " data-group" : "")} data-failed="${String(count(level.cases, "failed"))}"><details${new Html(failing(level) ? " open" : "")}><summary><span class="level-name">${name}</span> ${counts(level.cases)}</summary>
 ${said}${rulesOf(level.info?.rules ?? [])}<ul class="tree">
 ${children}</ul></details></li>\n`;
 }
@@ -581,7 +635,7 @@ function capability(
 ): Html {
   const links = new Links(glossary);
   const said = prose(one.info?.description, links);
-  const children = inOrder(one.level).map((entry) =>
+  const children = inOrder(one.level, suite).map((entry) =>
     isLevel(entry)
       ? branch(entry, suite, run, links)
       : leaf(entry, suite, run, links),
