@@ -4,6 +4,7 @@ import { DERIVED, type DerivedStep, type SamesStillJoined } from "./derive.js";
 import { ENTRY_PLACEHOLDER, unionFind } from "./entries.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
+import { counted, timed } from "./probe.js";
 import { type Term, type Triple, written } from "./rdf.js";
 import { type StoreFactory, Union } from "./store.js";
 
@@ -64,16 +65,22 @@ async function boundValues(
 ): Promise<Set<string>> {
   const found = new Set<string>();
   const patterns = typeof where === "string" ? [where] : where;
-  for (const batch of batches([...new Set(iris)])) {
-    const bound = `VALUES ?bound { ${values(batch)} }`;
-    const { rows } = await union.select(
-      `${PREFIXES}SELECT DISTINCT ?${variable} WHERE { ${patterns.map((pattern) => `{ ${bound} ${pattern} }`).join(" UNION ")} }`,
-    );
-    for (const row of rows) {
-      const value = row.get(variable);
-      if (value?.termType === "NamedNode") found.add(value.value);
+  const bounded = [...new Set(iris)];
+  counted("incremental.boundValues.calls");
+  counted("incremental.boundValues.iris", bounded.length);
+  await timed("incremental.boundValues", async () => {
+    for (const batch of batches(bounded)) {
+      const bound = `VALUES ?bound { ${values(batch)} }`;
+      counted("incremental.boundValues.batches");
+      const { rows } = await union.select(
+        `${PREFIXES}SELECT DISTINCT ?${variable} WHERE { ${patterns.map((pattern) => `{ ${bound} ${pattern} }`).join(" UNION ")} }`,
+      );
+      for (const row of rows) {
+        const value = row.get(variable);
+        if (value?.termType === "NamedNode") found.add(value.value);
+      }
     }
-  }
+  });
   return found;
 }
 

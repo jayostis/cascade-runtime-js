@@ -5,6 +5,7 @@ import {
   fileEntry,
   fileExport,
 } from "./arrivals.js";
+import { countedQuery, timed } from "./probe.js";
 import type { AdaptersOf } from "./bridge.js";
 import {
   builtFileBytes,
@@ -870,7 +871,10 @@ export class CorePod {
 
   /** The query's rows over the pod as the matcher reads it: its RDF files but those the build writes, and the everyday lens's derived state. */
   async select(query: string): Promise<Rows> {
-    return (await this.#matcherView()).select(query);
+    countedQuery("core-pod.matcherSelect", query);
+    return timed("core-pod.matcherSelect", async () =>
+      (await this.#matcherView()).select(query),
+    );
   }
 
   /**
@@ -927,7 +931,11 @@ export class CorePod {
    * steps is taken from what the pod keeps, which builds it again after. Else read and derived.
    */
   #matcherView(): Promise<Union> {
-    return this.#held(MATCHER_VIEW, async () => {
+    return this.#held(MATCHER_VIEW, () => this.#lendMatcherView());
+  }
+
+  async #lendMatcherView(): Promise<Union> {
+    return timed("core-pod.matcherView", async () => {
       const { build, address, layout } = this.#options;
       const dataset =
         build?.lens === MATCHER_LENS ? await this.#keptUnderLens() : undefined;

@@ -1,5 +1,6 @@
 import * as oxigraph from "oxigraph";
 import { blank, iri, literal, type Term, type Triple, written } from "./rdf.js";
+import { queried } from "./probe.js";
 import { parseResults } from "./sparql-results.js";
 import type { LoadOptions, Rows, Store } from "./store.js";
 
@@ -223,12 +224,14 @@ export class OxigraphStore implements Store {
         break;
       }
     try {
-      return this.#store.query(query, {
-        ...options,
-        ...(named === undefined
-          ? { use_default_graph_as_union: true }
-          : { default_graph: named }),
-      });
+      return queried(() =>
+        this.#store.query(query, {
+          ...options,
+          ...(named === undefined
+            ? { use_default_graph_as_union: true }
+            : { default_graph: named }),
+        }),
+      );
     } finally {
       free(...(named ?? []));
     }
