@@ -369,24 +369,27 @@ Never store an entry's IRI. It is named from the record that sorts first, so it
 changes when a source joins with a record that sorts before them all. What the
 app keeps about an entry, an answer, a note, a link or a cached list, names
 every record the entry held when the person said it (the `record` rows of
-`record/Which entry shows it` for that `entry`). When it is about what a record
-said, a dose or a status, it also names the versions the person saw (`?version`
-in `record/What each version says`). Record IRIs hold still across imports and
-rebuilds.
+`record/Which entry shows it` for that `entry`), and no version: save what the
+person saw, a dose or a status, in the app. Record IRIs hold still across
+imports and rebuilds while the pod keeps its naming scheme and is rebuilt from
+the same originals.
 
 To show it, find the entry of each record it names through
-`record/Which entry shows it`, read again after every import or rebuild. Two
-entries that share a record are one thing, so a cache keyed by records tells
-"the same medicine, renamed" from "one stopped and another started". One whose
-records are now in two entries goes with each.
+`record/Which entry shows it`, read again after every import or rebuild, and
+each time add the found entry's current records to the statement's; only ever
+add, so what it names follows a source that joins. Two entries that share a
+record are one thing, so a cache keyed by records tells "the same medicine,
+renamed" from "one stopped and another started". A record is in at most one
+entry. When a person judges two of an entry's records Different, a statement
+that named records on both sides finds two entries: show it with each.
 
-When none of its records has a row there, and `record/Why it is in no view`
-gives none either, the pod no longer holds them: an original was removed and
-the pod rebuilt. Keep it and show it apart, with what the app saved of it:
-the records it was about are no longer in the pod, and the person can say it
-again of an entry shown now. A record that `record/Why it is in no view` gives
-a reason for is only hidden: show that reason. Why:
-<https://github.com/jayostis/cascade-vocabulary/blob/main/decisions/statements-name-records.md>.
+A record with no row in `record/Which entry shows it` is not necessarily gone.
+If `record/Why it is in no view` gives it a row, it is only hidden: show that
+reason. If neither question gives a row, the pod no longer holds it: an
+original was removed and the pod rebuilt. A statement none of whose records is
+held is kept and shown apart, with what the app saved of it, and the person can
+say it again of an entry shown now. Why: the "view entry" row and its reason in
+<https://github.com/jayostis/cascade-vocabulary/blob/main/decisions/naming.md>.
 
 ## Enter what the person wrote
 
