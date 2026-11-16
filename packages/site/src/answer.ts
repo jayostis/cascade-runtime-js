@@ -1,6 +1,10 @@
 import type { Row, Term, VocabularyQuery } from "@cascade-runtime/runtime";
 import { prose, QUESTIONS, written } from "@cascade-runtime/runtime";
 
+/** A query's text less its leading comment block, which a page prints as prose, and the blank lines after it. */
+export const withoutComment = (text: string): string =>
+  text.replace(/^(?:#[^\n]*\r?\n)+\s*/, "");
+
 /**
  * A query of the vocabulary with its prose and, for a question, its name, the lens it was asked under and its answer:
  * all its rows, or those whose column `about` is `thing`.

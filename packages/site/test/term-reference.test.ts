@@ -23,6 +23,7 @@ import {
   gloss,
   termPages,
   termReference,
+  termShapes,
   termsJson,
 } from "../src/term-reference.js";
 import { readPage } from "./page.js";
@@ -195,6 +196,7 @@ function entry(pages: ReadonlyMap<string, string>, iri: string): string {
  */
 describe("The term reference · termReference(), termsSection", () => {
   let page: string;
+  let shapes: string;
   let pages: ReadonlyMap<string, string>;
   /** The pages of a vocabulary with one more shape, and eleven more queries that name `cascade:vaccineCodeSystem`. */
   let many: ReadonlyMap<string, string>;
@@ -202,6 +204,7 @@ describe("The term reference · termReference(), termsSection", () => {
 
   before(async () => {
     page = await termReference(await fixture(), PLAIN);
+    shapes = await termShapes(await fixture(), PLAIN);
     pages = await termPages(await fixture(), PLAIN);
     const system = `${CASCADE}vaccineCodeSystem`;
     const files = await fixture();
@@ -305,10 +308,12 @@ describe("The term reference · termReference(), termsSection", () => {
       assert.match(said, /A vaccine code is one IRI\./);
     });
 
-    it("links a shape that another shape sends a value to, at an anchor of its own on the index", () => {
+    it("links a shape that another shape sends a value to, at an anchor of its own on the page of the shapes other shapes use", () => {
       const shown = readPage(entry(pages, VACCINE_CODE));
-      assert.ok(shown.hrefs.includes(`../../index.html#${termId(CVX_SHAPE)}`));
-      assert.ok(readPage(page).ids.has(termId(CVX_SHAPE)));
+      assert.ok(
+        shown.hrefs.includes(`../../shapes/index.html#${termId(CVX_SHAPE)}`),
+      );
+      assert.ok(readPage(shapes).ids.has(termId(CVX_SHAPE)));
     });
 
     it("shows a class's shape as a table of each property, its value type, how many and what it says when it is not met", () => {
@@ -537,6 +542,99 @@ describe("The term reference · termReference(), termsSection", () => {
     });
   });
 
+  describe("with the shapes other shapes use, on a page of their own", () => {
+    it("holds no shape definition on the index, which links the page with its count", () => {
+      assert.doesNotMatch(page, /class="shape"/);
+      assert.ok(!readPage(page).ids.has("shapes"));
+      assert.match(
+        readPage(page).said,
+        /Shapes other shapes use \(1\): the shapes no term's page shows/,
+      );
+      assert.ok(readPage(page).hrefs.includes("shapes/index.html"));
+    });
+
+    it("lists on the page every shape the index used to, each by the id its anchor had, and `#shapes` on its heading", () => {
+      const { ids } = readPage(shapes);
+      assert.ok(ids.has("shapes"));
+      assert.ok(ids.has(termId(CVX_SHAPE)));
+      assert.match(shapes, /<div class="shape">/);
+      assert.ok(!ids.has(termId(`${CASCADE}VaccinationShape`)));
+    });
+
+    it("sends a link to a moved shape's old anchor, and to no other missing one, to that page", () => {
+      assert.match(
+        page,
+        /var MOVED = \["shapes","cascade:CvxCodeShape"\];\nvar SHAPES = "shapes\/index\.html";/,
+      );
+    });
+
+    it("links back to the index", () => {
+      assert.ok(readPage(shapes).hrefs.includes("../index.html"));
+    });
+  });
+
+  describe("with the lists of properties, named things and copied terms", () => {
+    const names = (html: string, id: string): string[] =>
+      [
+        ...partOf(html, id).matchAll(
+          /<details class="group">\n<summary>(.*?)<\/summary>/g,
+        ),
+      ].map(([, summary]) => readPage(summary ?? "").said.trim());
+
+    it("groups the properties by the class they are said of, each group folded and closed with its count", () => {
+      assert.deepEqual(names(page, "properties"), ["cascade:Vaccination 2"]);
+      assert.doesNotMatch(page, /<details[^>]* open/);
+    });
+
+    it("groups the named things by their scheme, else by their class", () => {
+      assert.deepEqual(names(page, "named-things"), [
+        "cascade:Outcomes 2",
+        "skos:Concept 1",
+        "skos:ConceptScheme 1",
+      ]);
+    });
+
+    it("groups the terms from other vocabularies by prefix", () => {
+      assert.deepEqual(names(page, "copied"), ["foaf 1", "prov 1"]);
+    });
+
+    it("keeps each term's row, with its id, inside its group", () => {
+      const group = partOf(page, "properties");
+      assert.match(group, /<a id="cascade:vaccineCode" href=/);
+      assert.match(group, /<a id="cascade:vaccineCodeSystem" href=/);
+    });
+
+    it("puts a property with no domain, or with two, under `Said of many kinds` after the groups of a class", async () => {
+      const files = await fixture();
+      await files.write(
+        "ontologies/cascade.ttl",
+        text(
+          `${ONTOLOGY}\ncascade:loose a owl:DatatypeProperty .\ncascade:both a owl:DatatypeProperty ; rdfs:domain cascade:Immunize , cascade:Vaccination .\n`,
+        ),
+      );
+      assert.deepEqual(names(await termReference(files, PLAIN), "properties"), [
+        "cascade:Vaccination 2",
+        "Said of many kinds 2",
+      ]);
+    });
+
+    it("writes a group for a single term", async () => {
+      const files = await fixture();
+      await files.write(
+        "ontologies/cascade.ttl",
+        text(
+          ONTOLOGY.replace(
+            /cascade:vaccineCodeSystem a [\s\S]*?xsd:string \.\n/,
+            "",
+          ),
+        ),
+      );
+      assert.deepEqual(names(await termReference(files, PLAIN), "properties"), [
+        "cascade:Vaccination 1",
+      ]);
+    });
+  });
+
   describe("with two terms whose names differ only by the case of the first letter", () => {
     it("writes a class's page and a property's page at two paths that differ by more than case", async () => {
       const files = await fixture();
@@ -633,11 +731,10 @@ cascade:BasisShape a sh:NodeShape ;
       );
     });
 
-    it("leaves it out of the list of shapes that only another shape reaches", async () => {
-      const part =
-        (await termReference(manyFiles, PLAIN)).split('id="shapes"')[1] ?? "";
-      assert.ok(!part.includes(`id="${termId(alone)}"`));
-      assert.ok(part.includes(`id="${termId(CVX_SHAPE)}"`));
+    it("leaves it out of the page of shapes that only another shape reaches", async () => {
+      const { ids } = readPage(await termShapes(manyFiles, PLAIN));
+      assert.ok(!ids.has(termId(alone)));
+      assert.ok(ids.has(termId(CVX_SHAPE)));
     });
   });
 
@@ -731,6 +828,7 @@ cascade:BasisShape a sh:NodeShape ;
   describe("given the vocabulary itself", () => {
     let files: Files;
     let real: string;
+    let realShapes: string;
     let realPages: ReadonlyMap<string, string>;
     let hrefs: readonly string[];
     let ids: ReadonlySet<string>;
@@ -740,6 +838,7 @@ cascade:BasisShape a sh:NodeShape ;
         findRoot(dirname(fileURLToPath(import.meta.url))),
       ));
       real = await termReference(files, PLAIN);
+      realShapes = await termShapes(files, PLAIN);
       realPages = await termPages(files, PLAIN);
       ({ hrefs, ids } = readPage(real));
     });
@@ -751,6 +850,43 @@ cascade:BasisShape a sh:NodeShape ;
       );
     });
 
+    it("holds no shape definition on the index, and lists on the shapes' page as many as the index counts", () => {
+      assert.doesNotMatch(real, /class="shape"/);
+      const counted = Number(
+        /Shapes other shapes use \((\d+)\)/.exec(readPage(real).said)?.[1],
+      );
+      assert.ok(counted > 30, `${counted} shapes`);
+      assert.equal(
+        realShapes.split('<section class="term">').length - 1,
+        counted,
+      );
+    });
+
+    it("lands every link to a shape other shapes use on the shapes' page on one of its ids", () => {
+      const { ids: shown } = readPage(realShapes);
+      const landing = [real, ...realPages.values()].flatMap((html) =>
+        readPage(html).hrefs.filter((href) =>
+          /(^|\/)shapes\/index\.html#/.test(href),
+        ),
+      );
+      assert.ok(landing.length > 30, `${landing.length} links`);
+      for (const href of landing)
+        assert.ok(
+          shown.has(decodeURIComponent(href.split("#")[1] ?? "")),
+          href,
+        );
+    });
+
+    it("folds each long list into closed groups, which hold every term it listed", () => {
+      assert.ok(real.split('<details class="group">').length - 1 > 20);
+      assert.doesNotMatch(real, /<details[^>]* open/);
+      for (const path of realPages.keys()) {
+        const id =
+          /<h1 id="([^"]+)"/.exec(realPages.get(path) ?? "")?.[1] ?? "";
+        assert.ok(ids.has(id), `${path}: no row ${id}`);
+      }
+    });
+
     it("gives every term a page of its own, and every link to one lands on a page", () => {
       assert.ok(realPages.size > 300, `${realPages.size} pages`);
       for (const [path, html] of realPages)
@@ -760,7 +896,9 @@ cascade:BasisShape a sh:NodeShape ;
           if (target.startsWith("..")) continue;
           const file = target.replace(/#.*$/, "");
           assert.ok(
-            realPages.has(file) || file === "index.html",
+            realPages.has(file) ||
+              file === "index.html" ||
+              file === "shapes/index.html",
             `${path}: ${href} lands on no page`,
           );
         }

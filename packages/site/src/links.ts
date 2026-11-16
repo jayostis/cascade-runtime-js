@@ -156,6 +156,44 @@ export async function addressesOf(
   return addresses;
 }
 
+/** The vocabulary's folder of queries, with its slash. */
+export const QUERIES_FOLDER = "queries/";
+
+/** Where a query's path places it: its kind, for a named question the kind of thing it is about, and its name, its file's less `.rq`. */
+export function queryPlace(path: string): {
+  readonly group: string;
+  readonly subject?: string;
+  readonly name: string;
+} {
+  const parts = path.slice(QUERIES_FOLDER.length).split("/");
+  const name = (parts.at(-1) ?? path).replace(/\.rq$/, "");
+  const group = parts.length === 1 ? name : (parts[0] ?? name);
+  const subject = parts[1];
+  return group === "questions" && parts.length > 2 && subject !== undefined
+    ? { group, subject, name }
+    : { group, name };
+}
+
+/**
+ * Each query's page from the site's root, by its path in the vocabulary: `queries/<kind>/<slug>.html`, a named question's
+ * under its subject. Every query of the vocabulary is given, for one whose slug another shares is told apart.
+ */
+export function queryAddresses(
+  paths: readonly string[],
+): Promise<Map<string, string>> {
+  return addressesOf(
+    paths.map((path) => {
+      const { group, subject, name } = queryPlace(path);
+      return {
+        iri: path,
+        folder: `${QUERIES_FOLDER}${group}${subject === undefined ? "" : `/${subject}`}`,
+        name,
+        fallback: path,
+      };
+    }),
+  );
+}
+
 /** The plain address the page that lists the things sharing a name has, for the address of one of them; none for an address that is alone. */
 export function sharedPageOf(address: string): string | undefined {
   const shared = DIGESTED.exec(address)?.[1];

@@ -25,6 +25,13 @@ export interface Page {
   readonly hrefs: readonly string[];
   readonly ids: ReadonlySet<string>;
   readonly blocks: readonly Block[];
+  /** The sections that collapsed to one line for want of rows: the line's markup and words, its title and its link. */
+  readonly nones: readonly {
+    readonly line: string;
+    readonly title: string;
+    readonly said: string;
+    readonly href: string;
+  }[];
 }
 
 function unescaped(text: string): string {
@@ -115,6 +122,16 @@ export function readPage(whole: string, page?: string): Page {
     code: all(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/g, markup),
     hrefs: links(markup, page),
     ids: new Set(all(/\sid="([^"]*)"/g, markup)),
+    nones: [
+      ...markup.matchAll(
+        /<p class="none"><strong>([^<]*)<\/strong>([^<]*)<a href="([^"]*)">([^<]*)<\/a><\/p>/g,
+      ),
+    ].map(([line, title, between, href, link]) => ({
+      line: line ?? "",
+      title: unescaped(title ?? ""),
+      said: unescaped(`${title}${between}${link}`),
+      href: rooted(unescaped(href ?? ""), page),
+    })),
     blocks: markup
       .split('<section class="query"')
       .slice(1)

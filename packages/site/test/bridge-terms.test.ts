@@ -14,9 +14,11 @@ import { termHref, termId, termPage } from "../src/links.js";
 import { buildTree } from "../src/sections.js";
 import { termsSection } from "../src/hub/terms.js";
 import {
+  BRIDGE_SHAPES_PAGE,
   BRIDGE_TERMS_PAGE,
   bridgeTermPages,
   bridgeTermReference,
+  bridgeTermShapes,
   queryFacts,
   TERMS_PAGE,
   termPages,
@@ -239,6 +241,7 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
 `;
     let relative: string;
     let index: string;
+    let shapes: string;
 
     before(async () => {
       const files = new MemoryFiles(TREE);
@@ -256,8 +259,10 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
         text(RELATIVE("Loose", "NoEntry")),
       );
       index = await bridgeTermReference(files, PLAIN);
+      shapes = await bridgeTermShapes(files, PLAIN);
       relative = [
         index,
+        shapes,
         ...(await bridgeTermPages(files, PLAIN, new Set())).values(),
       ].join("\n");
     });
@@ -274,6 +279,13 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
       const { ids } = readPage(index);
       assert.ok(ids.has("bridge.shapes.ttl#Act"));
       assert.ok(ids.has("facts.shapes.ttl#Fact"));
+    });
+
+    it("puts the one no class has a row for on the shapes' page, which the index links, and not on the index", () => {
+      assert.ok(readPage(shapes).ids.has("loose.shapes.ttl#Loose"));
+      assert.ok(!readPage(index).ids.has("loose.shapes.ttl#Loose"));
+      assert.ok(readPage(index).hrefs.includes("bridge-shapes/index.html"));
+      assert.doesNotMatch(index, /class="shape"/);
     });
 
     it("shows no address of the repository's tree for a shape, nor for `sh:prefixes <>`", () => {
@@ -295,7 +307,7 @@ bridge:LooseShape a sh:NodeShape ;
     sh:targetClass bridge:NoEntry .
 `),
       );
-      const page = await bridgeTermReference(files, PLAIN);
+      const page = await bridgeTermShapes(files, PLAIN);
       assert.match(
         page,
         /<p class="iri">https:\/\/ns\.cascadeprotocol\.org\/bridge\/v1-draft#LooseShape<\/p>/,
@@ -357,6 +369,12 @@ ${declaring ? "oa:hasSource a owl:ObjectProperty .\n" : ""}`),
       assert.equal(BRIDGE_TERMS_PAGE, "terms/bridge.html");
       assert.ok(tree.has(BRIDGE_TERMS_PAGE));
       assert.notEqual(BRIDGE_TERMS_PAGE, TERMS_PAGE);
+    });
+
+    it("writes the page of the shapes other shapes use at `terms/bridge-shapes/`, beside the term reference's own", () => {
+      assert.equal(BRIDGE_SHAPES_PAGE, "terms/bridge-shapes/index.html");
+      assert.ok(tree.has(BRIDGE_SHAPES_PAGE));
+      assert.ok(tree.has("terms/shapes/index.html"));
     });
 
     it("links it from the front page", () => {

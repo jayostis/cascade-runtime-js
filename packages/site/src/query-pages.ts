@@ -7,11 +7,13 @@ import {
   markup,
   shell,
 } from "./html.js";
+import { withoutComment } from "./answer.js";
 import {
-  addressesOf,
   frontPageLink,
-  type Named,
   noteHref,
+  QUERIES_FOLDER,
+  queryAddresses,
+  queryPlace,
   ruleHref,
   slugOf,
   termHref,
@@ -25,13 +27,13 @@ import {
 } from "./term-reference.js";
 import { prefixed } from "./terms.js";
 
-export const QUERIES_FOLDER = "queries/";
+export { QUERIES_FOLDER };
 export const QUERIES_PAGE = `${QUERIES_FOLDER}index.html`;
 
 /** The example pod whose rows the pages show. */
 export const ROWS_OF = { folder: "alex-rivera", name: "Alex Rivera" } as const;
-/** How many rows of a question a page shows; the rest are in the pod's `answers.json`. */
-export const ROWS_SHOWN = 100;
+/** How many rows of a question or entries of a view a page shows, enough to see the shape of an answer; the rest are in the pod's explorer and `answers.json`. */
+export const ROWS_SHOWN = 10;
 /** How many of an entry's fields a view's row says. */
 const FIELDS_SHOWN = 6;
 
@@ -111,16 +113,12 @@ interface Query {
 }
 
 function placed(path: string, text: string): Query {
-  const parts = path.slice(QUERIES_FOLDER.length).split("/");
-  const name = (parts.at(-1) ?? path).replace(/\.rq$/, "");
-  const group = parts.length === 1 ? name : (parts[0] ?? name);
+  const { group, subject, name } = queryPlace(path);
   return {
     path,
     text,
     group,
-    ...(group === "questions" && parts.length > 2 && parts[1] !== undefined
-      ? { subject: parts[1] }
-      : {}),
+    ...(subject === undefined ? {} : { subject }),
     name,
     page: "",
   };
@@ -129,19 +127,49 @@ function placed(path: string, text: string): Query {
 /** A query's leading comment, which says what it is for; nothing when it has none. */
 const purposeOf = (text: string): string => prose(text).trim();
 
-/** The longest a line of the index is. */
-const LINE = 200;
+/** A line of a numbered step: its words after the number and its stop. */
+const STEP = /^\s*\d+[.)]\s+(.*)$/;
 
 /**
- * The comment's first sentence: up to the first stop followed by a capital letter or a bracket, cut at a word with an
- * ellipsis when it is longer than a line of the index.
+ * A query's leading comment as paragraphs and numbered lists: a blank comment line ends a paragraph, a line that begins
+ * with a number and a stop begins a step, and an indented line after it goes on with it. Nothing when it has no comment.
  */
-export function firstSentence(comment: string): string {
-  const sentence =
-    /^[\s\S]*?[.?!](?=\s+[A-Z(]|$)/.exec(comment)?.[0] ?? comment;
-  if (sentence.length <= LINE) return sentence;
-  const cut = sentence.slice(0, LINE);
-  return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[,;:]$/, "")}…`;
+function purposeHtml(text: string): Html | undefined {
+  const blocks: Html[] = [];
+  let paragraph: string[] = [];
+  let steps: string[] = [];
+  const flush = (): void => {
+    if (paragraph.length > 0)
+      blocks.push(markup`<p class="prose">${paragraph.join(" ")}</p>\n`);
+    if (steps.length > 0)
+      blocks.push(
+        markup`<ol class="prose">\n${steps.map((step) => markup`<li>${step}</li>\n`)}</ol>\n`,
+      );
+    paragraph = [];
+    steps = [];
+  };
+  for (const raw of text.split(/\r?\n/)) {
+    if (!raw.startsWith("#")) break;
+    const line = raw.replace(/^#+ ?/, "");
+    const step = STEP.exec(line)?.[1];
+    if (line.trim() === "") flush();
+    else if (step !== undefined) {
+      if (paragraph.length > 0) flush();
+      steps.push(step.trim());
+    } else if (steps.length > 0 && /^\s{2,}/.test(line))
+      steps[steps.length - 1] += ` ${line.trim()}`;
+    else {
+      if (steps.length > 0) flush();
+      paragraph.push(line.trim());
+    }
+  }
+  flush();
+  return blocks.length === 0 ? undefined : markup`${blocks}`;
+}
+
+/** The comment's first sentence, whole: up to the first stop followed by a capital letter or a bracket. */
+function firstSentence(comment: string): string {
+  return /^[\s\S]*?[.?!](?=\s+[A-Z(]|$)/.exec(comment)?.[0] ?? comment;
 }
 
 /** The line a query has on the index: its comment's first sentence, or its name as a phrase when it has no comment. */
@@ -375,7 +403,7 @@ function queryPage(
 ): string {
   const depth = query.page.split("/").length - 1;
   const up = "../".repeat(depth);
-  const purpose = purposeOf(query.text);
+  const purpose = purposeHtml(query.text);
   const read = [...namedInQuery(query.text)]
     .filter((iri) => facts.terms.has(iri))
     .map((iri) => [phrase(iri), iri] as const)
@@ -396,8 +424,8 @@ function queryPage(
 `,
     main: markup`<p class="kind">${kind}</p>
 <h1>${query.name}</h1>
-${purpose === "" ? markup`<p class="about">The file states no purpose.</p>\n` : markup`<p class="prose">${purpose}</p>\n`}<h2>The query</h2>
-<pre class="code"><code>${highlighted(query.text)}</code></pre>
+${purpose ?? markup`<p class="about">The file states no purpose.</p>\n`}<h2>The query</h2>
+<pre class="code"><code>${highlighted(withoutComment(query.text))}</code></pre>
 <h2>Terms it reads</h2>
 ${read.length === 0 ? markup`<p class="about">It names no term of the vocabulary.</p>\n` : markup`<p class="terms">${read.map(([name, iri], at) => markup`${at === 0 ? "" : " · "}<a href="${termHref(iri, `${up}${TERMS_FOLDER}`, facts.properties.has(iri))}"><code>${name}</code></a>`)}</p>\n`}<h2>Rules and decision notes that name it</h2>
 ${
@@ -420,11 +448,36 @@ ${
 
 const fold = (text: string): string => text.toLowerCase();
 
+/** What the matcher rules that apply to no class are listed under. */
+const OTHER = "Other";
+
+/**
+ * Matcher rules, sorted by name, by the class each applies to, the classes by label and `Other` last: a rule that applies to
+ * two classes is under each, and one the rule lists name none of is under `Other`.
+ */
+function classesOf(
+  sorted: readonly Query[],
+  appliesTo: ReadonlyMap<string, readonly string[]>,
+): [string, Query[]][] {
+  const classes = new Map<string, Query[]>();
+  for (const query of sorted) {
+    const labels = appliesTo.get(query.path) ?? [];
+    for (const label of labels.length === 0 ? [OTHER] : labels)
+      classes.set(label, [...(classes.get(label) ?? []), query]);
+  }
+  const order = (label: string): string =>
+    label === OTHER ? "￿" : fold(label);
+  return [...classes].sort(([a], [b]) =>
+    order(a) < order(b) ? -1 : order(a) > order(b) ? 1 : 0,
+  );
+}
+
 function indexPage(
   queries: readonly Query[],
   groups: readonly Group[],
   tree: string,
   chrome: Chrome,
+  appliesTo: ReadonlyMap<string, readonly string[]>,
 ): string {
   const by = (group: string): Query[] =>
     queries
@@ -434,6 +487,12 @@ function indexPage(
       );
   const line = (query: Query): Html =>
     markup`<li><a href="${query.page.slice(QUERIES_FOLDER.length)}">${query.name}</a> <span class="about">${summaryOf(query)}</span></li>\n`;
+  const family = ([label, rules]: [string, Query[]]): Html =>
+    markup`<li><details class="family"><summary>${label} · ${rules.length} ${rules.length === 1 ? "rule" : "rules"}</summary>
+<ul class="queries">
+${rules.map(line)}</ul>
+</details></li>
+`;
   return shell({
     chrome,
     title: "Cascade queries",
@@ -450,7 +509,7 @@ ${groups.map(({ id, title, about }) => {
     return markup`<h2 class="part" id="${id}">${title}</h2>
 <p class="prose">${about}</p>
 <ul class="queries">
-${by(id).map(line)}</ul>
+${id === "matcher" ? classesOf(by(id), appliesTo).map(family) : by(id).map(line)}</ul>
 `;
   const subjects = [
     ...new Set(by(id).map(({ subject }) => subject ?? "")),
@@ -512,26 +571,19 @@ export async function queryPages({
         about: `The queries under ${QUERIES_FOLDER}${id}/.`,
       })),
   ];
-  const named: Named[] = queries.map((query) => ({
-    iri: query.path,
-    folder:
-      `${QUERIES_FOLDER}${query.group}${query.subject === undefined ? "" : `/${query.subject}`}`.replace(
-        /\/$/,
-        "",
-      ),
-    name: query.name,
-    fallback: query.path,
-  }));
-  const addresses = await addressesOf(named);
+  const addresses = await queryAddresses(paths);
   for (const query of queries) query.page = addresses.get(query.path) ?? "";
-  const { terms, properties, naming } = await queryFacts(vocabulary);
+  const { terms, properties, naming, appliesTo } = await queryFacts(vocabulary);
   const rows = rowsOf(example);
   const tree = vocabulary.iri;
   const blob = tree.includes("/tree/")
     ? tree.replace("/tree/", "/blob/")
     : tree;
   const files = new Map<string, Uint8Array>([
-    [QUERIES_PAGE, encoder.encode(indexPage(queries, groups, tree, chrome))],
+    [
+      QUERIES_PAGE,
+      encoder.encode(indexPage(queries, groups, tree, chrome, appliesTo)),
+    ],
   ]);
   for (const query of queries)
     files.set(

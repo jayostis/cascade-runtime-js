@@ -1,8 +1,10 @@
 import type { Section } from "../sections.js";
 import {
+  BRIDGE_SHAPES_PAGE,
   BRIDGE_TERMS_PAGE,
   bridgeTermPages,
   bridgeTermReference,
+  bridgeTermShapes,
   queryFacts,
   TERMS_FOLDER,
 } from "../term-reference.js";
@@ -23,6 +25,7 @@ export const bridgeTermsSection: Section<PagesContext> = {
     const { terms } = await queryFacts((await ctx.vocabulary()).files);
     return new Map<string, Uint8Array>([
       [BRIDGE_TERMS_PAGE, encode(await bridgeTermReference(files, ctx.chrome))],
+      [BRIDGE_SHAPES_PAGE, encode(await bridgeTermShapes(files, ctx.chrome))],
       ...[...(await bridgeTermPages(files, ctx.chrome, terms))].map(
         ([path, page]): [string, Uint8Array] => [
           `${TERMS_FOLDER}${path}`,
