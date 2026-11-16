@@ -76,7 +76,7 @@ tries it as `typedWords(text)` cleans it. A wrong secret, or a secret for a
 pod that is not sealed, throws `Unopened`. `await checkSecret(folder, secret)`
 answers `true` or `false` without opening the pod or writing anything.
 
-In a browser, `openPod(name, { from })` and the rest differ: see "In a browser" below. The reference tables an app shows, and how it sets its own, are under "The reference tables".
+In a browser, `openPod(name, { from })` and the rest differ: see [In a browser](#in-a-browser). The reference tables an app shows, and how it sets its own, are under [The reference tables](#the-reference-tables).
 
 ## Bring in an export
 

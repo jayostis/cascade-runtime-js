@@ -977,16 +977,25 @@ const forTools = (spec: Spec, feature: WrittenFeature): Html =>
 
 const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 
-/** The lines of one paragraph: those that begin `- ` are the items of a list, and a line after one that does not is that item's own. */
+const indentOf = (line: string): number =>
+  line.length - line.trimStart().length;
+
+/** The lines of one paragraph: those that begin `- ` are the items of a list, a line after one that is indented further is that item's own, and any other starts a paragraph. */
 function paragraph(lines: readonly string[]): Html {
-  const blocks: { list: boolean; lines: string[] }[] = [];
-  for (const line of lines) {
+  const blocks: { list: boolean; lines: string[]; indent: number }[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    const indent = indentOf(raw);
     const item = line.startsWith("- ");
     const last = blocks.at(-1);
     if (last === undefined || (item && !last.list))
-      blocks.push({ list: item, lines: [line] });
-    else if (item) last.lines.push(line);
-    else if (last.list) last.lines[last.lines.length - 1] += ` ${line}`;
+      blocks.push({ list: item, lines: [line], indent });
+    else if (item) {
+      last.lines.push(line);
+      last.indent = indent;
+    } else if (last.list && indent > last.indent)
+      last.lines[last.lines.length - 1] += ` ${line}`;
+    else if (last.list) blocks.push({ list: false, lines: [line], indent });
     else last.lines.push(line);
   }
   return markup`${blocks.map(({ list, lines: block }) =>
@@ -1000,7 +1009,7 @@ function prose(text: string): Html {
   return markup`${text
     .split(/\n\s*\n/)
     .filter((block) => block.trim() !== "")
-    .map((block) => paragraph(block.split("\n").map((line) => line.trim())))}`;
+    .map((block) => paragraph(block.split("\n")))}`;
 }
 
 function example(spec: Spec, written: WrittenExample): Html {

@@ -40,8 +40,24 @@ The conformance command runs every example of the vocabulary's feature files aga
 check, so run it when you change a rule:
 
 ```sh
-npm run conformance
+npm run conformance -- --report earl.nt   # every example and each kit's checks, as one EARL report
 ```
+
+`npm run conformance` is for conformance testing only, as the Bridge's command
+line is. Its exit code means nothing; the report does. It reads every feature
+file of the vocabulary, under `runtime/` and each kit's under `conformance/`,
+with Gherkin's own parser, and reports each example, and each kit's four checks
+that are not examples (the final views equal `expected/`, every file conforms to
+the vocabulary's shapes, every name follows its rule, every file is where the
+layout says). Each step of `runtime/steps.md` is implemented once, in
+`packages/runtime/src/phrases.ts`; the steps examples share are replayed once,
+and a failed example's report names its rule and the step that failed.
+`--folder <repository>=<folder>` hands in a folder for a repository, and
+`--feature <path>` runs only that feature file of the vocabulary.
+
+`npm test` runs the command once and asserts on its report. With
+`CASCADE_CONFORMANCE_REPORT=<report>` it asserts on that report instead and
+does not run the command; CI hands it the report its compatibility check wrote.
 
 To repeat a random-order run, transpile, then run the script on the package with the seed from the log, which it passes
 to node:
@@ -81,11 +97,10 @@ exports, Priya Natarajan's, from exports and C-CDA files together, Martin
 Okafor's, two FHIR reports of one variant beside what ClinVar says today, and
 Tamsin Vale's, one hospital's record pulled twice a year apart.
 
-Node 22 or later. To build Alex's pod and the site that documents it, with
+To build Alex's pod and the site that documents it, with
 `priya-natarajan`, `martin-okafor` or `tamsin-vale` in place of `alex-rivera` for the others:
 
 ```sh
-npm install
 npm run build:example alex-rivera        # the pod, then the site
 npm run build:example-pod alex-rivera    # generates build/alex-rivera/pod from the story
 npm run build:example-site alex-rivera   # generates build/alex-rivera/site from that pod
@@ -123,31 +138,6 @@ Its type is `ExplorerData` in `packages/site/src/explorer.ts`.
 npm run ask -- <name> "<question>"            # one question's rows, under the runtime's lens
 npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the pod and its questions
 ```
-
-### Running it
-
-```sh
-npm test                                  # the unit tests, and one run of the conformance command, types unchecked
-npm run typecheck                         # before a push
-npm run lint
-npm run conformance -- --report earl.nt   # every example and each kit's checks, as one EARL report
-```
-
-`npm run conformance` is for conformance testing only, as the Bridge's command
-line is. Its exit code means nothing; the report does. It reads every feature
-file of the vocabulary, under `runtime/` and each kit's under `conformance/`,
-with Gherkin's own parser, and reports each example, and each kit's four checks
-that are not examples (the final views equal `expected/`, every file conforms to
-the vocabulary's shapes, every name follows its rule, every file is where the
-layout says). Each step of `runtime/steps.md` is implemented once, in
-`packages/runtime/src/phrases.ts`; the steps examples share are replayed once,
-and a failed example's report names its rule and the step that failed.
-`--folder <repository>=<folder>` hands in a folder for a repository, and
-`--feature <path>` runs only that feature file of the vocabulary.
-
-`npm test` runs the command once and asserts on its report. With
-`CASCADE_CONFORMANCE_REPORT=<report>` it asserts on that report instead and
-does not run the command; CI hands it the report its compatibility check wrote.
 
 An eval run (the pod against the same records read as files, judged blind) is
 one command, and a finished run is committed by recording it. CI publishes

@@ -118,11 +118,16 @@ describe("The API page · apiSection", () => {
 
     it("opens with a contents list that links each `##` heading once, at a heading of that id", () => {
       const html = read(tree, "api/index.html");
-      const anchors = api.hrefs.filter((href) => href.startsWith("#"));
+      const list = /<ul class="contents">[^]*?<\/ul>/.exec(html)?.[0] ?? "";
+      const anchors = [...list.matchAll(/href="(#[^"]*)"/g)].map(
+        ([, href]) => href ?? "",
+      );
       assert.equal(anchors.length, guide.second.length, "one for each heading");
       assert.equal(new Set(anchors).size, anchors.length);
       for (const anchor of anchors)
         assert.ok(api.ids.has(anchor.slice(1)), `${anchor} has a heading`);
+      for (const href of api.hrefs.filter((href) => href.startsWith("#")))
+        assert.ok(api.ids.has(href.slice(1)), `${href} has a heading`);
       assert.ok(html.indexOf('href="#') < html.indexOf("<h2"));
     });
 
