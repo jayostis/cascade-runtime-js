@@ -84,7 +84,7 @@ const SAID = new RegExp(
 );
 
 const NAMES = [
-  `${CASCADE}allergen`,
+  `${CASCADE}allergenName`,
   `${CASCADE}conditionName`,
   `${CASCADE}vaccineName`,
   `${CASCADE}procedureName`,

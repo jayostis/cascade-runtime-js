@@ -415,9 +415,7 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
       const crate = JSON.parse(
         new TextDecoder().decode(await vocabulary.files.read(CRATE)),
       ) as { "@graph": { "@id": string; itemListElement?: unknown[] }[] };
-      const held = crate["@graph"].find(
-        ({ "@id": id }) => id === first["@id"],
-      );
+      const held = crate["@graph"].find(({ "@id": id }) => id === first["@id"]);
       assert.ok(held?.itemListElement);
       held.itemListElement = held.itemListElement.filter(
         (one) => (one as { "@id": string })["@id"] !== step,
@@ -431,7 +429,9 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
         list: (folder) => vocabulary.files.list(folder),
       };
       await assert.rejects(
-        Site.build({ ...options, vocabulary: trimmed }),
+        Site.build({ ...options, vocabulary: trimmed }).then((built) =>
+          built.files(),
+        ),
         new RegExp(`${step} sits in no section`),
       );
     });

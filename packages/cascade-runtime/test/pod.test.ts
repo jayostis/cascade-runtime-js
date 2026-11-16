@@ -226,7 +226,9 @@ async function entryFor(of: Pod, session?: string): Promise<string> {
 }
 
 async function allergens(of: Pod): Promise<string[]> {
-  return (await of.ask(QUESTION)).map(({ allergenName }) => allergenName ?? "").sort();
+  return (await of.ask(QUESTION))
+    .map(({ allergenName }) => allergenName ?? "")
+    .sort();
 }
 
 function select(of: Pod, query: string): Promise<Rows> {

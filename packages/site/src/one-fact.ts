@@ -114,7 +114,7 @@ function recordRows(source: string, substance: string): Shown["rows"] {
       RECORD_FILE,
     );
   return [
-    ["cascade:allergen", `"${property("allergen", '"([^"]*)"')}"`],
+    ["cascade:allergenName", `"${property("allergenName", '"([^"]*)"')}"`],
     ["cascade:allergenCode", property("allergenCode", "<([^>]+)>")],
     [
       "cascade:reactionManifestationCode",
