@@ -121,7 +121,9 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
     if (folder !== undefined) rmSync(folder, { recursive: true, force: true });
   });
 
+  /** A blank page first: an address that only changes the hash is the same document, so the page would not load again. */
   const opened = async (address: string): Promise<void> => {
+    await tab.goto("about:blank");
     await tab.goto(`${served.url}${address}`);
   };
 

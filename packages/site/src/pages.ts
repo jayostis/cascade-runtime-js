@@ -5,6 +5,7 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import { type Answer, withoutComment } from "./answer.js";
+import { foldScript } from "./fold-script.js";
 import { type Content, Html, markup, shell } from "./html.js";
 import { namedInQuery } from "./term-reference.js";
 import {
@@ -86,30 +87,8 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
   ]);
 }
 
-/**
- * The page's script: an address that names a section inside a folded group opens every fold round it and scrolls to it. It
- * scrolls whether it opened one or not, for the browser may have opened the fold first and scrolled before the page was
- * laid out.
- */
-const FOLD_SCRIPT = [
-  "(function () {",
-  "function show() {",
-  "  var id;",
-  "  try { id = decodeURIComponent(location.hash.slice(1)); } catch (e) { return; }",
-  "  if (id === '') return;",
-  "  var target = document.getElementById(id);",
-  "  if (target === null) return;",
-  "  for (var up = target.parentElement; up !== null; up = up.parentElement)",
-  "    if (up.tagName === 'DETAILS') up.open = true;",
-  "  target.scrollIntoView();",
-  "}",
-  "show();",
-  "window.addEventListener('hashchange', show);",
-  "})();",
-].join("\n");
-
 /** The phases of the steps, each from the step that begins it: a step's file name, or `lens` for the lens. */
-const PHASES: readonly (readonly [string, string])[] = [
+export const PHASES: readonly (readonly [string, string])[] = [
   ["records", "Reading what arrived"],
   ["lens", "Which judgments count"],
   ["different-pairs", "Which records are the same"],
@@ -117,6 +96,15 @@ const PHASES: readonly (readonly [string, string])[] = [
   ["entries", "Joining records into entries"],
   ["medication-lifecycles", "Medications and notes"],
 ];
+
+/** The key a step goes by in `PHASES`: `lens` for the lens, else its query's file name. */
+const stepStem = (answer: Answer): string =>
+  answer.query.path.startsWith(LENSES)
+    ? "lens"
+    : answer.query.path.slice(
+        answer.query.path.lastIndexOf("/") + 1,
+        -".rq".length,
+      );
 
 function block(
   site: Site,
@@ -338,15 +326,16 @@ function pipeline(site: Site): Html {
         answer.title,
       ),
     );
+  const ran = site.pipeline.get(lens) ?? [];
+  for (const [first] of PHASES) {
+    if (!ran.some(({ answer }) => stepStem(answer) === first))
+      throw new Error(
+        `the pipeline page's phases begin at "${first}", which no step of the ${lens} lens is`,
+      );
+  }
   const phases: { title: string; steps: Content[] }[] = [];
-  for (const { answer, added } of site.pipeline.get(lens) ?? []) {
-    const stem = isLens(answer)
-      ? "lens"
-      : answer.query.path.slice(
-          answer.query.path.lastIndexOf("/") + 1,
-          -".rq".length,
-        );
-    const title = PHASES.find(([first]) => first === stem)?.[1];
+  for (const { answer, added } of ran) {
+    const title = PHASES.find(([first]) => first === stepStem(answer))?.[1];
     if (title !== undefined || phases.length === 0)
       phases.push({ title: title ?? "Steps", steps: [] });
     phases
@@ -368,7 +357,7 @@ function pipeline(site: Site): Html {
   const steps = phases.map(
     ({ title, steps: held }) => markup`
 <details class="group">
-<summary>${title} · ${held.length} ${held.length === 1 ? "step" : "steps"}</summary>
+<summary>${title} <span class="about">${held.length}</span></summary>
 ${held}</details>`,
   );
   const compared = COMPARED.map(
@@ -424,7 +413,7 @@ everything. These are the pod's only files the build writes, and each says it is
 ${built}</details>
 <p>Every page of this site names a thing by the label the labels file gives it.
 <a href="labels.html">${called.title}</a> lists them: ${called.rows.length} labels.</p>`,
-    markup`<script>${new Html(FOLD_SCRIPT)}</script>\n`,
+    markup`<script>${new Html(foldScript())}</script>\n`,
   );
 }
 

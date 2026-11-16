@@ -19,6 +19,7 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { PLAIN } from "../src/html.js";
 import { termHref, termPage } from "../src/links.js";
+import { PHASES } from "../src/pages.js";
 import { QUERIES_PAGE, queryPages } from "../src/query-pages.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { CALLED } from "../src/terms.js";
@@ -351,22 +352,21 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
       );
     });
 
-    it("folds the steps under five to seven closed phases, in the order they ran, each saying how many steps it holds", () => {
+    it("folds the steps under one closed phase for each the page names, in the order they ran, each saying how many steps it holds", () => {
       const queries = site.pod.derived.map(queryOf);
       const steps = (ids: readonly string[]) =>
         ids.filter((id) => queries.includes(id));
       const phases = pipeline.groups.filter(({ ids }) => steps(ids).length > 0);
-      assert.ok(phases.length >= 5 && phases.length <= 7, `${phases.length}`);
+      assert.deepEqual(
+        phases.map(({ said }) => said.replace(/ \d+$/, "")),
+        PHASES.map(([, title]) => title),
+      );
       assert.deepEqual(
         phases.flatMap(({ ids }) => steps(ids)),
         queries,
       );
       for (const { said, open, ids } of phases) {
-        const count = steps(ids).length;
-        assert.ok(
-          said.endsWith(` ${count} ${count === 1 ? "step" : "steps"}`),
-          said,
-        );
+        assert.ok(said.endsWith(` ${steps(ids).length}`), said);
         assert.equal(open, false, said);
       }
     });
