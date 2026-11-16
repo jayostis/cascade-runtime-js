@@ -281,7 +281,10 @@ describe("Reading the report's front page · renderSite()", () => {
     it("marks on each run's row, for each arm, the cited facts it adds to the total, so the rows add up to the total", () => {
       const front = frontOf([
         first,
-        { name: "fixture-2", results: asModel("fixture-2", "claude-sonnet-5-5") },
+        {
+          name: "fixture-2",
+          results: asModel("fixture-2", "claude-sonnet-5-5"),
+        },
       ]);
       for (const which of ARMS) {
         const { held, cited } = addedUp(front, which);
@@ -313,7 +316,7 @@ describe("Reading the report's front page · renderSite()", () => {
       );
       assert.deepEqual(
         { held: reusing2!.held, cited: reusing2!.cited },
-        { held: 1, cited: 1 },
+        { held: 0, cited: 1 },
         "the later run's pod arm adds only the session it answered itself",
       );
       for (const which of ARMS) {
