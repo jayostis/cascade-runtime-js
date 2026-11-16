@@ -6,9 +6,12 @@ const LOOKUPS = { to: "lookups", build: "build-6979c2fc" } as const;
 
 /** What an option a call took was renamed to, and the first build that carried the new name, by call and old name. */
 const RENAMED: Readonly<
-  Record<string, Readonly<Record<string, { to: string; build: string }>>>
+  Record<string, Readonly<Record<string, { to: string; build?: string }>>>
 > = {
-  "pod.import": { aboutSubject: CLAIM_PROFILES, claim: CLAIM_PROFILES },
+  "pod.import": {
+    aboutSubject: CLAIM_PROFILES,
+    claim: { to: CLAIM_PROFILES.to },
+  },
   samplesToPublish: { look: LOOKUPS },
   answersToPublish: { look: LOOKUPS },
 };
@@ -32,9 +35,15 @@ export function acceptOptions<T extends object>(
   const problems = Object.keys(options)
     .filter((key) => !known.includes(key))
     .map((key) => {
-      const renamed = RENAMED[call]?.[key];
-      return renamed === undefined
-        ? `${call} does not take ${key}: it takes ${known.length === 0 ? "no options" : known.join(", ")}.`
+      const renamed = Object.hasOwn(RENAMED, call)
+        ? Object.hasOwn(RENAMED[call]!, key)
+          ? RENAMED[call]![key]
+          : undefined
+        : undefined;
+      if (renamed === undefined)
+        return `${call} does not take ${key}: it takes ${known.length === 0 ? "no options" : known.join(", ")}.`;
+      return renamed.build === undefined
+        ? `${call} does not take ${key}: it takes ${renamed.to}.`
         : `${call} does not take ${key}: it was renamed ${renamed.to} in ${renamed.build}.`;
     });
   if (problems.length > 0) throw new TypeError(problems.join(" "));

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import {
   changesIn,
@@ -9,6 +12,8 @@ import {
   type Pod,
   pull,
   serverReport,
+  type Tool,
+  toolRegistry,
 } from "cascade-runtime";
 import { cascadeRuntime } from "cascade-runtime/vite";
 import { kitStory, replayKit } from "cascade-runtime/fixtures";
@@ -16,6 +21,13 @@ import { podReads } from "cascade-runtime/tools/node";
 import { popupSignIn } from "../src/browser/sign-in.js";
 import { answersToPublish, samplesToPublish } from "../src/node/published.js";
 import "./offline.js";
+
+const tool: Tool = {
+  name: "a",
+  description: "a",
+  inputSchema: { type: "object" },
+  execute: async () => "a",
+};
 
 /** The message of what a call throws or rejects with, an async call's refusal and a sync call's alike. */
 const refusedWith = async (call: () => unknown): Promise<string> => {
@@ -30,6 +42,7 @@ const refusedWith = async (call: () => unknown): Promise<string> => {
 
 describe("Refusing an option a call does not know · import(), openPod(), connect(), pull(), serverReport(), findChanges(), samplesToPublish()", () => {
   let pod: Pod;
+  const scratch = mkdtempSync(join(tmpdir(), "options-"));
 
   before(async () => {
     pod = await openPod();
@@ -37,6 +50,7 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
 
   after(async () => {
     await pod.close();
+    rmSync(scratch, { recursive: true, force: true });
   });
 
   describe("given a key no call takes", () => {
@@ -55,9 +69,16 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
       ["changesIn", (options) => changesIn([], [], options)],
       ["podReads", (options) => podReads({} as never, options)],
       ["cascadeRuntime", (options) => cascadeRuntime(options)],
-      ["replayKit", (options) => replayKit("alex-rivera", "x", options)],
+      [
+        "replayKit",
+        (options) => replayKit("alex-rivera", join(scratch, "x"), options),
+      ],
       ["kitStory", (options) => kitStory("alex-rivera", options)],
       ["samplesToPublish", (options) => samplesToPublish(options)],
+      [
+        "toolRegistry.register",
+        (options) => toolRegistry().register(tool, options),
+      ],
       [
         "answersToPublish",
         (options) => answersToPublish({} as never, new Map(), options),
@@ -73,12 +94,20 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
   });
 
   describe("given a key a call took under another name", () => {
-    it("names the new key and the build that renamed it, for `aboutSubject` and `claim` of `pod.import()`", async () => {
-      for (const old of ["aboutSubject", "claim"])
-        assert.equal(
-          await refusedWith(() => pod.import("x", { [old]: true } as never)),
-          `pod.import does not take ${old}: it was renamed claimProfiles in build-6979c2fc.`,
-        );
+    it("names the new key and the build that renamed it, for `aboutSubject` of `pod.import()`", async () => {
+      assert.equal(
+        await refusedWith(() =>
+          pod.import("x", { aboutSubject: true } as never),
+        ),
+        "pod.import does not take aboutSubject: it was renamed claimProfiles in build-6979c2fc.",
+      );
+    });
+
+    it("names the new key, and no build, for `claim` of `pod.import()`", async () => {
+      assert.equal(
+        await refusedWith(() => pod.import("x", { claim: true } as never)),
+        "pod.import does not take claim: it takes claimProfiles.",
+      );
     });
 
     it("names `lookups` and the build that renamed it, for `look` of `samplesToPublish()` and `answersToPublish()`", async () => {
@@ -98,6 +127,29 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
           pod.ask("pod/My active allergies", { claim: true } as never),
         ),
         "pod.ask does not take claim: it takes lens.",
+      );
+    });
+  });
+
+  describe("given a key that is also a name on every object", () => {
+    it("says only that the call does not take it, for `toString`, `constructor` and an own `__proto__`", async () => {
+      for (const options of [
+        { toString: 1 },
+        { constructor: 1 },
+        JSON.parse('{"__proto__":{}}'),
+      ])
+        assert.match(
+          await refusedWith(() => pod.import("x", options as never)),
+          /^pod\.import does not take (toString|constructor|__proto__): it takes claimProfiles, match, onProgress\.$/,
+        );
+    });
+  });
+
+  describe("given an unknown key whose value is undefined", () => {
+    it("throws, naming the key", async () => {
+      assert.match(
+        await refusedWith(() => pod.import("x", { bogus: undefined } as never)),
+        /^pod\.import does not take bogus:/,
       );
     });
   });

@@ -1,5 +1,6 @@
 import { Refusal } from "@cascade-runtime/runtime";
 import type { ChangeTool } from "./changes.js";
+import { acceptOptions } from "./options.js";
 
 /** The tool shape MCP, WebMCP and CopilotKit share. */
 export type Tool = ChangeTool;
@@ -24,7 +25,9 @@ export interface ToolRegistry {
 export function toolRegistry(modelContext?: ModelContext): ToolRegistry {
   const registered = new Set<Tool>();
   return {
-    register(tool, { signal }) {
+    register(tool, options) {
+      acceptOptions("toolRegistry.register", options, { signal: true });
+      const { signal } = options;
       if ([...registered].some(({ name }) => name === tool.name))
         throw new Refusal(`a tool ${tool.name} is registered`);
       if (signal.aborted) return;
