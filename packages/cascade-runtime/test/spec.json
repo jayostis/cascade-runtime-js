@@ -44,7 +44,8 @@
     "Checking a citation of a download · checkCitation(), downloadsSource(), isoDate()",
     "Checking a citation of a view entry · checkCitation(), podRowsSource()",
     "Checking what a reply says downloads lack · checkRecordsAbsence()",
-    "Building an app from the guide · guide/AGENTS.md"
+    "Building an app from the guide · guide/AGENTS.md",
+    "Refusing an option a call does not know · import(), openPod(), connect(), pull(), serverReport(), findChanges(), samplesToPublish()"
   ],
   "glossary": [
     {
@@ -838,6 +839,7 @@
     "failure-annotations.test.ts",
     "guide.test.ts",
     "launcher-sandbox.test.ts",
+    "options.test.ts",
     "outcomes.test.ts",
     "pack-dependencies.test.ts",
     "people-copies.test.ts",
@@ -881,6 +883,7 @@
     "guide.test.ts",
     "kinds-read.test.ts",
     "launcher-sandbox.test.ts",
+    "options.test.ts",
     "outcomes.test.ts",
     "pack-dependencies.test.ts",
     "people-copies.test.ts",
