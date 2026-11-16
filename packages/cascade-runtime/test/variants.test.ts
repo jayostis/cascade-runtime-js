@@ -295,7 +295,7 @@ function entry(cases: readonly Case[], subject: string, owner: string): string {
     draft(
       2 * index + 1,
       "cascade:VariantInterpretation",
-      `cascade:variantInterpreted <urn:cascade:output-${2 * index}> ; ${report === undefined ? "" : `cascade:acmgClassification ${report} ; `}cascade:interpretedDate "2024-03-21"^^xsd:date`,
+      `cascade:subjectVariant <urn:cascade:output-${2 * index}> ; ${report === undefined ? "" : `cascade:acmgClassification ${report} ; `}cascade:variantInterpretationDate "2024-03-21"^^xsd:date`,
     ),
   ]);
   return `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .

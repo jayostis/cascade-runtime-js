@@ -100,7 +100,7 @@ describe("Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()", 
 
     it("shows a condition both hospitals hold as one row of `pod/My active conditions`, made of two records", () => {
       const hypertension = conditions.filter(
-        ({ snomed }) => snomed === HYPERTENSION,
+        ({ conditionCode }) => conditionCode === HYPERTENSION,
       );
       assert.equal(hypertension.length, 1);
       assert.equal(hypertension[0]?.records, "2");

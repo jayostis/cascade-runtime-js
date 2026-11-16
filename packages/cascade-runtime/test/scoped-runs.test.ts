@@ -84,7 +84,7 @@ ${outputs.join("\n")}
 function allergy(index: number, code: string): string {
   return `<urn:cascade:output-${index}> a cascade:AllergyOrIntolerance .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  cascade:allergen "Allergen ${code.slice(-4)}" ; cascade:allergenCode <${code}> ; cascade:patient <${SUBJECT}> .`;
+  cascade:allergenName "Allergen ${code.slice(-4)}" ; cascade:allergenCode <${code}> ; cascade:patient <${SUBJECT}> .`;
 }
 
 function potassium(index: number, value: string): string {

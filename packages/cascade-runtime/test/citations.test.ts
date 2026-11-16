@@ -158,7 +158,7 @@ describe("Checking what a reply says a pod lacks · checkAbsence()", () => {
         rows: [
           {
             procedure: "Colonoscopy",
-            snomed: "http://snomed.info/id/73761001",
+            procedureCode: "http://snomed.info/id/73761001",
           },
         ],
       });
@@ -375,7 +375,7 @@ describe("Checking what a reply says a pod lacks · checkAbsence()", () => {
             rows: [
               {
                 condition: "Pulmonary embolism",
-                snomed: "http://snomed.info/id/59282003",
+                conditionCode: "http://snomed.info/id/59282003",
                 onset: "2025-07-08",
                 abated: "2025-07-08",
                 ...row,
@@ -1115,9 +1115,9 @@ describe("Checking a citation of a view entry · checkCitation(), podRowsSource(
     [LDL]: [
       { field: "cascade:testName", value: "LDL cholesterol" },
       { field: "cascade:testCode", value: "http://loinc.org/rdf/13457-7" },
-      { field: "cascade:resultValue", value: "131" },
-      { field: "cascade:resultUnit", value: "mg/dL" },
-      { field: "cascade:referenceRange", value: "<=99 mg/dL" },
+      { field: "cascade:resultValueText", value: "131" },
+      { field: "cascade:resultUnitText", value: "mg/dL" },
+      { field: "cascade:referenceRangeText", value: "<=99 mg/dL" },
       {
         field: "cascade:resultClinicallyRelevantTime",
         value: "2025-02-18T16:00:00Z",
@@ -1132,7 +1132,7 @@ describe("Checking a citation of a view entry · checkCitation(), podRowsSource(
   const texts = rowsOf({
     [lisinopril]: [
       { field: `${NS}drugName`, value: "lisinopril 10 MG Oral Tablet" },
-      { field: `${NS}dosage`, value: "1 tablet by mouth every morning" },
+      { field: `${NS}dosageInstructionText`, value: "1 tablet by mouth every morning" },
     ],
     [colonoscopy]: [
       { field: `${NS}procedureName`, value: "Colonoscopy" },
@@ -1195,7 +1195,7 @@ describe("Checking a citation of a view entry · checkCitation(), podRowsSource(
       field: "cascade:rxNormCode",
       value: "https://ns.cascadeprotocol.org/codes/rxnorm/199903",
     },
-    { field: "cascade:snomedCode", value: "http://snomed.info/id/59282003" },
+    { field: "cascade:conditionCode", value: "http://snomed.info/id/59282003" },
     { field: "cascade:testCode", value: "https://loinc.org/rdf/4548-4" },
   ]);
   const onReport = { entry: REPORT };

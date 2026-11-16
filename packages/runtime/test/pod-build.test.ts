@@ -411,7 +411,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
       const { rows } = await martin.select(
         `${PREFIXES}
         SELECT ?interpretation ?variant ?member WHERE {
-          GRAPH ?view { ?view a cascade:View . ?interpretation cascade:entryMember [] ; cascade:variantInterpreted ?variant }
+          GRAPH ?view { ?view a cascade:View . ?interpretation cascade:entryMember [] ; cascade:subjectVariant ?variant }
           OPTIONAL { GRAPH <${variants}> { ?variant cascade:entryMember ?member } }
         }`,
       );
@@ -581,7 +581,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
               <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#PatientRole> ] .
           <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
           <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
-            <https://ns.cascadeprotocol.org/cascade#allergen> "Penicillin" .`),
+            <https://ns.cascadeprotocol.org/cascade#allergenName> "Penicillin" .`),
         base: "urn:entry",
         name: "an entry",
       }));

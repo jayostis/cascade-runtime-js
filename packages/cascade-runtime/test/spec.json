@@ -535,7 +535,7 @@
     {
       "term": "reference range",
       "definition": "the span of values a laboratory calls normal for a test, printed beside a result.",
-      "vocabulary": "https://ns.cascadeprotocol.org/cascade#referenceRange",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#referenceRangeText",
       "aliases": ["reference ranges"]
     },
     {
@@ -747,7 +747,7 @@
     },
     {
       "term": "term",
-      "definition": "one word the vocabulary defines, named by an IRI, a web-style identifier such as `https://ns.cascadeprotocol.org/cascade#allergen`.",
+      "definition": "one word the vocabulary defines, named by an IRI, a web-style identifier such as `https://ns.cascadeprotocol.org/cascade#allergenName`.",
       "aliases": ["terms"]
     },
     {

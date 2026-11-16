@@ -168,7 +168,7 @@
     },
     {
       "term": "IRI",
-      "definition": "a web-style identifier, such as `https://ns.cascadeprotocol.org/cascade#allergen`; every vocabulary term, record and view entry is named by one.",
+      "definition": "a web-style identifier, such as `https://ns.cascadeprotocol.org/cascade#allergenName`; every vocabulary term, record and view entry is named by one.",
       "aliases": ["IRIs"]
     },
     {
@@ -351,7 +351,7 @@
     },
     {
       "term": "vocabulary term",
-      "definition": "one word the vocabulary defines, such as `cascade:allergen`: a class, a property or a named value, named by an IRI.",
+      "definition": "one word the vocabulary defines, such as `cascade:allergenName`: a class, a property or a named value, named by an IRI.",
       "aliases": ["vocabulary terms", "terms of the vocabulary"]
     }
   ],
