@@ -132,6 +132,32 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       });
     });
 
+    it("puts many records on one day and one lab code on many days, as a visit and a panel do", () => {
+      const entries = bundleOf(200).entry;
+      const perDay = new Map<string, number>();
+      const daysOfLab = new Map<string, Set<string>>();
+      for (const { resource } of entries) {
+        const time =
+          resource.effectiveDateTime ??
+          resource.onsetDateTime ??
+          resource.authoredOn ??
+          resource.occurrenceDateTime ??
+          resource.performedDateTime;
+        assert.ok(time !== undefined, resource.resourceType);
+        const day = time.slice(0, 10);
+        perDay.set(day, (perDay.get(day) ?? 0) + 1);
+        if (resource.resourceType === "Observation") {
+          const code = resource.code?.coding[0]?.code ?? "";
+          daysOfLab.set(code, (daysOfLab.get(code) ?? new Set()).add(day));
+        }
+      }
+      assert.ok(Math.max(...perDay.values()) >= 15, "busiest day");
+      assert.ok(
+        Math.max(...[...daysOfLab.values()].map((days) => days.size)) >= 5,
+        "most frequent lab code",
+      );
+    });
+
     it("holds no two records of one kind with the same code and day when the repeats are switched off", () => {
       assert.deepEqual(matchingPairs(bundleOf(200, false)), {});
     });

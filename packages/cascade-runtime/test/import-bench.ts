@@ -6,9 +6,12 @@ import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 
 /**
  * A bench of `pod.import()` over a pull of one hospital, the pull's shape being Full Picture's (planning#44): one
- * Bundle, about six in ten of it laboratory results over ten LOINC codes, the rest conditions, medications,
- * immunizations, allergies and procedures. Every record is on a day of its own, so no two share a code and a day by
- * accident; the deliberate repeats are the only matching pairs: a record at each position of a cycle of twenty repeats
+ * Bundle, about six in ten of it laboratory results over fourteen LOINC codes, the rest conditions, medications,
+ * immunizations, allergies and procedures. A cycle of twenty records is one day (about 12 laboratory results and 8
+ * others, as a visit or a panel is) and a code recurs on a day in every cycle (a laboratory code on about 8 days in 200
+ * resources), because the matcher's cost is its candidate sets: the records of one day and the days of one code.
+ * Within a cycle a kind's codes are distinct, so no two share a code and a day by accident; the deliberate repeats are
+ * the only matching pairs: a record at each position of a cycle of twenty repeats
  * the record of the same position one cycle before, with its code and day, when `(cycle + position) % 10 === 0`
  * (10 laboratory results, 2 conditions, 2 medications, 2 immunizations, 1 allergy and 1 procedure in 200 resources).
  * A repeated laboratory result is meant to trigger the same-code-and-day rules on a result (same code, day, value and
@@ -33,6 +36,10 @@ const LOINC = [
   ["777-3", "Platelets", "10*3/uL"],
   ["6690-2", "Leukocytes", "10*3/uL"],
   ["3094-0", "Urea nitrogen", "mg/dL"],
+  ["2075-0", "Chloride", "mmol/L"],
+  ["17861-6", "Calcium", "mg/dL"],
+  ["1742-6", "Alanine aminotransferase", "U/L"],
+  ["1920-8", "Aspartate aminotransferase", "U/L"],
 ] as const;
 const CONDITIONS = [
   "59621000",
@@ -85,13 +92,17 @@ function resource(index: number, repeats: boolean): object {
   const cycle = Math.floor(index / 20);
   const repeat = repeats && cycle > 0 && (cycle + slot) % 10 === 0;
   const of = repeat ? index - 20 : index;
-  const at = new Date(Date.UTC(2020, 0, 1, 8) + of * 86_400_000)
+  const ofCycle = Math.floor(of / 20);
+  const at = new Date(Date.UTC(2020, 0, 1, 8) + ofCycle * 86_400_000)
     .toISOString()
     .replace(".000Z", "Z");
   const day = at.slice(0, 10);
   const subject = { reference: `Patient/${PATIENT}` };
+  /** The code at `place` among a kind's records of the cycle, rotated by the cycle so each code recurs on many days. */
+  const rotated = (length: number, place: number): number =>
+    (place + ofCycle) % length;
   if (slot < 12) {
-    const [code, name, unit] = LOINC[of % LOINC.length] ?? LOINC[0];
+    const [code, name, unit] = LOINC[rotated(LOINC.length, slot)] ?? LOINC[0];
     return {
       resourceType: "Observation",
       id,
@@ -132,8 +143,8 @@ function resource(index: number, repeats: boolean): object {
       },
       code: coding(
         "http://snomed.info/sct",
-        CONDITIONS[of % CONDITIONS.length] ?? "",
-        `Condition ${of % CONDITIONS.length}`,
+        CONDITIONS[rotated(CONDITIONS.length, slot - 12)] ?? "",
+        `Condition ${rotated(CONDITIONS.length, slot - 12)}`,
       ),
       subject,
       onsetDateTime: day,
@@ -146,8 +157,8 @@ function resource(index: number, repeats: boolean): object {
       intent: "order",
       medicationCodeableConcept: coding(
         "http://www.nlm.nih.gov/research/umls/rxnorm",
-        MEDICATIONS[of % MEDICATIONS.length] ?? "",
-        `Medication ${of % MEDICATIONS.length}`,
+        MEDICATIONS[rotated(MEDICATIONS.length, slot - 14)] ?? "",
+        `Medication ${rotated(MEDICATIONS.length, slot - 14)}`,
       ),
       subject,
       authoredOn: day,
@@ -159,8 +170,8 @@ function resource(index: number, repeats: boolean): object {
       status: "completed",
       vaccineCode: coding(
         "http://hl7.org/fhir/sid/cvx",
-        VACCINES[of % VACCINES.length] ?? "",
-        `Vaccine ${of % VACCINES.length}`,
+        VACCINES[rotated(VACCINES.length, slot - 16)] ?? "",
+        `Vaccine ${rotated(VACCINES.length, slot - 16)}`,
       ),
       patient: subject,
       occurrenceDateTime: day,
@@ -180,8 +191,8 @@ function resource(index: number, repeats: boolean): object {
       },
       code: coding(
         "http://snomed.info/sct",
-        ALLERGENS[of % ALLERGENS.length] ?? "",
-        `Allergen ${of % ALLERGENS.length}`,
+        ALLERGENS[rotated(ALLERGENS.length, 0)] ?? "",
+        `Allergen ${rotated(ALLERGENS.length, 0)}`,
       ),
       patient: subject,
       onsetDateTime: day,
@@ -192,8 +203,8 @@ function resource(index: number, repeats: boolean): object {
     status: "completed",
     code: coding(
       "http://snomed.info/sct",
-      PROCEDURES[of % PROCEDURES.length] ?? "",
-      `Procedure ${of % PROCEDURES.length}`,
+      PROCEDURES[rotated(PROCEDURES.length, 0)] ?? "",
+      `Procedure ${rotated(PROCEDURES.length, 0)}`,
     ),
     subject,
     performedDateTime: day,
