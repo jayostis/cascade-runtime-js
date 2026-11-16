@@ -157,6 +157,15 @@ describe("The evals run page's deep links in a browser · ?open=, #point, the fi
       assert.equal(await inView(last), true);
     });
 
+    it("lands the same way for the point as a `#` hash", async () => {
+      await tab.goto(`${base}${REASONING}`);
+      const last = (await points()).at(-1)!;
+      await tab.goto(`${base}${RUN}#${last}`);
+      await tab.waitForURL(`**/${REASONING}*`);
+      assert.equal(await isOpen(last), true);
+      assert.equal(await inView(last), true);
+    });
+
     it("stays on the run's page for an id nothing holds", async () => {
       await tab.goto(`${base}${RUN}?open=pod-nothing-9`);
       assert.match(tab.url(), /\.r1\.html/);

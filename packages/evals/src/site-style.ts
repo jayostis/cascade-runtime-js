@@ -162,9 +162,11 @@ export const SCRIPT = `
   function hash(){ try{ land(decodeURIComponent(location.hash.slice(1))); }catch(e){} }
   window.addEventListener('hashchange',hash); hash();
   var open=new URLSearchParams(location.search).get('open');
+  if(!open){ try{ open=decodeURIComponent(location.hash.slice(1)); }catch(e){} }
   if(open && !land(open)){
-    document.querySelectorAll('a[data-point-prefix]').forEach(function(a){
-      if(open.indexOf(a.getAttribute('data-point-prefix'))===0) location.replace(a.getAttribute('href')+'#'+encodeURIComponent(open));
+    var question=open.replace(/-[0-9]+$/,'');
+    document.querySelectorAll('a[data-point-question]').forEach(function(a){
+      if(a.getAttribute('data-point-question')===question) location.replace(a.getAttribute('href')+'#'+encodeURIComponent(open));
     });
   }
 })();

@@ -17,7 +17,9 @@ import { instancesOf } from "../src/instances.js";
 import type { Job, Results } from "../src/results.js";
 import { errorsOf } from "../src/schemas.js";
 import type { RenderMarkdown } from "../src/site-calibration.js";
+import { runInNewContext } from "node:vm";
 import { buildSite, renderSite } from "../src/site.js";
+import { SCRIPT } from "../src/site-style.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-site-"));
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
@@ -622,6 +624,57 @@ describe("Reading one run's page · renderSite()", () => {
       assert.ok(widths.length > 0, "the pages draw graphs");
       for (const m of widths)
         assert.ok(Number(m[1]) <= 1000, `a graph ${m[1]} px wide`);
+    });
+  });
+
+  describe("given a run's page that holds the reasoning links of the questions `flu` and `flu-shot`", () => {
+    /** Runs the pages' script as a browser would, and returns where it sent the page. */
+    const sentFrom = (search: string, hash: string): string[] => {
+      const sent: string[] = [];
+      const link = (question: string, href: string) => ({
+        getAttribute: (name: string) =>
+          name === "data-point-question" ? question : href,
+      });
+      const links = [
+        link("pod-flu", "flu.html"),
+        link("pod-flu-shot", "flu-shot.html"),
+      ];
+      runInNewContext(SCRIPT, {
+        URLSearchParams,
+        window: { addEventListener: () => undefined },
+        location: {
+          search,
+          hash,
+          replace: (to: string) => sent.push(to),
+        },
+        document: {
+          documentElement: {},
+          getElementById: () => null,
+          querySelectorAll: (selector: string) =>
+            selector === "a[data-point-question]" ? links : [],
+        },
+      });
+      return sent;
+    };
+
+    it("sends `?open=` a point of `flu` to the `flu` link only", () => {
+      assert.deepEqual(sentFrom("?open=pod-flu-2", ""), ["flu.html#pod-flu-2"]);
+    });
+
+    it("sends `?open=` a point of `flu-shot` to the `flu-shot` link only", () => {
+      assert.deepEqual(sentFrom("?open=pod-flu-shot-1", ""), [
+        "flu-shot.html#pod-flu-shot-1",
+      ]);
+    });
+
+    it("sends a `#point` hash as it sends `?open=`", () => {
+      assert.deepEqual(sentFrom("", "#pod-flu-shot-1"), [
+        "flu-shot.html#pod-flu-shot-1",
+      ]);
+    });
+
+    it("sends nothing, and throws nothing, for a hash with a malformed escape", () => {
+      assert.deepEqual(sentFrom("", "#pod-flu-%E0%A4%A"), []);
     });
   });
 });

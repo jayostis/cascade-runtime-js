@@ -226,7 +226,7 @@ function armHtml(s: Sitting, arm: Arm, q: string, where: Where): string {
   const more =
     t.answer === undefined
       ? ""
-      : `<p class="more"><a data-more="reasoning" data-point-prefix="${arm}-${esc(q)}-" href="${hrefTo(where.run, where.reasoning(arm, q))}">The reasoning and the evidence behind each point</a><a data-more="card" href="${hrefTo(where.run, where.card(arm, q))}">The doctor's card</a></p>`;
+      : `<p class="more"><a data-more="reasoning" data-point-question="${arm}-${esc(q)}" href="${hrefTo(where.run, where.reasoning(arm, q))}">The reasoning and the evidence behind each point</a><a data-more="card" href="${hrefTo(where.run, where.card(arm, q))}">The doctor's card</a></p>`;
   return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="panel" data-part="answer">${replyHtml(t)}</div>${more}${costHtml(t)}</div>`;
 }
 
