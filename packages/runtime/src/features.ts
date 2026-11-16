@@ -154,12 +154,16 @@ function dedented(lines: readonly string[]): string {
   return kept.map((line) => line.slice(indent)).join("\n");
 }
 
+/** A description with the indentation its lines share removed and the rest kept: a list item's continuation stays indented. */
 const unindented = (description: string | undefined): string =>
-  (description ?? "")
-    .split("\n")
-    .map((line) => line.trim())
-    .join("\n")
-    .trim();
+  dedented(
+    (description ?? "")
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .filter(
+        (line, at, all) => line !== "" || at > all.findIndex((l) => l !== ""),
+      ),
+  );
 
 /** The feature file at the path, as written: each rule's description and each example's own lines. */
 export async function readWrittenFeature(

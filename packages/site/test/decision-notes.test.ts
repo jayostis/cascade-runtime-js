@@ -277,18 +277,40 @@ describe("Decision notes as pages · specSection", () => {
   describe("with a note over 30 000 characters", () => {
     const table = (rows: number) =>
       `| thing | what we do |\n|---|---|\n${Array.from({ length: rows }, (_, at) => `| t${at} | does ${at} |`).join("\n")}\n`;
-    const note = (rows: number, padding: number) =>
-      `# A long note\n\n## Question\n\nWhy?\n\n## What others do\n\n- **A** does it.\n- **B** does not.\n\n## Choice\n\n${table(rows)}\n## Why\n\n${table(rows)}\n${"A reason, at length. ".repeat(padding)}\n`;
+    const note = (
+      rows: number,
+      padding: number,
+      others = "- **A** does it.\n- **B** does not.\n",
+    ) =>
+      `# A long note\n\n## Question\n\nWhy?\n\n## What others do\n\n${others}\n## Choice\n\n${table(rows)}\n## Why\n\n${table(rows)}\n${"A reason, at length. ".repeat(padding)}\n`;
     let long: string;
     let short: string;
+    let nested: string;
+    let prose: string;
 
     before(async () => {
       const files = await currencyVocabulary();
       await files.write("decisions/long.md", text(note(14, 1500)));
       await files.write("decisions/short.md", text(note(14, 1)));
+      await files.write(
+        "decisions/nested.md",
+        text(
+          note(
+            14,
+            1500,
+            "- **A** does it:\n  - by hand.\n  - by script.\n  - by both.\n- **B** does not.\n",
+          ),
+        ),
+      );
+      await files.write(
+        "decisions/prose.md",
+        text(note(14, 1500, "Nobody else does it.\n")),
+      );
       const tree = await hubWith(files, []);
       long = treeText(tree, "decisions/long.html");
       short = treeText(tree, "decisions/short.html");
+      nested = treeText(tree, "decisions/nested.html");
+      prose = treeText(tree, "decisions/prose.html");
     });
 
     /** The `<details>` blocks of a page, each with its summary and its body. */
@@ -308,6 +330,15 @@ describe("Decision notes as pages · specSection", () => {
       assert.match(found[0]?.body ?? "", /<strong>A<\/strong> does it/);
       assert.match(found[1]?.body ?? "", /<td[^>]*>t13<\/td>/);
       for (const { summary } of found) assert.ok(summary.length > 10, summary);
+    });
+
+    it("counts the entries of what others do by its top-level items, and says no count when it has none", () => {
+      const summary = (html: string) =>
+        folds(html).find(({ summary }) => summary.startsWith("Show what"))
+          ?.summary;
+      assert.equal(summary(long), "Show what others do (2 entries)");
+      assert.equal(summary(nested), "Show what others do (2 entries)");
+      assert.equal(summary(prose), "Show what others do");
     });
 
     it("keeps the headings and the Choice table, with its row anchors, open", () => {

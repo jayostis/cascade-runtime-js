@@ -108,6 +108,22 @@ const FOLD_ROWS = 12;
 const fold = (summary: string, body: string): string =>
   `<details class="fold"><summary>${summary}</summary>${body}</details>\n`;
 
+/** The summary of the prior art's fold: its count of top-level list items, and no count when it has none. */
+function entriesSummary(body: string): string {
+  let depth = 0;
+  let entries = 0;
+  for (const [tag] of body.matchAll(/<\/?(?:ul|ol|li)[ >]/g)) {
+    if (tag.startsWith("</")) {
+      if (tag !== "</li>") depth--;
+    } else if (tag.startsWith("<li")) {
+      if (depth === 1) entries++;
+    } else depth++;
+  }
+  return entries === 0
+    ? "Show what others do"
+    : `Show what others do (${entries} entries)`;
+}
+
 /** The page of a long note with its prior art and its long tables, which a rule does not link into, under a summary each. */
 function foldLong(html: string): string {
   const [first = "", ...sections] = html.split(/(?=<h2 )/);
@@ -120,7 +136,7 @@ function foldLong(html: string): string {
         const body = section.slice(end);
         const id = /^<h2 id="([^"]*)"/.exec(heading)?.[1];
         if (id === "what-others-do")
-          return `${heading}${fold(`Show what others do (${body.match(/<li>/g)?.length ?? 0} entries)`, body)}`;
+          return `${heading}${fold(entriesSummary(body), body)}`;
         if (id === "choice") return section;
         return `${heading}${body.replace(
           /<table>[^]*?<\/table>\n?/g,
