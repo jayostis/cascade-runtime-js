@@ -1,5 +1,6 @@
 import type { SignIn } from "../connect/connect.js";
 import { ConnectionFailure } from "../connect/outcome.js";
+import { acceptOptions } from "../options.js";
 
 /** What a sign-in's return page posts to the window that opened the sign-in. */
 const RETURNED = "cascade-runtime:signed-in";
@@ -35,6 +36,7 @@ function returned(data: unknown): URL | undefined {
  * page's `finishSignIn()` posts it. Only a message from that popup, of this page's own origin, is read.
  */
 export function popupSignIn(options: PopupOptions = {}): SignIn {
+  acceptOptions("popupSignIn", options, { popup: true });
   return (authorize, signal) =>
     new Promise<URL>((resolve, reject) => {
       const popup =

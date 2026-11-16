@@ -1,5 +1,6 @@
 import { Refusal } from "@cascade-runtime/runtime/refusal";
 import { checkInput, type InputSchema } from "./check.js";
+import { acceptOptions } from "./options.js";
 import type { Row } from "./pod.js";
 
 /** Fewer results than this on either side of a medication's day is never a change. */
@@ -54,6 +55,14 @@ export type DateIs = "start of use" | "prescription written" | "end of use";
 export type CompactLabChange = Omit<LabChange, "rows" | "medication"> & {
   medication: Omit<LabChange["medication"], "entry">;
 };
+
+function acceptChangeOptions(call: string, options: ChangeOptions): void {
+  acceptOptions(call, options, {
+    medication: true,
+    test: true,
+    limit: true,
+  });
+}
 
 export interface ChangeOptions {
   /** One medication, by RxNorm code (bare or IRI) or name. */
@@ -318,6 +327,7 @@ export function changesIn(
   labs: readonly Row[],
   options: ChangeOptions = {},
 ): LabChange[] {
+  acceptChangeOptions("changesIn", options);
   const limit = options.limit ?? DEFAULT_LIMIT;
   if (!(limit >= 1))
     throw new Refusal(`limit must be at least 1, not ${String(limit)}`);
@@ -377,6 +387,7 @@ export async function findChanges(
   pod: ChangesPod,
   options: ChangeOptions = {},
 ): Promise<LabChange[]> {
+  acceptChangeOptions("findChanges", options);
   const [medications, labs] = await Promise.all([
     pod.ask("pod/My medication history"),
     pod.ask("pod/My lab results"),

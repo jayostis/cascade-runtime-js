@@ -15,6 +15,9 @@ import {
 const BOM = String.fromCharCode(0xfeff);
 const LS = String.fromCharCode(0x2028);
 const PS = String.fromCharCode(0x2029);
+const NEL = String.fromCharCode(0x85);
+const NBSP = String.fromCharCode(0xa0);
+const FULL_WIDTH_ONE = String.fromCharCode(0xff11);
 
 const CHECK = fileURLToPath(
   new URL("../../../../scripts/breaking-check.mjs", import.meta.url),
@@ -111,6 +114,15 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
       );
     });
 
+    it("reads a next line end, a full-width digit and an arrow beside one as text, as the Python readers do", () => {
+      assert.deepEqual(breakingOf(body(`a ->${NEL}\n${NEL}-> b`)), {
+        lines: [`a ->${NEL}`, `${NEL}-> b`],
+      });
+      assert.deepEqual(breakingOf(body(`${FULL_WIDTH_ONE}. a -> b`)), {
+        lines: [`${FULL_WIDTH_ONE}. a -> b`],
+      });
+    });
+
     it("reports a problem, naming what is wrong, for each body the check must refuse", () => {
       const refused: [string | null, RegExp][] = [
         [null, /no `## Breaking` section/],
@@ -123,6 +135,13 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
         [body("it renames a thing"), /"it renames a thing" is not/],
         [body("None\n- a -> b"), /None beside lines/],
         [body("Nothing"), /"Nothing" is not/],
+        [body("->"), /"->" is not/],
+        [body("- ->"), /"->" is not/],
+        [body("a ->"), /"a ->" is not/],
+        [body("-> b"), /"-> b" is not/],
+        [body(`a ->${NBSP}`), /is not/],
+        [body(`None${NEL}`), /is not/],
+        [body(`${FULL_WIDTH_ONE}. None`), /is not/],
       ];
       for (const [text, problem] of refused)
         assert.match(breakingOf(text).problem ?? "", problem, String(text));
@@ -320,6 +339,52 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
           }),
         ),
         "## Breaking changes\n\n- a -> b (#5)\n- c -> d (#7)\n",
+      );
+    });
+
+    it("compares with the newest build that is an ancestor of this one, so a re-run of an older main run never says none wrongly", async () => {
+      const ahead = (tag: string) =>
+        `/repos/o/r/compare/${tag}...old?per_page=100&page=1`;
+      const asked: string[] = [];
+      const notes = await breakingSince("o/r", "old", async (path) => {
+        asked.push(path);
+        return github({
+          ...answers,
+          [RELEASES]: [
+            { tag_name: "build-older", created_at: "2026-11-01T00:00:00Z" },
+            { tag_name: "build-prev", created_at: "2026-11-03T00:00:00Z" },
+            { tag_name: "build-old", created_at: "2026-11-02T00:00:00Z" },
+          ],
+          [ahead("build-prev")]: { status: "behind", commits: [] },
+          [ahead("build-older")]: {
+            status: "ahead",
+            commits: [
+              { commit: { message: "Merge pull request #5 from o/a" } },
+            ],
+          },
+        })(path);
+      });
+      assert.equal(notes, "## Breaking changes\n\n- a -> b (#5)\n");
+      assert.ok(!asked.some((path) => path.includes("issues/6")));
+    });
+
+    it("says none when every earlier build is ahead of this one", async () => {
+      assert.equal(
+        await breakingSince(
+          "o/r",
+          "old",
+          github({
+            [RELEASES]: [
+              { tag_name: "build-prev", created_at: "2026-11-03T00:00:00Z" },
+              { tag_name: "build-old", created_at: "2026-11-02T00:00:00Z" },
+            ],
+            "/repos/o/r/compare/build-prev...old?per_page=100&page=1": {
+              status: "behind",
+              commits: [],
+            },
+          }),
+        ),
+        "Breaking changes: none\n",
       );
     });
 

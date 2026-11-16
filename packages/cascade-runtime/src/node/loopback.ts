@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import type { SignIn } from "../connect/connect.js";
 import { ConnectionFailure } from "../connect/outcome.js";
+import { acceptOptions } from "../options.js";
 
 export interface LoopbackOptions {
   /** Takes the person to the authorize URL: opens a browser, or prints it. */
@@ -20,6 +21,7 @@ const DONE = `<!doctype html>
  * the first redirect to its path with the `state` sent.
  */
 export function loopbackSignIn(options: LoopbackOptions): SignIn {
+  acceptOptions("loopbackSignIn", options, { open: true, timeoutMs: true });
   const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
   return (authorize, signal) =>
     new Promise<URL>((resolve, reject) => {

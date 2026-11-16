@@ -6,6 +6,7 @@ import { FolderFiles, PACKED, packed } from "@cascade-runtime/runtime/node";
 import { ANSWERS, DESCRIBED, type Described } from "../answers.js";
 import { LOOKUPS, recording } from "../lookups.js";
 import { openPodWith, type Parts, type Pod } from "../pod.js";
+import { acceptOptions } from "../options.js";
 import { shipped, type Tables } from "../tables.js";
 import { type SampleOptions, type Samples, samplesOf } from "./samples.js";
 
@@ -45,6 +46,7 @@ export async function browserBuildVersion(
 export async function samplesToPublish(
   options: SampleOptions = {},
 ): Promise<Samples> {
+  acceptOptions("samplesToPublish", options, { kits: true, lookups: true });
   const components = join(PACKAGE, "components");
   try {
     await readFile(join(components, PACKED));
@@ -80,6 +82,11 @@ export async function answersToPublish(
     readonly lookups?: (pod: Pod, tables: Tables) => Promise<unknown>;
   },
 ): Promise<Map<string, Uint8Array>> {
+  acceptOptions("answersToPublish", options, {
+    name: true,
+    runtime: true,
+    lookups: true,
+  });
   const { name, runtime, lookups } = options;
   const files = new MemoryFiles("urn:cascade:published/");
   for (const [path, bytes] of podFiles) await files.write(path, bytes);
