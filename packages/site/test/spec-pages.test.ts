@@ -271,6 +271,12 @@ describe("The specification's pages · specPages()", () => {
 
     - R1: a.
     - R2: b.
+
+  Rule: L3. Closes a list with an unindented line
+    - R1: a,
+      which wraps.
+    - R2: b.
+    That is all of them.
 `;
     let page: string;
 
@@ -298,6 +304,13 @@ describe("The specification's pages · specPages()", () => {
       );
       assert.match(first, /<li>R2, two: second, which wraps\.<\/li>/);
       assert.match(first, /<p class="prose">Last paragraph\.<\/p>/);
+    });
+
+    it("starts a paragraph at an unindented line after a list item, and joins only an indented line to it", () => {
+      const closed = rule("l3");
+      assert.match(closed, /<li>R1: a, which wraps\.<\/li>/);
+      assert.match(closed, /<li>R2: b\.<\/li>/);
+      assert.match(closed, /<p class="prose">That is all of them\.<\/p>/);
     });
   });
 
