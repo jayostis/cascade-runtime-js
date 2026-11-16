@@ -60,17 +60,27 @@ const opens = (tab: Page, id: string): Promise<unknown> =>
     id,
   );
 
-/** Whether the element is inside the window now. */
-const visible = (tab: Page, id: string): Promise<boolean> =>
-  tab.evaluate((wanted) => {
-    const box = document.getElementById(wanted)?.getBoundingClientRect();
-    return (
-      box !== undefined &&
-      box.height > 0 &&
-      box.top >= 0 &&
-      box.bottom <= window.innerHeight
+/** Whether the element comes inside the window within a few seconds, a pixel's rounding aside: the browser's own scroll to an address lands after the page loads, at a fraction of a pixel. */
+const visible = async (tab: Page, id: string): Promise<boolean> => {
+  try {
+    await tab.waitForFunction(
+      (wanted) => {
+        const box = document.getElementById(wanted)?.getBoundingClientRect();
+        return (
+          box !== undefined &&
+          box.height > 0 &&
+          box.top >= -1 &&
+          box.bottom <= window.innerHeight + 1
+        );
+      },
+      id,
+      { timeout: 3000 },
     );
-  }, id);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * The index's own script runs in Chromium over a built term reference: a link to a name inside a folded group opens the
