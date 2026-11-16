@@ -19,6 +19,7 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { PLAIN } from "../src/html.js";
 import { termHref, termPage } from "../src/links.js";
+import { QUERIES_PAGE, queryPages } from "../src/query-pages.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { namedInQuery } from "../src/term-reference.js";
 import { type Page, readPage } from "./page.js";
@@ -51,6 +52,8 @@ let options: SiteOptions;
 let site: Site;
 let files: Map<string, Uint8Array>;
 let pages: Map<string, Page>;
+/** Each query's page from the site's root, read off the query pages as they are built, by the query's path. */
+const queryPageOf = new Map<string, string>();
 
 /**
  * The pod is built from the matcher's example in which two records a person called different are joined and two called the
@@ -78,12 +81,27 @@ before(async () => {
     ask: "npm run ask -- matching",
     blob: BLOB,
     terms: "../terms/",
+    queries: "../queries/",
     spec: "../spec/",
     chrome: PLAIN,
   };
   site = await Site.build(options);
   files = await site.files();
   pages = readPages(files);
+  const paths = [...(await questions(vocabulary.files)).values()].map(
+    ({ path }) => path,
+  );
+  const built = await queryPages({
+    vocabulary: vocabulary.files,
+    chrome: PLAIN,
+  });
+  for (const [page, bytes] of built) {
+    if (page === QUERIES_PAGE) continue;
+    const source = readPage(new TextDecoder().decode(bytes), page).hrefs.at(-1);
+    for (const path of paths)
+      if (decodeURI(source ?? "").endsWith(`/${path}`))
+        queryPageOf.set(path, page);
+  }
 });
 
 const page = (path: string | undefined): Page => {
@@ -105,14 +123,95 @@ const blockOf = (on: Page, title: string) => {
  */
 describe("The pages of a pod · Site.build(), Site.files()", () => {
   describe("given a pod in which the matcher found two records to be one thing", () => {
-    it("shows every named question of the vocabulary with its query's text", async () => {
+    it("shows every named question of the vocabulary with its query's text less the comment its section prints as prose, or in one line when it has no rows", async () => {
       const shown = new Map(
         [...pages.values()].flatMap(({ blocks }) =>
           blocks.map((block) => [block.path, block.text] as const),
         ),
       );
-      for (const { path, text } of (await questions(vocabulary.files)).values())
-        assert.equal(shown.get(path), text, path);
+      const lines = new Set(
+        [...pages.values()].flatMap(({ nones }) =>
+          nones.map(({ href }) => href),
+        ),
+      );
+      assert.ok(
+        shown.size > 0 && lines.size > 0,
+        "rows and no rows both occur",
+      );
+      for (const { path, text } of (
+        await questions(vocabulary.files)
+      ).values()) {
+        const given = shown.get(path);
+        if (given !== undefined) {
+          assert.equal(given, text.replace(/^(?:#[^\n]*\n)+\s*/, ""), path);
+          continue;
+        }
+        const page = queryPageOf.get(path);
+        assert.ok(page, `${path} has no page among the query pages`);
+        assert.ok(
+          lines.has(`../${page}`),
+          `${path} is shown neither with rows nor in one line`,
+        );
+      }
+    });
+
+    it("shows a section whose question returns no row as one line, its title, none and a link to the question's page, with neither its prose nor its query", () => {
+      const emptied = [...pages].filter(([, { nones }]) => nones.length > 0);
+      assert.ok(emptied.length > 0, "a page has a section without rows");
+      for (const [path, { blocks, nones, said }] of emptied) {
+        assert.doesNotMatch(said, /No rows\./, path);
+        for (const { line, title, said: words, href } of nones) {
+          assert.ok(line.length < 400, line);
+          assert.match(
+            words,
+            new RegExp(
+              `^${title}: none( under the [^ ]+ lens)?[.] The question$`,
+            ),
+          );
+          assert.match(href, /^\.\.\/queries\/questions\/.+\.html$/);
+          assert.ok(
+            !blocks.some(
+              (block) => block.title === title && block.rows.length === 0,
+            ),
+            `${path} still has a section for ${title}`,
+          );
+        }
+      }
+    });
+
+    it("keeps a section that has rows whole, with its prose and its query", () => {
+      const full = [...pages.values()].flatMap(({ blocks }) =>
+        blocks.filter((block) => block.rows.length > 0),
+      );
+      assert.ok(full.length > 0);
+      for (const block of full) {
+        assert.ok(block.text.length > 0, block.title);
+        assert.ok(block.said.includes("The query:"), block.title);
+      }
+    });
+
+    it("leaves a query's leading comment out of the query shown under its prose", async () => {
+      const commented = new Map(
+        [...(await questions(vocabulary.files)).values()]
+          .filter(({ text }) => text.startsWith("#"))
+          .map(({ path, text }) => [path, text.split("\n")[0] ?? ""]),
+      );
+      const shown = [...pages.values()]
+        .flatMap(({ blocks }) => blocks)
+        .filter((block) => commented.has(block.path));
+      assert.ok(shown.length > 0);
+      for (const block of shown) {
+        const first = commented.get(block.path) ?? "";
+        assert.ok(!block.text.startsWith("#"), `${block.path} starts with #`);
+        assert.ok(
+          !block.text.includes(first),
+          `${block.path} repeats its comment`,
+        );
+        assert.ok(
+          block.said.includes(first.replace(/^#+\s*/, "").slice(0, 30)),
+          `${block.path} lost its prose`,
+        );
+      }
     });
   });
 
@@ -356,8 +455,8 @@ describe("Where a pod's pages link · Site.files(), Site.page(), viewRules()", (
       assert.deepEqual(broken, []);
     });
 
-    it("links out of its own folder only to the term reference and the specification", () => {
-      const out = ["../terms/", "../spec/"];
+    it("links out of its own folder only to the term reference, the specification and the question pages", () => {
+      const out = ["../terms/", "../spec/", "../queries/"];
       const outside: string[] = [];
       for (const [path, { hrefs }] of pages)
         for (const href of hrefs)
