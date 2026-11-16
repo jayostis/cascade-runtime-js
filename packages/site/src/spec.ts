@@ -473,7 +473,20 @@ function pointersOf(description: string): {
       const note = /^decisions\/[\w.-]+\.md/.exec(part)?.[0];
       return note === undefined ? [] : [{ note, rows: quoted(part) }];
     });
-  return { pointers, rest: flat.slice(end + 1).trim() };
+  return { pointers, rest: restAfter(description, end + 1) };
+}
+
+/** What follows the first `length` characters of the description once its white space is collapsed, line breaks kept. */
+function restAfter(description: string, length: number): string {
+  const text = description.trimStart();
+  let seen = 0;
+  let at = 0;
+  while (at < text.length && seen < length) {
+    while (/\s/.test(text[at] ?? "x") && /\s/.test(text[at + 1] ?? "x")) at++;
+    seen++;
+    at++;
+  }
+  return text.slice(at).trim();
 }
 
 /** Each string quoted in the text, in straight or curly double quotes. */
@@ -826,7 +839,10 @@ class Spec {
     const { pointers, rest } =
       unnoted === null
         ? pointersOf(rule.description)
-        : { pointers: [], rest: flat.slice(unnoted[0].length) };
+        : {
+            pointers: [],
+            rest: restAfter(rule.description, unnoted[0].length),
+          };
     if (unnoted !== null) this.unnoted.push(`${feature.path} ${number}`);
     else if (pointers.length === 0)
       this.#warn("rule names no note", feature.path, `${number} names no note`);
@@ -959,14 +975,32 @@ const fileOfPage = (page: string): string =>
 const forTools = (spec: Spec, feature: WrittenFeature): Html =>
   markup`<p class="kind">For tools: <a href="${fileOfPage(spec.pageOf(feature.path))}">${feature.path}</a></p>`;
 
+const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
+
+/** The lines of one paragraph: those that begin `- ` are the items of a list, and a line after one that does not is that item's own. */
+function paragraph(lines: readonly string[]): Html {
+  const blocks: { list: boolean; lines: string[] }[] = [];
+  for (const line of lines) {
+    const item = line.startsWith("- ");
+    const last = blocks.at(-1);
+    if (last === undefined || (item && !last.list))
+      blocks.push({ list: item, lines: [line] });
+    else if (item) last.lines.push(line);
+    else if (last.list) last.lines[last.lines.length - 1] += ` ${line}`;
+    else last.lines.push(line);
+  }
+  return markup`${blocks.map(({ list, lines: block }) =>
+    list
+      ? markup`<ul>\n${block.map((line) => markup`<li>${oneLine(line.slice(2))}</li>\n`)}</ul>\n`
+      : markup`<p class="prose">${oneLine(block.join(" "))}</p>\n`,
+  )}`;
+}
+
 function prose(text: string): Html {
   return markup`${text
     .split(/\n\s*\n/)
-    .filter((paragraph) => paragraph.trim() !== "")
-    .map(
-      (paragraph) =>
-        markup`<p class="prose">${paragraph.replace(/\s+/g, " ").trim()}</p>\n`,
-    )}`;
+    .filter((block) => block.trim() !== "")
+    .map((block) => paragraph(block.split("\n").map((line) => line.trim())))}`;
 }
 
 function example(spec: Spec, written: WrittenExample): Html {
