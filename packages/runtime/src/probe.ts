@@ -84,10 +84,14 @@ export function timed<T>(name: string, run: () => Promise<T>): Promise<T> {
   const probe = active;
   const started = performance.now();
   probe.open.push(name);
-  return run().finally(() => {
-    probe.open.splice(probe.open.lastIndexOf(name), 1);
-    probe.end(name, started);
-  });
+  return (async () => {
+    try {
+      return await run();
+    } finally {
+      probe.open.splice(probe.open.lastIndexOf(name), 1);
+      probe.end(name, started);
+    }
+  })();
 }
 
 /**

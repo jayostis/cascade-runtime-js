@@ -2,7 +2,7 @@ import "./offline.js";
 import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { openPod, pullFiles } from "cascade-runtime";
-import { probing, type Seen, timed } from "@cascade-runtime/runtime";
+import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 
 /**
  * A bench of `pod.import()` over a pull of one hospital, the pull's shape being Full Picture's (planning#44): one
@@ -48,6 +48,7 @@ export const HOT_SPOTS = {
     "arrivals.arrivals",
     "matcher.recordReads",
     "core-pod.matcherSelect",
+    "core-pod.matcherView",
     "incremental.boundValues",
     "store.query",
     "read.first",
@@ -55,6 +56,11 @@ export const HOT_SPOTS = {
   counts: [
     "graph.scans",
     "graph.quadsVisited",
+    "arrivals.arrivals.graph.scans",
+    "arrivals.refuseUnaccounted.graph.scans",
+    "core-pod.matcherSelect.store.queries",
+    "core-pod.matcherView.store.queries",
+    "matcher.queriesRun",
     "store.queries",
     "incremental.boundValues.calls",
     "incremental.boundValues.iris",
@@ -67,17 +73,21 @@ function coding(system: string, code: string, display: string): object {
   return { coding: [{ system, code, display }], text: display };
 }
 
-/** The `index`th resource of a pull of `total`: its kind is by position, and a tenth repeat the one before. */
-function resource(index: number, total: number): object {
+/**
+ * The `index`th resource of a pull: its kind is by position in a cycle of twenty, and a tenth of each position repeats
+ * the record of the same position one cycle before, with its code and time, so every kind has a second record.
+ */
+function resource(index: number): object {
   const id = `r${index}`;
-  const repeat = index % 10 === 9;
-  const of = repeat ? index - 1 : index;
+  const slot = index % 20;
+  const cycle = Math.floor(index / 20);
+  const repeat = cycle > 0 && (cycle + slot) % 10 === 0;
+  const of = repeat ? index - 20 : index;
   const at = new Date(Date.UTC(2020, 0, 1) + of * 7 * 60_000)
     .toISOString()
     .replace(".000Z", "Z");
   const day = at.slice(0, 10);
   const subject = { reference: `Patient/${PATIENT}` };
-  const slot = index % 20;
   if (slot < 12) {
     const [code, name, unit] = LOINC[of % LOINC.length] ?? LOINC[0];
     return {
@@ -173,7 +183,6 @@ function resource(index: number, total: number): object {
       ),
       patient: subject,
     };
-  void total;
   return {
     resourceType: "Procedure",
     id,
@@ -191,7 +200,7 @@ function resource(index: number, total: number): object {
 /** A pull of `total` resources, saved as the folder `pull`. */
 export function syntheticPull(total: number): ReadonlyMap<string, Uint8Array> {
   const entry = Array.from({ length: total }, (_, index) => {
-    const one = resource(index, total) as { resourceType: string; id: string };
+    const one = resource(index) as { resourceType: string; id: string };
     return {
       fullUrl: `${FHIR_BASE}/${one.resourceType}/${one.id}`,
       resource: one,
@@ -294,7 +303,7 @@ export function tableOf(run: Measured): string {
           `  ${name.padEnd(34)} ${String(calls).padStart(8)} ${String(ms).padStart(10)}`,
       ),
     "",
-    "matcher by rule (calls, ms, store queries, rows)",
+    "matcher by rule (calls, ms, store queries, rows; a rule sharing another's query text reads its rows and shows 0 ms and 0 queries)",
     ...run.spans
       .filter(({ name }) => name.startsWith("matcher.rule:"))
       .map(({ name, calls, ms }) => {

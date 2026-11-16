@@ -1006,14 +1006,13 @@ function arrivals(
           : undefined;
       const retrievedByWriter =
         pullSource === "" ? reached?.retrieved : undefined;
+      scanned(graph.triples.length);
       return {
         record,
         place: recordPlace(layout, graph, record, where).place,
         recordTriples: graph.match(record),
         version,
-        versionTriples:
-          (scanned(graph.triples.length),
-          graph.triples.filter(([s]) => inVersion(s, version))),
+        versionTriples: graph.triples.filter(([s]) => inVersion(s, version)),
         statements: revisionStatements(graph, arrival),
         at: at.value,
         observedAsOf,

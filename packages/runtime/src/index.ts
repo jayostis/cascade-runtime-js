@@ -26,7 +26,6 @@ export * from "./names.js";
 export * from "./phrases.js";
 export * from "./oxigraph-store.js";
 export * from "./pod.js";
-export { probing, type Seen, timed } from "./probe.js";
 export * from "./questions.js";
 export * from "./references.js";
 export * from "./rdf.js";
