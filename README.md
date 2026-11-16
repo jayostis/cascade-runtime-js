@@ -112,4 +112,3 @@ published query by its file.
 | `packages/cascade-runtime` | what an app imports, and the build that packs it               |
 | `packages/mcp`             | `cascade-mcp`, an MCP server on stdio over a folder of pods    |
 | `packages/evals`           | the eval harness: the pod against pasted records, judged blind |
-

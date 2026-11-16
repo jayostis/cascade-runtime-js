@@ -129,6 +129,25 @@ describe("The API page · apiSection", () => {
     it("links only files the site holds", () => {
       linksOnlyFilesOf("api/index.html");
     });
+
+    it("opens a pod in a section a screen or two long, with the reference tables and the browser build after the last call's section", () => {
+      const sections = new Map(
+        read(tree, "api/index.html")
+          .split(/(?=<h2 )/)
+          .slice(1)
+          .map((html) => [
+            /<h2[^>]*>(.*?)<\/h2>/.exec(html)?.[1] ?? "",
+            html.replace(/<[^>]+>/g, "").length,
+          ]),
+      );
+      const order = [...sections.keys()];
+      assert.ok((sections.get("Open a pod") ?? Infinity) < 3500);
+      for (const heading of ["In a browser", "The reference tables"])
+        assert.ok(
+          order.indexOf(heading) > order.indexOf("The steps run separately"),
+          heading,
+        );
+    });
   });
 
   describe("with `search.json`", () => {
