@@ -142,6 +142,71 @@ describe("The tests page's controls in a browser · expand all, collapse all, fa
     });
   });
 
+  describe("when a level holds more than 30 cases, folded by the test that ran with parameters", () => {
+    const params = (name: string, line: number, failing = 0): string =>
+      Array.from({ length: 16 }, (_, at) =>
+        leafOf(
+          `${name} [p${at + 1}]`,
+          A,
+          line,
+          at + 1 === failing ? { failure: "broke" } : {},
+        ),
+      ).join("");
+    let many: string;
+
+    before(async () => {
+      const { tree } = await pageWith({
+        runtime: {
+          report: report(
+            "",
+            described(
+              "Alpha",
+              {},
+              params("does a", 3) +
+                params("does b", 9, 4) +
+                params("does c", 15),
+            ),
+          ),
+          ...RUN,
+        },
+      });
+      many = new TextDecoder().decode(tree.get(pageOf(R)));
+    });
+
+    async function manyLoaded(): Promise<Locator> {
+      await tab.setContent(many);
+      return tab.locator(`[data-part="${R}"]`);
+    }
+
+    it("starts with only the group that holds the failed case open", async () => {
+      const part = await manyLoaded();
+      assert.equal(await part.locator("li[data-group] > details").count(), 3);
+      assert.equal(
+        await part.locator("li[data-group] > details[open]").count(),
+        1,
+      );
+    });
+
+    it('hides the passed groups at "Failures only" and shows them again at the second click', async () => {
+      const part = await manyLoaded();
+      await part.locator('[data-action="failures-only"]').click();
+      assert.equal(await visible(part, "li[data-group]"), 1);
+      assert.equal(await visible(part, "li.case"), 1);
+      await part.locator('[data-action="failures-only"]').click();
+      assert.equal(await visible(part, "li[data-group]"), 3);
+    });
+
+    it('opens every group at "Expand all"', async () => {
+      const part = await manyLoaded();
+      await part.locator('[data-action="expand-all"]').click();
+      assert.equal(
+        await part.locator("li[data-group] > details[open]").count(),
+        3,
+      );
+      assert.equal(await visible(part, "li.case"), 48);
+    });
+  });
+
   /** The glossary is generated closed; its filter box is inside it. */
   async function glossaryOpened(): Promise<Locator> {
     const part = await loaded();
