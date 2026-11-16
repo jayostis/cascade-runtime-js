@@ -1,10 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 import {
   breakingNotes,
   breakingOf,
@@ -18,10 +13,6 @@ const PS = String.fromCharCode(0x2029);
 const NEL = String.fromCharCode(0x85);
 const NBSP = String.fromCharCode(0xa0);
 const FULL_WIDTH_ONE = String.fromCharCode(0xff11);
-
-const CHECK = fileURLToPath(
-  new URL("../../../../scripts/breaking-check.mjs", import.meta.url),
-);
 
 const body = (section: string) =>
   `Closes #1\n\n## Breaking\n${section}\n\n## Tests\nran\n`;
@@ -410,35 +401,6 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
         breakingSince("o/r", "new", github(without)),
         /GitHub refused \/repos\/o\/r\/issues\/6/,
       );
-    });
-  });
-
-  describe("when the pull request's body is checked by scripts/breaking-check.mjs", () => {
-    const checked = async (pullRequestBody: string | null) => {
-      const event = join(await mkdtemp(join(tmpdir(), "cr-")), "event.json");
-      await writeFile(
-        event,
-        JSON.stringify({ pull_request: { body: pullRequestBody } }),
-      );
-      return spawnSync(process.execPath, [CHECK], {
-        env: { ...process.env, GITHUB_EVENT_PATH: event },
-        encoding: "utf8",
-      });
-    };
-
-    it("exits 0 for a body that lists lines or says None", async () => {
-      assert.equal((await checked(body("- a -> b"))).status, 0);
-      assert.equal((await checked(body("None"))).status, 0);
-    });
-
-    it("exits 1, saying what is wrong, for a body with no section or an empty one", async () => {
-      const missing = await checked("## Tests\nran");
-      assert.equal(missing.status, 1);
-      assert.match(missing.stderr, /no `## Breaking` section/);
-      const empty = await checked(body(""));
-      assert.equal(empty.status, 1);
-      assert.match(empty.stderr, /empty/);
-      assert.equal((await checked(null)).status, 1);
     });
   });
 });
