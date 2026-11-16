@@ -44,6 +44,7 @@ import {
 } from "./step.js";
 import type { Shapes } from "./shapes.js";
 import { podFiles } from "./dataset.js";
+import { scanned, timedSync } from "./probe.js";
 import { DERIVED, derivationsOf, QUERIES } from "./derive.js";
 import { type Dataset, type StoreFactory, Union } from "./store.js";
 
@@ -946,10 +947,12 @@ function refuseUnaccounted(graph: Graph, document: NamedNode, where: string) {
   }
   for (const version of graph.subjects(SPECIALIZATION_OF)) {
     if (version.termType !== "NamedNode") continue;
+    scanned(graph.triples.length);
     add(graph.triples.filter(([s]) => inVersion(s, version)));
     for (const record of graph.objects(version, SPECIALIZATION_OF))
       add(graph.match(record));
   }
+  scanned(graph.triples.length);
   if (graph.triples.some((triple) => !accounted.has(key(triple))))
     throw new Refusal(
       `${where}'s graph holds a statement about no record, version, arrival, document or import`,
@@ -1003,6 +1006,7 @@ function arrivals(
           : undefined;
       const retrievedByWriter =
         pullSource === "" ? reached?.retrieved : undefined;
+      scanned(graph.triples.length);
       return {
         record,
         place: recordPlace(layout, graph, record, where).place,
@@ -1175,10 +1179,14 @@ export async function fileExport(
     );
     const graph = await parseGraph(conversion.graph, documentIri, newStore);
     const subject = iri(documentIri);
-    refuseUnaccounted(graph, subject, found.path);
+    timedSync("arrivals.refuseUnaccounted", () =>
+      refuseUnaccounted(graph, subject, found.path),
+    );
     let revised = false;
     let reportedOlder = false;
-    const arriving = arrivals(layout, graph, name, found.path);
+    const arriving = timedSync("arrivals.arrivals", () =>
+      arrivals(layout, graph, name, found.path),
+    );
     await revisions.prepare(arriving);
     for (const arrival of arriving) {
       const repeated = await revisions.repeats(arrival);

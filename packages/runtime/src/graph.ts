@@ -1,3 +1,4 @@
+import { scanned } from "./probe.js";
 import { type Term, type Triple, written } from "./rdf.js";
 import type { StoreFactory } from "./store.js";
 
@@ -24,6 +25,7 @@ export class Graph {
 
   /** The triples matching each term given; an undefined term matches any. */
   match(subject?: Term, predicate?: string, object?: Term): Triple[] {
+    if (subject === undefined) scanned(this.triples.length);
     const from =
       subject === undefined
         ? this.triples

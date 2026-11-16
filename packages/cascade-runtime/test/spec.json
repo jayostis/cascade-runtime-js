@@ -838,6 +838,7 @@
     "entry.test.ts",
     "failure-annotations.test.ts",
     "guide.test.ts",
+    "import-bench.test.ts",
     "launcher-sandbox.test.ts",
     "options.test.ts",
     "outcomes.test.ts",
@@ -861,6 +862,7 @@
     "vite.test.ts"
   ],
   "build": [
+    "Timing an import by mechanism · importBench(), syntheticPull(), probing()",
     "The launcher check, when the launcher itself is down",
     "The launcher check, when the launcher responds",
     "The launcher check, when the runtime's failure is not one the launcher's silence explains",
@@ -883,6 +885,7 @@
     "entry.test.ts",
     "failure-annotations.test.ts",
     "guide.test.ts",
+    "import-bench.test.ts",
     "kinds-read.test.ts",
     "launcher-sandbox.test.ts",
     "options.test.ts",

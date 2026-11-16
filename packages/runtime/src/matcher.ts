@@ -12,6 +12,7 @@ import {
   inUtc,
   releaseRetractionName,
 } from "./names.js";
+import { counted, timed } from "./probe.js";
 import { codeIri, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type References, tableTerms, type TableTerms } from "./references.js";
 import { CASCADE, Refusal, type StepContext } from "./step.js";
@@ -422,12 +423,12 @@ async function takenRecords(
   subject: string | undefined,
   only?: readonly string[],
 ): Promise<Map<string, TakenRecord>> {
-  const records = [
+  const records = await timed("matcher.recordReads", async () => [
     ...(subject === undefined
       ? []
       : await subjectRecords(dataset, subject, only)),
     ...(await serverRecords(dataset)),
-  ];
+  ]);
   return new Map(records.map((record) => [record.name, record]));
 }
 
@@ -442,12 +443,14 @@ export async function matcherView(
   >,
   samesStillJoined?: SamesStillJoined,
 ): Promise<Union> {
-  const union = new Union(context.newStore());
-  await podFiles(context.pod, context.layout, context.address, union);
-  await (
-    await derivationsOf(context.vocabulary)
-  ).derive(union, LENS, samesStillJoined);
-  return union;
+  return timed("matcher.view", async () => {
+    const union = new Union(context.newStore());
+    await podFiles(context.pod, context.layout, context.address, union);
+    await (
+      await derivationsOf(context.vocabulary)
+    ).derive(union, LENS, samesStillJoined);
+    return union;
+  });
 }
 
 /** What the matcher reads of the pod and its derived state, before any table's rows are added to it. */
@@ -536,7 +539,10 @@ async function joins(
 ): Promise<Joins> {
   const all = new Map<string, Map<string, Set<string>>>();
   for (const { rule, text } of found) {
-    const rows = await rowsOf(text);
+    const rows = await timed(`matcher.rule:${rule.justification}`, () =>
+      rowsOf(text),
+    );
+    counted(`matcher.rule:${rule.justification}.rows`, rows.length);
     const pairs = new Map<string, Set<string>>();
     for (const [key, origins] of originsJoining(
       rule,
@@ -709,6 +715,8 @@ class Matcher {
       const rowsOf = (query: string): Promise<readonly Row[]> => {
         let rows = selected.get(query);
         if (rows === undefined) {
+          counted("matcher.queriesRun");
+          counted("matcher.boundRecords", bound?.length ?? 0);
           rows = union
             .select(bound === undefined ? query : boundToRecords(query, bound))
             .then((answer) => answer.rows);
