@@ -32,7 +32,7 @@ export const terms = Object.freeze({
   physiologicEffectClass: `${CASCADE}physiologicEffectClass`,
   chemicalStructureClass: `${CASCADE}chemicalStructureClass`,
 
-  mergedFrom: `${CASCADE}mergedFrom`,
+  entryMember: `${CASCADE}entryMember`,
   hgvsCodingDnaExpression: `${CASCADE}hgvsCodingDnaExpression`,
   clinvarVariationId: `${CASCADE}clinvarVariationId`,
   geneSymbol: `${CASCADE}geneSymbol`,

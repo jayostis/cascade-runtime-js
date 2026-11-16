@@ -1164,7 +1164,7 @@ function hanaPod(): Promise<Hana> {
         value: string,
       ): Promise<string[]> => {
         const entries = await pod.ask({
-          query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/cascade:${field} ${value} . ?entry cascade:mergedFrom ?record }`,
+          query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/cascade:${field} ${value} . ?entry cascade:entryMember ?record }`,
         });
         assert.equal(
           entries.length,
