@@ -139,9 +139,11 @@ describe("The evals run page's deep links in a browser · ?open=, #point, the fi
     it("opens nothing and breaks nothing for an id the page does not hold", async () => {
       const errors: string[] = [];
       tab.on("pageerror", (e) => errors.push(e.message));
+      await tab.goto(`${base}${REASONING}`);
+      const started = (await tab.$$("details.item[open]")).length;
       await tab.goto(`${base}${REASONING}#no-such-point`);
       assert.deepEqual(errors, []);
-      assert.equal((await tab.$$("details.item[open]")).length, 1);
+      assert.equal((await tab.$$("details.item[open]")).length, started);
     });
   });
 
