@@ -27,6 +27,9 @@ export const TERMS_PAGE = "terms/index.html";
 export const TERMS_FOLDER = "terms/";
 /** The Bridge's own vocabulary, beside the term reference so a page of one reaches the other by its file name. */
 export const BRIDGE_TERMS_PAGE = "terms/bridge.html";
+/** The shapes no term's page shows, in a folder of their own so the page's address is `terms/shapes/`. */
+export const TERMS_SHAPES_PAGE = `${TERMS_FOLDER}shapes/index.html`;
+export const BRIDGE_SHAPES_PAGE = `${TERMS_FOLDER}bridge-shapes/index.html`;
 
 const ONTOLOGY = "ontologies/cascade.ttl";
 const SHAPES = "ontologies/cascade.shapes.ttl";
@@ -324,6 +327,8 @@ class Reference {
     /** The index page's file name in the folder of term pages, and its title. */
     readonly index: string,
     readonly title: string,
+    /** The page of the shapes no entry holds, in the folder of term pages. */
+    readonly shapesPage: string,
   ) {
     this.#tree = tree;
     this.blob = tree.includes("/tree/")
@@ -404,17 +409,79 @@ class Reference {
 
   /**
    * Where a link to the IRI goes from this page: a term's page, a shape another shape sends a value to on the page of
-   * the entry it is at home on, a shape of a file on the index.
+   * the entry it is at home on, else on the page of the shapes no entry holds; a shape of a file at home on the index.
    */
   #href(iri: string): string {
     const file = this.#file(iri);
+    const unhomed = this.#homes.has(iri) && this.#homes.get(iri) === undefined;
     if (file !== undefined)
-      return `${this.base === "" ? "" : `${this.base}${this.index}`}#${encodeURIComponent(file)}`;
-    const home = this.#homes.get(iri);
+      return `${unhomed ? `${this.base}${this.shapesPage}` : this.base === "" ? "" : `${this.base}${this.index}`}#${encodeURIComponent(file)}`;
     if (this.#entries.has(iri)) return this.page(iri);
+    const home = this.#homes.get(iri);
     return home === undefined
-      ? `${this.base === "" ? "" : `${this.base}${this.index}`}#${termId(iri)}`
+      ? `${this.base}${this.shapesPage}#${termId(iri)}`
       : `${this.page(home)}#${termId(iri)}`;
+  }
+
+  /** The ids of the shapes no entry holds, which the index no longer holds. */
+  get movedIds(): string[] {
+    return ["shapes", ...this.unhomed.map(({ value }) => this.id(value))];
+  }
+
+  /**
+   * The entries in groups under a heading each, by what `split` names: the class a property is said of, the scheme or
+   * class a named thing is of, the prefix of a term copied from elsewhere. A group of the odd ones out comes last.
+   */
+  split(
+    entries: readonly Entry[],
+    split: "domain" | "scheme" | "prefix",
+  ): { title: string; code: boolean; entries: Entry[] }[] {
+    const groups = new Map<string, { code: boolean; entries: Entry[] }>();
+    for (const entry of entries) {
+      const { title, code } = this.#heading(entry, split);
+      const held = groups.get(title) ?? { code, entries: [] };
+      groups.set(title, held);
+      held.entries.push(entry);
+    }
+    return [...groups]
+      .map(([title, { code, entries }]) => ({ title, code, entries }))
+      .sort(
+        (a, b) =>
+          Number(!a.code) - Number(!b.code) || a.title.localeCompare(b.title),
+      );
+  }
+
+  #heading(
+    { iri }: Entry,
+    split: "domain" | "scheme" | "prefix",
+  ): { title: string; code: boolean } {
+    const named = (terms: readonly Term[]): string[] =>
+      terms
+        .filter(({ termType }) => termType === "NamedNode")
+        .map(({ value }) => this.name(value))
+        .sort();
+    if (split === "domain") {
+      const domains = named(this.objects(iri, [DOMAIN]));
+      return domains.length === 1
+        ? { title: domains[0] as string, code: true }
+        : { title: "Said of many kinds", code: false };
+    }
+    if (split === "scheme") {
+      const [scheme] = named(this.objects(iri, [IN_SCHEME]));
+      if (scheme !== undefined) return { title: scheme, code: true };
+      const [type] = named(
+        this.objects(iri, [TYPE]).filter(
+          ({ value }) => value !== `${OWL}NamedIndividual`,
+        ),
+      );
+      return type === undefined
+        ? { title: "Named on their own", code: false }
+        : { title: type, code: true };
+    }
+    const prefix = this.name(iri).split(":")[0] ?? "";
+    return /^[A-Za-z][\w.-]*$/.test(prefix) && this.name(iri) !== iri
+      ? { title: prefix, code: true }
+      : { title: "Other", code: false };
   }
 
   /** The address of the entry's page from the page being written. */
@@ -1085,6 +1152,8 @@ interface Group {
   readonly title: string;
   readonly about: string;
   readonly holds: (entry: Entry) => boolean;
+  /** What the group's list is folded into groups by; none leaves it a list. */
+  readonly split?: "domain" | "scheme" | "prefix";
 }
 
 const GROUPS: readonly Group[] = [
@@ -1099,6 +1168,7 @@ const GROUPS: readonly Group[] = [
     title: "Properties",
     about: "What a pod says of a thing.",
     holds: ({ kind, copied }) => !copied && kind === "property",
+    split: "domain",
   },
   {
     id: "named-things",
@@ -1106,6 +1176,7 @@ const GROUPS: readonly Group[] = [
     about:
       "The code systems, kinds of table, concepts and other things the vocabulary names, which a pod's statements point at.",
     holds: ({ kind, copied }) => !copied && kind === "thing",
+    split: "scheme",
   },
   {
     id: "copied",
@@ -1113,6 +1184,7 @@ const GROUPS: readonly Group[] = [
     about:
       "Terms of PROV-O, PAV, FOAF and other vocabularies that a pod uses, as cascade.ttl declares them, each with its source: their meaning is their source's.",
     holds: ({ copied }) => copied,
+    split: "prefix",
   },
 ];
 
@@ -1210,6 +1282,8 @@ interface Source {
   readonly title: string;
   /** The file of the index page in the folder of term pages. */
   readonly index: string;
+  /** The page of the shapes no entry holds, in the folder of term pages. */
+  readonly shapesPage: string;
   readonly groups: readonly Group[];
   readonly lead: (blob: string, tree: string) => Html;
 }
@@ -1236,6 +1310,7 @@ async function load(vocabulary: Files, source: Source, base: string) {
     base,
     source.index,
     source.title,
+    source.shapesPage,
   );
   const sorted = [...entries.values()].sort((a, b) =>
     reference
@@ -1257,13 +1332,14 @@ async function referencePage(
     entries: sorted.filter(group.holds),
   }));
   const { unhomed } = reference;
+  const list = (entries: readonly Entry[]): Html =>
+    markup`<p class="terms">${entries.map((entry, index) => markup`${index === 0 ? "" : " · "}<a id="${termId(entry.iri)}" href="${reference.page(entry.iri)}">${reference.name(entry.iri)}</a>${reference.anchors(entry.iri)}`)}</p>\n`;
   const names = (groups: typeof grouped): Html =>
     markup`${groups.map(
-      ({ id, title, about, entries }) =>
+      ({ id, title, about, entries, split }) =>
         markup`<h2 id="${id}">${title}</h2>
 <p class="prose">${about}</p>
-<p class="terms">${entries.map((entry, index) => markup`${index === 0 ? "" : " · "}<a id="${termId(entry.iri)}" href="${reference.page(entry.iri)}">${reference.name(entry.iri)}</a>${reference.anchors(entry.iri)}`)}</p>
-`,
+${split === undefined ? list(entries) : reference.split(entries, split).map((group) => markup`<details class="group">\n<summary>${group.code ? markup`<code>${group.title}</code>` : group.title} <span class="about">${group.entries.length}</span></summary>\n${list(group.entries)}</details>\n`)}`,
     )}`;
   const index = async (): Promise<Html> => {
     const holding = new Set<string>();
@@ -1309,10 +1385,63 @@ ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : markup`<ul class
     hubRoot: "../",
     nav: markup`<a href="../index.html">Cascade Protocol reference</a>\n`,
     main: markup`<h1>${source.title}</h1>
-${source.lead(reference.blob, vocabulary.iri)}${opening}<h2 class="part" id="shapes">Shapes other shapes use</h2>
-<p class="prose">The shapes no term's page shows: those another shape sends a value to with <code>node</code>, and those whose class or property has no page.</p>
-${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n${reference.relative(shape.value) ? "" : markup`<p class="iri">${shape.value}</p>\n`}${reference.shape(shape, true)}</section>\n`)}`,
+${source.lead(reference.blob, vocabulary.iri)}${opening}<p class="prose"><a href="${source.shapesPage}">Shapes other shapes use</a> (${unhomed.length}): the shapes no term's page shows are on a page of their own.</p>
+`,
+    after: markup`<script>${new Html(termsScript(source.shapesPage, reference.movedIds))}</script>\n`,
   }).text;
+}
+
+/** The page of the shapes no term's page shows: each in full, with the ids the index used to hold them at. */
+async function shapesPageOf(
+  vocabulary: Files,
+  chrome: Chrome,
+  source: Source,
+): Promise<string> {
+  const { reference } = await load(vocabulary, source, "../");
+  const { unhomed } = reference;
+  return shell({
+    chrome,
+    title: `${source.title}: shapes other shapes use`,
+    stylesheet: `../../${STYLESHEET_FILE}`,
+    hubRoot: "../../",
+    nav: markup`<a href="../../index.html">Cascade Protocol reference</a> · <a href="../${source.index}">${source.title}</a>\n`,
+    main: markup`<h1 id="shapes">Shapes other shapes use</h1>
+<p class="prose">The shapes no term's page shows: those another shape sends a value to with <code>node</code>, and those whose class or property has no page.</p>
+${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h2 id="${reference.id(shape.value)}"><code>${reference.name(shape.value)}</code></h2>\n${reference.relative(shape.value) ? "" : markup`<p class="iri">${shape.value}</p>\n`}${reference.shape(shape, false)}</section>\n`)}`,
+  }).text;
+}
+
+/**
+ * The index's script: a link to a shape's old anchor goes to the shapes' page, and a link to a name inside a folded group
+ * opens the groups round it and scrolls to it.
+ */
+function termsScript(shapesPage: string, moved: readonly string[]): string {
+  const json = (value: unknown): string =>
+    JSON.stringify(value).replace(/</g, "\\u003c");
+  return [
+    "(function () {",
+    `var MOVED = ${json(moved)};`,
+    `var SHAPES = ${json(shapesPage)};`,
+    "function wanted() {",
+    "  try { return decodeURIComponent(location.hash.slice(1)); } catch (e) { return ''; }",
+    "}",
+    "function show() {",
+    "  var id = wanted();",
+    "  if (id === '') return;",
+    "  var target = document.getElementById(id);",
+    "  if (target === null) {",
+    "    if (MOVED.indexOf(id) >= 0) location.replace(SHAPES + location.hash);",
+    "    return;",
+    "  }",
+    "  var folded = false;",
+    "  for (var up = target.parentElement; up !== null; up = up.parentElement)",
+    "    if (up.tagName === 'DETAILS') { up.open = true; folded = true; }",
+    "  if (folded) target.scrollIntoView();",
+    "}",
+    "show();",
+    "window.addEventListener('hashchange', show);",
+    "})();",
+  ].join("\n");
 }
 
 /** Each term's page, by its path in the folder of term pages, but the terms `skip` holds. */
@@ -1361,6 +1490,7 @@ const CASCADE_SOURCE: Source = {
   layout: LAYOUT,
   title: "Cascade terms",
   index: "index.html",
+  shapesPage: TERMS_SHAPES_PAGE.slice(TERMS_FOLDER.length),
   groups: GROUPS,
   lead: (
     blob,
@@ -1386,6 +1516,10 @@ another commit.</p>
 export const termReference = (vocabulary: Files, chrome: Chrome) =>
   referencePage(vocabulary, chrome, CASCADE_SOURCE);
 
+/** The shapes no term's page shows, each in full, on a page of their own beside the index. */
+export const termShapes = (vocabulary: Files, chrome: Chrome) =>
+  shapesPageOf(vocabulary, chrome, CASCADE_SOURCE);
+
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const BRIDGE_ONTOLOGY = "vocab/bridge.ttl";
 const BRIDGE_SHAPES = "shapes";
@@ -1400,6 +1534,14 @@ export async function bridgeTermReference(
   chrome: Chrome,
 ): Promise<string> {
   return referencePage(bridgeSpec, chrome, await bridgeSource(bridgeSpec));
+}
+
+/** The Bridge's shapes no term's page shows, each in full, on a page of their own. */
+export async function bridgeTermShapes(
+  bridgeSpec: Files,
+  chrome: Chrome,
+): Promise<string> {
+  return shapesPageOf(bridgeSpec, chrome, await bridgeSource(bridgeSpec));
 }
 
 /** The pages of the Bridge's terms, by path in the folder of term pages, but the terms `skip` holds, which the term reference describes. */
@@ -1425,6 +1567,7 @@ async function bridgeSource(bridgeSpec: Files): Promise<Source> {
     used: false,
     title: "Cascade Bridge terms",
     index: "bridge.html",
+    shapesPage: BRIDGE_SHAPES_PAGE.slice(TERMS_FOLDER.length),
     groups: [
       {
         id: "classes",
@@ -1439,6 +1582,7 @@ async function bridgeSource(bridgeSpec: Files): Promise<Source> {
         about:
           "What an adapter, a test case, a result and a record's finding say.",
         holds: ({ kind, copied }) => !copied && kind === "property",
+        split: "domain",
       },
       {
         id: "named-things",
@@ -1446,6 +1590,7 @@ async function bridgeSource(bridgeSpec: Files): Promise<Source> {
         about:
           "The profiles, verdicts, schemes and concepts the Bridge names, which an adapter or a test case points at.",
         holds: ({ kind, copied }) => !copied && kind === "thing",
+        split: "scheme",
       },
       {
         id: "copied",
@@ -1453,6 +1598,7 @@ async function bridgeSource(bridgeSpec: Files): Promise<Source> {
         about:
           "Terms of other vocabularies that the Bridge declares as its own, such as Web Annotation's, each with where it is defined.",
         holds: ({ copied }) => copied,
+        split: "prefix",
       },
     ],
     lead: (

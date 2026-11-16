@@ -242,6 +242,10 @@ jobs:
       - name: Run the hub's search box
         if: ${{ !cancelled() }}
         run: npm run test:search
+      # The term index's script, run in a browser: a link to a name in a folded group opens it, a shape's old anchor goes to the shapes' page.
+      - name: Run the term index
+        if: ${{ !cancelled() }}
+        run: npm run test:terms
       # The specification pages' contents, run in a browser: the marked rule follows a scroll, an address, a click and the top.
       - name: Run the specification pages
         if: ${{ !cancelled() }}

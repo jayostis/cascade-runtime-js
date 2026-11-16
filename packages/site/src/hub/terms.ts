@@ -5,15 +5,17 @@ import {
   TERMS_FOLDER,
   TERMS_JSON,
   TERMS_PAGE,
+  TERMS_SHAPES_PAGE,
   termPages,
   termReference,
+  termShapes,
   termsJson,
 } from "../term-reference.js";
 import type { PagesContext } from "./context.js";
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 
-/** The term reference under terms/: its index, a page for each term, `terms.json` and the vocabulary's two files, read from the vocabulary the pages are built from. */
+/** The term reference under terms/: its index, the page of the shapes no term shows, a page for each term, `terms.json` and the vocabulary's two files, read from the vocabulary the pages are built from. */
 export const termsSection: Section<PagesContext> = {
   path: TERMS_PAGE,
   title: "Terms",
@@ -23,6 +25,7 @@ export const termsSection: Section<PagesContext> = {
     const { files } = await ctx.vocabulary();
     return new Map<string, Uint8Array>([
       [TERMS_PAGE, encode(await termReference(files, ctx.chrome))],
+      [TERMS_SHAPES_PAGE, encode(await termShapes(files, ctx.chrome))],
       ...[...(await termPages(files, ctx.chrome))].map(
         ([path, page]): [string, Uint8Array] => [
           `${TERMS_FOLDER}${path}`,
