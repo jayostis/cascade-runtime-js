@@ -139,11 +139,12 @@ function runRow(
   const { instance: i } = e;
   const arm = (which: Arm) => {
     const a = i.arms[which];
-    if (a === undefined)
-      return `<div class="res" data-arm="${which}">${badge(which)} <span class="small muted">did not run</span></div>`;
-    const t = tally([a]);
     const s = share(e, which);
-    return `<div class="res" data-counted-held="${s.held}" data-counted-cited="${s.of}" data-reused-sessions="${s.reused}" data-arm="${which}"><div>${badge(which)} ${dots(t)} <span class="small"><b>${t.right} of ${t.of}</b>${t.beyond === 0 ? "" : ` · +${t.beyond} beyond the key`}</span></div>${extras(t)}<div class="money"><b>${dollars(a.usd)}</b> · ${seconds(a.seconds)} · ${thousands(a.tokens)} tokens</div><div class="tiny muted">${a.citations.held} of ${a.citations.held + a.citations.failed} cited facts borne out</div></div>`;
+    const open = `<div class="res" data-counted-held="${s.held}" data-counted-cited="${s.of}" data-reused-sessions="${s.reused}" data-arm="${which}">`;
+    if (a === undefined)
+      return `${open}${badge(which)} <span class="small muted">did not run</span></div>`;
+    const t = tally([a]);
+    return `${open}<div>${badge(which)} ${dots(t)} <span class="small"><b>${t.right} of ${t.of}</b>${t.beyond === 0 ? "" : ` · +${t.beyond} beyond the key`}</span></div>${extras(t)}<div class="money"><b>${dollars(a.usd)}</b> · ${seconds(a.seconds)} · ${thousands(a.tokens)} tokens</div><div class="tiny muted">${a.citations.held} of ${a.citations.held + a.citations.failed} cited facts borne out</div></div>`;
   };
   return `<a class="runrow" data-instance="${esc(i.id)}" href="${hrefTo(from, e.where.run)}"><div class="who"><b>${esc(modelName(i.model))} · run ${i.repeat}</b><div class="tiny muted">${esc(personIn(e.results, i.case).name)} · ${esc(e.name)} · ${esc(e.results.run.finished.slice(0, 10))}</div></div>${ARMS.map(arm).join("")}<div class="overhead">judging ${dollars(i.judging.usd)} (the test's overhead, charged to neither arm)</div></a>`;
 }
