@@ -358,7 +358,9 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
           [ahead("build-prev")]: { status: "behind", commits: [] },
           [ahead("build-older")]: {
             status: "ahead",
-            commits: [{ commit: { message: "Merge pull request #5 from o/a" } }],
+            commits: [
+              { commit: { message: "Merge pull request #5 from o/a" } },
+            ],
           },
         })(path);
       });

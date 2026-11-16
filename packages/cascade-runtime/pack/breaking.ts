@@ -19,6 +19,15 @@ const ITEM = /^(?:[-*+]|\d+\.)[ \t]+/;
 const NONE = /^none\.?$/i;
 const ARROW = "->";
 
+function isOldToNew(line: string): boolean {
+  const at = line.indexOf(ARROW);
+  return (
+    at !== -1 &&
+    line.slice(0, at).trim() !== "" &&
+    line.slice(at + ARROW.length).trim() !== ""
+  );
+}
+
 /**
  * The `## Breaking` section of a pull request's body: one `old -> new` or `old -> removed` line for each rename or removal
  * a caller sees, or `None`. Comments are not read; a byte order mark is dropped, and a lone carriage return, U+2028 and
@@ -54,7 +63,7 @@ export function breakingOf(body: string | null | undefined): BreakingSection {
       lines: [],
       problem: "the `## Breaking` section has None beside lines",
     };
-  const loose = lines.find((line) => !line.includes(ARROW));
+  const loose = lines.find((line) => !isOldToNew(line));
   if (loose !== undefined)
     return {
       lines: [],
@@ -132,17 +141,19 @@ export function carriedBy(notes: string | null | undefined): Carried[] {
 
 type Get = (path: string) => Promise<unknown>;
 
+/** The pull requests merged from `base` to `head`; none is returned as `undefined` when `base` is not behind `head`. */
 async function mergedBetween(
   get: Get,
   repository: string,
   base: string,
   head: string,
-): Promise<number[]> {
+): Promise<number[] | undefined> {
   const subjects: string[] = [];
   for (let page = 1; ; page += 1) {
-    const { commits } = (await get(
+    const { commits, status } = (await get(
       `/repos/${repository}/compare/${base}...${head}?per_page=${PAGE}&page=${page}`,
-    )) as { commits: { commit: { message: string } }[] };
+    )) as { commits: { commit: { message: string } }[]; status?: string };
+    if (status === "behind") return undefined;
     subjects.push(
       ...commits.map(({ commit }) => commit.message.split("\n")[0] ?? ""),
     );
@@ -175,7 +186,8 @@ async function bodiesOf(
 }
 
 /**
- * The breaking-changes notes of the build of `sha`, from the pull requests merged since the newest build before it, in the
+ * The breaking-changes notes of the build of `sha`, from the pull requests merged since the newest build before it that
+ * is an ancestor of `sha` (a re-run of an old build skips the newer ones), in the
  * runtime and in each of `components` (the vocabulary and the adapters this build carries, which the previous build's
  * notes name at their commits). `get` answers a path of GitHub's API; one it refuses throws, so a build never leaves a line
  * out unseen. A repository with no earlier build has nothing to compare with and says none, as does a component the
@@ -200,19 +212,24 @@ export async function breakingSince(
     releases.push(...found);
     if (found.length < PAGE) break;
   }
-  const previous = releases
+  const earlier = releases
     .filter(
       (release) =>
         release.tag_name.startsWith("build-") &&
         release.tag_name !== `build-${sha}`,
     )
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-  if (previous === undefined) return breakingNotes([]);
-  const entries = await bodiesOf(
-    get,
-    repository,
-    await mergedBetween(get, repository, previous.tag_name, sha),
-  );
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  let previous: (typeof releases)[number] | undefined;
+  let merged: number[] | undefined;
+  for (const candidate of earlier) {
+    merged = await mergedBetween(get, repository, candidate.tag_name, sha);
+    if (merged !== undefined) {
+      previous = candidate;
+      break;
+    }
+  }
+  if (previous === undefined || merged === undefined) return breakingNotes([]);
+  const entries = await bodiesOf(get, repository, merged);
   const before = carriedBy(previous.body);
   for (const { repository: url, commit } of components) {
     const was = before.find((carried) => carried.repository === url)?.commit;
@@ -222,7 +239,7 @@ export async function breakingSince(
       ...(await bodiesOf(
         get,
         path,
-        await mergedBetween(get, path, was, commit),
+        (await mergedBetween(get, path, was, commit)) ?? [],
         path.slice(path.lastIndexOf("/") + 1),
       )),
     );
