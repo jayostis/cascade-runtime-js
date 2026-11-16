@@ -242,6 +242,10 @@ jobs:
       - name: Run the term index
         if: ${{ !cancelled() }}
         run: npm run test:terms
+      # The pipeline page's script, run in a browser: an address that names a step in a closed phase opens it and scrolls to it.
+      - name: Run the pipeline page
+        if: ${{ !cancelled() }}
+        run: npm run test:pod-site
       # The specification pages' contents, run in a browser: the marked rule follows a scroll, an address, a click and the top.
       - name: Run the specification pages
         if: ${{ !cancelled() }}
