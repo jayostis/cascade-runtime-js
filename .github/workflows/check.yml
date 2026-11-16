@@ -234,6 +234,10 @@ jobs:
       - name: Run the pod explorer
         if: ${{ !cancelled() }}
         run: npm run test:explorer
+      # The evals run page's deep links, run in a browser: a point of the reasoning opens and scrolls on its own page, an old ?open= link reaches it.
+      - name: Run the evals run page's deep links
+        if: ${{ !cancelled() }}
+        run: npm run test:evals-page
       # The hub's search box, run in a browser: a click goes to its anchor, the arrows wrap, Enter and Escape, a page with no script.
       - name: Run the hub's search box
         if: ${{ !cancelled() }}

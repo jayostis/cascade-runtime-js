@@ -89,13 +89,22 @@ const arm = (q: string, which: string, from = run) =>
     section(q, from),
     new RegExp(`<div[^>]*class="arm[^"]*"[^>]*data-arm="${which}"`),
   );
-const tab = (q: string, which: string, name: string, from = run) =>
-  element(arm(q, which, from), new RegExp(`<div[^>]*data-tab="${name}"`));
-/** An arm's reasoning and evidence for a question: full width under both arms, not inside either. */
-const drill = (q: string, which: string, from = run) =>
+const answer = (q: string, which: string, from = run) =>
+  element(arm(q, which, from), /<div[^>]*data-part="answer"/);
+/** The page of one arm's reasoning, or of its doctor's card, for one question: each has its own page, linked from the run's. */
+const detailPath = (kind: "reasoning" | "card", q: string, which: string) =>
+  `instances/${ID}.${kind}-${which}-${q}.html`;
+/** An arm's reasoning and evidence for a question, on its own page. */
+const drill = (q: string, which: string, site = one) =>
   element(
-    section(q, from),
+    page(detailPath("reasoning", q, which), site),
     new RegExp(`<div[^>]*class="drill"[^>]*data-arm="${which}"`),
+  );
+/** An arm's doctor's card for a question, on its own page. */
+const card = (q: string, which: string, site = one) =>
+  element(
+    page(detailPath("card", q, which), site),
+    /<article[^>]*class="card"/,
   );
 const count = (html: string, pattern: RegExp) =>
   [...html.matchAll(pattern)].length;
@@ -363,23 +372,13 @@ describe("Reading one run's page · renderSite()", () => {
         );
     });
 
-    it("gives each arm's answer the tabs answer, reasoning and doctor", () => {
-      for (const q of QUESTIONS)
-        for (const which of ARMS) {
-          const names = [
-            ...arm(q, which).matchAll(/<label[^>]*data-tab-label="(\w+)"/g),
-          ].map((m) => m[1]);
-          assert.deepEqual(names, ["answer", "reasoning", "doctor"], q);
-        }
-    });
-
     it("shows each arm's answer as it was written", () => {
       assert.match(
-        text(tab("checkup", "pod", "answer")),
+        text(answer("checkup", "pod")),
         /Two things stand out for your check-up/,
       );
       assert.match(
-        text(tab("medications", "records", "answer")),
+        text(answer("medications", "records")),
         /so I treat it as stopped/,
       );
     });
@@ -570,44 +569,57 @@ describe("Reading one run's page · renderSite()", () => {
   });
 
   describe("with the layout of each question", () => {
-    it("places each arm's reasoning and evidence under both arms, inside neither", () => {
-      for (const q of QUESTIONS) {
-        const arms = element(section(q), /<div class="arms"/);
-        assert.equal(/class="drill"/.test(arms), false, q);
-        for (const which of ARMS) assert.ok(drill(q, which).length > 0, q);
-      }
+    it("keeps each arm's reasoning, evidence graph and doctor's card off the run's page", () => {
+      assert.equal(/class="drill"|<svg class="graph"/.test(run), false);
+      assert.equal(/class="card"|data-tab/.test(run), false);
     });
 
-    // The Reasoning radio sits before the arms, so that its panel can follow it.
-    it("gives each arm one reasoning tab, switched by a control placed before the arms", () => {
-      for (const q of QUESTIONS) {
-        const whole = section(q);
-        const before = whole.slice(
-          0,
-          whole.indexOf(element(whole, /<div class="arms"/)),
-        );
+    it("links each arm's answer to its reasoning page and its doctor's card page", () => {
+      for (const q of QUESTIONS)
         for (const which of ARMS) {
-          const labels = [
+          const links = [
             ...arm(q, which).matchAll(
-              /<label for="([^"]+)"[^>]*data-tab-label="reasoning"/g,
+              /<a [^>]*data-more="(\w+)"[^>]*href="([^"]+)"/g,
             ),
-          ];
-          assert.equal(labels.length, 1, `${q} ${which} has a Reasoning tab`);
-          assert.ok(
-            new RegExp(`<input type="radio"[^>]*id="${labels[0]![1]}"`).test(
-              before,
-            ),
-            `${q} ${which}: the Reasoning radio is before the arms`,
+          ].map((m) => [m[1], m[2]]);
+          assert.deepEqual(
+            links,
+            [
+              ["reasoning", `${ID}.reasoning-${which}-${q}.html`],
+              ["card", `${ID}.card-${which}-${q}.html`],
+            ],
+            `${q} ${which}`,
           );
         }
-      }
+    });
+
+    it("writes each linked page", () => {
+      for (const q of QUESTIONS)
+        for (const which of ARMS)
+          for (const kind of ["reasoning", "card"] as const)
+            assert.ok(
+              one.has(detailPath(kind, q, which)),
+              `${kind} ${which} ${q}`,
+            );
+    });
+
+    it("links back to the question on the run's page from each linked page", () => {
+      for (const kind of ["reasoning", "card"] as const)
+        assert.match(
+          page(detailPath(kind, "checkup", "pod")),
+          new RegExp(`href="${ID}\\.html#q_checkup"`),
+        );
     });
 
     it("draws no graph wider than 1000 px", () => {
-      const widths = [
-        ...run.matchAll(/<svg class="graph"[^>]* width="(\d+)"/g),
-      ];
-      assert.ok(widths.length > 0, "the page draws graphs");
+      const widths = QUESTIONS.flatMap((q) =>
+        ARMS.flatMap((which) => [
+          ...page(detailPath("reasoning", q, which)).matchAll(
+            /<svg class="graph"[^>]* width="(\d+)"/g,
+          ),
+        ]),
+      );
+      assert.ok(widths.length > 0, "the pages draw graphs");
       for (const m of widths)
         assert.ok(Number(m[1]) <= 1000, `a graph ${m[1]} px wide`);
     });
@@ -668,7 +680,7 @@ describe("Seeing what an answer's citations cite · renderSite()", () => {
   });
 
   describe("with the pod arm's graph of a fact that points at a view entry", () => {
-    let html: string;
+    let site: Map<string, string>;
 
     before(() => {
       const pointing = structuredClone(recorded) as unknown as {
@@ -700,24 +712,21 @@ describe("Seeing what an answer's citations cite · renderSite()", () => {
         },
       };
       assert.deepEqual(errorsOf("results", pointing), []);
-      html = page(
-        `instances/${ID}.html`,
-        renderSite([
-          { name: "fixture-1", results: pointing as unknown as Results },
-        ]),
-      );
+      site = renderSite([
+        { name: "fixture-1", results: pointing as unknown as Results },
+      ]);
     });
 
     it("shows the fact with what the pod holds of that view entry, then the handle and field the model named", () => {
       assert.match(
-        text(html),
+        text(drill("medications", "pod", site)),
         /Jardiance 10 mg is active\. Jardiance 10 mg tablet · 2025-02-20 · S2 Cascade North Demo Hospital · M4c38f471, status/,
       );
     });
 
     it("shows the fact on the doctor card with its date and its source's name", () => {
       assert.match(
-        text(tab("medications", "pod", "doctor", html)),
+        text(card("medications", "pod", site)),
         /Jardiance 10 mg is active\. · 2025-02-20 · Cascade North Demo Hospital/,
       );
     });
@@ -805,7 +814,7 @@ describe("Seeing what an answer's citations cite · renderSite()", () => {
 
     it("says that whether the records arm's files were read whole is not recorded", () => {
       assert.match(
-        text(drill("checkup", "records", html)),
+        text(drill("checkup", "records", bare())),
         /whether it was read whole is not recorded/,
       );
     });
@@ -819,24 +828,24 @@ describe("Seeing what an answer's citations cite · renderSite()", () => {
 describe("Printing what to show a doctor · renderSite()", () => {
   describe("with the doctor card of an answer", () => {
     it("opens with the question the person asked", () => {
-      assert.match(text(tab("checkup", "pod", "doctor")), /The question/);
+      assert.match(text(card("checkup", "pod")), /The question/);
     });
 
     it("shows the answer's short form", () => {
       assert.match(
-        text(tab("checkup", "pod", "doctor")),
+        text(card("checkup", "pod")),
         /Ask about a urine albumin test/,
       );
     });
 
     it("shows each dated fact with its source and the download it came from", () => {
-      const pod = text(tab("checkup", "pod", "doctor"));
+      const pod = text(card("checkup", "pod"));
       assert.match(pod, /The stool test \(FIT\) was positive on 2025-11-04/);
       assert.match(
         pod,
         /2025-11-04 .*Cascade North Demo Hospital, download of 2026-10-15/,
       );
-      const records = text(tab("blood-clot", "records", "doctor"));
+      const records = text(card("blood-clot", "records"));
       assert.match(records, /D-dimer was 0\.92 mg\/L FEU/);
       assert.match(
         records,
@@ -846,16 +855,14 @@ describe("Printing what to show a doctor · renderSite()", () => {
 
     it("shows an absence as looked for and not found", () => {
       assert.match(
-        text(tab("checkup", "pod", "doctor")),
+        text(card("checkup", "pod")),
         /Looked for and not found: A colonoscopy after 2025-11-04/,
       );
     });
 
     it("leaves out the model's own knowledge", () => {
       assert.equal(
-        /lipid panel is usually repeated/.test(
-          text(tab("checkup", "pod", "doctor")),
-        ),
+        /lipid panel is usually repeated/.test(text(card("checkup", "pod"))),
         false,
       );
     });
@@ -863,7 +870,7 @@ describe("Printing what to show a doctor · renderSite()", () => {
     it("dates the card the case's day, not the day the run finished", () => {
       assert.equal(recorded.run.finished.slice(0, 10), "2026-10-31");
       assert.match(
-        text(tab("checkup", "pod", "doctor")),
+        text(card("checkup", "pod")),
         /Prepared with Cascade . opus-5-5 . 2026-10-30/,
       );
     });
