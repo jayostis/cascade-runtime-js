@@ -76,210 +76,7 @@ tries it as `typedWords(text)` cleans it. A wrong secret, or a secret for a
 pod that is not sealed, throws `Unopened`. `await checkSecret(folder, secret)`
 answers `true` or `false` without opening the pod or writing anything.
 
-The matcher's reference tables come from the feeds `cascade-runtime.json`
-names. The pods in a folder share `.tables/` in it: the first `openPod` in a
-process reads the feeds, unless `tables.checkOnOpen` is `false`, and keeps each
-newer version that verifies. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
-checks again ("Check now"); a feed that cannot be read now says `later`, and
-nothing is thrown. Opening a pod after its tables changed gives it them:
-`pod.opened` says what that wrote, and `pod.opened.unheld` the versions it
-names that the app does not hold, which it is matched without. A pod in memory
-gets the package's starter copies.
-
-What a page shows of the tables, the same `Tables` answers, in Node and in a
-browser (`appTables()`), as plain values: `held()`, each series with its
-source, licence, credit, versions and how fresh its feed is; `uses()`, the
-pods last opened with each version, by name; `search(series, text, page)`, the
-codes of its current version, or of several series' (a source's), that are
-`text` or whose name holds it, 50 a page (`total` of them, the page after
-`offset`), each with what `about(codes)` says of it (its `notation`, the code as
-written; its name, status and `ingredients`: the codes it maps to in the first
-product ingredients table that maps it) and the codes it maps to; `codeNamed(series, notation)`, the code written so that
-they list or map to, from the first series that holds one; and `facts(code)`,
-what every held table says of a code, each fact with its series and version,
-a variation's classification among them (`classifications`), and the code's own
-page at its publisher (`page: { href, system }`) where its code system has one; and
-`variantClassification({ gene, hgvs, variations })`, what the app's current
-version of the first held variant classifications series that covers the gene
-says of a variant: `rows` with its one row (found by its ClinVar IDs when it has
-any, by its HGVS expressions only when it has none), `not found`, `not covered`
-with the genes the series covers, or `no series`; and `labels(concepts)`, each
-concept's name in the vocabulary. `pod.agreement()` says how each report of a
-variant stands to that row (`report`, `row`, `origin`, `verdict`: `agrees`,
-`differs`, `labs disagree` or `as ClinVar writes it`; no row for a report with
-none), over the app's current version of the series; it writes nothing to the
-pod. A pod's page shows each variant's reports beside what ClinVar says today,
-from these, and the series' credit. A pod's own page names a record by its code's name, else by the record's own
-text, from its question's code columns in this order: `code` of
-`pod/My active allergies`, `pod/My active medications`, `pod/My lab results`
-and `pod/My immunizations`; `icd10`, then `snomed`, of
-`pod/My active conditions`; `snomed` of `pod/My procedures`. Each holds a
-code's IRI in its system, which `about` takes as it is. Its "Worth a look"
-lists each entry that needs review, each report that differs from ClinVar today
-and each pair of medications in two entries that have an ingredient in common,
-every line linking to its entry, with one tag (`Needs review`, `Differs`,
-`Retired code`) shared by a line, a row and an entry. Both medications of a pair
-say it on their entries, with the table and version it came from. The pair is a
-hint from the tables, not a review item of the pod, which cannot read them: a
-combination maps to its own multiple-ingredient concept (RxNorm's MIN),
-never to each of its ingredients, so lisinopril and lisinopril with
-hydrochlorothiazide share none.
-
-A LOINC code a pod's lab result states is named by LOINC's long common name where
-the app holds the LOINC names. `facts(code)` gives, beside the rest, `panels`: for
-a LOINC panel its `members` by their sequence, each with whether the panel
-requires it (`required`), and for a member the panels that hold it (`heldBy`, a
-page of them); and `classes`: for an RxNorm code the classes of its ingredient,
-each `in` list a `relation` (`cascade:establishedPharmacologicClass`,
-`cascade:mechanismOfActionClass`, `cascade:physiologicEffectClass` or `cascade:chemicalStructureClass`), the
-`class` with its name, and `through`, the code FDA gave the class to when it is
-not the code asked of (FDA classes estradiol, not a tablet of it). A class is
-joined only on exact evidence, relation by relation, as the vocabulary's
-`tables/medication-classes-through-precise-ingredients.rq` says: a row on the
-code itself, else the rows of the code's own precise ingredients
-(`cascade:hasPreciseIngredient`), else, in a product ingredients version that states
-precise ingredients, its ingredient's own rows (an estradiol tablet takes
-estradiol's). Each relation is decided apart, so one product can take some from
-its precise ingredient and others from its ingredient: Recorlev takes the
-established class and the mechanisms of levoketoconazole, and its chemical
-structure (Azoles) of ketoconazole, which levoketoconazole has no row for; the
-`through` of each class says which. Never a different form's: a lisinopril
-tablet gets none of the classes FDA gives lisinopril anhydrous, and `withheld`
-names the relation and the ingredient whose other form is classed, only from a
-version that states precise ingredients (one that states none cannot say
-RxNorm does not tie the product to the form, so it withholds nothing and the
-page gives its general reason).
-`tables.classedElsewhere(codes)` gives those ingredients for codes in no class.
-`pod.medicationClasses()` says which of the pod's active medications are in
-which class (`entry`, `medication`, `class`, `relation`, `origin`, `through`,
-`stated`: whether the class is on a code the entry states), by the app's current
-tables. It writes nothing. A combination of ingredients is in no class, since
-MED-RT classes none, and the starter's page says so; it says too which medicine
-is in none because FDA classes a different form of its ingredient. A code's
-ingredients (`about().ingredients`) are its ingredient rows (`obo:RO_0002248`),
-never its precise ingredient rows.
-`pod.joinedBy()` says which table versions joined each entry's records
-(`entry`, `used`): those a counting machine Same cited, never the rule list or a
-record's version.
-`pod.unheldTableVersions()` names the pod's current table versions this
-device's tables lack, of series a machine Same used another version of: such a
-Same does not count here (M7), so an app says so. `pod.opened.unheld` names them
-only at the open that changed the tables; this answers on every read, and is
-undefined, not known yet, while a page draws a copied pod before the engine
-loads.
-
-An app sets its own tables in a `cascade-runtime.json` of its own, in the
-folder it runs in, naming `tables` and nothing else, or in code with
-`configureTables({ ... })` before the first pod opens; each field given replaces
-the package's, and code wins over the file. `feeds` lists every feed the app
-reads, the package's among them if it keeps it; `preference` gives each table
-kind's IRI the series a person reads it from, first first; `checkOnOpen: false`
-leaves only "Check now". `(await tablesBeside("pods")).about([codeIri])` gives
-each code asked, with its notation (the code as written) and its name, status
-and ingredients from the first series in that order that holds it; a code no
-table holds has its notation alone.
-In Node only, `builders` names sources whose builders run on this machine in
-each check, a name under cascade-reference-tables' `builders/` or a path from
-the file; what one builds is kept as a feed's versions are, from
-`pods/.builds/<name>/`. A builder runs through cascade-reference-tables, which
-the app installs itself:
-`npm install --save-exact https://github.com/jayostis/cascade-reference-tables/releases/download/package-builds/cascade-reference-tables-0.0.0-commit-abcb8bd9a99f3f2d9b33351b97416fc0b81f7bab.tgz`.
-A version that does not descend from the one held of its series is never kept.
-
-In a browser, the same import, served with the package's `components/` beside
-its `dist/`, runs every call. A pod's name names
-its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
-an empty one as a copy of the pod published at the URL `from`: from its pack,
-`<folder>.pack.json`, when one is published beside it, else as its `files.json`
-lists it, with the `answers.json` and `pod.json` published beside it. Its
-answers are kept in `cascade-answers:<name>`, `podTitle(name)` reads the title typed when
-it was made (undefined where none is kept), and `deletePod(name)` deletes both. Its address is a name, never the page's. A browser may clear its storage,
-and the pod with it. A pod with kept answers opens and answers its questions
-without the engine, a 4 MB module; the first call that computes loads it, and
-`warm()` loads it and compiles the Bridge ahead, so both are ready when a
-record arrives.
-A browser has no path, so `look` and `import` take the files the person picked,
-each by its path: `new Map([...input.files].map((file) => [file.webkitRelativePath || file.name, file]))`
-from an `<input type="file">`, with `webkitdirectory` for an export's folder.
-Node takes such a map too. The first `import` loads the Bridge, about 4.5 MB.
-A browser keeps its tables in one IndexedDB database for the app,
-`<name>:cascade-tables`, `name` the page's folder unless
-`configureTables({ name, fetch })` says otherwise before the first pod opens.
-It reads the feeds once the engine loads, and `checkTables()` is "Check now".
-`configureTables` also takes `feeds`, `preference` and `checkOnOpen`, as Node
-does; a browser runs no builder and reads no file of the app's.
-An empty database starts from the package's starter copies, as a folder does:
-each version is copied in when first read, and `start()` copies the rest
-and then lists them for search, one at a time.
-A pod copied with `from` is taken as published: its first open records the
-tables the browser then holds without adopting them, and a later open adopts
-only tables newer than those.
-
-An app that bundles the package, as Vite does, serves its browser files at a
-base it names before the first pod opens:
-``configureRuntime({ base: `${import.meta.env.BASE_URL}cascade-runtime/` })``.
-The base is the folder holding the files of `dist/browser/` and, beneath them,
-`components/`; the components, every worker, the Bridge and the engine's module
-are read from there, and without a base from beside the module, as the package
-lays them out. Of `components/` a page reads `cascade-runtime.json`,
-`packed.json`, and for `tables/` and each component `packed.json` names
-(`<repository name>/<commit>`) its pack `<folder>.json` and the files its
-`files.json` lists; never the tables' listings, which a page makes itself.
-A pod's answers are kept under `browserBuildVersion()`, fixed when the package was
-packed, as `browserBuildVersion()` of `cascade-runtime/published` gives it in Node, so
-answers published from Node are read in the page without the engine.
-A browser app's TypeScript reads the browser build's types only with
-`"customConditions": ["browser"]` in its `tsconfig.json`; without it, it is
-given Node's. A Vite app's `vite.config.ts` copies those files into
-`public/cascade-runtime/`, and needs nothing else:
-
-```ts
-import { cp, readFile, rm } from "node:fs/promises";
-import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
-
-const RUNTIME = "node_modules/cascade-runtime/";
-const BASE = "public/cascade-runtime/";
-
-/** What a page reads of the installed package's components, by its path under the package. */
-async function served(): Promise<string[]> {
-  const json = async (path: string) =>
-    JSON.parse(await readFile(RUNTIME + path, "utf8"));
-  const packed: { components: { repository: string; commit: string }[] } =
-    await json("components/packed.json");
-  const folders = [
-    "components/tables",
-    ...packed.components.map(
-      ({ repository, commit }) =>
-        `components/${repository.split("/").at(-1)}/${commit}`,
-    ),
-  ];
-  const paths = ["components/cascade-runtime.json", "components/packed.json"];
-  for (const folder of folders) {
-    const listed: string[] = await json(`${folder}/files.json`);
-    paths.push(
-      `${folder}.json`,
-      `${folder}/files.json`,
-      ...listed.map((path) => `${folder}/${path}`),
-    );
-  }
-  return paths;
-}
-
-/** The browser build and what it reads, at the base the page names, before Vite serves or builds. */
-function cascadeRuntime(): Plugin {
-  return {
-    name: "cascade-runtime",
-    async buildStart() {
-      await rm(BASE, { recursive: true, force: true });
-      await cp(`${RUNTIME}dist/browser`, BASE, { recursive: true });
-      for (const path of await served()) await cp(RUNTIME + path, BASE + path);
-    },
-  };
-}
-
-export default defineConfig({ plugins: [react(), cascadeRuntime()] });
-```
+In a browser, `openPod(name, { from })` and the rest differ: see "In a browser" below. The reference tables an app shows, and how it sets its own, are under "The reference tables".
 
 ## Bring in an export
 
@@ -810,6 +607,215 @@ const her = await openPod("pods/alex-rivera");
 await showPerson(await her.ask("pod/My active allergies", { lens: "export" }));
 await her.close();
 ```
+
+## In a browser
+
+In a browser, the same import, served with the package's `components/` beside
+its `dist/`, runs every call. A pod's name names
+its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
+an empty one as a copy of the pod published at the URL `from`: from its pack,
+`<folder>.pack.json`, when one is published beside it, else as its `files.json`
+lists it, with the `answers.json` and `pod.json` published beside it. Its
+answers are kept in `cascade-answers:<name>`, `podTitle(name)` reads the title typed when
+it was made (undefined where none is kept), and `deletePod(name)` deletes both. Its address is a name, never the page's. A browser may clear its storage,
+and the pod with it. A pod with kept answers opens and answers its questions
+without the engine, a 4 MB module; the first call that computes loads it, and
+`warm()` loads it and compiles the Bridge ahead, so both are ready when a
+record arrives.
+A browser has no path, so `look` and `import` take the files the person picked,
+each by its path: `new Map([...input.files].map((file) => [file.webkitRelativePath || file.name, file]))`
+from an `<input type="file">`, with `webkitdirectory` for an export's folder.
+Node takes such a map too. The first `import` loads the Bridge, about 4.5 MB.
+A browser keeps its tables in one IndexedDB database for the app,
+`<name>:cascade-tables`, `name` the page's folder unless
+`configureTables({ name, fetch })` says otherwise before the first pod opens.
+It reads the feeds once the engine loads, and `checkTables()` is "Check now".
+`configureTables` also takes `feeds`, `preference` and `checkOnOpen`, as Node
+does; a browser runs no builder and reads no file of the app's.
+An empty database starts from the package's starter copies, as a folder does:
+each version is copied in when first read, and `start()` copies the rest
+and then lists them for search, one at a time.
+A pod copied with `from` is taken as published: its first open records the
+tables the browser then holds without adopting them, and a later open adopts
+only tables newer than those.
+
+An app that bundles the package, as Vite does, serves its browser files at a
+base it names before the first pod opens:
+``configureRuntime({ base: `${import.meta.env.BASE_URL}cascade-runtime/` })``.
+The base is the folder holding the files of `dist/browser/` and, beneath them,
+`components/`; the components, every worker, the Bridge and the engine's module
+are read from there, and without a base from beside the module, as the package
+lays them out. Of `components/` a page reads `cascade-runtime.json`,
+`packed.json`, and for `tables/` and each component `packed.json` names
+(`<repository name>/<commit>`) its pack `<folder>.json` and the files its
+`files.json` lists; never the tables' listings, which a page makes itself.
+A pod's answers are kept under `browserBuildVersion()`, fixed when the package was
+packed, as `browserBuildVersion()` of `cascade-runtime/published` gives it in Node, so
+answers published from Node are read in the page without the engine.
+A browser app's TypeScript reads the browser build's types only with
+`"customConditions": ["browser"]` in its `tsconfig.json`; without it, it is
+given Node's. A Vite app's `vite.config.ts` copies those files into
+`public/cascade-runtime/`, and needs nothing else:
+
+```ts
+import { cp, readFile, rm } from "node:fs/promises";
+import react from "@vitejs/plugin-react";
+import { defineConfig, type Plugin } from "vite";
+
+const RUNTIME = "node_modules/cascade-runtime/";
+const BASE = "public/cascade-runtime/";
+
+/** What a page reads of the installed package's components, by its path under the package. */
+async function served(): Promise<string[]> {
+  const json = async (path: string) =>
+    JSON.parse(await readFile(RUNTIME + path, "utf8"));
+  const packed: { components: { repository: string; commit: string }[] } =
+    await json("components/packed.json");
+  const folders = [
+    "components/tables",
+    ...packed.components.map(
+      ({ repository, commit }) =>
+        `components/${repository.split("/").at(-1)}/${commit}`,
+    ),
+  ];
+  const paths = ["components/cascade-runtime.json", "components/packed.json"];
+  for (const folder of folders) {
+    const listed: string[] = await json(`${folder}/files.json`);
+    paths.push(
+      `${folder}.json`,
+      `${folder}/files.json`,
+      ...listed.map((path) => `${folder}/${path}`),
+    );
+  }
+  return paths;
+}
+
+/** The browser build and what it reads, at the base the page names, before Vite serves or builds. */
+function cascadeRuntime(): Plugin {
+  return {
+    name: "cascade-runtime",
+    async buildStart() {
+      await rm(BASE, { recursive: true, force: true });
+      await cp(`${RUNTIME}dist/browser`, BASE, { recursive: true });
+      for (const path of await served()) await cp(RUNTIME + path, BASE + path);
+    },
+  };
+}
+
+export default defineConfig({ plugins: [react(), cascadeRuntime()] });
+```
+
+## The reference tables
+
+The matcher's reference tables come from the feeds `cascade-runtime.json`
+names. The pods in a folder share `.tables/` in it: the first `openPod` in a
+process reads the feeds, unless `tables.checkOnOpen` is `false`, and keeps each
+newer version that verifies. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
+checks again ("Check now"); a feed that cannot be read now says `later`, and
+nothing is thrown. Opening a pod after its tables changed gives it them:
+`pod.opened` says what that wrote, and `pod.opened.unheld` the versions it
+names that the app does not hold, which it is matched without. A pod in memory
+gets the package's starter copies.
+
+What a page shows of the tables, the same `Tables` answers, in Node and in a
+browser (`appTables()`), as plain values: `held()`, each series with its
+source, licence, credit, versions and how fresh its feed is; `uses()`, the
+pods last opened with each version, by name; `search(series, text, page)`, the
+codes of its current version, or of several series' (a source's), that are
+`text` or whose name holds it, 50 a page (`total` of them, the page after
+`offset`), each with what `about(codes)` says of it (its `notation`, the code as
+written; its name, status and `ingredients`: the codes it maps to in the first
+product ingredients table that maps it) and the codes it maps to; `codeNamed(series, notation)`, the code written so that
+they list or map to, from the first series that holds one; and `facts(code)`,
+what every held table says of a code, each fact with its series and version,
+a variation's classification among them (`classifications`), and the code's own
+page at its publisher (`page: { href, system }`) where its code system has one; and
+`variantClassification({ gene, hgvs, variations })`, what the app's current
+version of the first held variant classifications series that covers the gene
+says of a variant: `rows` with its one row (found by its ClinVar IDs when it has
+any, by its HGVS expressions only when it has none), `not found`, `not covered`
+with the genes the series covers, or `no series`; and `labels(concepts)`, each
+concept's name in the vocabulary. `pod.agreement()` says how each report of a
+variant stands to that row (`report`, `row`, `origin`, `verdict`: `agrees`,
+`differs`, `labs disagree` or `as ClinVar writes it`; no row for a report with
+none), over the app's current version of the series; it writes nothing to the
+pod. A pod's page shows each variant's reports beside what ClinVar says today,
+from these, and the series' credit. A pod's own page names a record by its code's name, else by the record's own
+text, from its question's code columns in this order: `code` of
+`pod/My active allergies`, `pod/My active medications`, `pod/My lab results`
+and `pod/My immunizations`; `icd10`, then `snomed`, of
+`pod/My active conditions`; `snomed` of `pod/My procedures`. Each holds a
+code's IRI in its system, which `about` takes as it is. Its "Worth a look"
+lists each entry that needs review, each report that differs from ClinVar today
+and each pair of medications in two entries that have an ingredient in common,
+every line linking to its entry, with one tag (`Needs review`, `Differs`,
+`Retired code`) shared by a line, a row and an entry. Both medications of a pair
+say it on their entries, with the table and version it came from. The pair is a
+hint from the tables, not a review item of the pod, which cannot read them: a
+combination maps to its own multiple-ingredient concept (RxNorm's MIN),
+never to each of its ingredients, so lisinopril and lisinopril with
+hydrochlorothiazide share none.
+
+A LOINC code a pod's lab result states is named by LOINC's long common name where
+the app holds the LOINC names. `facts(code)` gives, beside the rest, `panels`: for
+a LOINC panel its `members` by their sequence, each with whether the panel
+requires it (`required`), and for a member the panels that hold it (`heldBy`, a
+page of them); and `classes`: for an RxNorm code the classes of its ingredient,
+each `in` list a `relation` (`cascade:establishedPharmacologicClass`,
+`cascade:mechanismOfActionClass`, `cascade:physiologicEffectClass` or `cascade:chemicalStructureClass`), the
+`class` with its name, and `through`, the code FDA gave the class to when it is
+not the code asked of (FDA classes estradiol, not a tablet of it). A class is
+joined only on exact evidence, relation by relation, as the vocabulary's
+`tables/medication-classes-through-precise-ingredients.rq` says: a row on the
+code itself, else the rows of the code's own precise ingredients
+(`cascade:hasPreciseIngredient`), else, in a product ingredients version that states
+precise ingredients, its ingredient's own rows (an estradiol tablet takes
+estradiol's). Each relation is decided apart, so one product can take some from
+its precise ingredient and others from its ingredient: Recorlev takes the
+established class and the mechanisms of levoketoconazole, and its chemical
+structure (Azoles) of ketoconazole, which levoketoconazole has no row for; the
+`through` of each class says which. Never a different form's: a lisinopril
+tablet gets none of the classes FDA gives lisinopril anhydrous, and `withheld`
+names the relation and the ingredient whose other form is classed, only from a
+version that states precise ingredients (one that states none cannot say
+RxNorm does not tie the product to the form, so it withholds nothing and the
+page gives its general reason).
+`tables.classedElsewhere(codes)` gives those ingredients for codes in no class.
+`pod.medicationClasses()` says which of the pod's active medications are in
+which class (`entry`, `medication`, `class`, `relation`, `origin`, `through`,
+`stated`: whether the class is on a code the entry states), by the app's current
+tables. It writes nothing. A combination of ingredients is in no class, since
+MED-RT classes none, and the starter's page says so; it says too which medicine
+is in none because FDA classes a different form of its ingredient. A code's
+ingredients (`about().ingredients`) are its ingredient rows (`obo:RO_0002248`),
+never its precise ingredient rows.
+`pod.joinedBy()` says which table versions joined each entry's records
+(`entry`, `used`): those a counting machine Same cited, never the rule list or a
+record's version.
+`pod.unheldTableVersions()` names the pod's current table versions this
+device's tables lack, of series a machine Same used another version of: such a
+Same does not count here (M7), so an app says so. `pod.opened.unheld` names them
+only at the open that changed the tables; this answers on every read, and is
+undefined, not known yet, while a page draws a copied pod before the engine
+loads.
+
+An app sets its own tables in a `cascade-runtime.json` of its own, in the
+folder it runs in, naming `tables` and nothing else, or in code with
+`configureTables({ ... })` before the first pod opens; each field given replaces
+the package's, and code wins over the file. `feeds` lists every feed the app
+reads, the package's among them if it keeps it; `preference` gives each table
+kind's IRI the series a person reads it from, first first; `checkOnOpen: false`
+leaves only "Check now". `(await tablesBeside("pods")).about([codeIri])` gives
+each code asked, with its notation (the code as written) and its name, status
+and ingredients from the first series in that order that holds it; a code no
+table holds has its notation alone.
+In Node only, `builders` names sources whose builders run on this machine in
+each check, a name under cascade-reference-tables' `builders/` or a path from
+the file; what one builds is kept as a feed's versions are, from
+`pods/.builds/<name>/`. A builder runs through cascade-reference-tables, which
+the app installs itself:
+`npm install --save-exact https://github.com/jayostis/cascade-reference-tables/releases/download/package-builds/cascade-reference-tables-0.0.0-commit-abcb8bd9a99f3f2d9b33351b97416fc0b81f7bab.tgz`.
+A version that does not descend from the one held of its series is never kept.
 
 ## What it cannot do yet
 
