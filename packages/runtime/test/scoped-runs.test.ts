@@ -145,7 +145,7 @@ async function storyRuns(): Promise<Compared[]> {
  * their joins reach. It must write what a run reading every record writes, which no example can show, so the runtime
  * tests it here.
  * @rule runtime/matcher.feature M1
- * @rule runtime/matcher.feature M4
+ * @rule runtime/matcher.feature M4a
  */
 describe("Running the matcher on a step's records alone · CorePod.match(), readEveryRecord()", () => {
   describe("given each matcher run that takes records in the stories of the vocabulary's feature files", () => {

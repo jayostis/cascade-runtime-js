@@ -18,7 +18,7 @@ const SIDES = `SELECT DISTINCT ?record ?other WHERE {
  * A comparison is a SPARQL query of the vocabulary that returns pairs of records, `?record` and `?other`. The matcher
  * binds `?record` to the records a run takes by writing a `VALUES` block into the query's text, so a run reads those
  * records and not the whole pod.
- * @rule runtime/matcher.feature M4
+ * @rule runtime/matcher.feature M4a
  */
 describe("Binding a comparison query to a run's records · boundToRecords(), boundToPairs()", () => {
   let store: OxigraphStore;

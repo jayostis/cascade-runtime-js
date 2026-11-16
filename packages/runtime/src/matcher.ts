@@ -594,7 +594,7 @@ class Matcher {
   /**
    * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
    * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the acts whose records a run
-   * takes, each comparison is evaluated with ?record bound to the records they began (M1, M4). The rule list the
+   * takes, each comparison is evaluated with ?record bound to the records they began (M1, M4a). The rule list the
    * pod names is evaluated over the versions it names, and the current one over the current versions, each with those
    * versions' descriptions alone and none of the pod's, so neither reads the other's rows and no version the pod
    * describes but the tables do not load revises one they do (M13, O1). It consumes the matcher's view it is given: it
