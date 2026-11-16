@@ -363,6 +363,31 @@ async function search(word) {
   made under a table since replaced.
 - `export`: for sharing; a matcher's join counts only on a code, or code and day.
 
+## Keep what the person says about an entry
+
+Never store an entry's IRI. It is named from the record that sorts first, so it
+changes when a source joins with a record that sorts before them all. What the
+app keeps about an entry, an answer, a note, a link or a cached list, names
+every record the entry held when the person said it (the `record` rows of
+`record/Which entry shows it` for that `entry`). When it is about what a record
+said, a dose or a status, it also names the versions the person saw (`?version`
+in `record/What each version says`). Record IRIs hold still across imports and
+rebuilds.
+
+To show it, find the entry of each record it names through
+`record/Which entry shows it`, read again after every import or rebuild. Two
+entries that share a record are one thing, so a cache keyed by records tells
+"the same medicine, renamed" from "one stopped and another started". One whose
+records are now in two entries goes with each.
+
+When none of its records has a row there, and `record/Why it is in no view`
+gives none either, the pod no longer holds them: an original was removed and
+the pod rebuilt. Keep it and show it apart, with what the app saved of it:
+the records it was about are no longer in the pod, and the person can say it
+again of an entry shown now. A record that `record/Why it is in no view` gives
+a reason for is only hidden: show that reason. Why:
+<https://github.com/jayostis/cascade-vocabulary/blob/main/decisions/statements-name-records.md>.
+
 ## Enter what the person wrote
 
 The app names each entry session once, a new `urn:uuid:` kept in its Turtle, so
