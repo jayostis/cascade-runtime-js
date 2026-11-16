@@ -422,6 +422,53 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
     });
   });
 
+  describe("with the fragments of an adapter's explorer, which a reader's script reads and a reader without it opens alone", () => {
+    const fragment = (body: string): string =>
+      `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><base href="../"><title>A place</title></head><body>${body}</body></html>`;
+
+    it("resolves a fragment's links from its `base`, asks it no link back to the front page, and still finds a link that is dead from there", async () => {
+      const result = await check({
+        "site.css": "",
+        "index.html": bare(`<a href="adapters/">adapters</a>`),
+        "adapters/index.html": page(`<a href="fhir-r4/">an explorer</a>`),
+        "adapters/fhir-r4/index.html": bare(
+          `<a id="n1" href="nodes/1.html">a place</a><a href="nodes/2.html">another</a>`,
+        ),
+        "adapters/fhir-r4/nodes/1.html": fragment(
+          `<a href="index.html#n1">back</a><a href="cases/1.json">a case</a>`,
+        ),
+        "adapters/fhir-r4/nodes/2.html": fragment(
+          `<a href="index.html#n9">back</a><a href="cases/9.json">a case</a>`,
+        ),
+        "adapters/fhir-r4/cases/1.json": "{}",
+      });
+      assert.equal(result.code, 1, result.said);
+      const failed = result.said
+        .split("\n")
+        .filter((line) => line.startsWith("FAIL"));
+      assert.equal(failed.length, 2, result.said);
+      assert.ok(
+        failed.every((line) => line.includes("adapters/fhir-r4/nodes/2.html")),
+        result.said,
+      );
+      assert.ok(!result.said.includes("no way back"), result.said);
+    });
+
+    it("asks a `nodes` page that is no explorer's part a link back to the front page", async () => {
+      const result = await check({
+        "site.css": "",
+        "index.html": bare(`<a href="adapters/">adapters</a>`),
+        "adapters/index.html": page(`<a href="nodes/1.html">not a part</a>`),
+        "adapters/nodes/1.html": bare(""),
+      });
+      assert.equal(result.code, 1, result.said);
+      assert.ok(
+        result.said.includes("FAIL adapters/nodes/1.html: links no way back"),
+        result.said,
+      );
+    });
+  });
+
   describe("with the `.txt` and `.md` files a site serves", () => {
     let result: Checked;
 

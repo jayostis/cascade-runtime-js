@@ -509,15 +509,20 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       assert.ok(!rows.some(({ path }) => path.startsWith("try/")));
     });
 
-    it("puts the box on every page of the hub, but the evals' own frame, an adapter's explorer and a page that only redirects", () => {
+    it("puts the box on every page of the hub, but the evals' own frame, an adapter's explorer with the places it reads, and a page that only redirects", () => {
       assert.ok(html.length > 30);
       let boxed = 0;
       for (const path of html) {
         const page = readFileSync(join(out, path), "utf8");
+        const folder = posix.dirname(path);
         const own =
           path.startsWith("evals/") ||
           (path.startsWith(ADAPTERS_FOLDER) &&
-            existsSync(join(out, posix.dirname(path), EXPLORER_FILE))) ||
+            (existsSync(join(out, folder, EXPLORER_FILE)) ||
+              (posix.basename(folder) === "nodes" &&
+                existsSync(
+                  join(out, posix.dirname(folder), EXPLORER_FILE),
+                )))) ||
           page.includes('http-equiv="refresh"');
         assert.equal(page.includes('class="sx-find"'), !own, path);
         if (own) continue;

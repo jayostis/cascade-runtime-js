@@ -154,8 +154,12 @@ const EVALS_FOLDER = "evals/";
 const QUERIES_FOLDER = "queries/";
 const SITE_NAME = / [·—] Cascade [^·—]*$/;
 const REDIRECT = /http-equiv="refresh"/i;
-/** An adapter explorer's data of one test case, which its page fetches when a reader opens the case: no file to find by name. */
-const EXPLORER_CASE = /^adapters\/[^/]+\/cases\/[^/]+\.json$/;
+/**
+ * A part of an adapter explorer that its page fetches when a reader opens a place or a test case (a place's mappings in
+ * `nodes/<n>.html`, a case in `cases/<n>.json`): no file to find by name, and no page of the hub.
+ */
+const EXPLORER_PART =
+  /^adapters\/[^/]+\/(?:cases\/[^/]+\.json|nodes\/[^/]+\.html)$/;
 
 const words = (html: string): string =>
   decoded(html.replace(/<[^>]*>/g, ""))
@@ -276,7 +280,7 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
       SEARCH_SCRIPT_FILE,
     ]),
   ]
-    .filter((path) => !/\.css$/i.test(path) && !EXPLORER_CASE.test(path))
+    .filter((path) => !/\.css$/i.test(path) && !EXPLORER_PART.test(path))
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     .map((path) => ({
       path,
