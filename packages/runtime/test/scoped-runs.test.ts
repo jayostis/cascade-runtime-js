@@ -8,6 +8,7 @@ import { MemoryFiles } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { importersNamed } from "../src/importers.js";
 import { MATCHER, readEveryRecord } from "../src/matcher.js";
+import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { localVocabulary, readConfig } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
@@ -18,6 +19,8 @@ import { layout, ROOT, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
+const OA = "http://www.w3.org/ns/oa#";
+const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const ADDRESS = "https://pod.example/";
 const GOLDEN = join(ROOT, "packages/runtime/test/joins.golden.txt");
 const newStore = () => new OxigraphStore();
@@ -175,6 +178,91 @@ async function storyRuns(): Promise<Compared[]> {
   };
   for (const { folder, options, root } of roots.values())
     await walk(new Replay(options), root, folder);
+  compared.push(...(await noteMasterIdentifierRuns(files, laidOut, config)));
+  return compared;
+}
+
+/**
+ * The runs no story of the vocabulary has, for R21: two notes of different types sharing a master identifier typed by
+ * its system, which R21 joins (and neither note-text rule can, since no two of the four notes share a type); then two of
+ * different types sharing a plain-string identifier, which joins nothing. The notes' graphs are the saved output of
+ * `joins-extra/note-master-identifier/`, which these runs read as their own source.
+ */
+async function noteMasterIdentifierRuns(
+  vocabularyFiles: Awaited<ReturnType<typeof vocabulary>>,
+  laidOut: Awaited<ReturnType<typeof layout>>,
+  config: Awaited<ReturnType<typeof readConfig>>,
+): Promise<Compared[]> {
+  const download = (name: string, when: string): Step => ({
+    name,
+    when,
+    happened: {
+      kind: "import",
+      export: `downloads/${name}`,
+      converted: `bridge/${name}`,
+    },
+  });
+  const steps: Step[] = [
+    {
+      name: "pod",
+      when: "2026-11-01T09:00:00Z",
+      happened: { kind: "creation" },
+    },
+    {
+      name: "app-notes",
+      when: "2026-11-01T09:01:00Z",
+      happened: { kind: "open", tables: "tables/app-notes/" },
+    },
+    {
+      name: "about-the-notes",
+      when: "2026-11-01T09:05:00Z",
+      happened: { kind: "judgment", file: "judgments/about-the-notes.ttl" },
+    },
+    download("clinic-plan-may.xml", "2026-11-02T09:00:00Z"),
+    download("clinic-plan-june.xml", "2026-11-02T09:10:00Z"),
+    {
+      name: "typed identifier",
+      when: "2026-11-02T09:15:00Z",
+      happened: { kind: "matcher", takes: "clinic-plan-june.xml" },
+    },
+    download("clinic-plan-august.xml", "2026-11-02T09:20:00Z"),
+    download("clinic-hospital-course.xml", "2026-11-02T09:30:00Z"),
+    {
+      name: "plain identifier",
+      when: "2026-11-02T09:35:00Z",
+      happened: { kind: "matcher", takes: "clinic-hospital-course.xml" },
+    },
+  ];
+  const replay = new Replay({
+    story: {
+      address: ADDRESS,
+      subject: "urn:uuid:1392db7d-f82b-4f91-bde1-cbb601a0f79c",
+      steps,
+    },
+    source: new FolderFiles(
+      join(ROOT, "packages/runtime/test/joins-extra/note-master-identifier"),
+      "https://joins.example/note-master-identifier/",
+    ),
+    vocabulary: vocabularyFiles,
+    folder: "",
+    title: "",
+    pod: new MemoryFiles(ADDRESS),
+    layout: laidOut,
+    newStore,
+    runtime: RUNTIME,
+    importers: importersNamed(config.importers),
+  });
+  const compared: Compared[] = [];
+  for (const step of steps) {
+    if (step.happened.kind === "matcher")
+      compared.push({
+        name: step.name,
+        label: `joins-extra/note-master-identifier > ${step.name}`,
+        scoped: await performed(replay, step, false),
+        every: await performed(replay, step, true),
+      });
+    await replay.perform(step);
+  }
   return compared;
 }
 
@@ -201,8 +289,11 @@ describe("Running the matcher on a step's records alone · CorePod.match(), read
   });
 });
 
-/** The Sames the matcher filed in `files`, each as its rule's name and its members. */
-async function samesIn(
+/**
+ * What the matcher filed in `files`, one line each: a Same as its rule's name and its members, and a finding for
+ * review as `finding`, the name of its body and its targets.
+ */
+async function filedIn(
   files: readonly (readonly [path: string, content: string | Uint8Array])[],
 ): Promise<string[]> {
   const found: string[] = [];
@@ -221,28 +312,44 @@ async function samesIn(
           .join(" ")}`,
       );
     }
+    for (const finding of graph.subjects(
+      TYPE,
+      iri(`${CASCADE}FindingForReview`),
+    )) {
+      const [body] = graph.objects(finding, `${OA}hasBody`);
+      found.push(
+        `finding ${body?.value.slice(CASCADE.length)} ${graph
+          .objects(finding, `${OA}hasTarget`)
+          .map(({ value }) => value)
+          .sort(byCodePoint)
+          .join(" ")}`,
+      );
+    }
   }
   return found.sort(byCodePoint);
 }
 
-/** Today's joins: for each run in each story and each kit's whole story, the Sames it files, one line each. */
+/** Today's joins: for each run in each story and each kit's whole story, what the matcher files, one line each. */
 async function joinsNow(): Promise<string[]> {
   const lines: string[] = [];
   for (const { label, scoped } of await allRuns())
-    for (const same of await samesIn(
+    for (const filed of await filedIn(
       scoped.files.map(([path, text]) => [path, text]),
     ))
-      lines.push(`${label} | ${same}`);
+      lines.push(`${label} | ${filed}`);
   const local = await localVocabulary(ROOT);
-  const judgments = local.layout.place(`${CASCADE}Judgment`).folder ?? "";
+  const folders = [`${CASCADE}Judgment`, `${CASCADE}FindingForReview`].map(
+    (type) => local.layout.place(type).folder ?? "",
+  );
   for (const kit of (await featuresOf(local.files)).filter((path) =>
     path.startsWith("conformance/"),
   )) {
     const { pod } = await featurePod(local, kit, new MemoryFiles(ADDRESS));
     const files: [string, Uint8Array][] = [];
-    for (const path of await pod.list(judgments))
-      files.push([path, (await pod.read(path)) ?? new Uint8Array()]);
-    for (const same of await samesIn(files)) lines.push(`${kit} | ${same}`);
+    for (const folder of folders)
+      for (const path of await pod.list(folder))
+        files.push([path, (await pod.read(path)) ?? new Uint8Array()]);
+    for (const filed of await filedIn(files)) lines.push(`${kit} | ${filed}`);
   }
   return lines.sort(byCodePoint);
 }
@@ -250,30 +357,28 @@ async function joinsNow(): Promise<string[]> {
 /**
  * Narrowing the pairs a rule compares must leave its joins as they are. `joins.golden.txt` holds today's: for each run
  * that takes records in each story of the feature files, and for each kit's whole story, the Sames filed, as the rule's
- * name and the members it joined. To write it again after a change to the vocabulary's names or rules, run this file
- * with `UPDATE_JOINS_GOLDEN=1`.
+ * name and the members it joined, and the findings for review, as their body and their targets; and the runs of
+ * `joins-extra/`, which cover what no story does. To write it again after a change to the vocabulary's names or rules,
+ * run this file with `UPDATE_JOINS_GOLDEN=1`: it writes the file and fails, so a run that writes is never green.
  * @rule runtime/matcher.feature M1
  * @rule runtime/matcher.feature M4a
  */
 describe("Holding the matcher's joins to those of today · CorePod.match()", () => {
   describe("given each run that takes records in the stories of the feature files, and each kit's whole story", () => {
-    it("files the Sames of `joins.golden.txt`, each by its rule and its members", async () => {
+    it("files the Sames and the findings of `joins.golden.txt`, each as it is, no line missing, extra or twice", async () => {
       const now = await joinsNow();
       assert.ok(now.length > 0, "no run filed a Same");
       if (process.env["UPDATE_JOINS_GOLDEN"] === "1") {
         await writeFile(GOLDEN, `${now.join("\n")}\n`);
-        return;
+        assert.fail(
+          "wrote joins.golden.txt: read its diff, then run again without UPDATE_JOINS_GOLDEN",
+        );
       }
       const golden = (await readFile(GOLDEN, "utf8"))
         .split("\n")
-        .filter((line) => line !== "");
-      assert.deepEqual(
-        {
-          missing: golden.filter((line) => !now.includes(line)),
-          extra: now.filter((line) => !golden.includes(line)),
-        },
-        { missing: [], extra: [] },
-      );
+        .filter((line) => line !== "")
+        .sort(byCodePoint);
+      assert.deepEqual(now, golden);
     });
   });
 });
