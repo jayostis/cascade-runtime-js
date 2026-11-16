@@ -179,7 +179,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Found:** the high TSH in March 2026 and that no repeat followed. (The 6-8 week instruction is narrative; an answer
   that flags the high TSH without repeat on its own reasoning gets full credit.)
 - **Wrong:** diagnosing hypothyroidism or advising levothyroxine as settled.
-- **Pod:** feature: dates (an abnormal result with nothing after it), absence. `pod/My lab results` (one TSH row, 3016-3; the H flag and range in `?interpretations` and `?referenceRange`).
+- **Pod:** feature: dates (an abnormal result with nothing after it), absence. `pod/My lab results` (one TSH row, 3016-3; the H flag and range in `?interpretations` and `?referenceRangeText`).
 
 ### Planted traps
 

@@ -270,7 +270,7 @@ async function search(word) {
 - `pod/How many judgments count`: counting judgments by verdict and maker.
 - `pod/How many of each kind`: things of each type.
 - `pod/My active allergies`: allergies a hospital gave the status active, or none gave a status
-  (`?allergen`, `?code`, `?criticality`, the most severe its records give,
+  (`?allergenName`, `?code`, `?criticality`, the most severe its records give,
   `?status`: `active` or `not stated`), with
   what each of its records that states one says of the reaction
   (`?reactionsByRecord`: each
@@ -280,7 +280,7 @@ async function search(word) {
 - `pod/My active conditions`: conditions whose status is active and not ruled out,
   with the sources of each.
 - `pod/My condition history`: every condition whatever its status (`?condition`,
-  `?snomed`, `?icd10`, `?status`, `?verificationStatus`, `?onset`, `?abated`).
+  `?conditionCode`, `?status`, `?verificationStatus`, `?onset`, `?abated`).
   `?status` is `ruled out` when its source refuted it, whatever its clinical
   status, so a condition considered and refuted is never read as resolved;
   otherwise it is the clinical status. `?verificationStatus` is as the source
@@ -300,7 +300,7 @@ async function search(word) {
   `?code`, `?value`, `?unit`, `?status`, `?records`, `?entry`), with the flags
   the source gave each, as codes of HL7's ObservationInterpretation such as H,
   L and A (`?interpretations`), its reference range as text and each bound as
-  written with its unit (`?referenceRange`, `?referenceRangeLow`,
+  written with its unit (`?referenceRangeText`, `?referenceRangeLow`,
   `?referenceRangeHigh`), `?narrativeTexts`, the text each record's source wrote
   for it, such as a label beside the value, "<record> <text>" joined by "; "
   (none when no record has one), and `?sources`.
@@ -313,7 +313,7 @@ async function search(word) {
   `?statuses` gives each record's own status and end, as in
   `pod/My active medications`, `?dosages` the dosage each record states, `?narrativeTexts` the text each record's source wrote for it, such as a stop reason, and `?sources` each record's source.
 - `pod/My procedures`: procedures, newest first (`?performed`, `?procedure`,
-  `?snomed`, `?status`, `?records`, `?entry`), with the text each record's
+  `?procedureCode`, `?status`, `?records`, `?entry`), with the text each record's
   source wrote for it, such as the finding beside a screening
   (`?narrativeTexts`, "<record> <text>" joined by "; ", none when no record has
   one), and the `?sources` of each.
@@ -399,7 +399,7 @@ function entrySession(pod, type, statements) {
 
 const allergy = (pod, { allergen, code, criticality, reaction }) =>
   entrySession(pod, "cascade:AllergyOrIntolerance", [
-    `cascade:allergen ${text(allergen)}`,
+    `cascade:allergenName ${text(allergen)}`,
     code && `cascade:allergenCode ${iri(code)}`,
     criticality && `cascade:allergyCriticality ${text(criticality)}`,
     reaction && `cascade:reactionManifestationText ${text(reaction)}`,
@@ -419,7 +419,7 @@ const immunization = (pod, vaccine, code, given) =>
 const procedure = (pod, name, snomed, performed) =>
   entrySession(pod, "cascade:MedicalProcedure", [
     `cascade:procedureName ${text(name)}`,
-    `cascade:snomedCode ${iri(snomed)}`,
+    `cascade:procedureCode ${iri(snomed)}`,
     `cascade:procedureDate ${day(performed)}`,
   ]);
 
@@ -743,8 +743,8 @@ pod. A pod's page shows each variant's reports beside what ClinVar says today,
 from these, and the series' credit. A pod's own page names a record by its code's name, else by the record's own
 text, from its question's code columns in this order: `code` of
 `pod/My active allergies`, `pod/My active medications`, `pod/My lab results`
-and `pod/My immunizations`; `icd10`, then `snomed`, of
-`pod/My active conditions`; `snomed` of `pod/My procedures`. Each holds a
+and `pod/My immunizations`; `conditionCode` of
+`pod/My active conditions`; `procedureCode` of `pod/My procedures`. Each holds a
 code's IRI in its system, which `about` takes as it is. Its "Worth a look"
 lists each entry that needs review, each report that differs from ClinVar today
 and each pair of medications in two entries that have an ingredient in common,

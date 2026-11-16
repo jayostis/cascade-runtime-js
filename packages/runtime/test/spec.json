@@ -303,7 +303,7 @@
     },
     {
       "term": "IRI",
-      "definition": "the name of one thing, written as an address, such as `urn:uuid:3b9e2d47-8c15-4f6a-a0d2-7e5c1b9f4a63` or `https://ns.cascadeprotocol.org/cascade#allergen`; it need not be one a browser can open.",
+      "definition": "the name of one thing, written as an address, such as `urn:uuid:3b9e2d47-8c15-4f6a-a0d2-7e5c1b9f4a63` or `https://ns.cascadeprotocol.org/cascade#allergenName`; it need not be one a browser can open.",
       "aliases": ["IRIs"]
     },
     {
@@ -666,7 +666,7 @@
     },
     {
       "term": "term",
-      "definition": "one word the vocabulary defines, named by an IRI, a web-style identifier such as `https://ns.cascadeprotocol.org/cascade#allergen`.",
+      "definition": "one word the vocabulary defines, named by an IRI, a web-style identifier such as `https://ns.cascadeprotocol.org/cascade#allergenName`.",
       "aliases": ["terms"]
     },
     {
