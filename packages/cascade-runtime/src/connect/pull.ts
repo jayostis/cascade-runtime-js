@@ -7,6 +7,7 @@ import { type Connection, FHIR_ID, held } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
 import { limited, type Limits, type QueryPlan, type Search } from "./plan.js";
 import { type Answer, parsed, Requests } from "./requests.js";
+import { acceptOptions } from "../options.js";
 
 export interface PulledEntry {
   /** `<fhirBase>/<type>/<id>`. */
@@ -118,6 +119,7 @@ export async function pull(
   plan: QueryPlan,
   options: PullOptions = {},
 ): Promise<Pull> {
+  acceptOptions("pull", options, { limits: true, now: true, signal: true });
   const { token, fetch } = held(connection);
   const now = options.now ?? (() => new Date());
   const requests = new Requests(fetch, limited(options.limits), options.signal);

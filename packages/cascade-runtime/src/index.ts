@@ -1,6 +1,7 @@
 import { dirname, join, resolve as absolute } from "node:path";
 import { argon2id } from "@cascade-runtime/runtime/node";
 import { resolved } from "./node/resolved.js";
+import { acceptOptions } from "./options.js";
 import { checkedOutcome, startedOutcome } from "./outcomes.js";
 import type { Phase } from "./phase.js";
 import { checkFolderSecret, openFolderPod } from "./node/folder-pod.js";
@@ -171,6 +172,7 @@ export async function openPod(
   folder?: string,
   options: { title?: string; secret?: string } = {},
 ): Promise<Pod> {
+  acceptOptions("openPod", options, { title: true, secret: true });
   const parts = await resolved();
   return openFolderPod(
     folder === undefined

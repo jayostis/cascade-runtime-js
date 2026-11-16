@@ -7,6 +7,7 @@ import {
   type Registration,
 } from "./plan.js";
 import { type Fetch, parsed, Requests } from "./requests.js";
+import { acceptOptions } from "../options.js";
 
 /** Takes the person to the hospital's authorize URL, and gives back the URL the hospital redirected them to. */
 export type SignIn = (authorize: URL, signal?: AbortSignal) => Promise<URL>;
@@ -121,6 +122,13 @@ export async function connect(
   registration: Registration,
   options: ConnectOptions,
 ): Promise<Connection> {
+  acceptOptions("connect", options, {
+    signIn: true,
+    fetch: true,
+    now: true,
+    limits: true,
+    signal: true,
+  });
   const fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
   const now = options.now ?? (() => new Date());
   const requests = new Requests(fetch, limited(options.limits), options.signal);
@@ -329,6 +337,7 @@ export async function serverReport(
   connection: Connection,
   options: ReportOptions = {},
 ): Promise<SavedConnect> {
+  acceptOptions("serverReport", options, { limits: true, signal: true });
   const { fetch } = held(connection);
   const requests = new Requests(fetch, limited(options.limits), options.signal);
   const url = new URL(`${connection.fhirBase}/metadata`);

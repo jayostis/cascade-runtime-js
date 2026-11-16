@@ -43,7 +43,7 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
     const calls: [string, (options: never) => unknown][] = [
       ["openPod", (options) => openPod(undefined, options)],
       ["pod.import", (options) => pod.import("x", options)],
-      ["pod.connect", (options) => pod.connect({}, options)],
+      ["pod.connect", (options) => pod.connect(new Map(), options)],
       ["pod.enter", (options) => pod.enter("", options)],
       ["pod.ask", (options) => pod.ask("pod/My active allergies", options)],
       ["connect", (options) => connect({} as never, {} as never, options)],
@@ -66,9 +66,7 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
 
     for (const [name, call] of calls)
       it(`throws from \`${name}\`, naming the call and the key`, async () => {
-        const message = await refusedWith(() =>
-          call({ stale: true } as never),
-        );
+        const message = await refusedWith(() => call({ stale: true } as never));
         assert.ok(message.includes(`${name} does not take`), message);
         assert.ok(message.includes("stale"), message);
       });
@@ -96,7 +94,9 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
 
     it("says only that it does not take the key, for a name another call renamed", async () => {
       assert.equal(
-        await refusedWith(() => pod.ask("pod/My active allergies", { claim: true } as never)),
+        await refusedWith(() =>
+          pod.ask("pod/My active allergies", { claim: true } as never),
+        ),
         "pod.ask does not take claim: it takes lens.",
       );
     });

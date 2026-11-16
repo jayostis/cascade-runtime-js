@@ -15,6 +15,7 @@ import { tablesBeside } from "../index.js";
 import type { Phase } from "../phase.js";
 import { shipped, Tables } from "../tables.js";
 import { installedParts, resolved } from "./resolved.js";
+import { acceptOptions } from "../options.js";
 
 const KITS = "conformance/";
 
@@ -85,6 +86,7 @@ export async function kitStory(
   kit: string,
   options: { through?: string } = {},
 ) {
+  acceptOptions("kitStory", options, { through: true });
   return featureStory(
     (await withKit((await installedParts()).local, kit)).files,
     `${KITS}${kit}/${kit}.feature`,
@@ -160,6 +162,7 @@ export async function replayKit(
   folder: string,
   options: { through?: string; tables?: Tables } = {},
 ): Promise<readonly KitStep[]> {
+  acceptOptions("replayKit", options, { through: true, tables: true });
   return replayKitFrom(await kitVocabulary(kit), kit, folder, options);
 }
 
