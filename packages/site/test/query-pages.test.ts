@@ -18,6 +18,7 @@ const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const TREE = "https://github.com/jayostis/cascade-vocabulary/tree/abc123/";
 const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/abc123/";
 const text = (value: string) => new TextEncoder().encode(value);
+const plain = (html = ""): string => html.replace(/<[^>]*>/g, "");
 const read = (tree: ReadonlyMap<string, Uint8Array>, path: string) =>
   new TextDecoder().decode(tree.get(path));
 
@@ -284,7 +285,7 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
   });
 
   describe("given a question with more rows than a page shows", () => {
-    it("shows the first hundred and says how many there are", async () => {
+    it("shows the first ten, says how many there are and links the explorer and the file for the rest", async () => {
       const files = await vocabulary();
       const tree = await build(
         files,
@@ -295,11 +296,51 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
       );
       assert.ok(page);
       const html = read(tree, page);
-      assert.equal((html.match(/<tr><td/g) ?? []).length, 100);
-      assert.match(readPage(html).said, /first 100 of 130 rows/);
-      assert.ok(
-        readPage(html, page).hrefs.includes("alex-rivera/answers.json"),
+      assert.equal((html.match(/<tr><td/g) ?? []).length, 10);
+      assert.match(readPage(html).said, /first 10 of 130 rows/);
+      const { hrefs } = readPage(html, page);
+      assert.ok(hrefs.includes("alex-rivera/answers.json"));
+      assert.ok(hrefs.includes("alex-rivera/index.html"));
+    });
+
+    it("shows all of ten rows and names no rest", async () => {
+      const files = await vocabulary();
+      const tree = await build(
+        files,
+        alex({
+          "pod/My vaccines": { key: "k", rows: manyRows.slice(0, 10) },
+        }),
       );
+      const html = read(
+        tree,
+        [...tree.keys()].find((path) => read(tree, path).includes("Shot 9")) ??
+          "",
+      );
+      assert.equal((html.match(/<tr><td/g) ?? []).length, 10);
+      assert.match(readPage(html).said, /10 rows, as/);
+      assert.doesNotMatch(readPage(html).said, /first 10 of/);
+    });
+  });
+
+  describe("given a view of more entries than a page shows", () => {
+    it("shows the first ten entries and says how many there are", async () => {
+      const files = await vocabulary();
+      const example = alex();
+      const explorer = JSON.parse(read(example.site, "explorer.json"));
+      explorer.views[0].entries = Array.from({ length: 14 }, (_, n) => ({
+        id: `clinical/vaccines.ttl#e${n}`,
+        label: `Shot ${n}`,
+        page: `entries/shot-${n}.html`,
+        fields: [{ term: "cascade:vaccineCode", entry: "CVX 207" }],
+      }));
+      (example.site as Map<string, Uint8Array>).set(
+        "explorer.json",
+        text(JSON.stringify(explorer)),
+      );
+      const tree = await build(files, example);
+      const html = read(tree, "queries/views/vaccines.html");
+      assert.equal((html.match(/<tr><td/g) ?? []).length, 10);
+      assert.match(readPage(html).said, /first 10 of 14 rows/);
     });
   });
 
@@ -355,24 +396,144 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
     });
   });
 
-  describe("given a query whose comment is one sentence longer than a line", () => {
-    it("cuts its line of the index at a word with an ellipsis, and keeps the whole comment on its page", async () => {
+  describe("given a query with a leading comment", () => {
+    it("shows the comment once, as prose, and the query without it", async () => {
       const files = await vocabulary();
-      const long = `Each ${"entry of a very long kind ".repeat(20)}ends here.`;
       await files.write(
-        "queries/lenses/long.rq",
-        text(`# ${long}
-SELECT ?s WHERE { ?s ?p ?o }
+        "queries/lenses/middle.rq",
+        text(`# Purpose of the middle one.
+SELECT ?s WHERE {
+  # a note inside the query
+  ?s ?p ?o }
 `),
       );
       const tree = await build(files, alex());
-      const line = readPage(read(tree, "queries/index.html")).said;
-      assert.match(line, /Each entry of a very long kind .*[a-z]…/);
-      assert.ok(!line.includes("ends here"));
-      assert.match(
-        readPage(read(tree, "queries/lenses/long.html")).said,
-        /ends here./,
+      const view = readPage(read(tree, "queries/views/vaccines.html"));
+      assert.equal(
+        view.said.split("Each vaccination with its code.").length - 1,
+        1,
       );
+      assert.equal(view.code.length, 1);
+      assert.ok(plain(view.code[0])?.startsWith("PREFIX cascade:"));
+      const middle = readPage(read(tree, "queries/lenses/middle.html"));
+      assert.ok(plain(middle.code[0])?.startsWith("SELECT ?s WHERE"));
+      assert.match(plain(middle.code[0]) ?? "", /# a note inside the query/);
+    });
+
+    it("shows a query with no comment as it is", async () => {
+      const tree = await build(await vocabulary(), alex());
+      const bare = readPage(read(tree, "queries/labels/labels.html"));
+      assert.equal(plain(bare.code[0]), "SELECT ?s WHERE { ?s ?p ?o }\n");
+    });
+  });
+
+  describe("given a query whose comment numbers its steps", () => {
+    it("shows the steps as a numbered list, each step on its wrapped lines one item, and the rest as paragraphs", async () => {
+      const files = await vocabulary();
+      await files.write(
+        "queries/tables/steps.rq",
+        text(`# Each class of a code. A join is made on exact evidence:
+#   1. a row on the code itself is the code's class;
+#   2. else, the code maps to an ingredient, and
+#      the ingredient bears the class;
+#   3. else, none.
+#
+# A second paragraph.
+SELECT ?s WHERE { ?s ?p ?o }
+`),
+      );
+      const html = read(
+        await build(files, alex()),
+        "queries/tables/steps.html",
+      );
+      const items = [...html.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(
+        ([, item]) => item,
+      );
+      assert.deepEqual(items, [
+        "a row on the code itself is the code&#39;s class;",
+        "else, the code maps to an ingredient, and the ingredient bears the class;",
+        "else, none.",
+      ]);
+      assert.match(html, /<ol[^>]*>\s*<li>a row/);
+      assert.match(
+        html,
+        /<p class="prose">Each class of a code\. A join is made on exact evidence:<\/p>/,
+      );
+      assert.match(html, /<p class="prose">A second paragraph\.<\/p>/);
+    });
+  });
+
+  describe("given matcher rules whose rule list says the class each applies to", () => {
+    const run = (what: string) =>
+      `# Two ${what} match when their current versions share a code, the documents they come from name one organization, and the shorter text begins the longer, a record its source sends again as it grows, a long run-on sentence that never stops for a full stop in all its length and keeps going.
+SELECT ?s WHERE { ?s ?p ?o }
+`;
+    const LIST = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination , cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-code-and-date.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-result.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code.rq" .
+`;
+    const folded = (html: string, summary: string) =>
+      new RegExp(
+        `<details class="family"><summary>${summary}</summary>([\\s\\S]*?)</details>`,
+      ).exec(html)?.[0];
+    const names = (html: string | undefined) =>
+      readPage(html ?? "").hrefs.map((href) => href.split("/").at(-1));
+
+    it("folds the rules under the label of the class each applies to, with a count, a rule of two classes under both, and a rule of none under Other", async () => {
+      const files = await vocabulary();
+      await files.write(
+        "ontologies/cascade.ttl",
+        text(
+          `${ONTOLOGY}cascade:LaboratoryTestResult a owl:Class ; rdfs:label "Laboratory test result"@en .\n`,
+        ),
+      );
+      await files.write("runtime/rule-list/v1.ttl", text(LIST));
+      for (const name of [
+        "same-code",
+        "same-code-and-date",
+        "same-result",
+        "same-ndc-code",
+      ])
+        await files.write(`queries/matcher/${name}.rq`, text(run(name)));
+      const html = read(await build(files, alex()), "queries/index.html");
+      assert.deepEqual(
+        names(folded(html, "Laboratory test result · 2 rules")),
+        ["same-code-and-date.html", "same-result.html"],
+      );
+      assert.deepEqual(names(folded(html, "Vaccination · 2 rules")), [
+        "same-code.html",
+        "same-code-and-date.html",
+      ]);
+      assert.deepEqual(names(folded(html, "Other · 1 rule")), [
+        "same-ndc-code.html",
+      ]);
+      const order = ["Laboratory test result", "Vaccination", "Other"].map(
+        (label) => html.indexOf(`<summary>${label} · `),
+      );
+      assert.deepEqual(
+        order,
+        [...order].sort((a, b) => a - b),
+      );
+      assert.ok(order.every((at) => at > 0));
+    });
+
+    it("shows each rule's whole first sentence, so rules that differ late in it read differently", async () => {
+      const files = await vocabulary();
+      for (const name of ["a", "b"])
+        await files.write(
+          `queries/matcher/same-code-${name}.rq`,
+          text(`# ${"Two records of one kind give a finding when their current versions give one test code, ".repeat(3)}and ${name === "a" ? "one value" : "two values"} bound per side.
+SELECT ?s WHERE { ?s ?p ?o }
+`),
+        );
+      const line = readPage(
+        read(await build(files, alex()), "queries/index.html"),
+      ).said;
+      assert.match(line, /and one value bound per side\./);
+      assert.match(line, /and two values bound per side\./);
+      assert.doesNotMatch(line, /…/);
     });
   });
 

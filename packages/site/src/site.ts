@@ -33,7 +33,7 @@ import {
   explorerPage,
 } from "./explorer-app.js";
 import type { Chrome } from "./html.js";
-import { addressesOf } from "./links.js";
+import { addressesOf, queryAddresses } from "./links.js";
 import { navOf, pages } from "./pages.js";
 import { numberOf } from "./spec.js";
 import { STYLESHEET } from "./stylesheet.js";
@@ -64,6 +64,8 @@ export interface SiteOptions {
   readonly terms?: string;
   /** The hub's front page's address from the site's root; without one, the site's pages link nowhere back. */
   readonly front?: string;
+  /** The query pages' folder from the site's root, with its slash; without one, a question with no rows links no page. */
+  readonly queries?: string;
   /** The spec's pages' folder from the site's root, with its slash; without one, a view names no rule. */
   readonly spec?: string;
   /** The vocabulary's conformance kit the pod was built from, `conformance/<kit>/<kit>.feature`; a pod built from none, or a person's own, has none. */
@@ -169,6 +171,8 @@ export class Site {
     views: readonly Term[],
     /** The rules of the spec that name each view, by its IRI; none without the spec's folder. */
     readonly rules: ReadonlyMap<string, readonly SpecRule[]>,
+    /** Each query's page from the site's root, as the query pages are named, by its path in the vocabulary. */
+    readonly queryPages: ReadonlyMap<string, string>,
   ) {
     this.questions = answers.get(options.lens) ?? new Map();
     this.things = things;
@@ -328,6 +332,9 @@ export class Site {
       built,
       views,
       rules,
+      await queryAddresses(
+        (await vocabulary.list(QUERIES)).filter((path) => path.endsWith(".rq")),
+      ),
     );
   }
 

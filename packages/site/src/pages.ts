@@ -4,10 +4,16 @@ import {
   type Triple,
   written,
 } from "@cascade-runtime/runtime";
-import type { Answer } from "./answer.js";
+import { type Answer, withoutComment } from "./answer.js";
 import { type Content, Html, markup, shell } from "./html.js";
 import { namedInQuery } from "./term-reference.js";
-import { noteHref, ruleHref, sharedPageOf, termHref } from "./links.js";
+import {
+  noteHref,
+  QUERIES_FOLDER,
+  ruleHref,
+  sharedPageOf,
+  termHref,
+} from "./links.js";
 import type { Site } from "./site.js";
 import {
   CALLED,
@@ -118,7 +124,7 @@ ${about}${graphdb}`;
 ${inner}
 <details>
 <summary>The query: <code>${answer.query.path}</code>${source}</summary>
-<pre><code>${answer.query.text}</code></pre>${using}${runIt}
+<pre><code>${withoutComment(answer.query.text)}</code></pre>${using}${runIt}
 </details>
 </section>`;
 }
@@ -127,7 +133,6 @@ function rowsTable(site: Site, answer: Answer): Html {
   const linked = answer.lens === site.options.lens;
   const columns = answer.shown;
   const count = answer.rows.length;
-  if (count === 0) return markup`<p class="count">No rows.</p>`;
   const cell = (row: Answer["rows"][number], column: string): Html => {
     const value = row.get(column);
     return markup`<td data-label="?${column}">${value !== undefined && term(site, value, row.get(`${column}Label`), linked)}</td>`;
@@ -142,7 +147,20 @@ ${answer.rows.map((row) => markup`<tr>${columns.map((column) => cell(row, column
 <p class="count">${count} ${count === 1 ? "row" : "rows"}</p>`;
 }
 
+/** A question that returned no row, in one line: its title, none, and the question's own page when the site knows where the queries are. */
+function none(site: Site, answer: Answer, lensed: boolean): Html {
+  const { queries } = site.options;
+  const address = site.queryPages.get(answer.query.path);
+  const href =
+    queries === undefined || address === undefined
+      ? undefined
+      : `${queries}${address.slice(QUERIES_FOLDER.length)}`;
+  return markup`<p class="none"><strong>${answer.title}</strong>: none${lensed && ` under the ${answer.lens} lens`}.${href !== undefined && markup` <a href="${href}">The question</a>`}</p>
+`;
+}
+
 function question(site: Site, answer: Answer, lensed = false): Html {
+  if (answer.rows.length === 0) return none(site, answer, lensed);
   return block(site, answer, [
     lensed && markup`<p class="lens">Under the ${answer.lens} lens.</p>\n`,
     answer.about !== undefined &&

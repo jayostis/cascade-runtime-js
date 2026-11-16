@@ -88,9 +88,10 @@ const BRIDGE_SPEC = {
 /** Where an adapter explorer's link to the hub's conformance report for the adapter points. */
 const HUB = "https://jayostis.github.io/cascade-runtime-js/";
 const log = (line: string): void => console.error(line);
-/** The hub's folders of the term reference and the spec's pages. */
+/** The hub's folders of the term reference, the spec's pages and the queries' pages. */
 const TERMS = "terms/";
 const SPEC_FOLDER = "spec/";
+const QUERIES = "queries/";
 
 interface Target {
   readonly name: string;
@@ -139,13 +140,14 @@ function chromeOf(values: {
 }
 
 /** Where a kit's site, in a folder of the hub, finds the hub's pages it links: those a section of the hub writes. */
-function inHub(): Pick<SiteOptions, "front" | "terms" | "spec"> {
+function inHub(): Pick<SiteOptions, "front" | "terms" | "spec" | "queries"> {
   const written = (path: string) =>
     SECTIONS.some((section) => section.path === path);
   return {
     front: `../${FRONT_PAGE}`,
     ...(written(`${TERMS}index.html`) && { terms: `../${TERMS}` }),
     ...(written(`${SPEC_FOLDER}index.html`) && { spec: `../${SPEC_FOLDER}` }),
+    ...(written(`${QUERIES}index.html`) && { queries: `../${QUERIES}` }),
   };
 }
 
@@ -155,7 +157,9 @@ function inHub(): Pick<SiteOptions, "front" | "terms" | "spec"> {
  */
 async function buildExampleSite(
   args: string[],
-  hub: Partial<Pick<SiteOptions, "front" | "terms" | "spec" | "chrome">> = {},
+  hub: Partial<
+    Pick<SiteOptions, "front" | "terms" | "spec" | "queries" | "chrome">
+  > = {},
 ): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
@@ -180,7 +184,7 @@ async function writeSite(
   { name, pod, named, own }: Target,
   outFolder: string | undefined,
   lens: string | undefined,
-  hub: Pick<SiteOptions, "front" | "terms" | "spec" | "chrome">,
+  hub: Pick<SiteOptions, "front" | "terms" | "spec" | "queries" | "chrome">,
 ): Promise<number> {
   const { iri } = vocabulary.resolved;
   const kit = `conformance/${name}`;
