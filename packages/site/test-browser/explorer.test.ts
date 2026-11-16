@@ -908,7 +908,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
           ).startsWith("Loading"),
       );
       const turtle = (await tab.locator("#ins pre.turtle").textContent()) ?? "";
-      assert.ok(turtle.includes("mergedFrom"), "the entry's own statements");
+      assert.ok(turtle.includes("entryMember"), "the entry's own statements");
       const siblings = joined.views
         .flatMap((view) => view.entries)
         .filter(

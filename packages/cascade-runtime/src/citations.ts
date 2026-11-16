@@ -1336,7 +1336,7 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
 export const POD_NOT_CHECKABLE: readonly string[] = [
   "type",
   "leadMember",
-  "mergedFrom",
+  "entryMember",
   "statusFrom",
   "dateFrom",
   "medicationUseStartDateFrom",
