@@ -987,6 +987,8 @@ export const EXPLORER_STYLE = String.raw`body.explorer main { max-width: none; m
 #explorer .tw-x { overflow-x: auto; }
 #explorer table.et td:first-child, #explorer table.et th:first-child { white-space: nowrap; position: sticky; left: 0; background: var(--bg, #fff); }
 #explorer table.et th:not(:first-child) { white-space: normal; min-width: 7.5rem; max-width: 12rem; overflow-wrap: anywhere; font-weight: 500; font-size: .8rem; }
+#explorer table.et { width: max-content; min-width: 100%; }
+#explorer table.et td:not(:first-child) { min-width: 11rem; max-width: 18rem; overflow-wrap: anywhere; }
 #explorer table.et th a { display: inline-block; }
 #explorer table.et th small { display: block; }
 #explorer table .num, #explorer th.num { text-align: right; }

@@ -1132,7 +1132,10 @@ describe("Checking a citation of a view entry · checkCitation(), podRowsSource(
   const texts = rowsOf({
     [lisinopril]: [
       { field: `${NS}drugName`, value: "lisinopril 10 MG Oral Tablet" },
-      { field: `${NS}dosageInstructionText`, value: "1 tablet by mouth every morning" },
+      {
+        field: `${NS}dosageInstructionText`,
+        value: "1 tablet by mouth every morning",
+      },
     ],
     [colonoscopy]: [
       { field: `${NS}procedureName`, value: "Colonoscopy" },
