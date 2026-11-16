@@ -24,6 +24,7 @@ import {
   repositoryName,
   WasmBridge,
 } from "@cascade-runtime/runtime";
+import { breakingSince } from "./breaking.js";
 import {
   BRIDGE_REPOSITORY,
   checkout,
@@ -449,6 +450,31 @@ async function packMcp(commit: string, runtime: Manifest): Promise<string> {
   return (await npmPack(MCP_STAGE)).filename;
 }
 
+/**
+ * What the pull requests merged since the previous build say they break, for the release of a push to main; empty
+ * anywhere else, where no release is made. A refusal from GitHub fails the build rather than drop a line.
+ */
+async function breakingChanges(commit: string): Promise<string> {
+  const { GITHUB_EVENT_NAME, GITHUB_REPOSITORY, GITHUB_TOKEN } = process.env;
+  if (
+    GITHUB_EVENT_NAME !== "push" ||
+    GITHUB_REPOSITORY === undefined ||
+    GITHUB_TOKEN === undefined
+  )
+    return "";
+  return await breakingSince(GITHUB_REPOSITORY, commit, async (path) => {
+    const response = await fetch(`https://api.github.com${path}`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+      },
+    });
+    if (!response.ok)
+      throw new Error(`GitHub answered ${response.status} to ${path}`);
+    return await response.json();
+  });
+}
+
 function releaseNotes(
   address: string,
   mcp: string,
@@ -456,8 +482,10 @@ function releaseNotes(
   integrity: string,
   resolved: readonly Resolved[],
   bridge: Packed["bridge"],
+  breaking: string,
 ): string {
   return [
+    ...(breaking === "" ? [] : [breaking]),
     "```sh",
     `npm install ${address}`,
     "```",
@@ -539,6 +567,7 @@ async function main(): Promise<void> {
       integrity,
       resolved,
       bridge,
+      await breakingChanges(commit),
     ),
   );
   log(

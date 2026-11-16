@@ -16,7 +16,8 @@ const CHECK = fileURLToPath(
   new URL("../../../../scripts/breaking-check.mjs", import.meta.url),
 );
 
-const body = (section: string) => `Closes #1\n\n## Breaking\n${section}\n\n## Tests\nran\n`;
+const body = (section: string) =>
+  `Closes #1\n\n## Breaking\n${section}\n\n## Tests\nran\n`;
 
 /** GitHub as `breakingSince` reads it: an answer for each path, and a refusal for any other. */
 const github =
@@ -35,7 +36,9 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
     it("returns the lines of the section, each without its bullet", () => {
       assert.deepEqual(
         breakingOf(
-          body("- `aboutSubject` -> `claim`\n* `look` -> removed\n\n`claimed` -> `claimedProfiles`"),
+          body(
+            "- `aboutSubject` -> `claim`\n* `look` -> removed\n\n`claimed` -> `claimedProfiles`",
+          ),
         ),
         {
           lines: [
@@ -55,10 +58,9 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
     });
 
     it("reads a body written with Windows line ends", () => {
-      assert.deepEqual(
-        breakingOf(body("- a -> b").replaceAll("\n", "\r\n")),
-        { lines: ["a -> b"] },
-      );
+      assert.deepEqual(breakingOf(body("- a -> b").replaceAll("\n", "\r\n")), {
+        lines: ["a -> b"],
+      });
     });
 
     it("stops the section at the next heading", () => {
@@ -166,7 +168,9 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
               commits: full,
             },
             "/repos/o/r/compare/build-prev...new?per_page=100&page=2":
-              answers["/repos/o/r/compare/build-prev...new?per_page=100&page=1"],
+              answers[
+                "/repos/o/r/compare/build-prev...new?per_page=100&page=1"
+              ],
           }),
         ),
         "## Breaking changes\n\n- a -> b (#5)\n",
@@ -187,7 +191,8 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
     });
 
     it("throws when GitHub refuses a pull request, so a build never omits a line unseen", async () => {
-      const { "/repos/o/r/pulls/6": _, ...without } = answers;
+      const without: Record<string, unknown> = { ...answers };
+      delete without["/repos/o/r/pulls/6"];
       await assert.rejects(
         breakingSince("o/r", "new", github(without)),
         /GitHub refused \/repos\/o\/r\/pulls\/6/,

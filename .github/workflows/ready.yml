@@ -18,6 +18,22 @@ jobs:
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
         with:
           check: ready-to-merge
+      # The body is read from the event, which an edit re-fires this workflow with; check.yml is not re-run by one.
+      - uses: actions/checkout@v7
+        if: ${{ !cancelled() }}
+        with:
+          path: breaking-tool
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/breaking-check.mjs
+            packages/cascade-runtime/pack/breaking.ts
+      - uses: actions/setup-node@v5
+        if: ${{ !cancelled() }}
+        with:
+          node-version: "24"
+      - name: the body lists what it breaks
+        if: ${{ !cancelled() }}
+        run: node breaking-tool/scripts/breaking-check.mjs
 
   rerun-when-edited:
     if: github.event.action == 'edited'
