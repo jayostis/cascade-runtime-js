@@ -839,6 +839,7 @@
     "guide.test.ts",
     "launcher-sandbox.test.ts",
     "outcomes.test.ts",
+    "pack-breaking.test.ts",
     "pack-dependencies.test.ts",
     "people-copies.test.ts",
     "pod-links.test.ts",
@@ -865,6 +866,7 @@
     "Row files kept between builds of the package",
     "Starter copies of the reference tables, as the package is built with them",
     "Transpiling before the tests · scripts/transpile.mjs",
+    "Breaking changes in a build's notes · breakingOf(), mergedPullRequests(), breakingNotes(), breakingSince()",
     "Dependencies of the packed package · mergedDependencies(), undeclaredImports(), vendored()",
     "Annotating a red run's failures · failure-annotations.ts",
     "Tripwire: copies of the kits' data kept in other repositories"
@@ -882,6 +884,7 @@
     "kinds-read.test.ts",
     "launcher-sandbox.test.ts",
     "outcomes.test.ts",
+    "pack-breaking.test.ts",
     "pack-dependencies.test.ts",
     "people-copies.test.ts",
     "pod-links.test.ts",
