@@ -122,6 +122,7 @@ const unescaped = (text) =>
 const linksOf = (html) =>
   [...html.matchAll(/<[^<>]*>/g)]
     .filter(([tag]) => !/\srel=["']?(?:preconnect|dns-prefetch)\b/i.test(tag))
+    .filter(([tag]) => !/^<base\s/i.test(tag))
     .flatMap(([tag]) =>
       [...tag.matchAll(/\s(?:href|src)=(?:"([^"]*)"|'([^']*)')/g)].map(
         ([, a, b]) => unescaped(a ?? b ?? ""),
@@ -465,6 +466,22 @@ const isFrontPage = (address) =>
  */
 const EXPLORER_PAGE = /^adapters\/[^/]+\/(?:index\.html)?$/;
 
+/** The files an explorer's page reads when a reader opens a place (`nodes/<n>.html`): parts of the explorer, not pages of the hub. */
+const EXPLORER_PART = /^adapters\/[^/]+\/nodes\/[^/]+\.html$/;
+
+/** Where a page's links are written from: its `base`, for a fragment that is read into another page and also opened alone. */
+const baseOf = (html, url) => {
+  const tag = /<base\s[^>]*>/i.exec(html)?.[0];
+  const written = tag && /\shref=(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+  try {
+    return written
+      ? new URL(unescaped(written[1] ?? written[2]), url).href
+      : url;
+  } catch {
+    return url;
+  }
+};
+
 const linksToFrontPage = (base) => (written) => {
   try {
     const target = new URL(written, base);
@@ -499,19 +516,21 @@ async function scan(url) {
   const links = isHtml
     ? linksOf(found.text)
     : linksOfText(found.text, url.endsWith(".md"));
+  const from = isHtml ? baseOf(found.text, url) : url;
   if (
     isHtml &&
     !isFrontPage(url) &&
     !EXPLORER_PAGE.test(where) &&
-    !links.some(linksToFrontPage(url))
+    !EXPLORER_PART.test(where) &&
+    !links.some(linksToFrontPage(from))
   )
     fail(where, "", "links no way back to the front page");
   await Promise.all(
     links.map(async (written) => {
-      await checkLink(written, url, where);
+      await checkLink(written, from, where);
       if (settings.crawl) {
         try {
-          const target = new URL(written, url);
+          const target = new URL(written, from);
           target.hash = "";
           if (
             insideSite(target.href) &&

@@ -429,6 +429,8 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
           "adapters/x/index.html": page("X: an adapter explorer"),
           "adapters/x/explorer.json": text("{}"),
           "adapters/x/cases/0.json": text("{}"),
+          "adapters/x/nodes/1.html": page("A place's mappings"),
+          "adapters/nodes/1.html": page("Not an explorer's"),
           "adapters/cases/0.json": text("{}"),
         }),
       ]);
@@ -463,10 +465,12 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
       );
     });
 
-    it("lists an adapter's explorer as one page and its data, and leaves out its test cases, which only the page reads", () => {
+    it("lists an adapter's explorer as one page and its data, and leaves out its test cases and the fragments of its places, which only the page reads", () => {
       assert.equal(by.get("adapters/x/index.html")?.kind, "page");
       assert.ok(by.has("adapters/x/explorer.json"));
       assert.ok(!by.has("adapters/x/cases/0.json"));
+      assert.ok(!by.has("adapters/x/nodes/1.html"));
+      assert.ok(by.has("adapters/nodes/1.html"));
       assert.ok(by.has("adapters/cases/0.json"));
     });
 
