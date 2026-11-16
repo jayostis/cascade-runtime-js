@@ -124,6 +124,9 @@ table.rows th, table.rows td { min-width: 6rem; max-width: 28rem; overflow-wrap:
 td code { color: var(--muted); font-size: .8rem; }
 details { margin: .5rem 0 0; }
 summary { cursor: pointer; color: var(--link); }
+details.fold > summary h2 { display: inline; color: var(--ink); }
+details.group > summary { font: 500 1.2rem/1.3 var(--serif); margin: 1rem 0 .25rem; }
+details.group[open] > summary { margin-bottom: .75rem; }
 .document { max-width: 52rem; }
 .document h1 { margin-top: 1rem; }
 .document h2 { margin: 2.25rem 0 .5rem; padding-top: .5rem; border-top: 1px solid var(--rule-soft); }

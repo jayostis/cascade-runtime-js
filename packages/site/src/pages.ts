@@ -5,6 +5,7 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import { type Answer, withoutComment } from "./answer.js";
+import { foldScript } from "./fold-script.js";
 import { type Content, Html, markup, shell } from "./html.js";
 import { namedInQuery } from "./term-reference.js";
 import {
@@ -86,7 +87,32 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
   ]);
 }
 
-function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
+/** The phases of the steps, each from the step that begins it: a step's file name, or `lens` for the lens. */
+export const PHASES: readonly (readonly [string, string])[] = [
+  ["records", "Reading what arrived"],
+  ["lens", "Which judgments count"],
+  ["different-pairs", "Which records are the same"],
+  ["excluded-at-source", "What no view shows"],
+  ["entries", "Joining records into entries"],
+  ["medication-lifecycles", "Medications and notes"],
+];
+
+/** The key a step goes by in `PHASES`: `lens` for the lens, else its query's file name. */
+const stepStem = (answer: Answer): string =>
+  answer.query.path.startsWith(LENSES)
+    ? "lens"
+    : answer.query.path.slice(
+        answer.query.path.lastIndexOf("/") + 1,
+        -".rq".length,
+      );
+
+function block(
+  site: Site,
+  answer: Answer,
+  inner: Content,
+  id?: string,
+  fold = false,
+): Html {
   const { defaultLens, name } = site.options;
   const question = answer.question;
   const source =
@@ -117,15 +143,24 @@ function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
 <p>Run it yourself, from the runtime's root:</p>
 <pre><code>${site.options.ask} "${question}"${answer.lens !== defaultLens && ` --lens ${answer.lens}`}</code></pre>
 ${about}${graphdb}`;
-  return markup`
-<section class="query"${id !== undefined && markup` id="${id}"`}>
-<h2>${answer.title}</h2>
-<p class="prose">${answer.prose}</p>
+  const count = answer.rows.length;
+  const body = markup`<p class="prose">${answer.prose}</p>
 ${inner}
 <details>
 <summary>The query: <code>${answer.query.path}</code>${source}</summary>
 <pre><code>${withoutComment(answer.query.text)}</code></pre>${using}${runIt}
-</details>
+</details>`;
+  return markup`
+<section class="query"${id !== undefined && markup` id="${id}"`}>
+${
+  fold
+    ? markup`<details class="fold">
+<summary><h2>${answer.title}</h2> <span class="about">${count} ${count === 1 ? "row" : "rows"}</span></summary>
+${body}
+</details>`
+    : markup`<h2>${answer.title}</h2>
+${body}`
+}
 </section>`;
 }
 
@@ -159,14 +194,25 @@ function none(site: Site, answer: Answer, lensed: boolean): Html {
 `;
 }
 
-function question(site: Site, answer: Answer, lensed = false): Html {
+function question(
+  site: Site,
+  answer: Answer,
+  lensed = false,
+  fold = false,
+): Html {
   if (answer.rows.length === 0) return none(site, answer, lensed);
-  return block(site, answer, [
-    lensed && markup`<p class="lens">Under the ${answer.lens} lens.</p>\n`,
-    answer.about !== undefined &&
-      markup`<p class="about">Only the rows whose <code>?${answer.about}</code> is this one.</p>\n`,
-    rowsTable(site, answer),
-  ]);
+  return block(
+    site,
+    answer,
+    [
+      lensed && markup`<p class="lens">Under the ${answer.lens} lens.</p>\n`,
+      answer.about !== undefined &&
+        markup`<p class="about">Only the rows whose <code>?${answer.about}</code> is this one.</p>\n`,
+      rowsTable(site, answer),
+    ],
+    undefined,
+    fold,
+  );
 }
 
 /** The links at the head of every page of the site. */
@@ -182,20 +228,26 @@ export function navOf(site: Site): Html {
 `;
 }
 
-function layout(site: Site, title: string, main: Content): Html {
+function layout(
+  site: Site,
+  title: string,
+  main: Content,
+  after?: Content,
+): Html {
   return shell({
     chrome: site.options.chrome,
     title: markup`${title} · ${site.pod.title}`,
     stylesheet: "site.css",
     nav: navOf(site),
     main: markup`${main}\n`,
+    after,
   });
 }
 
 function home(site: Site): Html {
   const whole = [...site.questions]
     .filter(([name]) => name.startsWith("pod/") && !ELSEWHERE.includes(name))
-    .map(([, answer]) => question(site, answer));
+    .map(([, answer]) => question(site, answer, false, true));
   return layout(
     site,
     "How the pod is laid out",
@@ -229,13 +281,13 @@ which names the type index; and the type index, which says which view lists each
 from the pod's layout, beside the manifest, which says what built the pod.</dd>
 </dl>
 <p>Some folders have two-character folders inside them. Those only spread the files out, so no folder holds too many.</p>
-${question(site, site.question(FOLDERS))}
+${question(site, site.question(FOLDERS), false, true)}
 
 <h2 class="part">The views</h2>
 <p>An app does not read records. It reads a view: one file per type, whose entries each join the records judged to be the
 same thing. <a href="pipeline.html">How a view is built</a> shows each step from records to views, and
 <a href="not-shown.html">Not shown</a> lists the records no view shows, and why.</p>
-${question(site, site.question(VIEWS))}
+${question(site, site.question(VIEWS), false, true)}
 
 <h2 class="part">Questions about the whole pod</h2>
 <p>Each record, entry, judgment and patient profile has a page of its own with the questions about it. These are the
@@ -274,18 +326,40 @@ function pipeline(site: Site): Html {
         answer.title,
       ),
     );
-  const steps = (site.pipeline.get(lens) ?? []).map(({ answer, added }) => [
-    block(
-      site,
-      answer,
-      [
-        isLens(answer) && markup`<p class="lens">This step is the lens.</p>\n`,
-        addedTable(site, added),
-      ],
-      answer.title,
-    ),
-    isLens(answer) && otherLenses,
-  ]);
+  const ran = site.pipeline.get(lens) ?? [];
+  for (const [first] of PHASES) {
+    if (!ran.some(({ answer }) => stepStem(answer) === first))
+      throw new Error(
+        `the pipeline page's phases begin at "${first}", which no step of the ${lens} lens is`,
+      );
+  }
+  const phases: { title: string; steps: Content[] }[] = [];
+  for (const { answer, added } of ran) {
+    const title = PHASES.find(([first]) => first === stepStem(answer))?.[1];
+    if (title !== undefined || phases.length === 0)
+      phases.push({ title: title ?? "Steps", steps: [] });
+    phases
+      .at(-1)
+      ?.steps.push([
+        block(
+          site,
+          answer,
+          [
+            isLens(answer) &&
+              markup`<p class="lens">This step is the lens.</p>\n`,
+            addedTable(site, added),
+          ],
+          answer.title,
+        ),
+        isLens(answer) && otherLenses,
+      ]);
+  }
+  const steps = phases.map(
+    ({ title, steps: held }) => markup`
+<details class="group">
+<summary>${title} <span class="about">${held.length}</span></summary>
+${held}</details>`,
+  );
   const compared = COMPARED.map(
     (name) => markup`
 <div class="lenses">
@@ -296,6 +370,7 @@ ${[...site.answers.values()].map((answers) => {
   );
 })}</div>`,
   );
+  const called = site.question(CALLED);
   const built = [...site.built].map(([file, { answer, statements }]) => {
     const path = file.slice(site.pod.address.length);
     const view = site.views.find(({ value }) => value === file);
@@ -333,9 +408,23 @@ ${compared}
 <h2 class="part">The files it writes</h2>
 <p>Last, a query for each view reads the pod and the derived state and writes one file, and one more writes a name for
 everything. These are the pod's only files the build writes, and each says it is a view.</p>
-${built}
-<p>Every page of this site names a thing by the label the labels file gives it, read with this question.</p>
-${question(site, site.question(CALLED))}`,
+<details class="group">
+<summary>Each of the ${built.length} files</summary>
+${built}</details>
+<p>Every page of this site names a thing by the label the labels file gives it.
+<a href="labels.html">${called.title}</a> lists them: ${called.rows.length} labels.</p>`,
+    markup`<script>${new Html(foldScript())}</script>\n`,
+  );
+}
+
+function labels(site: Site): Html {
+  const called = site.question(CALLED);
+  return layout(
+    site,
+    called.title,
+    markup`<h1>${called.title}</h1>
+<p>Every page of this site names a thing by the label the labels file gives it. The labels file is written with this question.</p>
+${question(site, called)}`,
   );
 }
 
@@ -436,6 +525,7 @@ export function pages(site: Site): Map<string, Html> {
   const found = new Map<string, Html>([
     ["layout.html", home(site)],
     ["pipeline.html", pipeline(site)],
+    ["labels.html", labels(site)],
     ["not-shown.html", notShown(site)],
   ]);
   for (const view of site.views) {

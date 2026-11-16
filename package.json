@@ -31,6 +31,7 @@
     "test:evals-page": "tsc -b && node --test packages/evals/dist/test-browser/run-page.test.js",
     "test:search": "tsc -b && node --test packages/site/dist/test-browser/search.test.js",
     "test:terms": "tsc -b && node --test packages/site/dist/test-browser/term-reference.test.js",
+    "test:pod-site": "tsc -b && node --test packages/site/dist/test-browser/pod-site.test.js",
     "test:spec-pages": "tsc -b && node --test packages/site/dist/test-browser/spec-pages.test.js",
     "test:walkthrough": "tsc -b && node --test packages/site/dist/test-browser/walkthrough.test.js",
     "test:pod-browser": "tsc -b && node --test packages/cascade-runtime/dist/test-browser/retitle.test.js packages/cascade-runtime/dist/test-browser/argon2.test.js",

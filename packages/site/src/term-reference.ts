@@ -11,6 +11,7 @@ import {
   type Term,
   XSD,
 } from "@cascade-runtime/runtime";
+import { foldScript } from "./fold-script.js";
 import { type Chrome, type Content, Html, markup, shell } from "./html.js";
 import {
   NAMESPACE_HOST,
@@ -1454,36 +1455,15 @@ ${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((sha
 }
 
 /**
- * The index's script: a link to a shape's old anchor goes to the shapes' page, and a link to a name inside a folded group
- * opens the groups round it and scrolls to it.
+ * The index's script: the fold script, and a link to a shape's old anchor goes to the shapes' page.
  */
 function termsScript(shapesPage: string, moved: readonly string[]): string {
   const json = (value: unknown): string =>
     JSON.stringify(value).replace(/</g, "\\u003c");
-  return [
-    "(function () {",
-    `var MOVED = ${json(moved)};`,
-    `var SHAPES = ${json(shapesPage)};`,
-    "function wanted() {",
-    "  try { return decodeURIComponent(location.hash.slice(1)); } catch (e) { return ''; }",
-    "}",
-    "function show() {",
-    "  var id = wanted();",
-    "  if (id === '') return;",
-    "  var target = document.getElementById(id);",
-    "  if (target === null) {",
-    "    if (MOVED.indexOf(id) >= 0) location.replace(SHAPES + location.hash);",
-    "    return;",
-    "  }",
-    "  var folded = false;",
-    "  for (var up = target.parentElement; up !== null; up = up.parentElement)",
-    "    if (up.tagName === 'DETAILS') { up.open = true; folded = true; }",
-    "  if (folded) target.scrollIntoView();",
-    "}",
-    "show();",
-    "window.addEventListener('hashchange', show);",
-    "})();",
-  ].join("\n");
+  return foldScript(
+    `var MOVED = ${json(moved)};\nvar SHAPES = ${json(shapesPage)};`,
+    "if (MOVED.indexOf(id) >= 0) location.replace(SHAPES + location.hash);",
+  );
 }
 
 /** Each term's page, by its path in the folder of term pages, but the terms `skip` holds. */

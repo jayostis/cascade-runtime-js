@@ -19,8 +19,10 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { PLAIN } from "../src/html.js";
 import { termHref, termPage } from "../src/links.js";
+import { PHASES } from "../src/pages.js";
 import { QUERIES_PAGE, queryPages } from "../src/query-pages.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
+import { CALLED } from "../src/terms.js";
 import { namedInQuery } from "../src/term-reference.js";
 import { type Page, readPage } from "./page.js";
 
@@ -103,6 +105,9 @@ before(async () => {
         queryPageOf.set(path, page);
   }
 });
+
+const text = (path: string): string =>
+  new TextDecoder().decode(files.get(path));
 
 const page = (path: string | undefined): Page => {
   const found = pages.get(path ?? "");
@@ -239,6 +244,23 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
         new Set(site.views.map((view) => written(view))),
       );
     });
+
+    it("folds each question that has rows under its title and its row count, every one closed", () => {
+      const { blocks, folds } = page("layout.html");
+      assert.ok(blocks.length >= 3);
+      assert.deepEqual(
+        folds.map(({ title }) => title),
+        blocks.map(({ title }) => title),
+      );
+      for (const [at, fold] of folds.entries()) {
+        const count = blocks[at]?.rows.length ?? -1;
+        assert.ok(
+          fold.said.endsWith(` ${count} ${count === 1 ? "row" : "rows"}`),
+          fold.said,
+        );
+        assert.equal(fold.open, false, fold.title);
+      }
+    });
   });
 
   describe("with a view's page", () => {
@@ -328,6 +350,50 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
         ids.filter((id) => queries.includes(id)),
         queries,
       );
+    });
+
+    it("folds the steps under one closed phase for each the page names, in the order they ran, each saying how many steps it holds", () => {
+      const queries = site.pod.derived.map(queryOf);
+      const steps = (ids: readonly string[]) =>
+        ids.filter((id) => queries.includes(id));
+      const phases = pipeline.groups.filter(({ ids }) => steps(ids).length > 0);
+      assert.deepEqual(
+        phases.map(({ said }) => said.replace(/ \d+$/, "")),
+        PHASES.map(([, title]) => title),
+      );
+      assert.deepEqual(
+        phases.flatMap(({ ids }) => steps(ids)),
+        queries,
+      );
+      for (const { said, open, ids } of phases) {
+        assert.ok(said.endsWith(` ${steps(ids).length}`), said);
+        assert.equal(open, false, said);
+      }
+    });
+
+    it("folds the files it writes under one closed line that counts them", () => {
+      const last = pipeline.groups.at(-1);
+      assert.ok(last);
+      assert.ok(site.built.size > 1);
+      assert.ok(last.said.endsWith(` ${site.built.size} files`), last.said);
+      assert.equal(last.open, false);
+      assert.ok(last.ids.length >= site.built.size);
+    });
+
+    it("leaves what everything is called to a page of its own, linked here with its count", () => {
+      const called = site.question(CALLED);
+      assert.ok(called.rows.length > 1);
+      assert.ok(!pipeline.blocks.some(({ title }) => title === called.title));
+      assert.equal(
+        blockOf(page("labels.html"), called.title).rows.length,
+        called.rows.length,
+      );
+      assert.ok(pipeline.hrefs.includes("labels.html"));
+      assert.ok(pipeline.said.includes(`${called.rows.length} labels`));
+    });
+
+    it("carries the script that opens a fold for the address the reader came by", () => {
+      assert.match(text("pipeline.html"), /<script>[\s\S]*location\.hash/);
     });
 
     it("shows each other lens beside it", () => {

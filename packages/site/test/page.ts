@@ -25,6 +25,18 @@ export interface Page {
   readonly hrefs: readonly string[];
   readonly ids: ReadonlySet<string>;
   readonly blocks: readonly Block[];
+  /** The sections folded under their own title: the summary's words and whether it is open. */
+  readonly folds: readonly {
+    readonly title: string;
+    readonly said: string;
+    readonly open: boolean;
+  }[];
+  /** The groups of sections folded together, in page order: the summary's words, whether open, and the id of each section in it. */
+  readonly groups: readonly {
+    readonly said: string;
+    readonly open: boolean;
+    readonly ids: readonly string[];
+  }[];
   /** The sections that collapsed to one line for want of rows: the line's markup and words, its title and its link. */
   readonly nones: readonly {
     readonly line: string;
@@ -122,6 +134,27 @@ export function readPage(whole: string, page?: string): Page {
     code: all(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/g, markup),
     hrefs: links(markup, page),
     ids: new Set(all(/\sid="([^"]*)"/g, markup)),
+    folds: [
+      ...markup.matchAll(
+        /<details class="fold"( open)?>\s*<summary><h2>([\s\S]*?)<\/h2>([\s\S]*?)<\/summary>/g,
+      ),
+    ].map(([, open, title, rest]) => ({
+      title: unescaped(title ?? ""),
+      said: said(`${title}${rest}`).trim(),
+      open: open !== undefined,
+    })),
+    groups: markup
+      .split('<details class="group"')
+      .slice(1)
+      .map((part) => ({
+        said: said(
+          /<summary>([\s\S]*?)<\/summary>/.exec(part)?.[1] ?? "",
+        ).trim(),
+        open: /^\s*open/.test(part),
+        ids: [...part.matchAll(/<section class="query" id="([^"]*)"/g)].map(
+          ([, id]) => unescaped(id ?? ""),
+        ),
+      })),
     nones: [
       ...markup.matchAll(
         /<p class="none"><strong>([^<]*)<\/strong>([^<]*)<a href="([^"]*)">([^<]*)<\/a><\/p>/g,
