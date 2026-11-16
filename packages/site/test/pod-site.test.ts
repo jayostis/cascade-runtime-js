@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  type Files,
   iri,
   literal,
   MemoryFiles,
@@ -19,7 +20,6 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { PLAIN } from "../src/html.js";
 import { termHref, termPage } from "../src/links.js";
-import { PHASES } from "../src/pages.js";
 import { QUERIES_PAGE, queryPages } from "../src/query-pages.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { CALLED } from "../src/terms.js";
@@ -47,6 +47,35 @@ function readPages(built: ReadonlyMap<string, Uint8Array>): Map<string, Page> {
         readPage(new TextDecoder().decode(bytes), path),
       ]),
   );
+}
+
+const CRATE = "ro-crate-metadata.json";
+
+interface CrateSection {
+  readonly "@id": string;
+  readonly name: string;
+  readonly itemListElement: readonly { readonly "@id": string }[];
+}
+
+/** The pipeline's sections as the vocabulary's crate gives them: the root's mentions that are a HowToSection, by position. */
+async function crateSections(files: Files): Promise<CrateSection[]> {
+  const { "@graph": graph } = JSON.parse(
+    new TextDecoder().decode(await files.read(CRATE)),
+  ) as {
+    "@graph": (CrateSection & {
+      "@type"?: string;
+      position?: number;
+      mentions?: { "@id": string }[];
+    })[];
+  };
+  const mentioned = new Set(
+    graph.find(({ "@id": id }) => id === "./")?.mentions?.map((m) => m["@id"]),
+  );
+  return graph
+    .filter(
+      (one) => one["@type"] === "HowToSection" && mentioned.has(one["@id"]),
+    )
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 }
 
 let vocabulary: LocalVocabulary;
@@ -352,14 +381,21 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
       );
     });
 
-    it("folds the steps under one closed phase for each the page names, in the order they ran, each saying how many steps it holds", () => {
+    it("folds the steps under one closed phase for each section of the vocabulary's crate that holds a step, in the order they ran, each saying how many steps it holds", async () => {
       const queries = site.pod.derived.map(queryOf);
       const steps = (ids: readonly string[]) =>
         ids.filter((id) => queries.includes(id));
+      const ran = new Set(site.pod.derived.map(({ path }) => path));
+      const titles = (await crateSections(vocabulary.files))
+        .filter(({ itemListElement }) =>
+          itemListElement.some(({ "@id": id }) => ran.has(id)),
+        )
+        .map(({ name }) => name);
       const phases = pipeline.groups.filter(({ ids }) => steps(ids).length > 0);
+      assert.ok(titles.length > 1);
       assert.deepEqual(
         phases.map(({ said }) => said.replace(/ \d+$/, "")),
-        PHASES.map(([, title]) => title),
+        titles,
       );
       assert.deepEqual(
         phases.flatMap(({ ids }) => steps(ids)),
@@ -369,6 +405,35 @@ describe("The pages of a pod · Site.build(), Site.files()", () => {
         assert.ok(said.endsWith(` ${steps(ids).length}`), said);
         assert.equal(open, false, said);
       }
+    });
+
+    it("is not built when a step it shows sits in no section of the crate", async () => {
+      const [first] = await crateSections(vocabulary.files);
+      assert.ok(first);
+      const step = first.itemListElement[0]?.["@id"];
+      assert.ok(step);
+      const crate = JSON.parse(
+        new TextDecoder().decode(await vocabulary.files.read(CRATE)),
+      ) as { "@graph": { "@id": string; itemListElement?: unknown[] }[] };
+      const held = crate["@graph"].find(({ "@id": id }) => id === first["@id"]);
+      assert.ok(held?.itemListElement);
+      held.itemListElement = held.itemListElement.filter(
+        (one) => (one as { "@id": string })["@id"] !== step,
+      );
+      const bytes = new TextEncoder().encode(JSON.stringify(crate));
+      const trimmed: Files = {
+        iri: vocabulary.files.iri,
+        read: async (path) =>
+          path === CRATE ? bytes : vocabulary.files.read(path),
+        write: (path, written) => vocabulary.files.write(path, written),
+        list: (folder) => vocabulary.files.list(folder),
+      };
+      await assert.rejects(
+        Site.build({ ...options, vocabulary: trimmed }).then((built) =>
+          built.files(),
+        ),
+        new RegExp(`${step} sits in no section`),
+      );
     });
 
     it("folds the files it writes under one closed line that counts them", () => {

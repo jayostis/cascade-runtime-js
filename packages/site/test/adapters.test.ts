@@ -34,9 +34,9 @@ const ONTOLOGY = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 
 cascade:ProblemOrDiagnosis a owl:Class .
 cascade:AllergyOrIntolerance a owl:Class .
-cascade:snomedCode a owl:DatatypeProperty .
+cascade:conditionCode a owl:DatatypeProperty .
 cascade:onsetDate a owl:DatatypeProperty .
-cascade:allergen a owl:DatatypeProperty .
+cascade:allergenName a owl:DatatypeProperty .
 `;
 
 const CRATE = JSON.stringify({
@@ -104,7 +104,7 @@ const PRIYA: Readonly<Record<string, string>> = {
   [RECORD]: `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 
 [] a cascade:AllergyOrIntolerance ;
-  cascade:allergen "Aspirin" ;
+  cascade:allergenName "Aspirin" ;
   cascade:allergenCode <https://ns.cascadeprotocol.org/codes/rxnorm/1191> ;
   cascade:reactionManifestationCode <http://snomed.info/id/126485001> .
 `,

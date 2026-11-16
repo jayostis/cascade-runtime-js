@@ -22,13 +22,13 @@
     },
     {
       "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-      "field": "https://ns.cascadeprotocol.org/cascade#referenceRange",
+      "field": "https://ns.cascadeprotocol.org/cascade#referenceRangeText",
       "value": "4.0-5.6 %",
       "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
     },
     {
       "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-      "field": "https://ns.cascadeprotocol.org/cascade#referenceRange",
+      "field": "https://ns.cascadeprotocol.org/cascade#referenceRangeText",
       "value": "4.0-5.6 %",
       "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
     },
@@ -58,12 +58,12 @@
     },
     {
       "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-      "field": "https://ns.cascadeprotocol.org/cascade#resultUnit",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultUnitText",
       "value": "%"
     },
     {
       "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-      "field": "https://ns.cascadeprotocol.org/cascade#resultValue",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultValueText",
       "value": "6.9"
     },
     {
@@ -165,13 +165,13 @@
     },
     {
       "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentType",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTypeCode",
       "value": "http://loinc.org/rdf/18776-5",
       "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
     },
     {
       "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentType",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTypeCode",
       "value": "http://loinc.org/rdf/18776-5",
       "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
     },

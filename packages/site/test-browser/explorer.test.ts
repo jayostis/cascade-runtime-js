@@ -1311,7 +1311,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
         JSON.stringify({
           [alex.pod.lens]: {
             [question]: {
-              rows: [{ allergen: { value: "Penicillin" }, reaction: "" }],
+              rows: [{ allergenName: { value: "Penicillin" }, reaction: "" }],
             },
           },
         }),
@@ -1329,7 +1329,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
           .evaluateAll((all) =>
             all.map((cell) => cell.getAttribute("data-label")),
           );
-        assert.deepEqual(labels, ["allergen", "reaction"]);
+        assert.deepEqual(labels, ["allergenName", "reaction"]);
         assert.equal(
           await tab
             .locator("#ins h3:has-text('Answer') ~ .tw-x table tbody td")
@@ -1408,8 +1408,8 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
 
   describe("when the demo's eight stops are walked", () => {
     const ANSWER = [
-      { allergen: { value: "Penicillin" }, reaction: { value: "Hives" } },
-      { allergen: { value: "Latex" }, reaction: { value: "Rash" } },
+      { allergenName: { value: "Penicillin" }, reaction: { value: "Hives" } },
+      { allergenName: { value: "Latex" }, reaction: { value: "Rash" } },
     ];
     const askedOf = (from: ExplorerData): string => {
       const question = from.queries.find((each) =>
@@ -1712,7 +1712,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
                 .locator("#ins table.et tbody tr.diff td:first-child")
                 .allTextContents()
             ).map((text) => text.trim());
-            for (const field of ["allergen", "allergen code"])
+            for (const field of ["allergen name", "allergen code"])
               assert.ok(shaded.includes(field), `${field} in ${shaded}`);
             assert.equal(entry.within.length, 3, "three judgments join them");
             assert.equal(await tab.locator("#ins .within li").count(), 3);
@@ -1784,7 +1784,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
           const answer = "#ins h3:has-text('Answer') ~ .tw-x table";
           assert.deepEqual(
             await tab.locator(`${answer} thead th`).allTextContents(),
-            ["allergen", "reaction"],
+            ["allergenName", "reaction"],
           );
           assert.deepEqual(
             await tab
@@ -1796,7 +1796,7 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
                   ),
                 ),
               ),
-            ANSWER.map((row) => [row.allergen.value, row.reaction.value]),
+            ANSWER.map((row) => [row.allergenName.value, row.reaction.value]),
           );
         });
 

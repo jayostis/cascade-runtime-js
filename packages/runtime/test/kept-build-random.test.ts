@@ -261,7 +261,7 @@ async function story(seed: number) {
 `;
       for (let output = 0; output < outputs; output++) {
         const named = draw.chance(0.7)
-          ? `cascade:allergen "${draw.pick(["Allergen", "allergen"])} ${draw.below(1000)}" ;`
+          ? `cascade:allergenName "${draw.pick(["Allergen", "allergen"])} ${draw.below(1000)}" ;`
           : "";
         text += `<urn:cascade:output-${output}> a cascade:AllergyOrIntolerance .
 <urn:cascade:output-${output}-version> prov:specializationOf <urn:cascade:output-${output}> ;

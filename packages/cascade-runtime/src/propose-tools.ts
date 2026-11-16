@@ -113,7 +113,7 @@ const PROPOSAL_ANSWERS =
 const DECLARED: DeclaredTool[] = [
   {
     name: "propose_entry",
-    description: `Proposes adding an entry to a pod: one or more records the person has told you of, as Turtle. Each draft is <urn:cascade:output-0>, <urn:cascade:output-1> and so on, typed with its class (for example cascade:ProblemOrDiagnosis or cascade:AllergyOrIntolerance), and has a version <urn:cascade:output-0-version> that is a prov:specializationOf it and states what is entered (cascade:conditionName, cascade:clinicalStatus, cascade:allergen and so on) and cascade:patient, the person the pod is about. ${PROPOSAL_ANSWERS}`,
+    description: `Proposes adding an entry to a pod: one or more records the person has told you of, as Turtle. Each draft is <urn:cascade:output-0>, <urn:cascade:output-1> and so on, typed with its class (for example cascade:ProblemOrDiagnosis or cascade:AllergyOrIntolerance), and has a version <urn:cascade:output-0-version> that is a prov:specializationOf it and states what is entered (cascade:conditionName, cascade:clinicalStatus, cascade:allergenName and so on) and cascade:patient, the person the pod is about. ${PROPOSAL_ANSWERS}`,
     inputSchema: {
       type: "object",
       properties: {
