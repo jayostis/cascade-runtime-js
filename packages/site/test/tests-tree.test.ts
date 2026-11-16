@@ -606,7 +606,7 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
       ]);
       assert.deepEqual(
         casesOf(markup, R).filter(([name]) => name === "stands alone"),
-        [["stands alone", "passed", ""]],
+        [["stands alone", "passed", "1 ms"]],
       );
     });
 
