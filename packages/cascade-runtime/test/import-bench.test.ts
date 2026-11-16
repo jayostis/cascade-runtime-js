@@ -8,6 +8,56 @@ import {
   tableOf,
 } from "./import-bench.js";
 
+interface Entry {
+  resourceType: string;
+  code?: { coding: { code: string }[] };
+  vaccineCode?: { coding: { code: string }[] };
+  medicationCodeableConcept?: { coding: { code: string }[] };
+  effectiveDateTime?: string;
+  onsetDateTime?: string;
+  authoredOn?: string;
+  occurrenceDateTime?: string;
+  performedDateTime?: string;
+}
+
+function bundleOf(
+  total: number,
+  repeats?: boolean,
+): { entry: { resource: Entry }[] } {
+  return JSON.parse(
+    new TextDecoder().decode(
+      syntheticPull(total, { repeats }).get("pull/bundle.json"),
+    ),
+  ) as { entry: { resource: Entry }[] };
+}
+
+/** For each kind with any, how many records repeat the code and day of an earlier record of that kind. */
+function matchingPairs(bundle: {
+  entry: { resource: Entry }[];
+}): Record<string, number> {
+  const seen = new Set<string>();
+  const pairs: Record<string, number> = {};
+  for (const { resource } of bundle.entry) {
+    const code = (
+      resource.code ??
+      resource.vaccineCode ??
+      resource.medicationCodeableConcept
+    )?.coding[0]?.code;
+    const time =
+      resource.effectiveDateTime ??
+      resource.onsetDateTime ??
+      resource.authoredOn ??
+      resource.occurrenceDateTime ??
+      resource.performedDateTime;
+    assert.ok(code !== undefined && time !== undefined, resource.resourceType);
+    const key = `${resource.resourceType} ${code} ${time.slice(0, 10)}`;
+    if (seen.has(key))
+      pairs[resource.resourceType] = (pairs[resource.resourceType] ?? 0) + 1;
+    seen.add(key);
+  }
+  return pairs;
+}
+
 /**
  * The import bench imports a synthetic pull of one hospital as the app does, and reports the time and the counts of
  * each place an import spends it, so that a speed-up is argued from a measurement.
@@ -54,9 +104,13 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         assert.notEqual(run.counts[`${name}.rows`], undefined, name);
     });
 
-    it("credits each graph scan to the span that made it, once for each version it reads, and once more over the whole graph", () => {
-      assert.equal(run.counts["arrivals.arrivals.graph.scans"], 201);
-      assert.equal(run.counts["arrivals.refuseUnaccounted.graph.scans"], 204);
+    it("credits each graph scan to the span that made it: arrivals one per version and one whole-graph scan; refuseUnaccounted one per version, one whole-graph scan and three graph.subjects() scans", () => {
+      const versions = bundleOf(200).entry.length;
+      assert.equal(run.counts["arrivals.arrivals.graph.scans"], versions + 1);
+      assert.equal(
+        run.counts["arrivals.refuseUnaccounted.graph.scans"],
+        versions + 1 + 3,
+      );
     });
 
     it("prints the table, with a row for each hot spot", () => {
@@ -67,25 +121,19 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
   });
 
   describe("given a pull of 200 resources, as a Bundle", () => {
-    it("holds a second record of the same code and time for each of its six kinds", () => {
-      const bundle = JSON.parse(
-        new TextDecoder().decode(syntheticPull(200).get("pull/bundle.json")),
-      ) as { entry: { resource: { id: string; resourceType: string } }[] };
-      const seen = new Set<string>();
-      const repeated = new Set<string>();
-      for (const { resource } of bundle.entry) {
-        const key = JSON.stringify({ ...resource, id: "" });
-        if (seen.has(key)) repeated.add(resource.resourceType);
-        seen.add(key);
-      }
-      assert.deepEqual([...repeated].sort(), [
-        "AllergyIntolerance",
-        "Condition",
-        "Immunization",
-        "MedicationRequest",
-        "Observation",
-        "Procedure",
-      ]);
+    it("holds exactly the deliberate repeats of a code and day, a count for each kind", () => {
+      assert.deepEqual(matchingPairs(bundleOf(200)), {
+        AllergyIntolerance: 1,
+        Condition: 2,
+        Immunization: 2,
+        MedicationRequest: 2,
+        Observation: 10,
+        Procedure: 1,
+      });
+    });
+
+    it("holds no two records of one kind with the same code and day when the repeats are switched off", () => {
+      assert.deepEqual(matchingPairs(bundleOf(200, false)), {});
     });
   });
 

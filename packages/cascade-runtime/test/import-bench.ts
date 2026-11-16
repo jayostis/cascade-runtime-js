@@ -7,8 +7,13 @@ import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 /**
  * A bench of `pod.import()` over a pull of one hospital, the pull's shape being Full Picture's (planning#44): one
  * Bundle, about six in ten of it laboratory results over ten LOINC codes, the rest conditions, medications,
- * immunizations, allergies and procedures, a tenth of each kind a second record of the same code and time. It
- * imports as the app does, with `claimProfiles`, so the matcher compares the records, then reads once.
+ * immunizations, allergies and procedures. Every record is on a day of its own, so no two share a code and a day by
+ * accident; the deliberate repeats are the only matching pairs: a record at each position of a cycle of twenty repeats
+ * the record of the same position one cycle before, with its code and day, when `(cycle + position) % 10 === 0`
+ * (10 laboratory results, 2 conditions, 2 medications, 2 immunizations, 1 allergy and 1 procedure in 200 resources).
+ * A repeated laboratory result is meant to trigger the same-code-and-day rules on a result (same code, day, value and
+ * unit); a repeated condition, medication, immunization, allergy or procedure the same-code-and-date rules.
+ * It imports as the app does, with `claimProfiles`, so the matcher compares the records, then reads once.
  *
  * Run it as `npm run bench:import -- 200 1000`: it prints a table per size, and `--json <file>` writes the numbers.
  */
@@ -73,17 +78,14 @@ function coding(system: string, code: string, display: string): object {
   return { coding: [{ system, code, display }], text: display };
 }
 
-/**
- * The `index`th resource of a pull: its kind is by position in a cycle of twenty, and a tenth of each position repeats
- * the record of the same position one cycle before, with its code and time, so every kind has a second record.
- */
-function resource(index: number): object {
+/** The `index`th resource of a pull: its kind is by position in a cycle of twenty, and with `repeats` some repeat the record one cycle before. */
+function resource(index: number, repeats: boolean): object {
   const id = `r${index}`;
   const slot = index % 20;
   const cycle = Math.floor(index / 20);
-  const repeat = cycle > 0 && (cycle + slot) % 10 === 0;
+  const repeat = repeats && cycle > 0 && (cycle + slot) % 10 === 0;
   const of = repeat ? index - 20 : index;
-  const at = new Date(Date.UTC(2020, 0, 1) + of * 7 * 60_000)
+  const at = new Date(Date.UTC(2020, 0, 1, 8) + of * 86_400_000)
     .toISOString()
     .replace(".000Z", "Z");
   const day = at.slice(0, 10);
@@ -182,6 +184,7 @@ function resource(index: number): object {
         `Allergen ${of % ALLERGENS.length}`,
       ),
       patient: subject,
+      onsetDateTime: day,
     };
   return {
     resourceType: "Procedure",
@@ -197,10 +200,16 @@ function resource(index: number): object {
   };
 }
 
-/** A pull of `total` resources, saved as the folder `pull`. */
-export function syntheticPull(total: number): ReadonlyMap<string, Uint8Array> {
+/** A pull of `total` resources, saved as the folder `pull`; `repeats: false` (for tests) leaves out the deliberate repeats. */
+export function syntheticPull(
+  total: number,
+  options: { readonly repeats?: boolean | undefined } = {},
+): ReadonlyMap<string, Uint8Array> {
   const entry = Array.from({ length: total }, (_, index) => {
-    const one = resource(index) as { resourceType: string; id: string };
+    const one = resource(index, options.repeats ?? true) as {
+      resourceType: string;
+      id: string;
+    };
     return {
       fullUrl: `${FHIR_BASE}/${one.resourceType}/${one.id}`,
       resource: one,
