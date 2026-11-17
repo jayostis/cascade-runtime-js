@@ -15,7 +15,7 @@ const PIM = "http://www.w3.org/ns/pim/space#";
 const PRECEDENCE = [`${PROV}invalidated`, `${PROV}used`];
 export const SYNC = `${CASCADE}SyncFromAnotherWriter`;
 /** A file stem N9 gives: a UUID, or a SHA-256 in lower-case hex. */
-const FILE_STEM =
+export const FILE_STEM =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$/;
 
 /** One entry of the layout: a file, a folder, or the property whose value's folder a thing goes in. */
