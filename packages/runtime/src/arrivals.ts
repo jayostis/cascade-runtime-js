@@ -70,6 +70,7 @@ const DOCUMENT_IMPORT = `${CASCADE}DocumentImport`;
 const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
 const HAND_ENTRY_SESSION = `${CASCADE}HandEntrySession`;
 const SERVER_BASE_URL = `${CASCADE}serverBaseUrl`;
+const PATIENT = `${CASCADE}patient`;
 const OA = "http://www.w3.org/ns/oa#";
 const FINDING = `${CASCADE}FindingForReview`;
 const OLDER_STATES = `${CASCADE}SourceReportedOlderStates`;
@@ -341,6 +342,8 @@ export class Revisions {
   /** Each revision the step wrote whose observation times show the writer's clock behind, and by how many whole days. */
   readonly clockBehind: { readonly revision: string; readonly days: number }[] =
     [];
+  /** The patient profiles the versions of the revisions the step wrote name. */
+  readonly patients = new Set<string>();
   /** Each record's versions, and what its revisions are told apart by. */
   readonly #versions = new Map<string, Set<string>>();
   readonly #held = new Map<string, Set<string>>();
@@ -724,6 +727,13 @@ export class Revisions {
       ntriples(renamedWithin(triples, THIS_REVISION, name)),
     ];
     this.#files.push(revision);
+    for (const [subject, predicate, object] of arrival.versionTriples)
+      if (
+        subject.value === arrival.version.value &&
+        predicate.value === PATIENT &&
+        object.termType === "NamedNode"
+      )
+        this.patients.add(object.value);
     const pending = this.#pending.get(record) ?? [
       [arrival.place.path(record), ntriples(arrival.recordTriples)],
     ];
@@ -1137,6 +1147,7 @@ async function serverRecord(
  * Files an export's documents, each converted by the first adapter of its media type that accepts it: A1 to A11, with
  * the import named by a new random ID (N7), and the refusals of A14. `onProgress` is told of each conversion as its
  * adapter is found. Each conversion is held to `budget`; one that passes it stops the step with the Bridge's error.
+ * Gives the import's name and the patient profiles the versions of its new revisions name.
  */
 export async function fileExport(
   context: StepContext,
@@ -1144,7 +1155,7 @@ export async function fileExport(
   adapters: AdaptersOf,
   onProgress?: OnProgress,
   budget: ConvertBudget = {},
-): Promise<string> {
+): Promise<{ readonly activity: string; readonly patients: string[] }> {
   const { pod, writes, newStore, time } = context;
   const name = time.newId();
   const started = time.now();
@@ -1234,7 +1245,8 @@ export async function fileExport(
   await timedAside("arrivals.revisions.write", () =>
     revisions.write(writes, wentBack),
   );
-  if (kept.size === 0) return name;
+  const patients = [...revisions.patients].sort();
+  if (kept.size === 0) return { activity: name, patients };
   const descriptions = [...kept.values()];
   const forms = new Set(await Promise.all(descriptions.map(canonical)));
   if (forms.size > 1)
@@ -1253,7 +1265,7 @@ export async function fileExport(
       ]),
     ],
   });
-  return name;
+  return { activity: name, patients };
 }
 
 /**
