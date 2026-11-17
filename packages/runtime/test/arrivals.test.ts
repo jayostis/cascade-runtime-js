@@ -461,7 +461,7 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
     });
 
     it("keeps the same documents either way, whichever import first repeats a state another holds (A10)", () => {
-      assert.ok(forward.length > 0);
+      assert.equal(forward.length, 9);
       assert.deepEqual(reversed, forward);
     });
   });
