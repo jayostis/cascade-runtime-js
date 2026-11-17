@@ -402,6 +402,21 @@ async function serverRecords(dataset: Dataset): Promise<TakenRecord[]> {
   });
 }
 
+/**
+ * How many things in the view a comparison could take as ?record: each with a current version but the reference
+ * series. When a run binds as many, the pod holds no record but the run's, and each comparison is evaluated unbound,
+ * which reads the same records without the VALUES lists, and keeps the rows of the bound records (M4a): the rows a
+ * bound evaluation gives, since a marked group only narrows what the outermost one binds.
+ */
+async function withCurrentVersions(dataset: Dataset): Promise<number> {
+  const [[count] = []] = await column(
+    dataset,
+    "SELECT (COUNT(DISTINCT ?thing) AS ?things) WHERE { ?thing pav:hasCurrentVersion ?version FILTER NOT EXISTS { ?thing a cascade:ReferenceSeries } }",
+    "things",
+  );
+  return Number(count ?? 0);
+}
+
 /** The pod's subject, if it has one; a pod with two is refused (M2). */
 async function subjectOf(dataset: Dataset): Promise<string | undefined> {
   const subjects = await column(
@@ -600,7 +615,8 @@ class Matcher {
   /**
    * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
    * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the acts whose records a run
-   * takes, each comparison is evaluated with ?record bound to the records they began (M1, M4a). The rule list the
+   * takes, each comparison is evaluated with ?record bound to the records they began, or, when the pod holds no
+   * other, unbound and kept to their rows (M1, M4a). The rule list the
    * pod names is evaluated over the versions it names, and the current one over the current versions, each with those
    * versions' descriptions alone and none of the pod's, so neither reads the other's rows and no version the pod
    * describes but the tables do not load revises one they do (M13, O1). It consumes the matcher's view it is given: it
@@ -625,6 +641,10 @@ class Matcher {
         : [...pod.records.values()].flatMap((record) =>
             taken(record, takes) ? [record.name] : [],
           );
+    const allBound =
+      bound !== undefined && (await withCurrentVersions(union)) <= bound.length
+        ? new Set(bound)
+        : undefined;
     const rulesVersion = current(await references.ruleList());
     const none: Joins = new Map();
     if (rulesVersion === undefined)
@@ -716,10 +736,22 @@ class Matcher {
         let rows = selected.get(query);
         if (rows === undefined) {
           counted("matcher.queriesRun");
-          counted("matcher.boundRecords", bound?.length ?? 0);
-          rows = union
-            .select(bound === undefined ? query : boundToRecords(query, bound))
-            .then((answer) => answer.rows);
+          if (bound === undefined || allBound !== undefined)
+            rows = union
+              .select(query)
+              .then(({ rows }) =>
+                allBound === undefined
+                  ? rows
+                  : rows.filter((row) =>
+                      allBound.has(row.get("record")?.value ?? ""),
+                    ),
+              );
+          else {
+            counted("matcher.boundRecords", bound.length);
+            rows = union
+              .select(boundToRecords(query, bound))
+              .then((answer) => answer.rows);
+          }
           selected.set(query, rows);
         }
         return rows;
