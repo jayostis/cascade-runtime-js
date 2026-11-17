@@ -134,10 +134,16 @@ async function memberRefused(
           }`)
       ).rows
     : [];
+  const kinds = new Map(
+    ["version", "revision", "judgment", "assertion"].map((variable) => [
+      variable,
+      flagged(rows, variable),
+    ]),
+  );
   const is = (member: string, variable: string): boolean =>
     variable === "finding"
       ? findings.has(member)
-      : flagged(rows, variable).has(member);
+      : (kinds.get(variable)?.has(member) ?? false);
   for (const member of members) {
     if (is(member, "finding"))
       return `${member} is a finding for review: a judgment never names one, whose name the pod derives, and names what it is about instead`;
