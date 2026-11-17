@@ -1,0 +1,44 @@
+{
+  "description": "Known-answer vectors for a version 1.4 pod header, whose one wrap is a key wrap: the data key is wrapped under HKDF-SHA-256(the 32-byte key, the wrap's 16-byte salt, info `cascade-pod-key-wrap`), 32 bytes, as AES-256-GCM `nonce || ciphertext || tag` with no additional data. The resources and the sealed index are stored as in a 1.3 pod (resourceFormat 3): see `pod-encryption-1.3.json`. Every value was computed by an implementation other than the runtime's; a reader must open the pod with each key in `keys` to the plaintexts stated, and refuse each in `mustNotOpenWith`. Keys are base64. Plain JSON: nothing here needs the runtime to be read.",
+  "generatedBy": {
+    "script": "a one-off Python 3.12 script, not kept; the runtime's code was not used",
+    "aes256gcm": "cryptography 44.0.0, a 12-byte nonce, a 16-byte tag",
+    "hkdf_hmac": "cryptography 44.0.0 HKDF (SHA-256, 32 bytes) and the Python standard library's hmac"
+  },
+  "testOnlyKeys": "every key below is published for these tests: never reuse one",
+  "positive": [
+    {
+      "id": "E14-001",
+      "path": "known-answer-1.4/key-wrap",
+      "layout": "pod",
+      "headerVersion": "1.4",
+      "keys": [
+        "wZLrCSygoef4/WQq8a49WQqRWYYxVQ/fK7ElgPYxbmY="
+      ],
+      "mustNotOpenWith": [
+        "wZLrCSygoef4/WQq8a49WQqRWYYxVQ/fK7ElgPYxbmc="
+      ],
+      "proves": "a 1.4 header whose one wrap is a key wrap (HKDF-SHA-256, no Argon2); two resources, one at a non-ASCII path, each stored under the keyed name of its path and tag, and the sealed index naming both",
+      "header": "{\n  \"version\": \"1.4\",\n  \"algorithm\": \"aes-256-gcm\",\n  \"resourceFormat\": 3,\n  \"wraps\": [\n    {\n      \"by\": \"key\",\n      \"label\": \"primary\",\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"kdf\": \"hkdf-sha256\",\n      \"kdfParams\": {\n        \"salt\": \"0e+420MllG5z9GBIt+fRNQ==\"\n      },\n      \"wrappedDek\": \"s9eQLN2Wfv8HsUSXPgZLHyRB8xApmin576PMSMp2p2sCQDJSq7t8xj3ErFM1rHM4rUh3BLHrjxlEuH49\"\n    }\n  ]\n}\n",
+      "files": [
+        {
+          "path": "clinical/medications.ttl",
+          "plaintext": "<#metformin> a <#Medication> .\n",
+          "stored": "sealed/46/0a9ca66263a0e85ca271422b4565437184727a76efa544e4d39f1354d9f737",
+          "sealed": "CxvYGxpttXvL3kJGPIbC8mmcEb9f8TFSUv/+4ok/1+OkHWbMkJyP8OfRncVflkLxFZUVWOPZ4Nka9lY="
+        },
+        {
+          "path": "records/née-café.ttl",
+          "plaintext": "<#visit> a <#Encounter> .\n",
+          "stored": "sealed/0b/f4bce6d1d3dbe88148fda9cacf4fe4e79d94d3d7b23966c5f6e331723419ef",
+          "sealed": "eu38ULYSzyOSMaFbAHyvh4YfDlvep6mIuyUXQpb+O2UPTfOpQo7kImnmAZ9D11Cwigd7JF3Y"
+        }
+      ],
+      "index": {
+        "stored": "sealed/index/2",
+        "plaintext": "{\"counter\":2,\"files\":[[\"clinical/medications.ttl\",\"460a9ca66263a0e85ca271422b4565437184727a76efa544e4d39f1354d9f737\",\"c55f9642f115951558e3d9e0d91af656\"],[\"records/née-café.ttl\",\"0bf4bce6d1d3dbe88148fda9cacf4fe4e79d94d3d7b23966c5f6e331723419ef\",\"e42269e6019f43d750b08a077b245dd8\"]]}",
+        "sealed": "ae/CUneUph/uh9Ya1LlYJZE3BCCAClFQgjuBNpPJK6oemsGCX8etQNXj2qqdGyYvxXDF5XmufBi03Pu1xEfAGQEGN4ttRGR6mAuJo5aSKImEcK9F3sudaSW8gpo7gCS+t5ZUUKVqODJzGpZ/zAiJ5MBHtdKGyWKdgQCSIFpzY1s7gPQXjqFfW8+iyGsXOBRbjTjIniRsoKHi6gSQTYtvdHM3CMZZQDFTuIZ9faZJYYmLf8btiRk0f4nUWwU3IbkvSGBHjTLyc2hmHbJkVoLjDP8hSF79IHTvsZNAazo7srOQkD21R/6TqfsN1geG+v+99tmTU1KxfhoQp4GLOrzqR25o84fA2fjK87yA8RMTkP8c1mliwR6OfAsIuqogcydOw1VsReXG7h74R0CzjD572jpmhE4tZ6c="
+      }
+    }
+  ]
+}

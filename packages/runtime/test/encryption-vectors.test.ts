@@ -465,3 +465,76 @@ describe("Matching a 1.3 pod's sealing against known answers · SealedIndex.open
     });
   });
 });
+
+interface KnownAnswer14 extends Omit<KnownAnswer13, "passphrases"> {
+  readonly keys: readonly string[];
+  readonly mustNotOpenWith: readonly string[];
+}
+
+async function knownAnswers14(): Promise<readonly KnownAnswer14[]> {
+  const read = JSON.parse(
+    await readFile(VECTORS.replace("1.2.json", "1.4.json"), "utf8"),
+  ) as { positive: KnownAnswer14[] };
+  return read.positive;
+}
+
+/**
+ * The 1.4 key wrap, checked against what other code computed: a known-answer pod whose data key is wrapped under HKDF
+ * of a 32-byte key, and what `newHeader()` writes for a key, taken apart with Node's own HKDF and WebCrypto.
+ */
+describe("Matching a 1.4 pod's key wrap against known answers · newHeader(), openHeader(), SealedIndex.open()", () => {
+  /** `test/vectors/pod-encryption-1.4.json`: a pod computed with `cryptography`, as plain JSON, its keys in base64. */
+  describe("given the known-answer 1.4 pod (`pod-encryption-1.4.json`)", () => {
+    it("lists, and reads with its key, the plaintext each sealed resource holds, and refuses the key it must not open with", async () => {
+      const vectors = await knownAnswers14();
+      assert.equal(vectors.length, 1);
+      for (const vector of vectors) {
+        const memory = await pod13Of({ ...vector, passphrases: [] });
+        const { derive, calls } = recordingDerive();
+        for (const key of vector.keys) {
+          const opened = await openHeader(
+            encoded(vector.header),
+            bytesOf(key),
+            derive,
+          );
+          const files = new EncryptedFiles(memory, opened, {
+            index: await SealedIndex.open(memory, opened),
+          });
+          assert.deepEqual(
+            await files.list(""),
+            vector.files.map(({ path }) => path).sort(),
+            vector.id,
+          );
+          for (const { path, plaintext } of vector.files)
+            assert.equal(text(await files.read(path)), plaintext, path);
+        }
+        for (const wrong of vector.mustNotOpenWith)
+          await assert.rejects(
+            openHeader(encoded(vector.header), bytesOf(wrong), derive),
+            (error: unknown) =>
+              error instanceof Unopened &&
+              error.outcome === "incorrect secret",
+          );
+        assert.equal(calls.length, 0);
+      }
+    });
+  });
+
+  describe("newHeader(key, derive)", () => {
+    it("wraps a 32-byte data key under HKDF-SHA-256 of the key, the wrap's 16-byte salt and `cascade-pod-key-wrap`", async () => {
+      const key = new Uint8Array(32).map((_, at) => (at * 151 + 7) % 256);
+      const { bytes } = await newHeader(key, recordingDerive().derive);
+      const [wrap] = headerOf(bytes).wraps;
+      const salt = bytesOf(String(wrap?.kdfParams["salt"]));
+      assert.equal(salt.length, 16);
+      const kek = Buffer.from(
+        hkdfSync("sha256", key, salt, "cascade-pod-key-wrap", 32),
+      );
+      const raw = await decrypted(
+        await aesKey(kek),
+        bytesOf(wrap?.wrappedDek ?? ""),
+      );
+      assert.equal(raw.length, 32);
+    });
+  });
+});

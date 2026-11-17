@@ -1962,6 +1962,76 @@ describe("Encrypting a pod with six words · openPod(), sixWords(), typedWords()
   });
 });
 
+const KEY = new Uint8Array(32).map((_, at) => (at * 73 + 41) % 256);
+
+/**
+ * An app that holds a key of its own, 32 random bytes, seals a pod under that key in place of six words. Nothing about
+ * a key needs stretching, so the pod opens without Argon2id; a passphrase is never accepted as a key.
+ */
+describe("Encrypting a pod with an app's key · openPod()", () => {
+  describe("when a new pod is made with a key", () => {
+    it("seals it under a 1.4 header and opens it again with the key to the same answers, deriving nothing with Argon2id", async () => {
+      const at = join(pods, "keyed");
+      const derive = fastDerive();
+      const made = await openFolderPod({ ...kept, derive }, at, {
+        key: KEY,
+        title: TITLE,
+      });
+      const rows = await made.ask(HELD);
+      await made.close();
+      const header = JSON.parse(
+        await readFile(join(at, "settings", "encryption.json"), "utf8"),
+      ) as { version: string };
+      assert.equal(header.version, "1.4");
+      const reopened = await openFolderPod({ ...kept, derive }, at, {
+        key: new Uint8Array(KEY),
+      });
+      try {
+        assert.ok(reopened.encrypted);
+        assert.deepEqual(await reopened.ask(HELD), rows);
+      } finally {
+        await reopened.close();
+      }
+      assert.equal(derive.calls, 0);
+      const parts = { ...kept, derive };
+      for (const [name, opening] of [
+        ["another key", { key: KEY.map((byte) => byte ^ 1) }],
+        ["words", { secret: WORDS }],
+      ] as const)
+        assert.equal(
+          (await unopenedBy(openFolderPod(parts, at, opening))).outcome,
+          "incorrect secret",
+          name,
+        );
+      assert.equal(derive.calls, 0);
+      const opened = await openPod(at, { key: KEY });
+      assert.ok(opened.encrypted);
+      await opened.close();
+    });
+  });
+
+  describe("given a key that is not 32 random bytes, or a key with a secret", () => {
+    it("refuses it before reading the folder: a TypeError for the key, a Refusal for both", async () => {
+      const at = join(pods, "never-keyed");
+      for (const [name, key] of [
+        ["the key as text", Buffer.from(KEY).toString("base64")],
+        ["a passphrase's bytes", new TextEncoder().encode(WORDS.slice(0, 32))],
+        ["16 bytes", KEY.subarray(16)],
+      ] as const)
+        await assert.rejects(
+          openPod(at, { key: key as Uint8Array }),
+          TypeError,
+          name,
+        );
+      await assert.rejects(
+        openPod(at, { key: KEY, secret: WORDS }),
+        (error) => error instanceof Refusal && !(error instanceof Unopened),
+      );
+      assert.deepEqual(await filesIn(at).catch(() => []), []);
+    });
+  });
+});
+
 interface SealedAlex {
   readonly folder: string;
   readonly derive: DeriveKey;

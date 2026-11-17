@@ -24,6 +24,7 @@ import { argon2idOnce, podEncryptionVectors } from "./pod-encryption.js";
 import { layout, RUNTIME } from "./vocabulary.js";
 
 const SECRET = "abacus abdomen abdominal abide abiding zoom";
+const KEY = new Uint8Array(32).map((_, at) => (at * 73 + 41) % 256);
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const encoded = (value: string) => new TextEncoder().encode(value);
 
@@ -229,6 +230,105 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       const stated = JSON.parse(text(header)) as Record<string, unknown>;
       assert.equal(stated.version, "1.3");
       assert.equal(stated.resourceFormat, 3);
+    });
+  });
+
+  /** A key is 32 random bytes an app holds, so its wrap derives the wrapping key with HKDF, not Argon2id. */
+  describe("given a 32-byte key in place of a passphrase", () => {
+    it("writes a 1.4 header whose one wrap is a key wrap, and opens the pod with the key, deriving nothing with Argon2id", async () => {
+      const derive = fastDerive();
+      const made = await newHeader(KEY, derive);
+      const stated = JSON.parse(text(made.bytes)) as {
+        version: string;
+        resourceFormat: number;
+        wraps: Record<string, unknown>[];
+      };
+      assert.equal(stated.version, "1.4");
+      assert.equal(stated.resourceFormat, 3);
+      assert.deepEqual(
+        stated.wraps.map(({ by, kdf }) => [by, kdf]),
+        [["key", "hkdf-sha256"]],
+      );
+      const memory = new MemoryFiles("urn:test:pod/");
+      assert.ok(await madeNewPod(memory, made));
+      await new EncryptedFiles(memory, made.key, {
+        index: await SealedIndex.open(memory, made.key),
+      }).writeAll([["a.ttl", encoded("a")]]);
+      const key = await openHeader(made.bytes, KEY, derive);
+      const files = new EncryptedFiles(memory, key, {
+        index: await SealedIndex.open(memory, key),
+      });
+      assert.equal(text(await files.read("a.ttl")), "a");
+      assert.equal(derive.calls, 0);
+    });
+
+    it("throws Unopened, `incorrect secret`, deriving nothing, for another key, for a passphrase, and for a key given a passphrase's pod", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      const other = KEY.map((byte, at) => (at === 0 ? byte ^ 1 : byte));
+      const { header: words } = await sealedPod();
+      for (const [name, header, secret] of [
+        ["another key", bytes, other],
+        ["a passphrase", bytes, SECRET],
+        ["a key given a passphrase's pod", words, KEY],
+      ] as const)
+        assert.equal(
+          await outcomeOf(openHeader(header, secret, derive)),
+          "incorrect secret",
+          name,
+        );
+      assert.equal(derive.calls, 0);
+    });
+
+    it("throws Unopened, `malformed`, deriving nothing, for a key wrap in a header of version 1.3, alone or beside a passphrase wrap", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      const keyed = JSON.parse(text(bytes)) as { wraps: unknown[] };
+      const { header: words } = await sealedPod();
+      const [passphrase] = (JSON.parse(text(words)) as { wraps: unknown[] })
+        .wraps;
+      for (const [name, wraps] of [
+        ["alone", keyed.wraps],
+        ["beside a passphrase wrap", [passphrase, ...keyed.wraps]],
+      ] as const)
+        for (const secret of [KEY, SECRET])
+          assert.equal(
+            await outcomeOf(
+              openHeader(
+                encoded(JSON.stringify({ ...keyed, version: "1.3", wraps })),
+                secret,
+                derive,
+              ),
+            ),
+            "malformed",
+            name,
+          );
+      assert.equal(derive.calls, 0);
+    });
+
+    it("throws a TypeError, deriving nothing, for a key that is not 32 random bytes", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      for (const [name, key] of [
+        ["31 bytes", KEY.subarray(1)],
+        ["33 bytes", new Uint8Array([...KEY, 1])],
+        ["a passphrase's UTF-8 bytes", encoded(SECRET.slice(0, 32))],
+        ["all zeros", new Uint8Array(32)],
+        ["four bytes repeated", new Uint8Array(32).map((_, at) => at % 4)],
+        ["an array of numbers", [...KEY]],
+      ] as const) {
+        await assert.rejects(
+          newHeader(key as Uint8Array, derive),
+          TypeError,
+          `newHeader: ${name}`,
+        );
+        await assert.rejects(
+          openHeader(bytes, key as Uint8Array, derive),
+          TypeError,
+          `openHeader: ${name}`,
+        );
+      }
+      assert.equal(derive.calls, 0);
     });
   });
 
