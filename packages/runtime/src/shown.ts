@@ -90,8 +90,9 @@ async function isFinding(
 /**
  * A person's judgment or retraction as the pod keeps it (N16), the one copy every way a judgment is filed shares: the
  * reason it is refused, for replacing or retracting a matcher's judgment or, for a verdict that says something of its
- * members' versions, for a member with no current version; else its triples with the document each member was shown
- * from, and none the input states for the judgment itself. `changed` is false when those are the triples it was given.
+ * members' versions, for a member that is a finding; else its triples with the document each member was shown from, and
+ * none the input states for the judgment itself. A member the pod does not hold is kept: it names no document, and a
+ * restore or a rebuild may bring it back. `changed` is false when those are the triples it was given.
  */
 export async function judgmentFiled(
   read: Pick<CorePod, "select">,
@@ -132,9 +133,9 @@ export async function judgmentFiled(
   if (!overFinding && verdicts.some(sawVersions)) {
     const shown = await documentsShownFrom(read, members);
     for (const member of members)
-      if (!shown.has(member))
+      if (!shown.has(member) && (await isFinding(read, member)))
         return {
-          refused: `${member} has no current version in the pod: it names no record or revision`,
+          refused: `${member} is a finding for review: a Same may name one alone, and no other verdict may name one`,
         };
     const documents = new Set([...shown.values()].flatMap((from) => [...from]));
     for (const document of documents)

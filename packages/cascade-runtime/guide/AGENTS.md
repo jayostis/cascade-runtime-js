@@ -466,9 +466,13 @@ none, and `pod/My active allergies` lists it with the status `not stated`.
 ## Judge
 
 A judgment is `<urn:cascade:this-judgment>`, by the owner as the patient, on
-records, never entries. The package adds its time, and to a Same, Different or
+records, never entries. The package names it, adds its time, and to a Same, Different or
 Erroneous each member's current version as `prov:wasDerivedFrom`. A retraction is named
-so too: no judgment, but an activity that `prov:invalidated` one.
+so too: no judgment, but an activity that `prov:invalidated` one. An app that may retry
+names the judgment itself, with an IRI it mints once, and may state its time
+(`prov:generatedAtTime`, a retraction's `prov:startedAtTime`, an `xsd:dateTime`): the pod
+files it under that name, with that time and that author, and the same name again writes
+nothing. A judgment of a record the pod does not hold is kept, not refused.
 
 ```js
 function judgment(pod, reason, statements) {

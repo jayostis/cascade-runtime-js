@@ -1,5 +1,5 @@
 import type { CorePod } from "./core-pod.js";
-import { iri, ntriples, RDF } from "./rdf.js";
+import { iri, ntriples, RDF, type Triple, written } from "./rdf.js";
 import type { References } from "./references.js";
 import { judgmentFiled } from "./shown.js";
 import {
@@ -79,10 +79,50 @@ export async function fileJudgment(
         );
   const filed = await judgmentFiled(read, graph.triples);
   if ("refused" in filed) throw new Refusal(filed.refused);
+  const path = placement.path(one.value);
+  const held = await context.pod.read(path);
+  if (held !== undefined) {
+    const before = await parseStepFile(
+      { ...judgment, bytes: held },
+      context.newStore,
+    );
+    if (
+      statedOf(before.triples, one.value) !== statedOf(filed.triples, one.value)
+    )
+      throw new Refusal(
+        `${one.value} names a judgment the pod holds already, and this one states something else: a retry states the same`,
+      );
+    return;
+  }
   context.writes.add(
-    placement.path(one.value),
+    path,
     filed.changed ? ntriples(filed.triples) : judgment.bytes,
   );
+}
+
+/**
+ * What a judgment states that a retry states again: every triple whose subject is named, but the judgment's own time and
+ * the documents it was shown from (a retry meets a pod that may have changed, and may state no time), a blank node being
+ * one blank node whatever its label.
+ */
+function statedOf(triples: readonly Triple[], judgment: string): string {
+  const own = new Set([
+    `${PROV}wasDerivedFrom`,
+    `${PROV}generatedAtTime`,
+    `${PROV}startedAtTime`,
+  ]);
+  return triples
+    .filter(
+      ([s, p]) =>
+        s.termType === "NamedNode" &&
+        !(s.value === judgment && own.has(p.value)),
+    )
+    .map(
+      ([s, p, o]) =>
+        `${written(s)} ${written(p)} ${o.termType === "BlankNode" ? "_:" : written(o)}`,
+    )
+    .sort()
+    .join("\n");
 }
 
 /** A reference version's arrival: what the reference index states about it, filed by its name. */

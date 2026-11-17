@@ -1288,6 +1288,26 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       ]);
     });
 
+    it("files a retraction under the name and the start time it gives, and writes nothing for a retry", async () => {
+      const retracting = "urn:uuid:4e9a2c68-b013-4d75-8c3f-9a1e6d0b5f27";
+      const turtle = `${PREFIXES}
+<${retracting}> a prov:Activity ; prov:invalidated <${named}> ;
+    prov:startedAtTime ${dateTime("2026-03-06T10:30:00+02:00")} ;
+    prov:wasAssociatedWith <${author}> .
+<${author}> a prov:Person .`;
+      const done = await owned.judge(turtle);
+      const again = await owned.judge(turtle);
+      assert.equal(done.judgment, retracting);
+      assert.deepEqual([again.refused, again.wrote], [undefined, []]);
+      assert.deepEqual(
+        await select(
+          owned,
+          `SELECT ?made ?author WHERE { <${retracting}> prov:startedAtTime ?made ; prov:wasAssociatedWith ?author }`,
+        ),
+        [{ made: "2026-03-06T10:30:00+02:00", author }],
+      );
+    });
+
     it("throws, writing nothing, for a time that is no xsd:dateTime, for two times, and for a name that is a blank node", async () => {
       const held = await filesIn(at());
       const free = "urn:uuid:c3a81f06-92d4-4e7b-b5a8-0d6e2f1c7943";
