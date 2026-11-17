@@ -77,6 +77,7 @@ export const HOT_SPOTS = {
     "core-pod.matcherSelect",
     "core-pod.matcherView",
     "pod.unclaimedProfiles",
+    "pod.profilesTied",
     "incremental.boundValues",
     "store.query",
     "read.first",

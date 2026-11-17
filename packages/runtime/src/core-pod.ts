@@ -598,8 +598,8 @@ export class CorePod {
    * the build writes, or `run` ends, and are then rebuilt once for all of them: the rebuild of what several steps wrote
    * is the one the last would make, since a rebuild reads the files as they stand. A step that reads it (the matcher's
    * run, which reads each record's current version and subject) first rebuilds what was left. When `run` fails, what was
-   * left is rebuilt before the failure is thrown, and when that rebuild fails too, its failure is the `cause` of what
-   * `run` threw (an AggregateError of the two when that error has a cause already, or is no Error). A rebuild that
+   * left is rebuilt before the failure is thrown, and when that rebuild fails too, an AggregateError of what `run`
+   * threw and the rebuild's failure, in that order, is thrown; what `run` threw is not touched. A rebuild that
    * fails comes after the judgments were filed, since the steps it follows are all done by then: where each step
    * rebuilt on its own, the import's rebuild failed before any judgment was filed.
    */
@@ -614,13 +614,9 @@ export class CorePod {
         try {
           await this.#settle();
         } catch (failure) {
-          if (error instanceof Error && error.cause === undefined) {
-            error.cause = failure;
-            throw error;
-          }
           throw new AggregateError(
             [error, failure],
-            `${error instanceof Error ? error.message : String(error)}, and the build after the steps it left failed too`,
+            `the rebuild failed after the run failed: ${error instanceof Error ? error.message : String(error)}`,
             { cause: failure },
           );
         }

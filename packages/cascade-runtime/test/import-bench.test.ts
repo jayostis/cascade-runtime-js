@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openPod } from "cascade-runtime";
+import { probing } from "@cascade-runtime/runtime/probe";
 import {
   HOT_SPOTS,
   importBench,
@@ -197,6 +202,57 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         rebuildsOf(reopened).reduce((all, [, calls]) => all + calls, 0),
         2,
       );
+    });
+  });
+
+  describe("given a pod holding one hospital's pull, closed and opened again, whose next import is refused before the good one", () => {
+    /** The good import onto the reopened pod, after `refusals` imports of a file no importer reads. */
+    async function importedAfter(refusals: number) {
+      const folder = await mkdtemp(join(tmpdir(), "import-refused-"));
+      try {
+        let pod = await openPod(folder);
+        await pod.import(syntheticPull(40, { hospital: "first" }), {
+          claimProfiles: true,
+        });
+        await pod.close();
+        pod = await openPod(folder);
+        try {
+          for (let refused = 0; refused < refusals; refused++) {
+            const done = await pod.import(
+              new Map([["junk.json", new TextEncoder().encode("{not json")]]),
+              { claimProfiles: true },
+            );
+            assert.match(done.refused ?? "", /no importer/);
+          }
+          const { result, seen } = await probing(() =>
+            pod.import(syntheticPull(40, { hospital: "second" }), {
+              claimProfiles: true,
+            }),
+          );
+          return {
+            refused: result.refused,
+            wrote: result.wrote.length,
+            builtWhole: seen.spans.get("kept.whole")?.calls ?? 0,
+            rows: await pod.ask("record/Which entry shows it"),
+          };
+        } finally {
+          await pod.close();
+        }
+      } finally {
+        await rm(folder, { recursive: true, force: true });
+      }
+    }
+
+    it("builds the pod no more than once for the refused import and the good one, and imports as it would with none refused", async () => {
+      const control = await importedAfter(0);
+      const refused = await importedAfter(2);
+      assert.equal(control.refused, undefined);
+      assert.equal(refused.refused, undefined);
+      assert.equal(control.builtWhole, 1);
+      assert.equal(refused.builtWhole, 0, "built by the refused import's read");
+      assert.ok(control.rows.length > 0);
+      assert.equal(refused.wrote, control.wrote);
+      assert.equal(refused.rows.length, control.rows.length);
     });
   });
 
