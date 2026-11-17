@@ -23,6 +23,7 @@ import {
   type FolderPack,
   HEADER,
   iri,
+  isBridgeError,
   Layout,
   madeNewPod,
   MATCHER,
@@ -637,6 +638,38 @@ describe("Importing a health export · pod.import()", () => {
     it("skips the matcher, which a later `pod.match()` runs", () => {
       assert.equal(imported.matched, undefined);
       assert.equal(matched.refused, undefined);
+    });
+  });
+
+  describe("with `timeBudgetSeconds` or `memoryBudgetMiB`, the limits of a conversion", () => {
+    it("rejects with the Bridge's budget error when a budget is smaller than the conversion needs, writing nothing, and then converts with the Bridge's own defaults", async () => {
+      const at = join(pods, "budget");
+      const small = await openPodWith(kept, at);
+      try {
+        const held = await filesIn(at);
+        for (const budget of [
+          { timeBudgetSeconds: 1e-9 },
+          { memoryBudgetMiB: 1 },
+        ])
+          await assert.rejects(
+            small.import(exported("x-e2"), { match: false, ...budget }),
+            (error) =>
+              isBridgeError(error) &&
+              error.kind === "bridge" &&
+              /budget/.test(error.message),
+            JSON.stringify(budget),
+          );
+        assert.deepEqual(await filesIn(at), held);
+        const after = await small.import(exported("x-e2"), {
+          match: false,
+          timeBudgetSeconds: 120,
+          memoryBudgetMiB: 1024,
+        });
+        assert.equal(after.refused, undefined, "the next import");
+        assert.ok(after.wrote.length > 0);
+      } finally {
+        await small.close();
+      }
     });
   });
 
