@@ -54,6 +54,10 @@ function scoreOf(row, whole, words, typed) {
   return inPath > 0 ? 10 : 30 + inName;
 }
 
+function ownTerm(row) {
+  return row.kind === 'term' && row.title.indexOf('cascade:') === 0 ? 1 : 0;
+}
+
 function rank(rows, query) {
   var whole = plain(query);
   if (whole === '') return [];
@@ -65,7 +69,7 @@ function rank(rows, query) {
     if (score > 0) scored.push({ row: rows[i], score: score });
   }
   scored.sort(function (a, b) {
-    return b.score - a.score || ORDER[a.row.kind] - ORDER[b.row.kind] || a.row.title.length - b.row.title.length || (a.row.path < b.row.path ? -1 : 1);
+    return b.score - a.score || ORDER[a.row.kind] - ORDER[b.row.kind] || ownTerm(b.row) - ownTerm(a.row) || a.row.title.length - b.row.title.length || (a.row.path < b.row.path ? -1 : 1);
   });
   return scored.map(function (one) { return one.row; });
 }
