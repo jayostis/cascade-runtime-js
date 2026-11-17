@@ -1,0 +1,92 @@
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix pav: <http://purl.org/pav/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> a cascade:ReferenceSeries ;
+    rdfs:label "Matcher rules" ;
+    cascade:defaultTableVersion <urn:uuid:62dd0bdf-437c-4400-953f-164ee3ef00fe> .
+
+<urn:uuid:f32ebeea-4ed7-4da7-b08c-031dc619538e> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "1" .
+
+<urn:uuid:1cbf4776-02c0-4315-b992-a2037c1905fa> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "2" ;
+    prov:wasRevisionOf <urn:uuid:f32ebeea-4ed7-4da7-b08c-031dc619538e> .
+
+<urn:uuid:5decd4e5-a731-4ef1-901e-351c30d448d6> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "3" ;
+    prov:wasRevisionOf <urn:uuid:1cbf4776-02c0-4315-b992-a2037c1905fa> .
+
+<urn:uuid:61c46e5f-d837-4e98-86b0-dc3ce3cdcc76> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "4" ;
+    prov:wasRevisionOf <urn:uuid:5decd4e5-a731-4ef1-901e-351c30d448d6> .
+
+<urn:uuid:d8bb1c46-835e-49a2-83d5-d11817cf3ec6> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "5" ;
+    prov:wasRevisionOf <urn:uuid:61c46e5f-d837-4e98-86b0-dc3ce3cdcc76> .
+
+<urn:uuid:34bf5e12-8ed8-452a-a48b-2409e24dfaaf> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "6" ;
+    prov:wasRevisionOf <urn:uuid:d8bb1c46-835e-49a2-83d5-d11817cf3ec6> .
+
+<urn:uuid:5571ea95-c285-4fea-925f-e9fdd70f977a> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "7" ;
+    prov:wasRevisionOf <urn:uuid:34bf5e12-8ed8-452a-a48b-2409e24dfaaf> .
+
+<urn:uuid:bd40f64f-b01a-4246-ae63-29f6554415fc> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "8" ;
+    prov:wasRevisionOf <urn:uuid:5571ea95-c285-4fea-925f-e9fdd70f977a> .
+
+<urn:uuid:b92b58a2-4cff-40b2-8961-6f49d92ee468> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "9" ;
+    prov:wasRevisionOf <urn:uuid:bd40f64f-b01a-4246-ae63-29f6554415fc> .
+
+<urn:uuid:ddb435a8-0aa6-4b17-a830-469bc38186cd> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "10" ;
+    prov:wasRevisionOf <urn:uuid:b92b58a2-4cff-40b2-8961-6f49d92ee468> .
+
+<urn:uuid:fcd78384-34eb-4fe4-8c22-8b747f372ea7> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "11" ;
+    prov:wasRevisionOf <urn:uuid:ddb435a8-0aa6-4b17-a830-469bc38186cd> .
+
+<urn:uuid:699dd4d3-af7e-42b1-8fb9-72bd760de3bf> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "12" ;
+    prov:wasRevisionOf <urn:uuid:fcd78384-34eb-4fe4-8c22-8b747f372ea7> .
+
+<urn:uuid:3b2af8cc-ecd2-4cb2-af58-46022c426c2b> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "13" ;
+    prov:wasRevisionOf <urn:uuid:699dd4d3-af7e-42b1-8fb9-72bd760de3bf> .
+
+<urn:uuid:a0ca7e69-0690-4879-86c0-117879b6dcc2> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "14" ;
+    prov:wasRevisionOf <urn:uuid:3b2af8cc-ecd2-4cb2-af58-46022c426c2b> .
+
+<urn:uuid:0b5a5224-0a96-4f98-8557-5e575155836b> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "15" ;
+    prov:wasRevisionOf <urn:uuid:a0ca7e69-0690-4879-86c0-117879b6dcc2> .
+
+<urn:uuid:c3356329-3172-4736-a6b9-e4053c36795d> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "16" ;
+    prov:wasRevisionOf <urn:uuid:0b5a5224-0a96-4f98-8557-5e575155836b> .
+
+<urn:uuid:62dd0bdf-437c-4400-953f-164ee3ef00fe> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "17" ;
+    prov:wasRevisionOf <urn:uuid:c3356329-3172-4736-a6b9-e4053c36795d> .

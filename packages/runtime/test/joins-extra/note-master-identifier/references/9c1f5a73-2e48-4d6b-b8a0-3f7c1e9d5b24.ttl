@@ -1,0 +1,31 @@
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+
+[] a cascade:RuleListRow ;
+    cascade:matcherRule cascade:SameCodeRule ;
+    cascade:justifiedAs cascade:SameCode ;
+    cascade:appliesToClass cascade:AllergyOrIntolerance , cascade:ProblemOrDiagnosis , cascade:MedicalProcedure ;
+    cascade:queryPath "matcher/same-code.rq" ;
+    cascade:queryHash <ni:///sha-256;QeWoUryD0eBqLyfMIh6dgEa8fOxxTtxRbcXo7TNMFhY> .
+
+[] a cascade:RuleListRow ;
+    cascade:matcherRule cascade:SameCodeAndDateRule ;
+    cascade:justifiedAs cascade:SameCodeAndDate ;
+    cascade:appliesToClass cascade:Vaccination ;
+    cascade:queryPath "matcher/same-code-and-date.rq" ;
+    cascade:queryHash <ni:///sha-256;1ouqn1JB9e6O5i113ZPtU1pmmLHp5GVs1UUhZfpvDmw> .
+
+[] a cascade:RuleListRow ;
+    cascade:matcherRule cascade:SameMappedCodeRule ;
+    cascade:justifiedAs cascade:SameMappedCode ;
+    cascade:appliesToClass cascade:AllergyOrIntolerance ;
+    cascade:queryPath "matcher/same-mapped-code.rq" ;
+    cascade:queryHash <ni:///sha-256;TB_5n0eMih1Xg_qk9E0lMcYgw0eTSTTJhpnliYYPpsM> ;
+    cascade:tableKind cascade:SubstanceIngredients .
+
+[] a cascade:RuleListRow ;
+    cascade:matcherRule cascade:SameMappedCodeAndDateRule ;
+    cascade:justifiedAs cascade:SameMappedCodeAndDate ;
+    cascade:appliesToClass cascade:Vaccination ;
+    cascade:queryPath "matcher/same-vaccine-group-and-date.rq" ;
+    cascade:queryHash <ni:///sha-256;mtILE5ICBvMxaKD2J6K2dBPFbsu8irXd9lmX7OJvKKM> ;
+    cascade:tableKind cascade:VaccineGroups .
