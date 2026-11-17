@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve as absolute } from "node:path";
 import { type Followed, repositoryName, treeIri } from "../config.js";
+import { counted } from "../probe.js";
 import { checkout, git } from "./git.js";
 
 export type Source = "sibling" | "folder" | "fetched" | "packed";
@@ -170,14 +171,45 @@ async function fetched(component: Followed, cache: string): Promise<Resolved> {
   };
 }
 
+/** What a process's options and a key to one of its resolutions say, apart from the log a run is given. */
+export function optionsKey(options: ResolverOptions): string {
+  return JSON.stringify([
+    options.siblingsIn,
+    options.folders === undefined ? [] : [...options.folders],
+    options.cache,
+  ]);
+}
+
+const resolutions = new Map<string, Promise<Resolved>>();
+
 /**
  * The folder a component is read from, first match wins: a sibling checkout as it is on disk; a folder handed in;
- * otherwise the head of its default branch as it is now, fetched. The run says which.
+ * otherwise the head of its default branch as it is now, fetched. The run says which. Resolved once per process for each
+ * component and options, so every part of one run reads the same commit and git runs once.
  */
 export async function resolve(
   component: Followed,
   options: ResolverOptions,
 ): Promise<Resolved> {
+  const key = JSON.stringify([component, optionsKey(options)]);
+  let found = resolutions.get(key);
+  if (found === undefined) {
+    found = resolveNow(component, options);
+    resolutions.set(key, found);
+    found.catch(() => {
+      if (resolutions.get(key) === found) resolutions.delete(key);
+    });
+  }
+  const resolved = await found;
+  options.log?.(said(resolved));
+  return resolved;
+}
+
+async function resolveNow(
+  component: Followed,
+  options: ResolverOptions,
+): Promise<Resolved> {
+  counted("components.resolved");
   const sibling = siblingIn(options.siblingsIn, repositoryName(component));
   const handedIn = options.folders?.get(component.repository);
   const resolved =
@@ -186,6 +218,5 @@ export async function resolve(
       : handedIn !== undefined
         ? await onDisk(component, "folder", absolute(handedIn))
         : await fetched(component, options.cache);
-  options.log?.(said(resolved));
   return resolved;
 }

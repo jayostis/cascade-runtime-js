@@ -22,7 +22,7 @@ import {
   findRoot,
   FolderFiles,
   inWorker,
-  loadConfiguredAdapters,
+  loadSharedAdapters,
   type LocalVocabulary,
   thisRuntime,
   vocabularyOf,
@@ -216,7 +216,8 @@ export async function partsOf(
       const found = await components.bridge();
       return bridgeLoaded(
         new WasmBridge(inWorker(await compiledBridge(found.folder))),
-        (bridge) => loadConfiguredAdapters(bridge, config.adapters, components),
+        (bridge) =>
+          loadSharedAdapters(found.folder, bridge, config.adapters, components),
       );
     },
   };
