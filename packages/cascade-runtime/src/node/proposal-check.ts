@@ -88,13 +88,12 @@ function entryLines(
 }
 
 /**
- * The first member of a model's judgment that the pod holds as no record or revision, nor, for a Same of it alone, as a
- * finding. A person's or an app's statement of a record the pod lacks is kept (N10); a model's is checked before the
- * person is asked, so that a name the model made up is not put to them.
+ * The first member of a model's judgment that the pod holds as no record or revision. A person's or an app's statement
+ * of a record the pod lacks is kept (N10); a model's is checked before the person is asked, so that a name the model
+ * made up is not put to them.
  */
 async function unheldMember(
   pod: Pod,
-  verdict: Verdict,
   members: readonly string[],
 ): Promise<string | undefined> {
   if (members.length === 0) return undefined;
@@ -102,9 +101,7 @@ async function unheldMember(
     query: `${PREFIXES}
       SELECT ?member ?held WHERE {
         VALUES ?member { ${members.map((member) => `<${member}>`).join(" ")} }
-        BIND (EXISTS { ?member pav:hasCurrentVersion [] } || EXISTS { ?member cascade:version [] } AS ?record)
-        BIND (EXISTS { ?member a cascade:FindingForReview } AS ?finding)
-        BIND (?record || (?finding && ${verdict === "same" && members.length === 1}) AS ?held)
+        BIND (EXISTS { ?member pav:hasCurrentVersion [] } || EXISTS { ?member cascade:version [] } AS ?held)
       }`,
   });
   const held = new Set(
@@ -230,7 +227,7 @@ export async function checkProposal(
     verdict = held.verdict;
   } else {
     members = proposal.members;
-    const unheld = await unheldMember(pod, proposal.verdict, members);
+    const unheld = await unheldMember(pod, members);
     if (unheld !== undefined)
       return {
         refused: `${unheld} has no current version in the pod: a model proposes a judgment of records the pod holds`,
