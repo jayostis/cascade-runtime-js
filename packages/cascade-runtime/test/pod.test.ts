@@ -1411,6 +1411,18 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       );
     });
 
+    it("files a time at an offset of +14:00 and of -14:00, the bounds, as given", async () => {
+      for (const [name, time] of [
+        ["urn:uuid:7d2f9b41-3a60-4c85-9e1b-5f8a0c6e2d73", "+14:00"],
+        ["urn:uuid:b05c8e32-6f17-4a9d-8d24-1e7b3a9f4c60", "-14:00"],
+      ] as const) {
+        const made = `2026-03-04T07:00:00${time}`;
+        const done = await owned.judge(byAnother(name, dateTime(made)));
+        assert.equal(done.refused, undefined, time);
+        assert.deepEqual(await stating(name), [{ made, author }], time);
+      }
+    });
+
     it("throws, writing nothing, for a time that is no xsd:dateTime, for two times, and for a name that is a blank node", async () => {
       const held = await filesIn(at());
       const free = "urn:uuid:c3a81f06-92d4-4e7b-b5a8-0d6e2f1c7943";
