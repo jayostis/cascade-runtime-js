@@ -202,6 +202,15 @@ function about(by: Pod, profile: string): string {
   ]);
 }
 
+/** The owner's statement that a hospital's patient is not them. */
+function notAbout(by: Pod, profile: string): string {
+  return judgment(by, [
+    "cascade:verdict cascade:NotAbout",
+    `cascade:subject <${by.subject}>`,
+    `prov:hadMember <${profile}>`,
+  ]);
+}
+
 /** The owner's retraction of a judgment they filed. */
 function retraction(by: Pod, filed: string): string {
   return `${PREFIXES}
@@ -653,6 +662,69 @@ describe("Importing a health export · pod.import()", () => {
     });
   });
 
+  describe("given the owner's NotAbout over the export's patient, and a later import naming it", () => {
+    it("claims nothing and files no About, with the list naming that patient and without it, and returns it in `disclaimedProfiles`", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      for (const [name, claimProfiles, claimed, unclaimed] of [
+        ["without a list", undefined, [], [j2]],
+        ["with a list naming it", [j1], [], [j2]],
+        ["with a list naming it and the other patient", [j1, j2], [j2], []],
+      ] as const) {
+        const denying = await openPodWith(kept, join(pods, `not-about-${name}`));
+        try {
+          await denying.import(exported("x-e2"), { match: false });
+          await denying.judge(notAbout(denying, j1));
+          const later = await denying.import(exported("x-e6"), {
+            ...(claimProfiles === undefined ? {} : { claimProfiles }),
+          });
+          assert.deepEqual(
+            later.claimedProfiles.map(({ profile }) => profile),
+            claimed,
+            name,
+          );
+          assert.deepEqual(later.unclaimedProfiles, unclaimed, name);
+          assert.deepEqual(later.disclaimedProfiles, [j1], name);
+          assert.deepEqual(later.heldBackProfiles, [], name);
+          assert.deepEqual(
+            await select(
+              denying,
+              `SELECT ?about WHERE { ?about cascade:verdict cascade:About ; prov:hadMember <${j1}> }`,
+            ),
+            [],
+            `${name}: an About for the patient the owner said is not them`,
+          );
+          if (claimed.length === 0)
+            assert.deepEqual(await allergens(denying), [], name);
+        } finally {
+          await denying.close();
+        }
+      }
+    });
+
+    it("returns the patient in `heldBackProfiles`, and claims nothing for it, when an About of the owner's stands against the NotAbout", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      const disagreeing = await openPodWith(kept, join(pods, "held-back"));
+      try {
+        await disagreeing.import(exported("x-e2"), { match: false });
+        await disagreeing.judge(notAbout(disagreeing, j1));
+        await disagreeing.judge(about(disagreeing, j1));
+        const later = await disagreeing.import(exported("x-e6"), {
+          match: false,
+          claimProfiles: [j1, j2],
+        });
+        assert.deepEqual(
+          later.claimedProfiles.map(({ profile }) => profile),
+          [j2],
+        );
+        assert.deepEqual(later.heldBackProfiles, [j1]);
+        assert.deepEqual(later.disclaimedProfiles, []);
+        assert.deepEqual(later.unclaimedProfiles, []);
+      } finally {
+        await disagreeing.close();
+      }
+    });
+  });
+
   describe("given a pull that names three patients", () => {
     it("returns all three in `unclaimedProfiles`, in order of their IRIs", async () => {
       const allergy = (id: string, patient: string) => ({
@@ -720,6 +792,54 @@ describe("Importing a health export · pod.import()", () => {
         );
       } finally {
         await ordering.close();
+      }
+    });
+  });
+
+  describe("with `claimProfiles`, the list of the patients the person confirmed", () => {
+    it("claims exactly the listed patients the import names, once each, and returns the rest in `unclaimedProfiles`", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      for (const [name, list, claimed, unclaimed] of [
+        ["one of two", [j1], [j1], [j2]],
+        ["the same one twice", [j2, j2], [j2], [j1]],
+        ["none", [], [], [j1, j2]],
+        ["one the import does not name", ["urn:uuid:not-in-it"], [], [j1, j2]],
+      ] as const) {
+        const claiming = await openPodWith(kept, join(pods, `list-${name}`));
+        try {
+          const done = await claiming.import(exported("x-e6"), {
+            claimProfiles: list,
+            match: false,
+          });
+          assert.deepEqual(
+            done.claimedProfiles.map(({ profile }) => profile),
+            claimed,
+            name,
+          );
+          assert.deepEqual(done.unclaimedProfiles, [...unclaimed].sort(), name);
+          assert.deepEqual(done.disclaimedProfiles, [], name);
+        } finally {
+          await claiming.close();
+        }
+      }
+    });
+
+    it("files no About for a pod's own subject, and none for a patient a counting About already ties", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      const tied = await openPodWith(kept, join(pods, "list-tied"));
+      try {
+        await tied.import(exported("x-e2"), { match: false });
+        await tied.judge(about(tied, j1));
+        const done = await tied.import(exported("x-e6"), {
+          claimProfiles: [j1, j2, tied.subject],
+          match: false,
+        });
+        assert.deepEqual(
+          done.claimedProfiles.map(({ profile }) => profile),
+          [j2],
+        );
+      } finally {
+        await tied.close();
       }
     });
   });
