@@ -77,6 +77,22 @@ export const HOT_SPOTS = {
     "incremental.boundValues",
     "store.query",
     "read.first",
+    "arrivals.convert",
+    "arrivals.accepting",
+    "core-pod.import.adapters",
+    "core-pod.step.perform",
+    "core-pod.step.commit",
+    "core-pod.step.rebuild:import",
+    "core-pod.step.rebuild:judge",
+    "core-pod.step.rebuild:match",
+    "kept.step",
+    "kept.step.rebuilt",
+    "kept.rebuilt.derive",
+    "build.queried",
+    "union.loadTurtle",
+    "pod.judge",
+    "pod.match",
+    "matcher.of",
   ],
   counts: [
     "graph.scans",
@@ -267,6 +283,11 @@ export interface Measured {
   readonly rssMb: number;
 }
 
+/** A span named for a file of the vocabulary: a derivation or a query of the layout, of which there are many. */
+function byFile(name: string): boolean {
+  return name.startsWith("derive.step:") || name.startsWith("build.query:");
+}
+
 function round(ms: number): number {
   return Math.round(ms * 10) / 10;
 }
@@ -345,10 +366,18 @@ export function tableOf(run: Measured): string {
     "",
     "span (inclusive; calls, ms)",
     ...run.spans
-      .filter(({ name }) => !name.startsWith(RULE))
+      .filter(({ name }) => !name.startsWith(RULE) && !byFile(name))
       .map(
         ({ name, calls, ms }) =>
           `  ${name.padEnd(34)} ${String(calls).padStart(8)} ${String(ms).padStart(10)}`,
+      ),
+    "",
+    "derivation and layout query, by file (calls, ms)",
+    ...run.spans
+      .filter(({ name }) => byFile(name))
+      .map(
+        ({ name, calls, ms }) =>
+          `  ${name.padEnd(66)} ${String(calls).padStart(4)} ${String(ms).padStart(9)}`,
       ),
     "",
     "matcher by rule (calls, ms, store queries, rows; a rule sharing another's query text reads its rows and shows 0 ms and 0 queries)",

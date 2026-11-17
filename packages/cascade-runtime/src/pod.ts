@@ -40,7 +40,7 @@ import {
   type VocabularyBuild,
   type VocabularyQuery,
 } from "@cascade-runtime/runtime";
-import { timed } from "@cascade-runtime/runtime/probe";
+import { timed, timedAside } from "@cascade-runtime/runtime/probe";
 import {
   answerKey,
   Answers,
@@ -923,13 +923,15 @@ class OpenPod implements Pod {
     if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
     const claimedProfiles: { profile: string; judgment: string }[] = [];
     for (const [index, profile] of profiles.entries()) {
-      const { judgment } = await this.#judge(
-        about(this.subject, profile, this.owner),
+      const { judgment } = await timedAside("pod.judge", () =>
+        this.#judge(about(this.subject, profile, this.owner)),
       );
       if (judgment !== undefined) claimedProfiles.push({ profile, judgment });
       await onProgress?.({ part: "judging", done: index + 1, of });
     }
-    const matched = matching ? await this.#core.match(activity) : undefined;
+    const matched = matching
+      ? await timedAside("pod.match", () => this.#core.match(activity))
+      : undefined;
     return {
       ...filed,
       ...(matched === undefined ? {} : { matched }),

@@ -1,5 +1,6 @@
 import { answersQuery, entries } from "./entries.js";
 import { type Files, readText, under } from "./files.js";
+import { timedAside } from "./probe.js";
 import { type Triple, written } from "./rdf.js";
 import type { Union } from "./store.js";
 
@@ -113,29 +114,32 @@ export class Derivations {
         : steps.findIndex(({ path }) => path === last) + 1;
     if (through === 0) throw new Error(`the vocabulary has no ${last}`);
     const added: DerivedStep[] = [];
-    for (const { path, query } of steps.slice(0, through)) {
-      const kept =
-        samesStillJoined !== undefined &&
-        under(LENSES, path) &&
-        query.includes(KEPT_TERM)
-          ? await samesStillJoined(union)
-          : [];
-      if (kept.length > 0) await union.add(kept, DERIVED + lens);
-      const constructed = (await answersQuery(query))
-        ? await entries(union)
-        : await union.construct(query);
-      const held = await union.holds(constructed);
-      const seen = new Set<string>();
-      const fresh = constructed.filter((triple, at) => {
-        if (held[at]) return false;
-        const written = key(triple);
-        if (seen.has(written)) return false;
-        seen.add(written);
-        return true;
-      });
-      await union.add(fresh, DERIVED + lens);
-      added.push({ path, added: [...kept, ...fresh] });
-    }
+    for (const { path, query } of steps.slice(0, through))
+      added.push(
+        await timedAside(`derive.step:${path}`, async () => {
+          const kept =
+            samesStillJoined !== undefined &&
+            under(LENSES, path) &&
+            query.includes(KEPT_TERM)
+              ? await samesStillJoined(union)
+              : [];
+          if (kept.length > 0) await union.add(kept, DERIVED + lens);
+          const constructed = (await answersQuery(query))
+            ? await entries(union)
+            : await union.construct(query);
+          const held = await union.holds(constructed);
+          const seen = new Set<string>();
+          const fresh = constructed.filter((triple, at) => {
+            if (held[at]) return false;
+            const written = key(triple);
+            if (seen.has(written)) return false;
+            seen.add(written);
+            return true;
+          });
+          await union.add(fresh, DERIVED + lens);
+          return { path, added: [...kept, ...fresh] };
+        }),
+      );
     return added;
   }
 }

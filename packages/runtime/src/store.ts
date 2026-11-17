@@ -1,3 +1,4 @@
+import { timedAside } from "./probe.js";
 import { iri, type Term, type Triple, written } from "./rdf.js";
 
 export type Row = ReadonlyMap<string, Term>;
@@ -70,28 +71,34 @@ export class Union implements Dataset {
   }
 
   async loadTurtle(turtle: Uint8Array | string, graph: string): Promise<void> {
-    await this.store.loadTurtle(turtle, { graph });
+    await timedAside("union.loadTurtle", () =>
+      this.store.loadTurtle(turtle, { graph }),
+    );
     this.#graphs.add(graph);
   }
 
   async add(triples: Iterable<Triple>, graph: string): Promise<void> {
-    await this.store.add(triples, { graph });
+    await timedAside("union.add", () => this.store.add(triples, { graph }));
     this.#graphs.add(graph);
   }
 
   /** Removes a graph and its triples, and takes it out of the union. */
   async drop(graph: string): Promise<void> {
-    await this.store.drop(graph);
+    await timedAside("union.drop", () => this.store.drop(graph));
     this.#graphs.delete(graph);
   }
 
   /** Removes from the graph every triple whose subject is one of the IRIs. */
   removeSubjects(graph: string, subjects: Iterable<string>): Promise<void> {
-    return this.store.removeSubjects(graph, subjects);
+    return timedAside("union.removeSubjects", () =>
+      this.store.removeSubjects(graph, subjects),
+    );
   }
 
   select(query: string): Promise<Rows> {
-    return this.store.select(query, this.#graphs);
+    return timedAside("union.select", () =>
+      this.store.select(query, this.#graphs),
+    );
   }
 
   ask(query: string): Promise<boolean> {
@@ -99,11 +106,15 @@ export class Union implements Dataset {
   }
 
   construct(query: string): Promise<Triple[]> {
-    return this.store.construct(query, this.#graphs);
+    return timedAside("union.construct", () =>
+      this.store.construct(query, this.#graphs),
+    );
   }
 
   holds(triples: readonly Triple[]): Promise<boolean[]> {
-    return this.store.holds(triples, this.#graphs);
+    return timedAside("union.holds", () =>
+      this.store.holds(triples, this.#graphs),
+    );
   }
 }
 
