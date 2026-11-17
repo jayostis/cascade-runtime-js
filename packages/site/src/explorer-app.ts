@@ -494,7 +494,7 @@ function answerHtml(q) {
   if (!a) return '<p class="gen">No answer is kept for this question under the ' + esc(D.pod.lens) + ' lens.</p>';
   if (!a.rows.length) return '<p class="gen">No rows for this pod.</p>';
   var shown = a.rows.slice(0, 40), cols = answerColumns(shown);
-  return '<div class="tw-x"><table><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + shown.map(function (r) { return '<tr>' + cols.map(function (c) { return td(c, esc(r[c] && typeof r[c] === 'object' ? r[c].value : r[c])); }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (a.rows.length > shown.length ? '<p class="gen">' + shown.length + ' of ' + a.rows.length + ' rows shown.' + tag('query') + '</p>' : '');
+  return '<div class="tw-x"><table><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + shown.map(function (r) { return '<tr>' + cols.map(function (c) { return td(c, esc(Array.isArray(r[c]) ? r[c].join('; ') : r[c] && typeof r[c] === 'object' ? r[c].value : r[c])); }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (a.rows.length > shown.length ? '<p class="gen">' + shown.length + ' of ' + a.rows.length + ' rows shown.' + tag('query') + '</p>' : '');
 }
 function inspectorHtml() {
   var id = state.sel, h = crumbs(id), path = id.slice(2);

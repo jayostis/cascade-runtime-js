@@ -1357,10 +1357,6 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
 
 const MEMBER_PREFIX = /^(urn:uuid:\S+) /;
 
-/** A cell of a question's row as its parts: a list column's values, or the parts of a text a "; " ends. */
-const partsOf = (cell: string | readonly string[]): readonly string[] =>
-  typeof cell === "string" ? cell.split("; ") : cell;
-
 /** A value a pod holds of an entry or of the person: the kind of field it is, and the record that states it, if one does. */
 export interface Held {
   readonly kind: keyof Fields;
@@ -1396,7 +1392,7 @@ export function entryHeld(
 export function personHeld(row: Row): Held[] {
   const held: Held[] = [];
   for (const [column, cell] of Object.entries(row))
-    for (const part of partsOf(cell)) {
+    for (const part of [cell].flat()) {
       const value = part.replace(MEMBER_PREFIX, "");
       const record = MEMBER_PREFIX.exec(part)?.[1];
       if (value !== "")
@@ -1461,9 +1457,9 @@ export function podRowsSource(
           source: [
             ...new Set(
               Object.values(who).flatMap((cell) =>
-                partsOf(cell).flatMap(
-                  (part) => MEMBER_PREFIX.exec(part)?.[1] ?? [],
-                ),
+                [cell]
+                  .flat()
+                  .flatMap((part) => MEMBER_PREFIX.exec(part)?.[1] ?? []),
               ),
             ),
           ],

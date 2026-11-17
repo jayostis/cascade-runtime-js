@@ -999,19 +999,14 @@ describe("Asking a pod questions · pod.ask()", () => {
     assert.equal(row?.sources, "a; urn:b");
   });
 
-  it("ends a list column's value only at the declared separator followed by the declared start, as a value's own text may hold the separator", () => {
-    const records = { column: "x", separator: "; ", followedBy: "urn:" };
+  it("ends a list column's value at every declared separator, so a value's own '; ' stays in it", () => {
+    const records = { column: "x", separator: "\u001f" };
     assert.deepEqual(
-      valuesOf("urn:a 5 mg; as needed, daily; urn:b 10 mg", records),
+      valuesOf("urn:a 5 mg; as needed, daily\u001furn:b 10 mg", records),
       ["urn:a 5 mg; as needed, daily", "urn:b 10 mg"],
     );
     assert.deepEqual(valuesOf("urn:a one", records), ["urn:a one"]);
     assert.deepEqual(valuesOf("", records), []);
-    assert.deepEqual(valuesOf("H; L", { column: "x", separator: "; " }), [
-      "H",
-      "L",
-    ]);
-    assert.deepEqual(valuesOf("urn:a; ; urn:b", records), ["urn:a; ", "urn:b"]);
   });
 
   it("runs the app's own SELECT under the lens named, and returns none of the `export` lens's rows when none is named", async () => {

@@ -67,8 +67,6 @@ function wordsOf(text: string): string[] {
 
 /** The column of each record's own text; the one column whose parts are left out when they say no more than the row. */
 const NARRATIVE_TEXTS = "narrativeTexts";
-/** Where one record's part of a cell ends: the next part starts with a record, so a "; " inside a text does not end it. */
-const RECORD = /; (?=urn:)/;
 /** The tail of a record's label that says when it was received, which a source's text does not. */
 const RECEIVED = / · received .*$/;
 
@@ -171,7 +169,7 @@ class Rewriter {
     }
     for (const rows of views)
       for (const row of rows)
-        for (const part of partsOf(row.sources)) {
+        for (const part of [row.sources ?? []].flat()) {
           const [, record, iri, how, writtenBy] = SOURCE.exec(part) ?? [];
           if (record === undefined || iri === undefined) continue;
           if (!this.#recordDocument.has(record))
@@ -279,16 +277,12 @@ class Rewriter {
   /** The sources of a row's records, as `sources` names them. */
   from(value: string | readonly string[]): string {
     return inOrder(
-      [...partsOf(value).join("; ").matchAll(IRI)].flatMap(
+      [...[value].flat().join("; ").matchAll(IRI)].flatMap(
         ([iri]) => this.sourceOf(iri) ?? [],
       ),
     );
   }
 }
-
-/** A cell's parts: the values of a list column, or the parts of a text a "; " ends. */
-const partsOf = (cell: string | readonly string[] | undefined) =>
-  cell === undefined ? [] : typeof cell === "string" ? cell.split("; ") : cell;
 
 /** Sources by their number, each once, as one cell lists them. */
 const inOrder = (sources: readonly string[]) =>
@@ -329,12 +323,7 @@ function rendered(
           ? `${value} ${plainLabel(label)}`
           : value;
       const narrative = column === NARRATIVE_TEXTS;
-      const written = rewrite.cell(
-        typeof named === "string"
-          ? named.split(narrative ? RECORD : "; ")
-          : named,
-        text(row.entry),
-      );
+      const written = rewrite.cell([named].flat(), text(row.entry));
       const parts =
         label !== undefined && /\b(urn|pod|ni|https?):/.test(written.join(" "))
           ? [label]

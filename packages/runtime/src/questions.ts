@@ -8,8 +8,6 @@ export interface ListColumn {
   readonly column: string;
   /** What ends a value: the text between two values. */
   readonly separator: string;
-  /** When given, the start every value has: the separator ends a value only where this comes next. */
-  readonly followedBy?: string;
 }
 
 /** A query of the vocabulary, by its path in the vocabulary. */
@@ -28,62 +26,56 @@ async function declaredLists(
 ): Promise<ReadonlyMap<string, readonly ListColumn[]>> {
   const bytes = await vocabulary.read(CRATE);
   if (bytes === undefined) return new Map();
+  interface Entity {
+    "@id"?: string;
+    "csvw:tableSchema"?: { "@id"?: string };
+    "csvw:column"?: readonly { "@id"?: string }[];
+    "csvw:name"?: string;
+    "csvw:separator"?: string;
+  }
   const { "@graph": graph } = JSON.parse(new TextDecoder().decode(bytes)) as {
-    "@graph": readonly {
-      "@id"?: string;
-      listColumns?: readonly Partial<ListColumn>[];
-    }[];
+    "@graph": readonly Entity[];
   };
-  return new Map(
-    graph.flatMap(({ "@id": path, listColumns }) =>
-      path === undefined || listColumns === undefined
-        ? []
-        : [
-            [
-              path,
-              listColumns.map(({ column, separator, followedBy }) => {
-                if (
-                  typeof column !== "string" ||
-                  typeof separator !== "string" ||
-                  separator === "" ||
-                  (followedBy !== undefined && typeof followedBy !== "string")
-                )
-                  throw new Error(
-                    `${CRATE} declares a list column of ${path} with no column or no separator`,
-                  );
-                return {
-                  column,
-                  separator,
-                  ...(followedBy === undefined ? {} : { followedBy }),
-                };
-              }),
-            ] as const,
-          ],
+  const byId = new Map(
+    graph.flatMap((entity) =>
+      entity["@id"] === undefined ? [] : [[entity["@id"], entity] as const],
     ),
+  );
+  return new Map(
+    graph.flatMap(({ "@id": path, "csvw:tableSchema": table }) => {
+      if (path === undefined || table?.["@id"] === undefined) return [];
+      const columns = byId.get(table["@id"])?.["csvw:column"];
+      if (columns === undefined)
+        throw new Error(
+          `${CRATE} declares no columns for the table of ${path}`,
+        );
+      return [
+        [
+          path,
+          columns.flatMap(({ "@id": id }) => {
+            const column = id === undefined ? undefined : byId.get(id);
+            const name = column?.["csvw:name"];
+            const separator = column?.["csvw:separator"];
+            if (typeof name !== "string")
+              throw new Error(
+                `${CRATE} declares a column of ${path} with no name`,
+              );
+            if (separator === undefined) return [];
+            if (typeof separator !== "string" || separator === "")
+              throw new Error(
+                `${CRATE} declares the column ${name} of ${path} with no separator`,
+              );
+            return [{ column: name, separator }];
+          }),
+        ] as const,
+      ];
+    }),
   );
 }
 
-/** The values of a list column's text, each as the vocabulary says one ends; no text, no values. */
+/** The values of a list column's text, split at every separator; no text, no values. */
 export function valuesOf(text: string, list: ListColumn): string[] {
-  if (text === "") return [];
-  const values: string[] = [];
-  let start = 0;
-  for (
-    let at = text.indexOf(list.separator, start);
-    at !== -1;
-    at = text.indexOf(list.separator, at + 1)
-  ) {
-    const next = at + list.separator.length;
-    if (
-      at >= start &&
-      (list.followedBy === undefined || text.startsWith(list.followedBy, next))
-    ) {
-      values.push(text.slice(start, at));
-      start = next;
-    }
-  }
-  values.push(text.slice(start));
-  return values;
+  return text === "" ? [] : text.split(list.separator);
 }
 
 /** A question's row with each list column the vocabulary declares for it given as its values. */

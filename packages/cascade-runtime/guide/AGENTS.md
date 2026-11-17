@@ -269,10 +269,9 @@ async function search(word) {
 
 ### Questions
 
-A column a question's entry in the vocabulary's `ro-crate-metadata.json` declares in `listColumns` comes back as an
-array of strings, each value as the declaration's separator ends it (a "; " followed by a record's IRI where
-`followedBy` says so, since a value's own text may hold "; "); where this list says a column is joined by "; ", read
-that as its array. `ask` with a query of your own has no list columns.
+A column the vocabulary's `ro-crate-metadata.json` gives a `csvw:separator` for a question comes back as an array of
+strings, split at that separator (the unit separator, U+001F, which no text a source wrote holds); where this list says
+a column is a list, read it as its array. `ask` with a query of your own has no list columns.
 
 - `entry/What it shows`: each entry's fields and its members', each with the record it came from, the lead's first.
 - `entry/What needs review`: entries a person should look at, and why.
@@ -304,7 +303,7 @@ that as its array. `ask` with a query of your own has no list columns.
 - `pod/My active medications`: medications whose status is active
   (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
   `?statuses`, each record's own status and the day it ended, so a medication
-  one hospital stopped and another still lists says both, `?dosages`, each record that states a dosage, "<record> <text>", joined by "; " (none when no record states one), `?narrativeTexts`, the text each record's source wrote for it, such as a stop reason, in the same form, and `?sources`. One
+  one hospital stopped and another still lists says both, `?dosages`, each record that states a dosage, "<record> <text>", a list (none when no record states one), `?narrativeTexts`, the text each record's source wrote for it, such as a stop reason, in the same form, and `?sources`. One
   whose status was taken from a record that stopped it is only in
   `pod/My medication history`.
 - `pod/My genetic variants`: variants, a row for each code an entry states
@@ -316,7 +315,7 @@ that as its array. `ask` with a query of your own has no list columns.
   L and A (`?interpretations`), its reference range as text and each bound as
   written with its unit (`?referenceRangeText`, `?referenceRangeLow`,
   `?referenceRangeHigh`), `?narrativeTexts`, the text each record's source wrote
-  for it, such as a label beside the value, "<record> <text>" joined by "; "
+  for it, such as a label beside the value, "<record> <text>", a list
   (none when no record has one), and `?sources`.
 - `pod/My medication history`: every medication whatever its status, with when
   it started and the day its prescription was written (`?medication`, `?code`,
@@ -329,13 +328,12 @@ that as its array. `ask` with a query of your own has no list columns.
 - `pod/My procedures`: procedures, newest first (`?performed`, `?procedure`,
   `?procedureCode`, `?status`, `?records`, `?entry`), with the text each record's
   source wrote for it, such as the finding beside a screening
-  (`?narrativeTexts`, "<record> <text>" joined by "; ", none when no record has
+  (`?narrativeTexts`, "<record> <text>", a list, none when no record has
   one), and the `?sources` of each.
 - `pod/My reports, notes and documents`: one row for each report and note,
   newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
   `?title`, `?status`, `?contentStatus`, `?conclusion`, `?text`) and its
-  `?entry`. Four columns are lists, each value ended by "; " but the last,
-  unbound when empty: `?codes` (an IRI, or a code "in" its system);
+  `?entry`. Four columns are lists, each an array, empty when unbound: `?codes` (an IRI, or a code "in" its system);
   `?attachments` (media type and title of a file the pod keeps but does not
   read, so a report sent only as a PDF has one and no `?text`); `?results`
   (each result's lab results entry, test, value, unit, reference range and
