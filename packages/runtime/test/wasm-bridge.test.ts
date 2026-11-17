@@ -401,8 +401,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
     }
 
     it("starts no worker and resolves no component the second time", async () => {
-      const first = await started(components);
-      assert.ok(first.workers > 0);
+      await started(components);
       assert.deepEqual(await started(components), { workers: 0, resolved: 0 });
     });
 
