@@ -1,0 +1,74 @@
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix org: <http://www.w3.org/ns/org#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+<urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> a cascade:Organization .
+<ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> prov:wasGeneratedBy _:writing ;
+	prov:wasAttributedTo <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> .
+_:writing prov:qualifiedAssociation _:a6c06d65152b88df1c8f62b628e84f41 .
+_:a6c06d65152b88df1c8f62b628e84f41 prov:agent <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> ;
+	prov:hadRole cascade:CustodianRole .
+<ni:///sha-256;it6jHPm47tRiUzK2--q_Db_G99RHNpDFB-SUrlhJFew> prov:specializationOf <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> .
+_:2ec40af3b23edd257fb74d924545f12c bridge:arrivedAs <ni:///sha-256;it6jHPm47tRiUzK2--q_Db_G99RHNpDFB-SUrlhJFew> ;
+	oa:hasSelector _:cbea23079985c203bb5e9925b4d7ec4 .
+_:cbea23079985c203bb5e9925b4d7ec4 a oa:XPathSelector ;
+	rdf:value "/*[local-name()='ClinicalDocument' and namespace-uri()='urn:hl7-org:v3']/*[local-name()='custodian' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='assignedCustodian' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='representedCustodianOrganization' and namespace-uri()='urn:hl7-org:v3'][1]" .
+<ni:///sha-256;it6jHPm47tRiUzK2--q_Db_G99RHNpDFB-SUrlhJFew> foaf:name "Fernhill Family Clinic" ;
+	org:identifier "CLINIC-7"^^<urn:oid:2.16.840.1.113883.19.5.2> .
+_:writing prov:qualifiedAssociation _:b3681fe4dcce6f776a66cdc1fc04ca78 .
+_:b3681fe4dcce6f776a66cdc1fc04ca78 prov:agent <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> ;
+	prov:hadRole cascade:AuthorRole .
+<ni:///sha-256;UgBum9JL4LdvfoPTbYk3LMoD60Sj-OL0MLInv_aP9f0> cascade:noteOrDocumentTypeName "Plan of care note" ;
+	cascade:narrativeText "Return in 3 months." ;
+	cascade:noteOrDocumentDate "2026-06-15T09:00:00-05:00"^^xsd:dateTime ;
+	cascade:noteOrDocumentTitle "Plan of treatment, June 15" ;
+	cascade:workflowStatus "current" ;
+	cascade:noteOrDocumentMasterIdentifier "CCD-2026-1005"^^<urn:oid:2.16.840.1.113883.19.5.99999.1> ;
+	cascade:noteOrDocumentTypeCode <http://loinc.org/rdf/11506-3> .
+<ni:///sha-256;LdCRCJyD209oG-LAnKrWwzUqdpMc09wV0n8-0IotsYU> foaf:familyName "Lindqvist" ;
+	foaf:givenName "Gus" ;
+	cascade:dateOfBirth "1971-03-18"^^xsd:date ;
+	cascade:administrativeGender "male" .
+<urn:uuid:0de4921b-84d0-84da-afeb-1e546a42af37> a cascade:PatientProfile ;
+	cascade:sourceUrl <urn:hl7ii:2.16.840.1.113883.19.5.99999.4:MRN-771204> ;
+	cascade:sourceRecordId "2.16.840.1.113883.19.5.99999.4:MRN-771204" .
+<ni:///sha-256;LdCRCJyD209oG-LAnKrWwzUqdpMc09wV0n8-0IotsYU> prov:specializationOf <urn:uuid:0de4921b-84d0-84da-afeb-1e546a42af37> .
+_:c78fa6cac3aa187b8d3da9ee5247b793 a oa:XPathSelector ;
+	rdf:value "/*[local-name()='ClinicalDocument' and namespace-uri()='urn:hl7-org:v3']/*[local-name()='recordTarget' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='patientRole' and namespace-uri()='urn:hl7-org:v3'][1]" .
+_:8e419d03618e98104b07c87788ccec48 bridge:arrivedAs <ni:///sha-256;LdCRCJyD209oG-LAnKrWwzUqdpMc09wV0n8-0IotsYU> ;
+	oa:hasSelector _:c78fa6cac3aa187b8d3da9ee5247b793 .
+<urn:uuid:4e342a7a-b284-8de0-ace2-3cc3cc1464d2> a cascade:ClinicalNoteOrDocument .
+<ni:///sha-256;UgBum9JL4LdvfoPTbYk3LMoD60Sj-OL0MLInv_aP9f0> prov:specializationOf <urn:uuid:4e342a7a-b284-8de0-ace2-3cc3cc1464d2> ;
+	cascade:patient <urn:uuid:0de4921b-84d0-84da-afeb-1e546a42af37> .
+_:ae283486aaec7223633acc9f55b76824 a oa:XPathSelector ;
+	rdf:value "/*[local-name()='ClinicalDocument' and namespace-uri()='urn:hl7-org:v3']/*[local-name()='component' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='structuredBody' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='component' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='section' and namespace-uri()='urn:hl7-org:v3'][1]" .
+_:cf64fb2723608672118a0cc550464767 bridge:arrivedAs <ni:///sha-256;UgBum9JL4LdvfoPTbYk3LMoD60Sj-OL0MLInv_aP9f0> ;
+	oa:hasSelector _:ae283486aaec7223633acc9f55b76824 .
+_:8e419d03618e98104b07c87788ccec48 oa:hasSource <ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> ;
+	prov:wasDerivedFrom <ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> ;
+	prov:wasGeneratedBy _:7a2d0dbd5235996422ff151088cbff3a .
+_:cf64fb2723608672118a0cc550464767 oa:hasSource <ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> ;
+	prov:wasDerivedFrom <ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> ;
+	prov:wasGeneratedBy _:7a2d0dbd5235996422ff151088cbff3a .
+_:2ec40af3b23edd257fb74d924545f12c oa:hasSource <ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> ;
+	prov:wasDerivedFrom <ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> ;
+	prov:wasGeneratedBy _:7a2d0dbd5235996422ff151088cbff3a .
+_:7a2d0dbd5235996422ff151088cbff3a <http://www.w3.org/2000/01/rdf-schema#label> "C-CDA download" ;
+	prov:startedAtTime "2026-11-02T09:10:00Z"^^xsd:dateTime .
+<ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> cascade:sourceFormatVersion "2015-08-01" ;
+	a prov:Entity .
+_:7a2d0dbd5235996422ff151088cbff3a a prov:Activity ;
+	prov:used <ni:///sha-256;pzbHMY4yEyK8QRz4B47D2xQexz5ttW7uOXOTMSJeKt8> ;
+	prov:qualifiedAssociation _:c22c14de866d8d2950a36c9574650853 .
+_:c22c14de866d8d2950a36c9574650853 prov:hadPlan _:44ff8492733f2326a2bca5f1db3c0674 .
+_:44ff8492733f2326a2bca5f1db3c0674 a prov:Plan ;
+	<http://www.w3.org/2000/01/rdf-schema#label> "ccda" ;
+	<http://purl.org/pav/version> "0.1.0" .
+_:c22c14de866d8d2950a36c9574650853 prov:agent _:650a0912bfe69d9c7f5afc5140a6f896 .
+_:650a0912bfe69d9c7f5afc5140a6f896 a prov:SoftwareAgent ;
+	<http://www.w3.org/2000/01/rdf-schema#label> "Cascade Bridge for Rust" ;
+	<http://purl.org/pav/version> "0.1.0" .

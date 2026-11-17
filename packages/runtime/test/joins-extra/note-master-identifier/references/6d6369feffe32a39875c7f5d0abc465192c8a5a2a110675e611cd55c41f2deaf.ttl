@@ -1,0 +1,22 @@
+@prefix obo: <http://purl.obolibrary.org/obo/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix semapv: <https://w3id.org/semapv/vocab/> .
+@prefix sssom: <https://w3id.org/sssom/> .
+
+<urn:uuid:064bdbda-7965-8c20-8ee0-417849048a81> a owl:Axiom ;
+    owl:annotatedSource <https://ns.cascadeprotocol.org/codes/cvx/141> ;
+    owl:annotatedProperty obo:RO_0002350 ;
+    owl:annotatedTarget <https://ns.cascadeprotocol.org/codes/cvx/88> ;
+    sssom:mapping_justification semapv:ManualMappingCuration .
+
+<urn:uuid:1c37afb3-d7b5-80e0-a0eb-522e44ee45cc> a owl:Axiom ;
+    owl:annotatedSource <https://ns.cascadeprotocol.org/codes/cvx/150> ;
+    owl:annotatedProperty obo:RO_0002350 ;
+    owl:annotatedTarget <https://ns.cascadeprotocol.org/codes/cvx/88> ;
+    sssom:mapping_justification semapv:ManualMappingCuration .
+
+<urn:uuid:3f39eda1-b4d4-8671-859d-d3423d8342b3> a owl:Axiom ;
+    owl:annotatedSource <https://ns.cascadeprotocol.org/codes/cvx/140> ;
+    owl:annotatedProperty obo:RO_0002350 ;
+    owl:annotatedTarget <https://ns.cascadeprotocol.org/codes/cvx/88> ;
+    sssom:mapping_justification semapv:ManualMappingCuration .
