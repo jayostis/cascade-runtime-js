@@ -1,7 +1,7 @@
 import { Refusal } from "@cascade-runtime/runtime/refusal";
 import { checkInput, type InputSchema } from "./check.js";
 import { acceptOptions } from "./options.js";
-import { text, type Row } from "./pod.js";
+import { type Row, text } from "./row-text.js";
 
 /** Fewer results than this on either side of a medication's day is never a change. */
 export const MINIMUM_RESULTS = 3;

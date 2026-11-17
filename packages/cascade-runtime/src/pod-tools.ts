@@ -10,7 +10,7 @@ import {
   type LabChange,
 } from "./changes.js";
 import { checkInput, type InputSchema } from "./check.js";
-import { type Row, textRow } from "./pod.js";
+import { type Row, textRow } from "./row-text.js";
 import type {
   Answer,
   ProposalCheck,

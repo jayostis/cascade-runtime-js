@@ -333,7 +333,7 @@ a column is a list, read it as its array. `ask` with a query of your own has no 
 - `pod/My reports, notes and documents`: one row for each report and note,
   newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
   `?title`, `?status`, `?contentStatus`, `?conclusion`, `?text`) and its
-  `?entry`. Four columns are lists, each an array, empty when unbound: `?codes` (an IRI, or a code "in" its system);
+  `?entry`. Four columns are lists, each an array, absent when unbound: `?codes` (an IRI, or a code "in" its system);
   `?attachments` (media type and title of a file the pod keeps but does not
   read, so a report sent only as a PDF has one and no `?text`); `?results`
   (each result's lab results entry, test, value, unit, reference range and

@@ -1,7 +1,7 @@
 // What a pod's rows and the reference tables say together that no question of the pod returns: each variant report
 // that differs from ClinVar today, and each pair of active medications whose codes share an ingredient. Rows, each
 // naming its entries and the table row it cites; the starter's page says them in its own sentences.
-import { type Row, type TextRow, textRow } from "./pod.js";
+import { type Row, type TextRow, textRow } from "./row-text.js";
 import type { About, Concept, VariantAsked } from "./tables/types.js";
 import { terms } from "./terms.js";
 
