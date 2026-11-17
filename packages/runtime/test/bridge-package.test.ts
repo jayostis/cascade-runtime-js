@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { before, describe, it } from "node:test";
+import { afterEach, before, describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
+import { gzipSync } from "node:zlib";
 import {
   keptPick,
   latestBuild,
   pickBuild,
   type Pull,
   readerOf,
+  releasedBuild,
   type Run,
   runOf,
 } from "../src/node/bridge-build.js";
@@ -648,6 +650,118 @@ describe("Picking the Bridge package for a CI run · pickBuild(), latestBuild(),
         pick({ CASCADE_PULL_REQUESTS: handed }),
         /the compatibility tooling could not read/,
       );
+    });
+  });
+});
+
+/** A gzipped tarball of one file, `package/package.json`, as `npm pack` lays it out. */
+function packageOf(manifest: unknown): Blob {
+  const body = Buffer.from(JSON.stringify(manifest));
+  const header = Buffer.alloc(512);
+  header.write("package/package.json", 0);
+  header.write(`${body.length.toString(8).padStart(11, "0")}\0`, 124);
+  header.write("0", 156);
+  const padded = Buffer.alloc(Math.ceil(body.length / 512) * 512);
+  body.copy(padded);
+  return new Blob([
+    gzipSync(Buffer.concat([header, padded, Buffer.alloc(1024)])),
+  ]);
+}
+
+describe("The Bridge build a release publishes · releasedBuild()", () => {
+  const repository = "https://github.com/jayostis/cascade-bridge-rs";
+  const commit = "a".repeat(40);
+  const base = `${repository}/releases/download/build-${commit}`;
+  const real = globalThis.fetch;
+  let asked: string[];
+  afterEach(() => {
+    globalThis.fetch = real;
+  });
+
+  /** What `releasedBuild` reads with `answers` standing in for GitHub; each request is kept in `asked`. */
+  const download = async (
+    answers: Readonly<Record<string, () => Response>>,
+  ): Promise<string> => {
+    asked = [];
+    globalThis.fetch = ((url: string) => {
+      asked.push(url);
+      const answer = answers[url];
+      return Promise.resolve(
+        answer === undefined
+          ? new Response("", { status: 500, statusText: "unexpected" })
+          : answer(),
+      );
+    }) as typeof fetch;
+    return releasedBuild(
+      repository,
+      commit,
+      await mkdtemp(join(tmpdir(), "released-")),
+    );
+  };
+  const tarball = (): Response =>
+    new Response(packageOf({ cascadeBridge: { commit } }));
+  const api =
+    "https://api.github.com/repos/jayostis/cascade-bridge-rs/releases/tags";
+
+  describe("given a release that holds the package under its fixed name", () => {
+    it("downloads it without asking the API", async () => {
+      const folder = await download({
+        [`${base}/cascade-bridge.tgz`]: tarball,
+      });
+      assert.deepEqual(asked, [`${base}/cascade-bridge.tgz`]);
+      assert.equal(
+        JSON.parse(await readFile(join(folder, "package.json"), "utf8"))
+          .cascadeBridge.commit,
+        commit,
+      );
+    });
+
+    it("rejects a package that records another commit", async () => {
+      await assert.rejects(
+        download({
+          [`${base}/cascade-bridge.tgz`]: () =>
+            new Response(
+              packageOf({ cascadeBridge: { commit: "b".repeat(40) } }),
+            ),
+        }),
+        /records no build of/,
+      );
+    });
+  });
+
+  describe("given a release made before the fixed name, which answers 404 for it", () => {
+    it("finds the package through the API and downloads that", async () => {
+      const old = `${repository}/releases/download/build-${commit}/cascade-bridge-0.0.1.tgz`;
+      const folder = await download({
+        [`${base}/cascade-bridge.tgz`]: () =>
+          new Response("", { status: 404, statusText: "Not Found" }),
+        [`${api}/build-${commit}`]: () =>
+          Response.json({
+            assets: [
+              { name: "cascade-bridge-0.0.1.tgz", browser_download_url: old },
+            ],
+          }),
+        [old]: tarball,
+      });
+      assert.deepEqual(asked, [
+        `${base}/cascade-bridge.tgz`,
+        `${api}/build-${commit}`,
+        old,
+      ]);
+      assert.ok(folder.endsWith(`build-${commit}`));
+    });
+  });
+
+  describe("given a fixed-name download that fails for another reason than 404", () => {
+    it("rejects without asking the API", async () => {
+      await assert.rejects(
+        download({
+          [`${base}/cascade-bridge.tgz`]: () =>
+            new Response("", { status: 503, statusText: "Unavailable" }),
+        }),
+        /503/,
+      );
+      assert.deepEqual(asked, [`${base}/cascade-bridge.tgz`]);
     });
   });
 });
