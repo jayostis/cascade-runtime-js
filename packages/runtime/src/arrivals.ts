@@ -47,7 +47,7 @@ import type { Shapes } from "./shapes.js";
 import { podFiles } from "./dataset.js";
 import { scanned, timedAside, timedSync } from "./probe.js";
 import { DERIVED, derivationsOf, QUERIES } from "./derive.js";
-import { type Dataset, type StoreFactory, Union } from "./store.js";
+import { type Dataset, Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";

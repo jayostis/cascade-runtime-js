@@ -194,7 +194,9 @@ async function carriesSelector(done: Replayed): Promise<void> {
 }
 
 /** Ada's first export, then one that holds the current version restamped, a new version, and the first again. */
-async function threeStatesOfOneRecord(): Promise<Replayed> {
+async function threeStatesOfOneRecord(
+  describeTheRepeatAs?: string,
+): Promise<Replayed> {
   const files = await vocabulary();
   const ada = "runtime/scripted-input/ada/";
   const bytes = async (path: string): Promise<Uint8Array> =>
@@ -246,9 +248,14 @@ async function threeStatesOfOneRecord(): Promise<Replayed> {
     await source.write(
       `s/bridge/second/${file}/graph.ttl`,
       new TextEncoder().encode(
-        (
-          await text(`bridge/${from}/AllergyIntolerance-peanut/graph.ttl`)
-        ).replaceAll(/2026-01-0[56]T10:00:00Z/g, "2026-01-08T10:00:00Z"),
+        (await text(`bridge/${from}/AllergyIntolerance-peanut/graph.ttl`))
+          .replaceAll(/2026-01-0[56]T10:00:00Z/g, "2026-01-08T10:00:00Z")
+          .replace(
+            '"Apple Health export"',
+            from === "current-version-again"
+              ? `"${describeTheRepeatAs ?? "Apple Health export"}"`
+              : '"Apple Health export"',
+          ),
       ),
     );
   }
@@ -375,6 +382,19 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
 
     it("keeps nothing of the same export imported again, its documents being kept already (A1)", () => {
       assert.deepEqual(again, []);
+    });
+  });
+
+  describe("given one export whose document that repeats a held state describes its import as another export", () => {
+    let done: Replayed;
+
+    before(async () => {
+      done = await threeStatesOfOneRecord("Another export");
+    });
+
+    it("refuses the import, as documents that disagree are refused when each wrote a revision, and writes nothing of it (A11, A14)", () => {
+      assert.match(done.steps[2]?.refused ?? "", /disagree/);
+      assert.deepEqual(done.steps[2]?.wrote, []);
     });
   });
 

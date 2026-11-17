@@ -144,24 +144,7 @@ describe("Writing a kit's saved output again · npm run kit:bridge", () => {
       await rm(out, { recursive: true, force: true });
     });
 
-    it("writes a document that an earlier step handed on again only under the steps the kit saves it for", async () => {
-      const files = await vocabulary();
-      for (const step of ["E7", "E10", "E12", "E15"]) {
-        const path = `${step}/Condition-cond-htn-1/graph.ttl`;
-        const saved = await files.read(`${folder}/bridge/${path}`);
-        assert.ok(saved, `${path} is saved`);
-        assert.equal(
-          notIsomorphic(
-            triples(saved),
-            triples(await readFile(join(out, "bridge", path))),
-          ),
-          undefined,
-          path,
-        );
-      }
-    });
-
-    it("writes a `graph.ttl` for each one the kit holds, and no other", async () => {
+    it("writes a `graph.ttl` for each one the kit holds, and no other: a document an earlier step kept is converted under no later step", async () => {
       const files = await vocabulary();
       const graphs = (at: string) =>
         filesUnder(at, (path) => path.endsWith("/graph.ttl"));
