@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { cp, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, before, describe, it } from "node:test";
+import { afterEach, before, beforeEach, describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
@@ -674,8 +674,21 @@ describe("The Bridge build a release publishes · releasedBuild()", () => {
   const base = `${repository}/releases/download/build-${commit}`;
   const real = globalThis.fetch;
   let asked: string[];
+  const tokens = { GITHUB_TOKEN: undefined, GH_TOKEN: undefined } as Record<
+    string,
+    string | undefined
+  >;
+  beforeEach(() => {
+    for (const name of Object.keys(tokens)) {
+      tokens[name] = process.env[name];
+      delete process.env[name];
+    }
+  });
   afterEach(() => {
     globalThis.fetch = real;
+    for (const [name, value] of Object.entries(tokens))
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
   });
 
   /** What `releasedBuild` reads with `answers` standing in for GitHub; each request is kept in `asked`. */
@@ -750,6 +763,60 @@ describe("The Bridge build a release publishes · releasedBuild()", () => {
       ]);
       assert.ok(folder.endsWith(`build-${commit}`));
     });
+  });
+
+  describe("given a repository URL ending in `.git` or `/`", () => {
+    for (const suffix of [".git", "/", ".git/"])
+      it(`downloads from the plain URL, as ${suffix} leaves it`, async () => {
+        asked = [];
+        globalThis.fetch = ((url: string) => {
+          asked.push(url);
+          return Promise.resolve(
+            url === `${base}/cascade-bridge.tgz`
+              ? tarball()
+              : new Response("", { status: 404, statusText: "Not Found" }),
+          );
+        }) as typeof fetch;
+        await releasedBuild(
+          `${repository}${suffix}`,
+          commit,
+          await mkdtemp(join(tmpdir(), "released-")),
+        );
+        assert.deepEqual(asked, [`${base}/cascade-bridge.tgz`]);
+      });
+  });
+
+  describe("given a fixed-name download refused with 403 or 429", () => {
+    const refused = (status: number) => ({
+      [`${base}/cascade-bridge.tgz`]: () =>
+        new Response("", { status, statusText: "Refused" }),
+    });
+    const old = `${repository}/releases/download/build-${commit}/cascade-bridge-0.0.1.tgz`;
+
+    it("rejects without asking the API when the run has no token", async () => {
+      await assert.rejects(download(refused(403)), /403/);
+      assert.deepEqual(asked, [`${base}/cascade-bridge.tgz`]);
+    });
+
+    for (const status of [403, 429])
+      it(`finds the package through the API when the run has a token, after a ${status}`, async () => {
+        process.env.GITHUB_TOKEN = "token";
+        await download({
+          ...refused(status),
+          [`${api}/build-${commit}`]: () =>
+            Response.json({
+              assets: [
+                { name: "cascade-bridge-0.0.1.tgz", browser_download_url: old },
+              ],
+            }),
+          [old]: tarball,
+        });
+        assert.deepEqual(asked, [
+          `${base}/cascade-bridge.tgz`,
+          `${api}/build-${commit}`,
+          old,
+        ]);
+      });
   });
 
   describe("given a fixed-name download that fails for another reason than 404", () => {
