@@ -27,10 +27,14 @@ import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
  * With `--second` it imports one hospital's pull, then a second hospital's onto the same pod, and reports the second
  * import alone: the same records from another FHIR base and source, so each has a same-code, same-day twin in the pod
  * and the matcher binds the run's records into its comparisons, the path a first import never takes. With `--reopen` the
- * pod is closed and opened again between the two, as the app does, so that nothing of the first import is kept. With
- * `--read-reopened` it imports one pull, closes the pod and opens it again, and measures the first read and the one after,
- * as the app's host reads a pod an earlier process imported. A pod kept in a folder is opened as a packed runtime opens it,
- * its answers and its build kept beside it.
+ * pod is closed and opened again between the two, as the app does, so that nothing of the first import is kept.
+ * With `--read-reopened` it imports one pull, closes the pod and opens it again, and measures the first read and the one
+ * after, as the app's host reads a pod an earlier process imported. A pod kept in a folder is opened as a packed runtime
+ * opens it, its answers and its build kept beside it.
+ * With `--series 20` it makes twenty imports in a row into one pod on disk, each a new pull of the same patient (the
+ * days run on from the last, so the records accumulate and the repeats still give the matcher work), measured as one
+ * import is, to show whether an import costs by the pod or by the import. With `--reopen-read` it imports each size
+ * into a pod on disk, closes it, and times `openPod`, the first read and a second; `--secret` makes the pod encrypted.
  */
 
 const RULE = "matcher.rule:";
@@ -255,11 +259,16 @@ export function syntheticPull(
     readonly repeats?: boolean | undefined;
     /** The hospital that holds them: the same records from another FHIR base and source are another hospital's. */
     readonly hospital?: keyof typeof HOSPITALS | undefined;
+    /** The records before it in the pod, a multiple of 20: its days and ids run on from them. */
+    readonly from?: number | undefined;
   } = {},
 ): ReadonlyMap<string, Uint8Array> {
   const { fhirBase, source } = HOSPITALS[options.hospital ?? "first"];
   const entry = Array.from({ length: total }, (_, index) => {
-    const one = resource(index, options.repeats ?? true) as {
+    const one = resource(
+      index + (options.from ?? 0),
+      options.repeats ?? true,
+    ) as {
       resourceType: string;
       id: string;
     };
@@ -290,6 +299,45 @@ export interface Measured {
   readonly wrote: number;
   readonly refused: string | undefined;
   readonly rssMb: number;
+  /** The most the resident set was seen at: sampled at each progress report and every 100 ms, so a long synchronous step can hide a higher one. */
+  readonly peakRssMb: number;
+}
+
+/** The measurements of one pod that was imported into again and again, and opened again. */
+export interface Opened {
+  readonly records: number;
+  readonly encrypted: boolean;
+  readonly importMs: number;
+  readonly openMs: number;
+  readonly firstReadMs: number;
+  readonly secondReadMs: number;
+  readonly rssAfterOpenMb: number;
+  readonly peakRssMb: number;
+}
+
+const SECRET = "t-shirt abacus yo-yo zoom drop-down felt-tip";
+const FIRST_READ = "pod/My active conditions";
+
+function rss(): number {
+  return Math.round(process.memoryUsage().rss / 1048576);
+}
+
+/** `run` with its peak resident set sampled: `seen` is called at the points a caller can give. */
+async function sampling<T>(
+  run: (seen: () => void) => Promise<T>,
+): Promise<{ result: T; peakMb: number }> {
+  let peak = 0;
+  const seen = (): void => {
+    peak = Math.max(peak, rss());
+  };
+  const timer = setInterval(seen, 100);
+  try {
+    const result = await run(seen);
+    seen();
+    return { result, peakMb: peak };
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 /** A span named for a file of the vocabulary: a derivation or a query of the layout, of which there are many. */
@@ -353,13 +401,31 @@ export async function importBench(
       await pod.close();
       pod = await openPacked(folder);
     }
-    const marks: { name: string; at: number }[] = [];
-    let started = 0;
-    const { result, seen } = await probing(async () => {
+    return await measured(pod, pull, claiming, resources, true);
+  } finally {
+    await pod.close();
+    if (folder !== undefined)
+      await rm(folder, { recursive: true, force: true });
+  }
+}
+
+/** The import of `pull` into `pod`, measured, with the first read after it when `read`. */
+async function measured(
+  pod: Pod,
+  pull: ReadonlyMap<string, Uint8Array>,
+  claiming: readonly string[],
+  resources: number,
+  read: boolean,
+): Promise<Measured> {
+  const marks: { name: string; at: number }[] = [];
+  let started = 0;
+  const { result: timing, peakMb } = await sampling((seen) =>
+    probing(async () => {
       started = performance.now();
       const done = await pod.import(pull, {
         claimProfiles: claiming,
         onProgress: ({ part, done, of }) => {
+          seen();
           marks.push({
             name: of === undefined ? part : `${part} ${done}/${of}`,
             at: performance.now(),
@@ -367,26 +433,101 @@ export async function importBench(
         },
       });
       const imported = performance.now();
-      await timed("read.first", () => pod.ask("pod/My active conditions"));
+      if (read) await timed("read.first", () => pod.ask(FIRST_READ));
       return { done, imported };
-    });
-    const ends = [...marks.slice(1).map(({ at }) => at), result.imported];
-    return {
-      resources,
-      phases: marks.map(({ name, at }, index) => ({
-        name,
-        ms: round((ends[index] ?? at) - at),
-      })),
-      importMs: round(result.imported - started),
-      ...tabulated(seen),
-      wrote: result.done.wrote.length,
-      refused: result.done.refused,
-      rssMb: Math.round(process.memoryUsage().rss / 1048576),
-    };
+    }),
+  );
+  const { result, seen } = timing;
+  const ends = [...marks.slice(1).map(({ at }) => at), result.imported];
+  return {
+    resources,
+    phases: marks.map(({ name, at }, index) => ({
+      name,
+      ms: round((ends[index] ?? at) - at),
+    })),
+    importMs: round(result.imported - started),
+    ...tabulated(seen),
+    wrote: result.done.wrote.length,
+    refused: result.done.refused,
+    rssMb: rss(),
+    peakRssMb: peakMb,
+  };
+}
+
+/** `imports` pulls of `resources`, one after another into one pod on disk, each measured; the last is read once. */
+export async function seriesBench(
+  resources: number,
+  imports: number,
+): Promise<readonly Measured[]> {
+  const folder = await mkdtemp(join(tmpdir(), "import-bench-"));
+  const claiming = await profileOf("first");
+  const pod = await openPod(folder);
+  try {
+    const runs: Measured[] = [];
+    for (let index = 0; index < imports; index++) {
+      const pull = syntheticPull(resources, { from: index * resources });
+      const run = await measured(
+        pod,
+        pull,
+        claiming,
+        resources,
+        index === imports - 1,
+      );
+      runs.push(run);
+      process.stdout.write(
+        `import ${index + 1}/${imports}: ${run.importMs} ms, rss ${run.rssMb} MB
+`,
+      );
+    }
+    return runs;
   } finally {
     await pod.close();
-    if (folder !== undefined)
-      await rm(folder, { recursive: true, force: true });
+    await rm(folder, { recursive: true, force: true });
+  }
+}
+
+/** A pod on disk given `records` in one import, closed and opened again: `openPod`, the first read and a second, timed. */
+export async function openBench(
+  records: number,
+  encrypted: boolean,
+): Promise<Opened> {
+  const folder = await mkdtemp(join(tmpdir(), "import-bench-"));
+  const options = encrypted ? { secret: SECRET } : {};
+  const claiming = await profileOf("first");
+  try {
+    let pod = await openPod(folder, options);
+    const importing = performance.now();
+    await pod.import(syntheticPull(records), { claimProfiles: claiming });
+    const importMs = round(performance.now() - importing);
+    await pod.close();
+    const { result, peakMb } = await sampling(async () => {
+      const opening = performance.now();
+      pod = await openPod(folder, options);
+      const openMs = round(performance.now() - opening);
+      const rssAfterOpenMb = rss();
+      const timeOf = async (): Promise<number> => {
+        const at = performance.now();
+        await pod.ask(FIRST_READ);
+        return round(performance.now() - at);
+      };
+      const firstReadMs = await timeOf();
+      return {
+        openMs,
+        rssAfterOpenMb,
+        firstReadMs,
+        secondReadMs: await timeOf(),
+      };
+    });
+    await pod.close();
+    return {
+      records,
+      encrypted,
+      importMs,
+      ...result,
+      peakRssMb: peakMb,
+    };
+  } finally {
+    await rm(folder, { recursive: true, force: true });
   }
 }
 
@@ -483,28 +624,42 @@ export function tableOf(run: Measured): string {
 async function main(args: string[]): Promise<void> {
   const at = args.indexOf("--json");
   const json = at === -1 ? undefined : args[at + 1];
+  const series = args.indexOf("--series");
+  const imports = series === -1 ? 0 : Number(args[series + 1]);
   const sizes = args
     .filter(
-      (arg, index) => (at === -1 || index !== at + 1) && /^\d+$/.test(arg),
+      (arg, index) =>
+        index !== at + 1 && index !== series + 1 && /^\d+$/.test(arg),
     )
     .map(Number);
   if (sizes.length === 0) {
     process.stderr.write(
-      "usage: import-bench.js [--second | --reopen | --read-reopened] <resources>... [--json <file>]\n",
+      "usage: import-bench.js [--second | --reopen | --read-reopened | --series <imports> | --reopen-read [--secret]] <resources>... [--json <file>]
+",
     );
     process.exitCode = 2;
     return;
   }
-  const runs: Measured[] = [];
+  const runs: unknown[] = [];
   for (const size of sizes) {
-    const run = args.includes("--read-reopened")
-      ? await reopenedReadBench(size)
-      : await importBench(size, {
-          second: args.includes("--second"),
-          reopen: args.includes("--reopen"),
-        });
-    runs.push(run);
-    process.stdout.write(`${tableOf(run)}\n\n`);
+    if (imports > 0) runs.push(...(await seriesBench(size, imports)));
+    else if (args.includes("--reopen-read")) {
+      const opened = await openBench(size, args.includes("--secret"));
+      runs.push(opened);
+      process.stdout.write(`${JSON.stringify(opened)}
+`);
+    } else {
+      const run = args.includes("--read-reopened")
+        ? await reopenedReadBench(size)
+        : await importBench(size, {
+            second: args.includes("--second"),
+            reopen: args.includes("--reopen"),
+          });
+      runs.push(run);
+      process.stdout.write(`${tableOf(run)}
+
+`);
+    }
   }
   if (json !== undefined)
     await writeFile(json, `${JSON.stringify(runs, null, 2)}\n`);

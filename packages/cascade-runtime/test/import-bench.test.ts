@@ -8,8 +8,10 @@ import { probing } from "@cascade-runtime/runtime/probe";
 import {
   HOT_SPOTS,
   importBench,
+  openBench,
   type Measured,
   profileOf,
+  seriesBench,
   syntheticPull,
   tableOf,
 } from "./import-bench.js";
@@ -320,6 +322,31 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
           total,
         );
       }
+    });
+  });
+  describe("given a series of two imports of 20 resources into one pod, and a pod of 20 opened again", () => {
+    it("runs on from the records before it, so that the pulls share no id", () => {
+      const ids = [0, 20].flatMap((from) =>
+        (
+          JSON.parse(
+            new TextDecoder().decode(
+              syntheticPull(20, { from }).get("pull/bundle.json"),
+            ),
+          ) as { entry: { resource: { id: string } }[] }
+        ).entry.map((e) => e.resource.id),
+      );
+      assert.equal(new Set(ids).size, 40);
+    });
+
+    it("measures each import of the series, with nothing refused, and opens an encrypted pod again", async () => {
+      const series = await seriesBench(20, 2);
+      assert.equal(series.length, 2);
+      for (const run of series) {
+        assert.equal(run.refused, undefined);
+        assert.ok(run.peakRssMb >= run.rssMb - 1);
+      }
+      const opened = await openBench(20, true);
+      assert.ok(opened.openMs > 0 && opened.firstReadMs > 0);
     });
   });
 });
