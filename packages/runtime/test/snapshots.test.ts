@@ -595,7 +595,12 @@ describe("Receiving another writer's files · CorePod.receive()", () => {
   describe("given a person's file that replaces or retracts a matcher's judgment", () => {
     type Result = { wrote: readonly string[]; refused?: string };
     type Both = Record<"replaces" | "retracts", Result>;
-    let outcome: Kept<{ matcher: string; judged: Both; received: Both }>;
+    let outcome: Kept<{
+      matcher: string;
+      paths: Record<"replaces" | "retracts", string>;
+      judged: Both;
+      received: Both;
+    }>;
 
     before(async () => {
       outcome = await kept(async () => {
@@ -657,7 +662,15 @@ describe("Receiving another writer's files · CorePod.receive()", () => {
             await cleosWriter(await copied(story.pod), head)
           ).receive(await copied(story.pod, { [path]: bytes }));
         }
-        return { matcher, judged, received };
+        return {
+          matcher,
+          paths: {
+            replaces: files.replaces.path,
+            retracts: files.retracts.path,
+          },
+          judged,
+          received,
+        };
       });
     });
 
@@ -670,10 +683,16 @@ describe("Receiving another writer's files · CorePod.receive()", () => {
       }
     });
 
-    it("refuses what `receive()` is handed, naming the matcher's judgment and writing nothing", () => {
-      const { matcher, received } = got(outcome);
+    it("refuses what `receive()` is handed, naming the file's path and the matcher's judgment and writing nothing", () => {
+      const { matcher, paths, received } = got(outcome);
       for (const which of ["replaces", "retracts"] as const) {
         assert.ok(received[which].refused?.includes(matcher), which);
+        assert.ok(received[which].refused?.startsWith(paths[which]), which);
+        assert.match(
+          received[which].refused ?? "",
+          /every file of this receive/,
+          which,
+        );
         assert.deepEqual(received[which].wrote, [], which);
       }
     });

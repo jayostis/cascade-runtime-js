@@ -23,7 +23,12 @@ export type Happened =
   | { readonly kind: "matcher"; readonly takes?: string }
   | { readonly kind: "open"; readonly tables: string }
   | { readonly kind: "writer" }
-  | { readonly kind: "sync"; readonly from: number };
+  | {
+      readonly kind: "sync";
+      readonly from: number;
+      /** A story's file `judgments/<name>.ttl` the sending writer's files hold, as a writer that went around its runtime leaves it. */
+      readonly file?: string;
+    };
 
 /** What a person answers to the question a door asks them about a write a model proposes. */
 export type ProposalAnswer = "yes" | "no" | "dismissed" | "unanswered";

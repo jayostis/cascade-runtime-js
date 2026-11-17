@@ -10,9 +10,10 @@ import type { Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import { References } from "./references.js";
 import { SavedOutputBridge } from "./saved-output-bridge.js";
-import type { StepFile } from "./step.js";
+import { CASCADE, type StepFile } from "./step.js";
 import type { StoreFactory } from "./store.js";
 import type { ProposalAnswer, Step, StepKind, Story } from "./story.js";
+import { PROV } from "./words.js";
 
 /** What the replay holds of the story when it performs one of its steps. */
 interface StorySide {
@@ -25,6 +26,7 @@ interface StorySide {
   /** The time the pod's steps are performed at, which a performer begins at its step's. */
   readonly time: StoryTime;
   readonly newStore: StoreFactory;
+  readonly layout: Layout;
   /** The pod of the writer so numbered, the first's 0. */
   readonly writer: (index: number) => CorePod;
 }
@@ -221,11 +223,35 @@ export const PERFORMERS: Performers = {
       ? Promise.resolve({ wrote: [] })
       : pod.match(activity);
   },
-  sync: (pod, step, story) => {
+  sync: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "sync") throw new Error("the step is no sync");
     begun(story, step);
-    return pod.receive(story.writer(happened.from).files);
+    const sender = story.writer(happened.from).files;
+    if (happened.file === undefined) return pod.receive(sender);
+    const at = inStory(story.folder, happened.file);
+    const bytes = await story.source.read(at);
+    if (bytes === undefined)
+      return pod.refuse(`${story.source.iri}${at} does not exist`);
+    const triples = await story.newStore().parse(bytes, story.source.iri + at);
+    const retraction = triples.find(
+      ([, p]) => p.value === `${PROV}invalidated`,
+    );
+    const judgment = triples.find(
+      ([, p]) => p.value === "http://purl.org/dc/terms/replaces",
+    );
+    const subject = (retraction ?? judgment)?.[0].value;
+    if (subject === undefined)
+      throw new Error(`${at} replaces or retracts nothing`);
+    const put = (
+      retraction === undefined
+        ? story.layout.place(`${CASCADE}Judgment`)
+        : story.layout.place(`${PROV}Activity`, [`${PROV}invalidated`])
+    ).path(subject);
+    return pod.receive({
+      list: async (prefix) => [...(await sender.list(prefix)), put],
+      read: async (path) => (path === put ? bytes : sender.read(path)),
+    });
   },
   open: async (pod, step, story) => {
     const { happened } = step;
@@ -420,6 +446,7 @@ export class Replay {
         activities: this.#activities,
         time: this.#time,
         newStore: options.newStore,
+        layout: options.layout,
         writer: (index) => {
           const found = this.#pods[index];
           if (found === undefined)

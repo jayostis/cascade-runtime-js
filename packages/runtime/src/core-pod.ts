@@ -668,6 +668,9 @@ export class CorePod {
   /**
    * Refuses another writer's files that replace or retract a matcher's judgment (N16), one of the pod's or one among
    * the files arriving; reads nothing when no arriving file in a judgment's folder or a retraction's folder says so.
+   * Only a writer that went around its runtime files one, so a replacement placed outside those folders, or one whose
+   * matcher's judgment arrives in a later call, is not caught. One refused file refuses the whole receive, which writes
+   * nothing, and every later receive from that writer meets the same file.
    */
   async #refuseMatcherJudgmentsTouched(
     layout: Layout,
@@ -702,7 +705,7 @@ export class CorePod {
       ),
     );
     const read = await this.#matcherView();
-    for (const triples of parsed)
+    for (const [at, triples] of parsed.entries())
       for (const subject of new Set(
         triples.flatMap(([s, p]) =>
           p.value === "http://purl.org/dc/terms/replaces" ||
@@ -717,7 +720,10 @@ export class CorePod {
           subject,
           matchers,
         );
-        if (refused !== undefined) throw new Refusal(refused);
+        if (refused !== undefined)
+          throw new Refusal(
+            `${files[at]?.[0] ?? ""} is refused, and with it every file of this receive: ${refused}. It came from a writer that went around its runtime: remove it on the sending device, or file a Same or a Different over the records instead`,
+          );
       }
   }
 
@@ -779,7 +785,9 @@ export class CorePod {
    * holds, never on what this call wrote, so a call that stops partway and is made again writes the same sync. Only
    * the files that arrived and the act files not read before are read. Then, when the pod's current rule list version
    * or one it revises declares a rule wrong, the rule list version migration, an act of its own (N15); a writer with no
-   * tables to read has none.
+   * tables to read has none. A file that replaces or retracts a matcher's judgment (N16) refuses the whole receive,
+   * which writes nothing; one placed outside the judgment folders, or whose matcher's judgment arrives in a later call,
+   * is not caught, as only a writer that went around its runtime makes one.
    */
   async receive(other: Pick<Files, "list" | "read">): Promise<Performed> {
     const arrived: string[] = [];
