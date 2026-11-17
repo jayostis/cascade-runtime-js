@@ -101,18 +101,7 @@ async function recordsBy(question, by) {
     rows.filter((row) => row[by] === key).map((row) => row.record);
 }
 
-// An import claims no profile by itself. The yes below is for every patient the export names, so each gets an About.
-async function claimAbout(pod, profile) {
-  const { judgment } = await pod.judge(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
-@prefix prov: <http://www.w3.org/ns/prov#> .
-<urn:cascade:this-judgment> a cascade:Judgment ;
-  cascade:verdict cascade:About ; cascade:subject <${pod.subject}> ; cascade:basis cascade:OwnerStatement ;
-  prov:hadMember <${profile}> ; prov:wasAttributedTo <${pod.owner}> ;
-  prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] ] .
-<${pod.owner}> a prov:Person .
-`);
-  return { profile, judgment };
-}
+import { ownerAbout } from "cascade-runtime";
 
 async function bringIn(folder, { claim = true, ...options } = {}) {
   const sources = await pod.look(folder).catch(async (error) => {
@@ -127,13 +116,22 @@ async function bringIn(folder, { claim = true, ...options } = {}) {
   const filed = await pod.import(folder, { ...options, match: false });
   if (filed.refused) await showPerson(`Not brought in: ${filed.refused}`);
   const claimed = [];
-  for (const profile of claim ? filed.unclaimedProfiles : [])
-    claimed.push(await claimAbout(pod, profile));
+  // An import claims no profile by itself. The yes above is for every patient the export names, so each gets an About.
+  for (const profile of claim ? filed.unclaimedProfiles : []) {
+    const { judgment } = await pod.judge(ownerAbout(pod, profile));
+    if (judgment !== undefined) claimed.push({ profile, judgment });
+  }
   if (options.match !== false && filed.activity) await pod.match(filed.activity);
   const naming = await recordsBy("profile/Which records name it", "profile");
-  const claimedProfiles = claimed.map(({ profile: p }) => [p, naming(p)]);
-  const unclaimedProfiles = claim ? [] : filed.unclaimedProfiles;
-  await showPerson({ claimedProfiles, unclaimedProfiles });
+  const done = new Set(claimed.map(({ profile }) => profile));
+  const unclaimedProfiles = filed.unclaimedProfiles.filter((p) => !done.has(p));
+  const { disclaimedProfiles, heldBackProfiles } = filed;
+  await showPerson({
+    claimedProfiles: claimed.map(({ profile: p }) => [p, naming(p)]),
+    unclaimedProfiles,
+    disclaimedProfiles,
+    heldBackProfiles,
+  });
   return { ...filed, claimedProfiles: claimed, unclaimedProfiles };
 }
 
@@ -146,6 +144,14 @@ from that server, or from a document that custodian wrote, not that this
 export's are theirs; a second server is a source of its own, and so is a
 hospital's custodian beside its server. `import` claims no profile by itself: `bringIn` files an About for every profile not yet claimed,
 runs the matcher (call no `match`), and writes nothing of an export already in.
+
+The four lists are of the profiles of the versions this import wrote: `claimedProfiles` (the Abouts `bringIn` filed),
+`unclaimedProfiles` (no counting About or NotAbout answers them), `disclaimedProfiles` (a counting NotAbout answers them: the
+person already said they are not theirs) and `heldBackProfiles` (a person's About stands against a counting NotAbout, which
+`profile/What needs review` lists). Show the person all four. An export the pod already holds wrote no version, so a second
+`bringIn` of it lists nothing and claims nothing: a `bringIn` that stopped before it claimed a profile is retried through
+`profile/What needs review`, which lists every profile a record names that no one has answered, and each held back one, not
+by importing again.
 
 ## Connect to a hospital
 
@@ -242,7 +248,7 @@ if (
   const brought = await hospitalPod.import(files, { match: false });
   if (brought.refused) await showPerson(`Not brought in: ${brought.refused}`);
   for (const profile of brought.unclaimedProfiles)
-    await claimAbout(hospitalPod, profile);
+    await hospitalPod.judge(ownerAbout(hospitalPod, profile));
   if (brought.activity) await hospitalPod.match(brought.activity);
 }
 await hospitalPod.close();

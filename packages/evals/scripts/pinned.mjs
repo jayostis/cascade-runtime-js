@@ -60,7 +60,8 @@ if (command === "build") {
         continue;
       }
       // The person said yes to every patient the download names. Filing, then an About for each, then the matcher
-      // does that on any build of the runtime, as the lists of claimProfiles do not.
+      // does that on any build of the runtime, as the lists of claimProfiles do not. The About is written here, not
+      // imported: a pinned earlier build of cascade-runtime does not export `ownerAbout`.
       const done = await opened.import(path, { match: false });
       for (const profile of done.unclaimedProfiles)
         await opened.judge(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .

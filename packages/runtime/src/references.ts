@@ -8,6 +8,7 @@ import type { StoreFactory } from "./store.js";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
+const SKOS = "http://www.w3.org/2004/02/skos/core#";
 const VOID = "http://rdfs.org/ns/void#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const DEFAULT_TABLE_VERSION = `${CASCADE}defaultTableVersion`;
@@ -112,6 +113,45 @@ async function readTableTerms(
         .map(([kind]) => kind.value),
     ),
   };
+}
+
+const labelsRead = new WeakMap<Files, Promise<ReadonlyMap<string, string>>>();
+
+/** The skos:prefLabel in English of each left-out reason the vocabulary gives (`cascade:LeftOutReasons`), by its IRI; read once for the vocabulary. */
+export function reasonLabels(
+  vocabulary: Files,
+  newStore: StoreFactory,
+): Promise<ReadonlyMap<string, string>> {
+  let read = labelsRead.get(vocabulary);
+  if (read === undefined) {
+    read = readReasonLabels(vocabulary, newStore);
+    read.catch(() => labelsRead.delete(vocabulary));
+    labelsRead.set(vocabulary, read);
+  }
+  return read;
+}
+
+async function readReasonLabels(
+  vocabulary: Files,
+  newStore: StoreFactory,
+): Promise<ReadonlyMap<string, string>> {
+  const graph = new Graph(
+    await newStore().parse(
+      await readText(vocabulary, ONTOLOGY),
+      vocabulary.iri + ONTOLOGY,
+    ),
+  );
+  const labels = new Map<string, string>();
+  for (const reason of graph.subjects(
+    `${SKOS}inScheme`,
+    iri(`${CASCADE}LeftOutReasons`),
+  )) {
+    const label = graph
+      .objects(reason, `${SKOS}prefLabel`)
+      .find((term) => term.termType === "Literal" && term.language === "en");
+    if (label !== undefined) labels.set(reason.value, label.value);
+  }
+  return labels;
 }
 
 const ROW_SUBJECT = `${CASCADE}RowSubject`;

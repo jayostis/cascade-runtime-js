@@ -74,7 +74,7 @@ export type {
   Row,
   TextRow,
 } from "../pod.js";
-export { textRow } from "../pod.js";
+export { ownerAbout, textRow } from "../pod.js";
 export * from "../changes.js";
 export * from "../connect/index.js";
 export * from "../tools.js";

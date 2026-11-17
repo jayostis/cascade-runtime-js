@@ -183,13 +183,14 @@ function judgment(
   by: Pod,
   statements: readonly string[],
   named = "urn:cascade:this-judgment",
+  ownerTypes: readonly string[] = ["prov:Person"],
 ): string {
   return `${PREFIXES}
 <${named}> a cascade:Judgment ;
     ${statements.join(" ;\n    ")} ;
     prov:wasAttributedTo <${by.owner}> ;
     prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${by.owner}> ; prov:hadRole cascade:PatientRole ] ] .
-<${by.owner}> a prov:Person .`;
+${ownerTypes.length === 0 ? "" : `<${by.owner}> a ${ownerTypes.join(" , ")} .`}`;
 }
 
 /** The owner's claim that a hospital's patient is them. */
@@ -1366,26 +1367,70 @@ describe("Recording the owner's judgment · pod.judge()", () => {
   });
 
   describe("given an About whose basis is a machine's, attributed to a person", () => {
-    it("throws, writing nothing, for each machine basis", async () => {
+    const profile = "urn:uuid:3f6c0f4e-8a52-4c1b-9d7e-5b2a1c8e0d44";
+    const BASES = [
+      "SameDemographics",
+      "PortalAuthenticated",
+      "RelatedPersonConnection",
+    ];
+    /** An About by the owner with `basis`, whose own Turtle types the owner as each of `types`, or as none. */
+    const machines = (basis: string, types: readonly string[]): string =>
+      judgment(
+        owned,
+        [
+          "cascade:verdict cascade:About",
+          `cascade:subject <${owned.subject}>`,
+          `cascade:basis cascade:${basis}`,
+          `prov:hadMember <${profile}>`,
+        ],
+        undefined,
+        types,
+      );
+
+    it("throws, writing nothing, for each machine basis, the owner typed a person in the judgment, not typed in it, or typed also a software agent", async () => {
       const at = join(pods, "judged");
       const held = await filesIn(at);
-      const profile = "urn:uuid:3f6c0f4e-8a52-4c1b-9d7e-5b2a1c8e0d44";
-      for (const basis of ["SameDemographics", "PortalAuthenticated"])
-        await assert.rejects(
-          owned.judge(
-            judgment(owned, [
-              "cascade:verdict cascade:About",
-              `cascade:subject <${owned.subject}>`,
-              `cascade:basis cascade:${basis}`,
-              `prov:hadMember <${profile}>`,
-            ]),
-          ),
-          (error: Error) =>
-            error.message.includes(`cascade:${basis}`) &&
-            error.message.includes("software agent"),
+      for (const basis of BASES)
+        for (const types of [
+          ["prov:Person"],
+          [],
+          ["prov:Person", "prov:SoftwareAgent"],
+        ])
+          await assert.rejects(
+            owned.judge(machines(basis, types)),
+            (error: Error) =>
+              error.message.includes(`cascade:${basis}`) &&
+              error.message.includes("software agent"),
+            `${basis} typed ${types.join(" and ") || "nothing"}`,
+          );
+      assert.deepEqual(await filesIn(at), held);
+    });
+
+    it("files each machine basis by a software agent the judgment types", async () => {
+      const portal = "urn:uuid:7c2a5f10-3d4e-4b86-a1f9-0e8d6b4c2a13";
+      for (const basis of BASES)
+        assert.equal(
+          (
+            await owned.judge(
+              `${PREFIXES}
+<urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:About ;
+    cascade:subject <${owned.subject}> ; cascade:basis cascade:${basis} ; prov:hadMember <${profile}> ;
+    prov:wasAttributedTo <${portal}> .
+<${portal}> a prov:SoftwareAgent .`,
+            )
+          ).refused,
+          undefined,
           basis,
         );
-      assert.deepEqual(await filesIn(at), held);
+    });
+
+    it("says each machine basis, and that a person's About has the basis cascade:OwnerStatement", async () => {
+      await assert.rejects(
+        owned.judge(machines("RelatedPersonConnection", [])),
+        (error: Error) =>
+          BASES.every((basis) => error.message.includes(`cascade:${basis}`)) &&
+          error.message.includes("cascade:OwnerStatement"),
+      );
     });
   });
 

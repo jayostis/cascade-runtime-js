@@ -12,7 +12,12 @@ import {
 } from "./names.js";
 import { MATCHER } from "./matcher.js";
 import { codeIri, iri, RDF, written } from "./rdf.js";
-import { referenceIndex, tableTerms, versionsNumbered } from "./references.js";
+import {
+  reasonLabels,
+  referenceIndex,
+  tableTerms,
+  versionsNumbered,
+} from "./references.js";
 import type { Replayed } from "./replay.js";
 import { CASCADE } from "./step.js";
 import { selected, type Dataset, type StoreFactory } from "./store.js";
@@ -271,6 +276,14 @@ export class Words {
   /** The words an IRI was named by in this example, or the IRI. */
   shown(name: string): string {
     return this.#names.get(name) ?? `<${name}>`;
+  }
+
+  /** The words a left-out reason is said in: the skos:prefLabel the vocabulary gives it, or the IRI. */
+  async reasonShown(reason: string): Promise<string> {
+    return (
+      (await reasonLabels(this.#vocabulary, this.#newStore)).get(reason) ??
+      `<${reason}>`
+    );
   }
 
   #remember(words: string, name: string): string {

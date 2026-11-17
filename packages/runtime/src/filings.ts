@@ -2,6 +2,7 @@ import type { CorePod } from "./core-pod.js";
 import { iri, ntriples, RDF, type Term, type Triple, written } from "./rdf.js";
 import type { References } from "./references.js";
 import { podRows } from "./matcher.js";
+import type { Shapes } from "./shapes.js";
 import { judgmentFiled } from "./shown.js";
 import {
   parseStepFile,
@@ -56,6 +57,7 @@ export async function fileJudgment(
   context: StepContext,
   judgment: StepFile,
   read: Pick<CorePod, "select">,
+  shapes: () => Promise<Shapes>,
 ): Promise<void> {
   const graph = await parseStepFile(judgment, context.newStore);
   const judgments = graph.subjects(`${RDF}type`, iri(`${CASCADE}Judgment`));
@@ -83,6 +85,7 @@ export async function fileJudgment(
     graph.triples,
     context.address + context.layout.viewsFolder,
     { select: (query) => podRows(context, query) },
+    shapes,
   );
   if ("refused" in filed) throw new Refusal(filed.refused);
   const path = placement.path(one.value);

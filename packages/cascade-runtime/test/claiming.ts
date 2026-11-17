@@ -1,3 +1,4 @@
+import { ownerAbout } from "cascade-runtime";
 import type { Exported, Imported, Pod } from "cascade-runtime";
 
 /**
@@ -12,16 +13,7 @@ export async function importClaimingEveryProfile(
   if (filed.activity === undefined) return filed;
   const claimedProfiles = [];
   for (const profile of filed.unclaimedProfiles) {
-    const { judgment } = await pod.judge(
-      `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
-@prefix prov: <http://www.w3.org/ns/prov#> .
-<urn:cascade:this-judgment> a cascade:Judgment ;
-    cascade:verdict cascade:About ; cascade:subject <${pod.subject}> ; cascade:basis cascade:OwnerStatement ;
-    prov:hadMember <${profile}> ; prov:wasAttributedTo <${pod.owner}> ;
-    prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] ] .
-<${pod.owner}> a prov:Person .
-`,
-    );
+    const { judgment } = await pod.judge(ownerAbout(pod, profile));
     if (judgment !== undefined) claimedProfiles.push({ profile, judgment });
   }
   const matched = await pod.match(filed.activity);

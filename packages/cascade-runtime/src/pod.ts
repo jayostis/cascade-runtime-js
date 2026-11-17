@@ -85,8 +85,10 @@ export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
  */
 export interface ImportOptions extends ConvertBudget {
   /**
-   * The profiles the person confirmed are theirs: the import files an About for the owner for each one it names that no
-   * counting About or counting NotAbout answers. An import claims no profile by itself, and `true` is refused.
+   * The profiles the person confirmed are theirs: the import files an About for the owner for each one that a version
+   * it wrote names, when no counting About or counting NotAbout answers it. An export the pod already holds wrote no
+   * version, so a re-import claims nothing, whatever the list: claim a profile found through
+   * `profile/What needs review` with `ownerAbout`. An import claims no profile by itself, and `true` is refused.
    */
   readonly claimProfiles?: readonly string[];
   /** Runs the matcher on the import; on unless false. */
@@ -293,11 +295,15 @@ export interface Imported extends Done {
     readonly profile: string;
     readonly judgment: string;
   }[];
-  /** The import's profiles that no counting About or counting NotAbout answers. */
+  /**
+   * The profiles of the versions this import wrote that no counting About or counting NotAbout answers. An export the pod
+   * already holds wrote none, so a re-import lists nothing in any of the three lists: a profile left unclaimed is found
+   * again through `profile/What needs review`.
+   */
   readonly unclaimedProfiles: readonly string[];
-  /** The import's profiles a counting NotAbout answers and no person's About stands against: an import claims none. */
+  /** The profiles of the versions this import wrote that a counting NotAbout answers and no person's About stands against: an import claims none. */
   readonly disclaimedProfiles: readonly string[];
-  /** The import's profiles a person's About stands against a counting NotAbout, which `profile/What needs review` lists. */
+  /** The profiles of the versions this import wrote that a person's About stands against a counting NotAbout, which `profile/What needs review` lists. */
   readonly heldBackProfiles: readonly string[];
 }
 
@@ -607,8 +613,15 @@ function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The About the claim records: the profile is the subject's, by the owner's statement. */
-function about(subject: string, profile: string, owner: string): string {
+/**
+ * The Turtle of the owner's About, the claim that `profile` is the pod's subject's by the owner's statement, for
+ * `pod.judge`: what `claimProfiles` files for each profile it names, and what an app files for a profile the person says
+ * is theirs, one at a time.
+ */
+export function ownerAbout(
+  { subject, owner }: { readonly subject: string; readonly owner: string },
+  profile: string,
+): string {
   return `@prefix cascade: <${CASCADE}> .
 @prefix prov: <${PROV}> .
 <${THIS_JUDGMENT}> a cascade:Judgment ;
@@ -1000,7 +1013,7 @@ class OpenPod implements Pod {
       if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
       for (const [index, profile] of profiles.entries()) {
         const { judgment } = await timedAside("pod.judge", () =>
-          this.#judge(about(this.subject, profile, this.owner)),
+          this.#judge(ownerAbout(this, profile)),
         );
         if (judgment !== undefined) claimedProfiles.push({ profile, judgment });
         await onProgress?.({ part: "judging", done: index + 1, of });
