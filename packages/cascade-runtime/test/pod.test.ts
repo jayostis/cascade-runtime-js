@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import {
+  appendFile,
   cp,
   mkdir,
   mkdtemp,
@@ -11,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
@@ -64,6 +65,7 @@ import {
   Unopened,
 } from "cascade-runtime";
 import { kitDownload, kitStory, replayKit } from "cascade-runtime/fixtures";
+import { probing } from "@cascade-runtime/runtime/probe";
 import { Answers } from "../src/answers.js";
 import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
@@ -2272,6 +2274,169 @@ describe("Opening a pod again · openPod()", () => {
       await opened(unwritable, again, async (pod) => {
         assert.deepEqual(await pod.ask(QUESTION), rows);
       });
+    });
+  });
+
+  describe("given a pod an import built and closed in an earlier session", () => {
+    const ASKED = [
+      "pod/My active medications",
+      "pod/My active allergies",
+      "pod/My condition history",
+      "pod/My immunizations",
+    ];
+    const DERIVING = /^(derive\.step:|build\.queried$|kept\.whole$)/;
+    let first: string;
+    let wholeRows: Row[][];
+
+    /** The parts that keep nothing beside the pod, so every read builds it whole. */
+    const keepingNothing = (): Parts => {
+      const { answers: _, ...parts } = kept;
+      return parts;
+    };
+
+    /** The pod in the folder opened with the parts, each question asked, and the spans the asking took. */
+    async function asked(parts: Parts, at: string) {
+      return opened(parts, at, async (pod) => {
+        const { result, seen } = await probing(async () => {
+          const rows: Row[][] = [];
+          for (const question of ASKED) rows.push(await pod.ask(question));
+          return rows;
+        });
+        return { rows: result, spans: [...seen.spans.keys()] };
+      });
+    }
+
+    /** A copy of the folder and what is kept beside it but its kept answers, which would answer without a build. */
+    async function copiedWithBuild(from: string, name: string) {
+      const to = join(pods, name);
+      await cp(from, to, { recursive: true });
+      await cp(
+        join(pods, ".answers", basename(from)),
+        join(pods, ".answers", name),
+        { recursive: true },
+      );
+      await rm(join(pods, ".answers", name, "answers.json"), { force: true });
+      return to;
+    }
+
+    before(async () => {
+      first = join(pods, "built-before");
+      const pod = await openPodWith(kept, first);
+      try {
+        await pod.import(exported("x-e2"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      } finally {
+        await pod.close();
+      }
+      wholeRows = (await asked(keepingNothing(), first)).rows;
+    });
+
+    it("reads the build back instead of deriving and building every view, and answers as a build whole does", async () => {
+      const at = await copiedWithBuild(first, "read-back");
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(
+        spans.filter((span) => DERIVING.test(span)),
+        [],
+      );
+      assert.ok(wholeRows.some((answered) => answered.length > 0));
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("reads a sealed pod's build back, kept sealed beside it", async () => {
+      const at = join(pods, "sealed-read-back");
+      const parts = { ...kept, derive: fastDerive() };
+      const made = await openFolderPod(parts, at, { secret: WORDS });
+      try {
+        await made.import(exported("x-e2"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      } finally {
+        await made.close();
+      }
+      const reopened = await openFolderPod(parts, at, { secret: WORDS });
+      try {
+        const { result, seen } = await probing(() =>
+          reopened.ask("pod/My active allergies"),
+        );
+        const spans = [...seen.spans.keys()];
+        assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+        assert.deepEqual(
+          spans.filter((span) => DERIVING.test(span)),
+          [],
+        );
+        assert.deepEqual(result, wholeRows[1]);
+      } finally {
+        await reopened.close();
+      }
+      for (const file of await filesIn(
+        join(pods, ".answers", "sealed-read-back"),
+      ))
+        assert.ok(
+          !(await readFile(file, "latin1")).includes("ns.cascadeprotocol.org"),
+          `${file} is not sealed`,
+        );
+    });
+
+    it("builds again when a file the build read changed in place", async () => {
+      const at = await copiedWithBuild(first, "card-changed");
+      await appendFile(join(at, ...kept.layout.card.split("/")), "# changed\n");
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("builds again when the vocabulary's build queries changed", async () => {
+      const at = await copiedWithBuild(first, "queries-changed");
+      const { build } = kept;
+      const { spans } = await asked(
+        {
+          ...kept,
+          build: { ...build, queries: [...build.queries, "# changed"] },
+        },
+        at,
+      );
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+    });
+
+    it("builds again when a step wrote its records and stopped before its views", async () => {
+      const at = await copiedWithBuild(first, "torn");
+      const before = new Map<string, Buffer | undefined>();
+      for (const path of kept.layout.rebuilt)
+        before.set(
+          path,
+          await readFile(join(at, ...path.split("/"))).catch(() => undefined),
+        );
+      const beside = join(pods, ".answers", "torn");
+      const besideBefore = join(pods, "torn-beside-before");
+      await cp(beside, besideBefore, { recursive: true });
+      await opened(kept, at, async (pod) => {
+        await pod.import(exported("x-e4"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      });
+      const after = (await asked(keepingNothing(), at)).rows;
+      for (const [path, bytes] of before) {
+        const file = join(at, ...path.split("/"));
+        if (bytes === undefined) await rm(file, { force: true });
+        else await writeFile(file, bytes);
+      }
+      await rm(beside, { recursive: true, force: true });
+      await cp(besideBefore, beside, { recursive: true });
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.notDeepEqual(after, wholeRows);
+      assert.deepEqual(rows, after);
     });
   });
 
