@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +20,15 @@ import {
   readConfig,
   resolveVocabulary,
 } from "@cascade-runtime/runtime/node";
-import { OxigraphStore, Shapes } from "@cascade-runtime/runtime";
+import {
+  findingName,
+  iri,
+  ntriples,
+  OxigraphStore,
+  Shapes,
+  type Triple,
+} from "@cascade-runtime/runtime";
+import { resolved } from "../src/node/resolved.js";
 import { podReads, podsIn } from "cascade-runtime/tools/node";
 import {
   type Door,
@@ -691,6 +706,39 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
       assert.equal(typeof checked.refused, "string", "the check refuses it");
       assert.deepEqual(written, { refused: checked.refused });
     });
+
+  it("refuses a model's lone Same over a finding for review, before the person is asked, writing nothing", async () => {
+    const content = (subject: string): Triple[] => [
+      [iri(subject), iri(RDF_TYPE), iri(`${CASCADE}FindingForReview`)],
+      [
+        iri(subject),
+        iri("http://www.w3.org/ns/oa#hasBody"),
+        iri(`${CASCADE}MatcherJudgmentsNoLongerReached`),
+      ],
+    ];
+    const finding = await findingName(content("urn:cascade:this-finding"));
+    const path = join(
+      folder,
+      "p",
+      ...(await resolved()).layout
+        .place(`${CASCADE}FindingForReview`)
+        .path(finding)
+        .split("/"),
+    );
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, ntriples(content(finding)));
+    try {
+      const { checked, written } = await refusedBy({
+        kind: "judgment",
+        verdict: "same",
+        members: [finding],
+      });
+      assert.equal(typeof checked.refused, "string", "the check refuses it");
+      assert.deepEqual(written, { refused: checked.refused });
+    } finally {
+      await rm(path);
+    }
+  });
 
   it("passes the check of an entry, a judgment and a retraction the pod accepts, and shows each", async () => {
     const again = podReads(podsIn(folder));

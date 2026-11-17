@@ -77,12 +77,10 @@ export async function matcherJudgmentTouched(
     : `${touched.target} is a matcher's judgment: a person ${touched.retracts ? "retracts" : "replaces"} no matcher's judgment, and files a Same or a Different over its members instead`;
 }
 
-/** The kinds of warning an Acknowledged may answer: the concepts of cascade:FindingForReviewKinds. */
-const WARNING_KINDS: ReadonlySet<string> = new Set(
+/** The kinds whose warning is about a pair, so that an Acknowledged of one names exactly that pair's two records. */
+const PAIR_KINDS: ReadonlySet<string> = new Set(
   [
     "MatcherJudgmentsNoLongerReached",
-    "SourceReportedOlderStates",
-    "ClockBehind",
     "DifferentResultValuesAtOneInstant",
     "DifferentResultUnitsAtOneInstant",
   ].map((kind) => CASCADE + kind),
@@ -90,8 +88,8 @@ const WARNING_KINDS: ReadonlySet<string> = new Set(
 
 /**
  * Why a judgment may not name `members`, the first of them the pod holds as a finding for review, whose name the pod
- * derives from its triples, and, for an Acknowledged (`acknowledged`), as a version, a revision or a judgment, which
- * the pod also derives or an answer is not about. Nothing when it names none.
+ * derives from its triples, and, for an Acknowledged (`acknowledged`), as a version, a revision, a judgment or a matcher
+ * judgment assertion, which the pod also derives or an answer is not about. Nothing when it names none.
  */
 async function memberRefused(
   read: Pick<CorePod, "select">,
@@ -101,12 +99,13 @@ async function memberRefused(
   if (members.length === 0) return undefined;
   const { rows } =
     await read.select(`PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}>
-      SELECT ?member ?finding ?version ?revision ?judgment WHERE {
+      SELECT ?member ?finding ?version ?revision ?judgment ?assertion WHERE {
         VALUES ?member { ${members.map((member) => `<${member}>`).join(" ")} }
         BIND (EXISTS { ?member a cascade:FindingForReview } AS ?finding)
         BIND (EXISTS { ?member prov:specializationOf [] } AS ?version)
         BIND (EXISTS { ?member a cascade:Revision } AS ?revision)
         BIND (EXISTS { ?member a cascade:Judgment } AS ?judgment)
+        BIND (EXISTS { ?member a cascade:MatcherJudgmentAssertion } AS ?assertion)
       }`);
   const is = (member: string, variable: string): boolean =>
     rows.some(
@@ -118,9 +117,14 @@ async function memberRefused(
     if (is(member, "finding"))
       return `${member} is a finding for review: a judgment never names one, whose name the pod derives, and names what it is about instead`;
     if (acknowledged)
-      for (const kept of ["version", "revision", "judgment"])
+      for (const [kept, what] of [
+        ["version", "a version"],
+        ["revision", "a revision"],
+        ["judgment", "a judgment"],
+        ["assertion", "a matcher judgment assertion"],
+      ] as const)
         if (is(member, kept))
-          return `${member} is a ${kept}: an Acknowledged names records, documents or acts, never a ${kept}`;
+          return `${member} is ${what}: an Acknowledged names records, documents or acts, never ${what}`;
   }
   return undefined;
 }
@@ -158,17 +162,20 @@ async function nameTaken(
  * reason it is refused, for a name the pod gives something else, for replacing or retracting a matcher's judgment or,
  * for a member that is an entry of a view, an IRI under `views`, which no judgment is of, for a member that is a
  * finding, whatever the verdict, and for an Acknowledged, one that names no one kind of warning or a member that is a
- * version, a revision or a judgment; else its triples with the document each member was shown from, and none the input
- * states for the judgment itself. A member the pod does not hold is kept: it names no
+ * version, a revision, a judgment or a matcher judgment assertion, or, of a kind that is about a pair, other than two
+ * records; any other verdict that names a kind of warning; else its triples with the document each member was shown
+ * from, and none the input states for the judgment itself. A member the pod does not hold is kept: it names no
  * document, and a restore or a rebuild may bring it back. `changed` is false when those are the triples it was given.
  * `stated` reads the pod's files alone, what a name is taken by, so that a judgment with nothing to read the matcher's
- * view for builds none.
+ * view for builds none. `kinds` are the kinds of warning the vocabulary names, the concepts of
+ * cascade:FindingForReviewKinds.
  */
 export async function judgmentFiled(
   read: Pick<CorePod, "select">,
   triples: readonly Triple[],
   views: string,
   stated: Pick<CorePod, "select">,
+  kinds: ReadonlySet<string>,
 ): Promise<{ refused: string } | { triples: Triple[]; changed: boolean }> {
   const subjectsOf = (predicate: string, object?: string): string[] =>
     triples.flatMap(([s, p, o]) =>
@@ -219,21 +226,29 @@ export async function judgmentFiled(
   const acknowledged = verdicts.includes(`${CASCADE}Acknowledged`);
   const named = await memberRefused(read, members, acknowledged);
   if (named !== undefined) return { refused: named };
+  const answered = triples.flatMap(([s, p, o]) =>
+    s.value === judgment && p.value === `${CASCADE}answersWarningOfKind`
+      ? [o]
+      : [],
+  );
+  if (!acknowledged && answered.length > 0)
+    return {
+      refused: `only an Acknowledged names a kind of warning it answers (cascade:answersWarningOfKind): this one's verdict is ${verdicts.join(", ") || "none"}, and it names ${answered.map(written).join(", ")}`,
+    };
   if (acknowledged) {
-    const kinds = triples.flatMap(([s, p, o]) =>
-      s.value === judgment && p.value === `${CASCADE}answersWarningOfKind`
-        ? [o]
-        : [],
-    );
-    const [kind] = kinds;
+    const [kind] = answered;
     if (
-      kinds.length !== 1 ||
+      answered.length !== 1 ||
       kind === undefined ||
       kind.termType !== "NamedNode" ||
-      !WARNING_KINDS.has(kind.value)
+      !kinds.has(kind.value)
     )
       return {
-        refused: `an Acknowledged names one kind of warning it answers (cascade:answersWarningOfKind), a concept of cascade:FindingForReviewKinds: it names ${kinds.length === 0 ? "none" : kinds.map(written).join(", ")}`,
+        refused: `an Acknowledged names one kind of warning it answers (cascade:answersWarningOfKind), a concept of cascade:FindingForReviewKinds: it names ${answered.length === 0 ? "none" : answered.map(written).join(", ")}`,
+      };
+    if (PAIR_KINDS.has(kind.value) && new Set(members).size !== 2)
+      return {
+        refused: `an Acknowledged of ${kind.value} is about a pair and names exactly the pair's two records: it names ${new Set(members).size}`,
       };
   }
   const added: Triple[] = [];

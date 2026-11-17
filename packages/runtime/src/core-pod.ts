@@ -965,6 +965,12 @@ export class CorePod {
     );
   }
 
+  /** The kinds of finding for review the vocabulary names, which an Acknowledged may answer. */
+  async findingKinds(): Promise<ReadonlySet<string>> {
+    const { vocabulary, newStore } = this.#options;
+    return (await tableTerms(vocabulary, newStore)).findingKinds;
+  }
+
   /** The query's rows over the pod's RDF files but those the build writes, with nothing derived: the vocabulary is not read. */
   selectStated(query: string): Promise<Rows> {
     return podRows(this.#options, query);
