@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { cp, mkdtemp, rm, utimes } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import {
   type AdaptersOf,
@@ -18,13 +21,16 @@ import { kitImports } from "../src/kit-bridge.js";
 import { kitsOf } from "../src/kit.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { probing } from "../src/probe.js";
 import { PERFORMERS } from "../src/replay.js";
 import { CASCADE } from "../src/step.js";
 import { checkouts, type Components } from "../src/node/components.js";
+import type { Followed } from "../src/config.js";
 import {
   compiledBridge,
   inWorker,
   loadConfiguredAdapters,
+  loadSharedAdapters,
 } from "../src/node/wasm.js";
 import {
   blank,
@@ -356,6 +362,80 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
         .convert(await standIn(expected.document, "{ not json"))
         .catch(() => undefined);
       same(expected, await inWorkerAdapter.convert(expected.document));
+    });
+  });
+
+  describe("given the same adapters loaded again for another pod", () => {
+    const nothing: BridgeDocument = {
+      iri: "urn:cascade:test/nothing",
+      bytes: new Uint8Array(),
+    };
+    let bridgeFolder: string;
+    let spawn: Spawn;
+
+    before(async () => {
+      bridgeFolder = (await components.bridge()).folder;
+      spawn = inWorker(compiled);
+    });
+
+    /** What a load of the adapters over `from` and a first call on each of them started. */
+    async function started(from: Components) {
+      const { seen } = await probing(async () => {
+        const bridge = new WasmBridge(spawn);
+        const configured = await loadSharedAdapters(
+          bridgeFolder,
+          bridge,
+          from.config.adapters,
+          from,
+        );
+        for (const { adapter } of configured) {
+          await adapter.accepts(nothing).catch(() => undefined);
+          await adapter.free();
+        }
+        bridge.close();
+      });
+      return {
+        workers: seen.counts.get("bridge.workers") ?? 0,
+        resolved: seen.counts.get("components.resolved") ?? 0,
+      };
+    }
+
+    it("starts no worker and resolves no component the second time", async () => {
+      const first = await started(components);
+      assert.ok(first.workers > 0);
+      assert.deepEqual(await started(components), { workers: 0, resolved: 0 });
+    });
+
+    it("resolves the components once for every Components over the same folders", async () => {
+      await started(components);
+      assert.deepEqual(await started(await checkouts(ROOT)), {
+        workers: 0,
+        resolved: 0,
+      });
+    });
+
+    it("loads an adapter again when a file of its folder changed", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "adapter-copy-"));
+      try {
+        const [first] = components.config.adapters;
+        const original = await components.resolve(first as Followed);
+        await cp(original.folder, folder, { recursive: true });
+        const copied: Components = {
+          config: { ...components.config, adapters: [first as Followed] },
+          resolve: async (followed) =>
+            followed === first
+              ? { ...original, folder }
+              : components.resolve(followed),
+          bridge: () => components.bridge(),
+        };
+        assert.ok((await started(copied)).workers > 0);
+        assert.equal((await started(copied)).workers, 0);
+        const later = new Date(Date.now() + 60_000);
+        await utimes(join(folder, "ro-crate-metadata.json"), later, later);
+        assert.ok((await started(copied)).workers > 0);
+      } finally {
+        await rm(folder, { recursive: true, force: true });
+      }
     });
   });
 
