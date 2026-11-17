@@ -2418,6 +2418,23 @@ describe("Opening a pod again · openPod()", () => {
       );
     });
 
+    it("rebuilds a step in part from the build it read back, and the next session reads back what that step wrote, answering as a build whole does", async () => {
+      const at = await copiedWithBuild(first, "stepped");
+      const claimProfiles = [await profileOf("J1"), await profileOf("J2")];
+      await opened(kept, at, async (pod) => {
+        const { seen } = await probing(() =>
+          pod.import(exported("x-e4"), { claimProfiles }),
+        );
+        const spans = [...seen.spans.keys()];
+        assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+        assert.ok(!spans.includes("kept.whole"), spans.join(", "));
+      });
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(rows, (await asked(keepingNothing(), at)).rows);
+      assert.notDeepEqual(rows, wholeRows);
+    });
+
     it("builds again when a step wrote its records and stopped before its views", async () => {
       const at = await copiedWithBuild(first, "torn");
       const before = new Map<string, Buffer | undefined>();
