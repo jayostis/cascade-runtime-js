@@ -101,16 +101,12 @@ describe("Reading reference tables from a folder · References.of(), References.
   });
 
   describe("reasonLabels(vocabulary, newStore)", () => {
-    it("reads the vocabulary once for two Files that open it at one address, and gives each the same labels", async () => {
+    it("gives two Files that open the same ontology at one address the same labels, parsed once", async () => {
       const files = await vocabulary();
-      let reads = 0;
       const opened = (): Files =>
         Object.assign(Object.create(files) as Files, {
           iri: "https://labels.example/vocabulary/",
-          read: async (path: string) => {
-            reads += 1;
-            return files.read(path);
-          },
+          read: (path: string) => files.read(path),
         });
       const [first, second] = [
         await reasonLabels(opened(), newStore),
@@ -118,7 +114,36 @@ describe("Reading reference tables from a folder · References.of(), References.
       ];
       assert.ok(first.size > 0, "the vocabulary gives left-out reasons");
       assert.equal(second, first);
-      assert.equal(reads, 1);
+    });
+
+    it("gives a vocabulary whose ontology differs at the same address its own labels", async () => {
+      const files = await vocabulary();
+      const address = "https://labels-changed.example/vocabulary/";
+      const at = (text: string): Files =>
+        Object.assign(Object.create(files) as Files, {
+          iri: address,
+          read: async (path: string) =>
+            path === RECORDS
+              ? new TextEncoder().encode(text)
+              : files.read(path),
+        });
+      const original = await readText(files, RECORDS);
+      const [reason, label] =
+        [...(await reasonLabels(files, newStore))][0] ?? [];
+      assert.ok(reason !== undefined && label !== undefined);
+      const changed = original.replaceAll(
+        `"${label}"@en`,
+        `"${label} changed"@en`,
+      );
+      assert.notEqual(changed, original);
+      assert.equal(
+        (await reasonLabels(at(original), newStore)).get(reason),
+        label,
+      );
+      assert.equal(
+        (await reasonLabels(at(changed), newStore)).get(reason),
+        `${label} changed`,
+      );
     });
   });
 

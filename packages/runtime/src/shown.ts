@@ -194,7 +194,7 @@ async function nameTaken(
  * basis a software agent states is attributed to a person. Nothing when it conforms. The shape runs over the judgment
  * and the types the pod holds of its authors that are IRIs, so an author left untyped in the Turtle is the person the pod
  * says; a blank-node author has its types in the judgment's own triples, and a literal one has none. It runs that one
- * shape alone, over those triples and the vocabulary's subclass statements.
+ * shape alone, over those triples, the vocabulary's subclass statements and the types it gives its authors.
  */
 async function basisRefused(
   shapes: () => Promise<Pick<Shapes, "resultsOf">>,

@@ -16,6 +16,7 @@ import type { Store, StoreFactory } from "./store.js";
 const ONTOLOGIES = "ontologies/";
 const SHAPES = ".shapes.ttl";
 const SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
 function term(value: Term): RDFJS.Quad_Object {
   switch (value.termType) {
@@ -52,6 +53,7 @@ export type ShapeResult = SparqlResult;
 export class Shapes {
   #termsStore: Promise<Store> | undefined;
   #subclassTriples: readonly Triple[] | undefined;
+  #typeTriples: ReadonlyMap<string, readonly Triple[]> | undefined;
   readonly #validators = new Map<string, SHACLValidator>();
 
   private constructor(
@@ -109,9 +111,10 @@ export class Shapes {
   }
 
   /**
-   * Each result the one shape `shape` gives about a node the triples describe, over the triples and the vocabulary's
-   * subclass statements alone: what `results` gives for that shape, without the validator running every other shape
-   * over every term. A shape that names another shape is read with it.
+   * Each result the one shape `shape` gives about a node the triples describe, over the triples, the vocabulary's
+   * subclass statements and the types it gives to the IRIs the triples name (an agent it types, such as
+   * `cascade:CascadeMatcher`) alone: what `results` gives for that shape, without the validator running every other
+   * shape over every term. A shape that names another shape is read with it.
    */
   async resultsOf(
     shape: string,
@@ -119,8 +122,18 @@ export class Shapes {
   ): Promise<ShapeResult[]> {
     const described = new Set(triples.map(([s]) => written(s)));
     const validator = this.#validatorOf(shape);
+    const typed = this.#typesBySubject;
+    const named = new Set<string>();
+    for (const [s, , o] of triples) {
+      if (s.termType === "NamedNode") named.add(s.value);
+      if (o.termType === "NamedNode") named.add(o.value);
+    }
     const report = await validator.validate(
-      dataset([...triples, ...this.#subclasses]),
+      dataset([
+        ...triples,
+        ...this.#subclasses,
+        ...[...named].flatMap((name) => typed.get(name) ?? []),
+      ]),
     );
     const results: ShapeResult[] = report.results
       .filter(({ focusNode }) => described.has(written(fromRdfjs(focusNode))))
@@ -148,6 +161,21 @@ export class Shapes {
       this.#validators.set(shape, validator);
     }
     return validator;
+  }
+
+  get #typesBySubject(): ReadonlyMap<string, readonly Triple[]> {
+    if (this.#typeTriples === undefined) {
+      const types = new Map<string, Triple[]>();
+      for (const triple of this.terms) {
+        if (triple[1].value !== RDF_TYPE || triple[0].termType !== "NamedNode")
+          continue;
+        const held = types.get(triple[0].value);
+        if (held === undefined) types.set(triple[0].value, [triple]);
+        else held.push(triple);
+      }
+      this.#typeTriples = types;
+    }
+    return this.#typeTriples;
   }
 
   get #subclasses(): readonly Triple[] {

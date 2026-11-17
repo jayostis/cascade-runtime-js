@@ -126,31 +126,36 @@ const labelsRead = new Map<string, Promise<ReadonlyMap<string, string>>>();
 
 /**
  * The skos:prefLabel in English of each left-out reason the vocabulary gives (`cascade:LeftOutReasons`), by its IRI;
- * read once for the vocabulary at an address, however many `Files` open it.
+ * parsed once for each ontology file's contents at an address, however many `Files` open it, so a changed file at an
+ * address reads its own labels.
  */
-export function reasonLabels(
+export async function reasonLabels(
   vocabulary: Files,
   newStore: StoreFactory,
 ): Promise<ReadonlyMap<string, string>> {
-  let read = labelsRead.get(vocabulary.iri);
+  const text = await readText(vocabulary, ONTOLOGY);
+  const digest = new Uint8Array(
+    await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(text),
+    ),
+  );
+  const key = `${vocabulary.iri} ${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  let read = labelsRead.get(key);
   if (read === undefined) {
-    read = readReasonLabels(vocabulary, newStore);
-    read.catch(() => labelsRead.delete(vocabulary.iri));
-    labelsRead.set(vocabulary.iri, read);
+    read = readReasonLabels(text, vocabulary.iri, newStore);
+    read.catch(() => labelsRead.delete(key));
+    labelsRead.set(key, read);
   }
   return read;
 }
 
 async function readReasonLabels(
-  vocabulary: Files,
+  text: string,
+  base: string,
   newStore: StoreFactory,
 ): Promise<ReadonlyMap<string, string>> {
-  const graph = new Graph(
-    await newStore().parse(
-      await readText(vocabulary, ONTOLOGY),
-      vocabulary.iri + ONTOLOGY,
-    ),
-  );
+  const graph = new Graph(await newStore().parse(text, base + ONTOLOGY));
   const labels = new Map<string, string>();
   for (const reason of graph.subjects(
     `${SKOS}inScheme`,

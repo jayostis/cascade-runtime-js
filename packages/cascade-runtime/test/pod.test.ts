@@ -1699,6 +1699,24 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       );
     });
 
+    it("files a machine basis by an author only the vocabulary types: cascade:CascadeMatcher, or an agent the judgment types a cascade:Server", async () => {
+      assert.equal(
+        (await owned.judge(authored("cascade:CascadeMatcher"))).refused,
+        undefined,
+        "cascade:CascadeMatcher",
+      );
+      const host = "urn:uuid:2b7e4c19-5d83-4f0a-9a61-c3e8d1f47a52";
+      assert.equal(
+        (
+          await owned.judge(
+            authored(`<${host}>`, `\n<${host}> a cascade:Server .`),
+          )
+        ).refused,
+        undefined,
+        "a cascade:Server",
+      );
+    });
+
     it("refuses a machine basis by an author that is a blank node with no type or a literal, with the shape's message", async () => {
       const held = await filesIn(join(pods, "judged"));
       for (const author of ["[ ]", '"the portal"', "[ a prov:Person ]"])
