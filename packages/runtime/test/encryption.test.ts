@@ -313,6 +313,14 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
         ["31 bytes", KEY.subarray(1)],
         ["33 bytes", new Uint8Array([...KEY, 1])],
         ["a passphrase's UTF-8 bytes", encoded(SECRET.slice(0, 32))],
+        [
+          "a passphrase's UTF-8 bytes, a newline among them",
+          encoded("Correct horse battery staple 42\n"),
+        ],
+        [
+          "a non-ASCII passphrase's UTF-8 bytes",
+          encoded("née café crème brûlée okay!"),
+        ],
         ["all zeros", new Uint8Array(32)],
         ["four bytes repeated", new Uint8Array(32).map((_, at) => at % 4)],
         ["an array of numbers", [...KEY]],
