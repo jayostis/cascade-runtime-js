@@ -293,9 +293,9 @@ a column is a list, read it as its array. `ask` with a query of your own has no 
 - `pod/My active conditions`: conditions whose status is active and not ruled out
   (`?condition`, `?conditionCode`, `?onset`), with the medicines, procedures and
   vaccinations a source says were given for it (`?entriesForIt`, "<entry>, <name>",
-  a list, none when no record names it as a reason, never a medicine its source
-  marked entered in error), how many records its `?entry` joins (`?records`), and
-  the `?sources` of each.
+  or the entry alone when it has no name, a list, none when no record names it
+  as a reason, never a medicine its source marked entered in error), how many
+  records its `?entry` joins (`?records`), and the `?sources` of each.
 - `pod/My condition history`: every condition whatever its status (`?condition`,
   `?conditionCode`, `?status`, `?verificationStatus`, `?onset`, `?abated`).
   `?status` is `ruled out` when its source refuted it, whatever its clinical
@@ -308,7 +308,18 @@ a column is a list, read it as its array. `ask` with a query of your own has no 
 - `pod/My active medications`: medications whose status is active
   (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
   `?statuses`, each record's own status and the day it ended, so a medication
-  one hospital stopped and another still lists says both, `?dosages`, each record that states a dosage, "<record> <text>", a list (none when no record states one), `?narrativeTexts`, the text each record's source wrote for it, such as a stop reason, in the same form, `?reasons`, what each record says the medication was given for, a list (none when no record says): "<record> for <condition entry>, <condition name>" (the entry alone when the condition has no name), "<record> for <code>" for a code in a listed system, or "<record> for <system> <code>" for a code in another system; the text after the first space that follows "for" never tells which, so a reader takes the form from the IRI that comes first, and `?sources`. One
+  one hospital stopped and another still lists says both, `?dosages`, each record
+  that states a dosage, "<record> <text>", a list (none when no record states
+  one), `?narrativeTexts`, the text each record's source wrote for it, such as a
+  stop reason, in the same form, `?reasons`, what each record says the
+  medication was given for, a list (none when no record says), each as
+  "<record> for <what>". A name or a code may itself hold ", ", " for " and " in
+  ", so the text after "for" never tells which form it is; the first word does.
+  A handle (such as `Cbbbbbbbb`) followed by "," is a condition entry and its
+  name; a handle alone is a condition entry with no name; a code alone
+  (`snomed:195967001`, or a system's IRI followed by the code) is a code in a
+  listed system; a system's IRI, a space, then text is a code in another
+  system. And `?sources`. One
   whose status was taken from a record that stopped it is only in
   `pod/My medication history`.
 - `pod/My genetic variants`: variants, a row for each code an entry states

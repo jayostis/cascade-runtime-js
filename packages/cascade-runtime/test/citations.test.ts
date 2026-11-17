@@ -1286,6 +1286,36 @@ describe("Checking a citation of a view entry · checkCitation(), podRowsSource(
     ]);
   });
 
+  it("holds no code of a reason as the code of the medication it was given for", async () => {
+    const forAsthma = rowsOf({
+      e: [
+        {
+          field: `${NS}rxNormCode`,
+          value: "https://ns.cascadeprotocol.org/codes/rxnorm/745679",
+        },
+        { field: `${NS}reasonCode`, value: "http://snomed.info/id/195967001" },
+        { field: `${NS}reasonCodeInOtherSystem`, value: "J45" },
+      ],
+    });
+    await assertHolds(forAsthma, [
+      [
+        "the medication's own code",
+        { cite: { entry: "e" }, code: "rxnorm:745679" },
+        true,
+      ],
+      [
+        "the reason's code",
+        { cite: { entry: "e" }, code: "snomed:195967001" },
+        false,
+      ],
+      [
+        "the reason's code in another system",
+        { cite: { entry: "e" }, code: "J45" },
+        false,
+      ],
+    ]);
+  });
+
   it("reads a gene variant's coding expression as a code, never as a name", async () => {
     await assertHolds(texts, [
       [
