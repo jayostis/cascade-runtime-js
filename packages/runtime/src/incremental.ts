@@ -39,6 +39,11 @@ export interface Change {
   readonly written: readonly string[];
   /** A step that changes every record's inputs at once: an open, which gives the pod its tables, or a migration of the rule list versions. */
   readonly everything?: boolean;
+  /**
+   * The files the step wrote for each record it revised, when the step knows them: the records the files of the clinical
+   * kinds reach are then these, rather than found in the files.
+   */
+  readonly filesOf?: ReadonlyMap<string, readonly string[]>;
 }
 
 function values(iris: Iterable<string>): string {
@@ -547,6 +552,7 @@ export class KeptBuild {
         clinicalPaths,
         sharedPaths.filter((path) => !described.includes(path)),
         described,
+        change.filesOf,
       ),
     );
     if (reached === undefined) return undefined;
@@ -636,21 +642,32 @@ export class KeptBuild {
     clinicalPaths: readonly string[],
     sharedPaths: readonly string[],
     described: readonly string[],
+    filesOf?: ReadonlyMap<string, readonly string[]>,
   ): Promise<
     | { readonly records: Set<string>; readonly matcherJudgments: Set<string> }
     | undefined
   > {
     const { address } = this.#rebuilding;
     const union = this.union;
-    const found = await boundValues(
-      union,
-      clinicalPaths.map((path) => address + path),
-      [
-        `GRAPH ?bound { ?x cascade:revisionOf ?found }`,
-        `GRAPH ?bound { ?x prov:specializationOf ?found }`,
-        `GRAPH ?bound { ?found a ?kind VALUES ?kind { ${values(this.#clinicalKinds)} } }`,
-      ],
-    );
+    const clinical = new Set(clinicalPaths);
+    const found =
+      filesOf !== undefined
+        ? new Set(
+            [...filesOf].flatMap(([record, paths]) =>
+              paths.some((path) => clinical.has(path)) ? [record] : [],
+            ),
+          )
+        : await timedAside("kept.reached.written", () =>
+            boundValues(
+              union,
+              clinicalPaths.map((path) => address + path),
+              [
+                `GRAPH ?bound { ?x cascade:revisionOf ?found }`,
+                `GRAPH ?bound { ?x prov:specializationOf ?found }`,
+                `GRAPH ?bound { ?found a ?kind VALUES ?kind { ${values(this.#clinicalKinds)} } }`,
+              ],
+            ),
+          );
     const { layout } = this.#rebuilding;
     const judgingFolders = [
       layout.place(`${CASCADE}Judgment`).folder,
@@ -660,10 +677,12 @@ export class KeptBuild {
       judgingFolders.some((folder) => path.startsWith(folder)),
     );
     const walk = `(prov:hadMember|prov:invalidated|dct:replaces|cascade:assertedJudgment|oa:hasTarget)*`;
-    const named = await boundValues(
-      union,
-      judging.map((path) => address + path),
-      `GRAPH ?bound { ?start a ?type } ?start ${walk} ?found`,
+    const named = await timedAside("kept.reached.judged", () =>
+      boundValues(
+        union,
+        judging.map((path) => address + path),
+        `GRAPH ?bound { ?start a ?type } ?start ${walk} ?found`,
+      ),
     );
     const matcherJudgments = await boundValues(
       union,
@@ -683,12 +702,14 @@ export class KeptBuild {
       `?bound cascade:revisionOf/a ?kind VALUES ?kind { ${other} } BIND (?bound AS ?found)`,
     ]);
     if (elsewhere.size > 0) return undefined;
-    for (const record of await boundValues(union, named, [
-      `?bound a cascade:Record BIND (?bound AS ?found)`,
-      `?bound cascade:revisionOf ?found . ?found a cascade:Record`,
-      `?revision prov:wasGeneratedBy ?bound ; cascade:revisionOf ?found . ?found a cascade:Record`,
-      `?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record`,
-    ]))
+    for (const record of await timedAside("kept.reached.recordsOfJudged", () =>
+      boundValues(union, named, [
+        `?bound a cascade:Record BIND (?bound AS ?found)`,
+        `?bound cascade:revisionOf ?found . ?found a cascade:Record`,
+        `?revision prov:wasGeneratedBy ?bound ; cascade:revisionOf ?found . ?found a cascade:Record`,
+        `?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record`,
+      ]),
+    ))
       found.add(record);
     return { records: found, matcherJudgments };
   }
