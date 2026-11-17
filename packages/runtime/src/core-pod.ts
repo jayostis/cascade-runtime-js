@@ -142,6 +142,17 @@ export interface Performed {
 /** The steps whose perform reads none of what the build writes, so that within `deferring` they leave their rebuild to the next read. */
 const DEFERRABLE = new Set(["import", "judge"]);
 
+/** The files each record was written in by either of two steps. */
+function filesTogether(
+  first: ReadonlyMap<string, readonly string[]> | undefined,
+  second: ReadonlyMap<string, readonly string[]>,
+): Map<string, readonly string[]> {
+  const together = new Map(first);
+  for (const [record, paths] of second)
+    together.set(record, [...(together.get(record) ?? []), ...paths]);
+  return together;
+}
+
 /** The rebuild of the steps `deferring` has not yet rebuilt after: what they changed, when the last began, and what they did. */
 interface Pending {
   readonly kinds: readonly string[];
@@ -678,6 +689,7 @@ export class CorePod {
   ): Promise<Performed> {
     const { importers } = this.#options;
     let profilesNamed: readonly string[] = [];
+    let filesOf: ReadonlyMap<string, readonly string[]> | undefined;
     const performed = await this.#step(
       async (context) => {
         let documents: readonly ExportDocument[] | undefined;
@@ -703,11 +715,13 @@ export class CorePod {
           fileExport(context, documents, loaded, onProgress, budget),
         );
         profilesNamed = filed.patients;
+        filesOf = filed.filesOf;
         await onProgress?.({ part: "saving" });
         return filed.activity;
       },
       false,
       "import",
+      () => filesOf,
     );
     return performed.refused === undefined
       ? { ...performed, profilesNamed }
@@ -754,6 +768,7 @@ export class CorePod {
         }),
       false,
       "judge",
+      () => new Map(),
     );
   }
 
@@ -1324,6 +1339,8 @@ export class CorePod {
     perform: (context: StepContext) => Promise<string | void>,
     everything = false,
     kind = "other",
+    /** The records of the files of the clinical kinds the step wrote, for the steps that know them. */
+    filesWritten?: () => ReadonlyMap<string, readonly string[]> | undefined,
   ): Promise<Performed> {
     const options = this.#options;
     const deferred = this.#deferring > 0 && DEFERRABLE.has(kind);
@@ -1391,7 +1408,17 @@ export class CorePod {
       if (change === undefined) {
         this.#dropBuilt();
         this.#builtBefore = undefined;
-      } else change = { ...change, written: writes.committed };
+      } else {
+        const filesOf =
+          writes.committed.length === 0
+            ? new Map<string, readonly string[]>()
+            : filesWritten?.();
+        change = {
+          ...change,
+          written: writes.committed,
+          ...(filesOf === undefined ? {} : { filesOf }),
+        };
+      }
     }
     if (options.build === undefined) return performed;
     if (deferred && at !== undefined) {
@@ -1405,6 +1432,12 @@ export class CorePod {
           written: [...(before?.change.written ?? []), ...change.written],
           ...(before?.change.everything === true || change.everything === true
             ? { everything: true }
+            : {}),
+          ...(change.filesOf !== undefined &&
+          (before === undefined || before.change.filesOf !== undefined)
+            ? {
+                filesOf: filesTogether(before?.change.filesOf, change.filesOf),
+              }
             : {}),
         },
         performed: {

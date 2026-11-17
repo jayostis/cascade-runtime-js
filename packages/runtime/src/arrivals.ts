@@ -344,6 +344,8 @@ export class Revisions {
     [];
   /** The patient profiles the versions of the revisions the step wrote name. */
   readonly patients = new Set<string>();
+  /** The files the step wrote for each record it revised: the record, its version and its revision. */
+  readonly filesOf = new Map<string, string[]>();
   /** Each record's versions, and what its revisions are told apart by. */
   readonly #versions = new Map<string, Set<string>>();
   readonly #held = new Map<string, Set<string>>();
@@ -727,6 +729,13 @@ export class Revisions {
       ntriples(renamedWithin(triples, THIS_REVISION, name)),
     ];
     this.#files.push(revision);
+    const paths = this.filesOf.get(record) ?? [];
+    paths.push(
+      arrival.place.path(record),
+      this.layout.version(arrival.place, arrival.version.value),
+      revision[0],
+    );
+    this.filesOf.set(record, paths);
     for (const [subject, predicate, object] of arrival.versionTriples)
       if (
         subject.value === arrival.version.value &&
@@ -1147,7 +1156,7 @@ async function serverRecord(
  * Files an export's documents, each converted by the first adapter of its media type that accepts it: A1 to A11, with
  * the import named by a new random ID (N7), and the refusals of A14. `onProgress` is told of each conversion as its
  * adapter is found. Each conversion is held to `budget`; one that passes it stops the step with the Bridge's error.
- * Gives the import's name and the patient profiles the versions of its new revisions name.
+ * Gives the import's name, the patient profiles the versions of its new revisions name and the files it wrote for each record it revised.
  */
 export async function fileExport(
   context: StepContext,
@@ -1155,7 +1164,11 @@ export async function fileExport(
   adapters: AdaptersOf,
   onProgress?: OnProgress,
   budget: ConvertBudget = {},
-): Promise<{ readonly activity: string; readonly patients: string[] }> {
+): Promise<{
+  readonly activity: string;
+  readonly patients: string[];
+  readonly filesOf: ReadonlyMap<string, readonly string[]>;
+}> {
   const { pod, writes, newStore, time } = context;
   const name = time.newId();
   const started = time.now();
@@ -1246,7 +1259,8 @@ export async function fileExport(
     revisions.write(writes, wentBack),
   );
   const patients = [...revisions.patients].sort();
-  if (kept.size === 0) return { activity: name, patients };
+  const { filesOf } = revisions;
+  if (kept.size === 0) return { activity: name, patients, filesOf };
   const descriptions = [...kept.values()];
   const forms = new Set(await Promise.all(descriptions.map(canonical)));
   if (forms.size > 1)
@@ -1265,7 +1279,7 @@ export async function fileExport(
       ]),
     ],
   });
-  return { activity: name, patients };
+  return { activity: name, patients, filesOf };
 }
 
 /**
