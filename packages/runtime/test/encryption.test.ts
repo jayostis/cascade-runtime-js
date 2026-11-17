@@ -280,22 +280,29 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       assert.equal(derive.calls, 0);
     });
 
-    it("throws Unopened, `malformed`, deriving nothing, for a key wrap in a header of version 1.3, alone or beside a passphrase wrap", async () => {
+    it("throws Unopened, `malformed`, deriving nothing, for a key wrap in a header of version 1.3, alone or beside a passphrase wrap, and for one whose kdf is not hkdf-sha256", async () => {
       const derive = fastDerive();
       const { bytes } = await newHeader(KEY, derive);
-      const keyed = JSON.parse(text(bytes)) as { wraps: unknown[] };
+      const keyed = JSON.parse(text(bytes)) as {
+        wraps: Record<string, unknown>[];
+      };
       const { header: words } = await sealedPod();
       const [passphrase] = (JSON.parse(text(words)) as { wraps: unknown[] })
         .wraps;
-      for (const [name, wraps] of [
-        ["alone", keyed.wraps],
-        ["beside a passphrase wrap", [passphrase, ...keyed.wraps]],
+      for (const [name, version, wraps] of [
+        ["1.3, alone", "1.3", keyed.wraps],
+        ["1.3, beside a passphrase wrap", "1.3", [passphrase, ...keyed.wraps]],
+        [
+          "1.4, its kdf argon2id",
+          "1.4",
+          keyed.wraps.map((wrap) => ({ ...wrap, kdf: "argon2id" })),
+        ],
       ] as const)
         for (const secret of [KEY, SECRET])
           assert.equal(
             await outcomeOf(
               openHeader(
-                encoded(JSON.stringify({ ...keyed, version: "1.3", wraps })),
+                encoded(JSON.stringify({ ...keyed, version, wraps })),
                 secret,
                 derive,
               ),

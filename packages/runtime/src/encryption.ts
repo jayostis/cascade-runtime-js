@@ -100,9 +100,10 @@ const keyedLayout = (version: HeaderVersion): boolean =>
 const KEY_BYTES = 32;
 
 /**
- * The key as given, when it is a `Uint8Array` of 32 bytes that do not read as text and take at least 16 distinct
- * values, as 32 random bytes do but for a chance under 1 in 10^13; throws a TypeError otherwise, naming why. A
- * passphrase is a `string`, given as a secret, so its Argon2id stretch is never skipped by mistake.
+ * The key as given, when it is a `Uint8Array` of 32 bytes that do not decode as UTF-8 and take at least 16 distinct
+ * values, as 32 random bytes do but for a chance of about 1 in 100 million that they decode; throws a TypeError
+ * otherwise, naming why. A passphrase is a `string`, given as a secret, so its Argon2id stretch is never skipped by
+ * mistake, and its UTF-8 bytes are refused as a key.
  */
 export function checkedKey(key: unknown): Uint8Array {
   const refused = (why: string): never => {
@@ -115,10 +116,18 @@ export function checkedKey(key: unknown): Uint8Array {
       typeof key === "string" ? "is a string" : "is not a Uint8Array",
     );
   if (key.length !== KEY_BYTES) return refused(`is ${key.length} bytes`);
-  if (key.every((byte) => byte >= 0x20 && byte <= 0x7e))
-    return refused("is printable text");
+  if (decodesAsText(key)) return refused("decodes as UTF-8 text");
   if (new Set(key).size < 16) return refused("repeats too few byte values");
   return key;
+}
+
+function decodesAsText(bytes: Uint8Array): boolean {
+  try {
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** An encrypted pod's data key, opened from the header bytes it was opened with. */
