@@ -109,10 +109,7 @@ describe("Deriving a pod's state with the vocabulary's queries · Derivations.de
       assert.deepEqual(
         steps.map((step) => [step.path, rows(step.added)]),
         [
-          [
-            "queries/derivations/a b.rq",
-            rows([triple("urn:test:a", "1")]),
-          ],
+          ["queries/derivations/a b.rq", rows([triple("urn:test:a", "1")])],
           ["queries/lenses/l.rq", []],
         ],
       );
