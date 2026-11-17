@@ -506,6 +506,7 @@ const SAID_BY = /^S\d+(?:,S\d+)*(?: |$)/;
 const PER_SOURCE = new Set([
   "statuses",
   "narrativeTexts",
+  "reasons",
   "record",
   "otherRecord",
 ]);
@@ -1321,6 +1322,8 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   reactionManifestationCode: ["code"],
   geneSymbol: ["name"],
   medicationCodeInOtherSystem: ["code"],
+  reasonCode: ["code"],
+  reasonCodeInOtherSystem: ["code"],
   userSelectedCode: ["code"],
   dispensePreparedTime: ["when"],
   dispenseHandedOverTime: ["when"],
@@ -1350,6 +1353,7 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
   "allergyCategory",
   "wasAttributedTo",
   "authorizingPrescription",
+  "reasonCondition",
   "acmgClassification",
   "subjectVariant",
   "RO_0002351",
