@@ -58,6 +58,14 @@ function matchingPairs(bundle: {
   return pairs;
 }
 
+/** Each rebuild of the pod the run made, named by the steps it followed, with how many were made. */
+function rebuildsOf(run: Measured): [string, number][] {
+  return run.spans
+    .filter(({ name }) => name.startsWith("core-pod.step.rebuild:"))
+    .map(({ name, calls }): [string, number] => [name, calls])
+    .sort(([a], [b]) => (a < b ? -1 : 1));
+}
+
 /**
  * The import bench imports a synthetic pull of one hospital as the app does, and reports the time and the counts of
  * each place an import spends it, so that a speed-up is argued from a measurement.
@@ -81,6 +89,13 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
           (run.spans.find((span) => span.name === name)?.calls ?? 0) > 0,
           `${name} was not measured`,
         );
+    });
+
+    it("rebuilds the pod twice, once for the import and the judgment that claims its patient and once after the matcher's run, not after each of the three steps", () => {
+      assert.deepEqual(rebuildsOf(run), [
+        ["core-pod.step.rebuild:import+judge", 1],
+        ["core-pod.step.rebuild:match", 1],
+      ]);
     });
 
     it("reports every counted mechanism with a non-zero count", () => {
@@ -140,6 +155,13 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.equal(
         second.spans.find((span) => span.name === "pod.unclaimedProfiles")
           ?.calls,
+        2,
+      );
+    });
+
+    it("rebuilds the pod twice, as a first import does", () => {
+      assert.equal(
+        rebuildsOf(second).reduce((all, [, calls]) => all + calls, 0),
         2,
       );
     });
