@@ -1,20 +1,21 @@
 import { resolve as absolute } from "node:path";
 import { Refusal, SealedIndex } from "@cascade-runtime/runtime";
 import { headerIn } from "@cascade-runtime/runtime/node";
-import { podKey, secretChecked } from "../encrypted.js";
+import { givenSecret, podKey, secretChecked } from "../encrypted.js";
 import { openPodWith, type Parts, type Pod } from "../pod.js";
 
 /**
- * The pod in the folder, or in memory with none, opened as `openPodWith` opens it; with a secret, a new pod is made
- * encrypted and an encrypted one opened. Throws `Unopened` when the pod does not open with what was given, and refuses
- * a secret for a pod in memory.
+ * The pod in the folder, or in memory with none, opened as `openPodWith` opens it; with a secret or a key
+ * (`givenSecret`), a new pod is made encrypted and an encrypted one opened. Throws `Unopened` when the pod does not open
+ * with what was given, and refuses a secret for a pod in memory.
  */
 export async function openFolderPod(
   parts: Parts,
   folder?: string,
-  options: { title?: string; secret?: string } = {},
+  options: { title?: string; secret?: string; key?: Uint8Array } = {},
 ): Promise<Pod> {
-  const { secret, ...rest } = options;
+  const { secret: words, key: appKey, ...rest } = options;
+  const secret = givenSecret({ secret: words, key: appKey });
   if (folder === undefined) {
     if (secret !== undefined)
       throw new Refusal(

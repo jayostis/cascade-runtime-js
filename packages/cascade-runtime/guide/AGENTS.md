@@ -76,6 +76,14 @@ tries it as `typedWords(text)` cleans it. A wrong secret, or a secret for a
 pod that is not sealed, throws `Unopened`. `await checkSecret(folder, secret)`
 answers `true` or `false` without opening the pod or writing anything.
 
+An app that keeps a key of its own, not words a person types, gives `openPod`
+a `key` in place of the secret: 32 random bytes in a `Uint8Array`, made once
+with `newPodKey()` and kept where the app keeps
+its secrets. A pod sealed under a key opens without the Argon2id stretch that
+words pay on every opening, and opens with that key alone.
+A string, or bytes that are not 32 or read as text, throws a `TypeError`:
+words or a passphrase are always the `secret`.
+
 In a browser, `openPod(name, { from })` and the rest differ: see [In a browser](#in-a-browser). The reference tables an app shows, and how it sets its own, are under [The reference tables](#the-reference-tables).
 
 ## Bring in an export

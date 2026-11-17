@@ -77,12 +77,88 @@ interface PassphraseWrap {
   readonly wrapped: Uint8Array<ArrayBuffer>;
 }
 
-export type HeaderVersion = "1.0" | "1.1" | "1.2" | "1.3";
+/** A wrap of the data key under HKDF-SHA-256 of a 32-byte key, the wrap's salt and `cascade-pod-key-wrap`. */
+interface KeyWrap {
+  readonly salt: Uint8Array<ArrayBuffer>;
+  readonly wrapped: Uint8Array<ArrayBuffer>;
+}
 
-/** A header that validated: its version, and its passphrase wraps in order. */
+/**
+ * `1.4` is `1.3` with key wraps: a header holding one is `1.4` and only such a header is, so a runtime that knows only
+ * `1.3` refuses it by version. `1.4` still skips a wrap kind it does not know, as `1.3` does, so the next new kind is a
+ * new version.
+ */
+export type HeaderVersion = "1.0" | "1.1" | "1.2" | "1.3" | "1.4";
+
+/** A header that validated: its version, and its passphrase wraps and its key wraps, each in order. */
 export interface Header {
   readonly version: HeaderVersion;
   readonly passphrases: readonly PassphraseWrap[];
+  readonly keys: readonly KeyWrap[];
+}
+
+/** Whether a pod of the version keeps its files under keyed names, listed by a sealed index (`resourceFormat` 3). */
+const keyedLayout = (version: HeaderVersion): boolean =>
+  version === "1.3" || version === "1.4";
+
+const KEY_BYTES = 32;
+
+/**
+ * The key as given, when it is a `Uint8Array` of 32 bytes that do not decode as UTF-8 and take at least 16 distinct
+ * values, as 32 random bytes do but for a chance of about 1 in 100 million that they decode; throws a TypeError
+ * otherwise, naming why. A passphrase is a `string`, given as a secret, so its Argon2id stretch is never skipped by
+ * mistake, and its UTF-8 bytes are refused as a key.
+ */
+export function checkedKey(key: unknown): Uint8Array {
+  const refused = (why: string): never => {
+    throw new TypeError(
+      `A key is 32 random bytes in a Uint8Array, as crypto.getRandomValues(new Uint8Array(32)) makes; this one ${why}. Give a passphrase or words a person types as the secret instead.`,
+    );
+  };
+  if (!isUint8Array(key))
+    return refused(
+      typeof key === "string" ? "is a string" : "is not a Uint8Array",
+    );
+  if (key.length !== KEY_BYTES) return refused(`is ${key.length} bytes`);
+  if (decodesAsText(key)) return refused("decodes as UTF-8 text");
+  if (new Set(key).size < 16) return refused("repeats too few byte values");
+  return key;
+}
+
+/** A `Uint8Array` of any realm (a Node `vm` context, jsdom), which `instanceof` refuses. */
+function isUint8Array(value: unknown): value is Uint8Array {
+  return (
+    ArrayBuffer.isView(value) &&
+    Object.prototype.toString.call(value) === "[object Uint8Array]"
+  );
+}
+
+/**
+ * A new key for a pod: 32 random bytes from `crypto.getRandomValues`, drawn again until `checkedKey` accepts them, as
+ * about 1 in 100 million are not, so that a key stored before the pod's first opening is never refused then.
+ */
+export function newPodKey(
+  random: (bytes: Uint8Array<ArrayBuffer>) => void = (bytes) =>
+    void globalThis.crypto.getRandomValues(bytes),
+): Uint8Array {
+  for (;;) {
+    const key = new Uint8Array(KEY_BYTES);
+    random(key);
+    try {
+      return checkedKey(key);
+    } catch {
+      // drawn again
+    }
+  }
+}
+
+function decodesAsText(bytes: Uint8Array): boolean {
+  try {
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** An encrypted pod's data key, opened from the header bytes it was opened with. */
@@ -200,7 +276,8 @@ function headerOf(value: unknown): Header {
     version !== "1.0" &&
     version !== "1.1" &&
     version !== "1.2" &&
-    version !== "1.3"
+    version !== "1.3" &&
+    version !== "1.4"
   )
     throw new Unopened(
       "unsupported version",
@@ -222,7 +299,7 @@ function headerOf(value: unknown): Header {
   } else {
     if (has(value, "kdf") || has(value, "kdfParams"))
       malformed(`a ${version} header has a top-level kdf or kdfParams`);
-    const format = version === "1.2" ? 2 : version === "1.3" ? 3 : undefined;
+    const format = version === "1.2" ? 2 : keyedLayout(version) ? 3 : undefined;
     if (
       format !== undefined &&
       (value.resourceFormat !== format ||
@@ -231,6 +308,7 @@ function headerOf(value: unknown): Header {
       malformed(`resourceFormat is not ${format}`);
   }
   const passphrases: PassphraseWrap[] = [];
+  const keys: KeyWrap[] = [];
   wraps.forEach((wrap: unknown, index) => {
     const at = `wraps[${index}].`;
     if (!isObject(wrap)) return malformed(`wraps[${index}] is not an object`);
@@ -243,6 +321,18 @@ function headerOf(value: unknown): Header {
           (wrap[name] !== null && typeof wrap[name] !== "string")
         )
           malformed(`${at}${name} is missing, or neither a string nor null`);
+    if (wrap.by === "key") {
+      if (version !== "1.4")
+        malformed(`${at}by is key, which only a 1.4 header holds`);
+      if (wrap.kdf !== "hkdf-sha256") malformed(`${at}kdf is not hkdf-sha256`);
+      if (!isObject(wrap.kdfParams))
+        return malformed(`${at}kdfParams is not an object`);
+      keys.push({
+        salt: binary(wrap.kdfParams.salt, `${at}kdfParams.salt`, 16),
+        wrapped: binary(wrap.wrappedDek, `${at}wrappedDek`, 60),
+      });
+      return undefined;
+    }
     if (wrap.by !== "passphrase") return undefined;
     let derived = shared;
     if (derived === undefined) {
@@ -263,12 +353,14 @@ function headerOf(value: unknown): Header {
     malformed(
       `its passphrase wraps ask for more than ${MAX_ARGON2_COST} of t times m in all`,
     );
-  if (passphrases.length === 0)
+  if (version === "1.4" && keys.length === 0)
+    malformed("a 1.4 header holds a key wrap, and this one holds none");
+  if (passphrases.length === 0 && keys.length === 0)
     throw new Unopened(
       "cannot open",
-      "The pod's encryption header has no passphrase wrap: it is opened some other way.",
+      "The pod's encryption header has no passphrase or key wrap: it is opened some other way.",
     );
-  return { version, passphrases };
+  return { version, passphrases, keys };
 }
 
 /** The header in the bytes, every rule and limit checked before anything is derived; throws `Unopened` otherwise. */
@@ -400,15 +492,56 @@ async function dataKey(
   }
 }
 
+const KEY_WRAP = encoded("cascade-pod-key-wrap");
+
+/** The AES-256-GCM key a key wrap is sealed under: HKDF-SHA-256 of the 32-byte key, the wrap's salt and `cascade-pod-key-wrap`. */
+async function keyWrapKey(
+  key: Uint8Array,
+  salt: Uint8Array<ArrayBuffer>,
+): Promise<CryptoKey> {
+  const bytes = copied(key);
+  try {
+    const base = await globalThis.crypto.subtle.importKey(
+      "raw",
+      bytes,
+      "HKDF",
+      false,
+      ["deriveKey"],
+    );
+    return await globalThis.crypto.subtle.deriveKey(
+      { name: "HKDF", hash: "SHA-256", salt, info: KEY_WRAP },
+      base,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    );
+  } finally {
+    bytes.fill(0);
+  }
+}
+
+/** The data key a wrap holds, when its key opens it and it is 32 bytes; none otherwise. */
+async function unwrapped(
+  kek: CryptoKey,
+  wrapped: Uint8Array,
+): Promise<Uint8Array | undefined> {
+  const raw = await opened(kek, wrapped);
+  if (raw === undefined || raw.length === 32) return raw;
+  raw.fill(0);
+  return undefined;
+}
+
 /**
- * The pod's key: the header read (`readHeader`), then each passphrase wrap tried in order with the secret's UTF-8
- * bytes exactly as given. Throws `Unopened` with "incorrect secret" when none opens.
+ * The pod's key: the header read (`readHeader`), then, for a secret that is a string, each passphrase wrap tried in
+ * order with its UTF-8 bytes exactly as given, and for a key (`checkedKey`), each key wrap, with no Argon2id. Throws
+ * `Unopened` with "incorrect secret" when none opens, a TypeError for a key that is not one.
  */
 export async function openHeader(
   bytes: Uint8Array,
-  secret: string,
+  secret: string | Uint8Array,
   derive: DeriveKey,
 ): Promise<PodKey> {
+  if (typeof secret !== "string") return openedWithKey(bytes, secret);
   const { version, passphrases } = readHeader(bytes);
   const header = copied(bytes);
   const secretBytes = encoded(secret);
@@ -417,63 +550,93 @@ export async function openHeader(
       const kek = await derive(secretBytes, wrap.salt, wrap.params);
       let raw: Uint8Array | undefined;
       try {
-        raw = await opened(await aesKey(kek), wrap.wrapped);
+        raw = await unwrapped(await aesKey(kek), wrap.wrapped);
       } finally {
         kek.fill(0);
       }
-      if (raw === undefined) continue;
-      if (raw.length !== 32) {
-        raw.fill(0);
-        continue;
-      }
-      return { version, header, ...(await dataKey(raw)) };
+      if (raw !== undefined)
+        return { version, header, ...(await dataKey(raw)) };
     }
   } finally {
     secretBytes.fill(0);
   }
   throw new Unopened(
     "incorrect secret",
-    "The secret opens none of the pod's passphrase wraps.",
+    passphrases.length === 0
+      ? "The pod opens with a key, not a passphrase."
+      : "The secret opens none of the pod's passphrase wraps.",
+  );
+}
+
+async function openedWithKey(
+  bytes: Uint8Array,
+  given: Uint8Array,
+): Promise<PodKey> {
+  const key = checkedKey(given);
+  const { version, keys } = readHeader(bytes);
+  const header = copied(bytes);
+  for (const wrap of keys) {
+    const raw = await unwrapped(await keyWrapKey(key, wrap.salt), wrap.wrapped);
+    if (raw !== undefined) return { version, header, ...(await dataKey(raw)) };
+  }
+  throw new Unopened(
+    "incorrect secret",
+    keys.length === 0
+      ? "The pod opens with a passphrase, not a key."
+      : "The key opens none of the pod's key wraps.",
   );
 }
 
 /**
- * A new `1.3` header holding one passphrase wrap, labelled "primary", of a new data key under the secret; and that key.
- * Each byte copy of the data key and of the key that wraps it is zeroed after use, as far as JavaScript allows: a string
- * or WebAssembly memory cannot be cleared.
+ * A new header holding one wrap, labelled "primary", of a new data key under the secret; and that key. A secret that is a
+ * string is a passphrase, wrapped under Argon2id in a `1.3` header; a key (`checkedKey`) is wrapped under HKDF in a
+ * `1.4` header. Each byte copy of the data key and of the key that wraps it is zeroed after use, as far as JavaScript
+ * allows: a string or WebAssembly memory cannot be cleared.
  */
 export async function newHeader(
-  secret: string,
+  secret: string | Uint8Array,
   derive: DeriveKey,
 ): Promise<{ readonly bytes: Uint8Array; readonly key: PodKey }> {
+  const key = typeof secret === "string" ? undefined : checkedKey(secret);
   const salt = random(16);
-  const secretBytes = encoded(secret);
-  let kek: Uint8Array;
-  try {
-    kek = await derive(secretBytes, salt, ARGON2_PARAMS);
-  } finally {
-    secretBytes.fill(0);
-  }
   const raw = random(32);
   let wrapped: Uint8Array;
-  try {
-    wrapped = await seal(await aesKey(kek), raw);
-  } finally {
-    kek.fill(0);
-  }
+  if (key === undefined) {
+    const secretBytes = encoded(secret as string);
+    let kek: Uint8Array;
+    try {
+      kek = await derive(secretBytes, salt, ARGON2_PARAMS);
+    } finally {
+      secretBytes.fill(0);
+    }
+    try {
+      wrapped = await seal(await aesKey(kek), raw);
+    } finally {
+      kek.fill(0);
+    }
+  } else wrapped = await seal(await keyWrapKey(key, salt), raw);
+  const version = key === undefined ? "1.3" : "1.4";
+  const wrap =
+    key === undefined
+      ? {
+          by: "passphrase",
+          kdf: "argon2id",
+          kdfParams: { salt: base64(salt), ...ARGON2_PARAMS },
+        }
+      : { by: "key", kdf: "hkdf-sha256", kdfParams: { salt: base64(salt) } };
   const bytes = encoded(
     `${JSON.stringify(
       {
-        version: "1.3",
+        version,
         algorithm: "aes-256-gcm",
         resourceFormat: 3,
         wraps: [
           {
-            by: "passphrase",
+            by: wrap.by,
             label: "primary",
             createdAt: new Date().toISOString(),
-            kdf: "argon2id",
-            kdfParams: { salt: base64(salt), ...ARGON2_PARAMS },
+            kdf: wrap.kdf,
+            kdfParams: wrap.kdfParams,
             wrappedDek: base64(wrapped),
           },
         ],
@@ -485,18 +648,19 @@ export async function newHeader(
   readHeader(bytes);
   return {
     bytes,
-    key: { version: "1.3", header: copied(bytes), ...(await dataKey(raw)) },
+    key: { version, header: copied(bytes), ...(await dataKey(raw)) },
   };
 }
 
 /**
  * The `1.3` header of a pod whose header is an earlier version: the same wraps of the same data key, each passphrase
  * wrap stating its own `kdf` and `kdfParams` and every wrap its `label` and `createdAt`, as from `1.1` on. Its bytes
- * depend on the earlier header's alone, so two openings that upgrade one pod write the same header.
+ * depend on the earlier header's alone, so two openings that upgrade one pod write the same header. A `1.3` or `1.4`
+ * header is returned as it is.
  */
 export function upgradedHeader(earlier: Uint8Array): Uint8Array {
   const { version } = readHeader(earlier);
-  if (version === "1.3") return copied(earlier);
+  if (keyedLayout(version)) return copied(earlier);
   const value = JSON.parse(new TextDecoder().decode(earlier)) as Members;
   const { kdf, kdfParams, ...rest } = value;
   const wraps = (value.wraps as Members[]).map((wrap) =>
@@ -521,9 +685,9 @@ const RESOURCE = encoded("cascade-pod-resource");
 const INDEX_BOUND = joined(encoded("cascade-pod-index"), [0], encoded("3"));
 
 /**
- * What a file is bound to: its path in a `1.2` pod (D-SEAL-1) and in a `1.3` pod, under resource format 2 and 3, its
- * name in an answer cache; nothing in a `1.0` or `1.1` pod. A 1.3 pod's path is the file's own, not the keyed name it is
- * stored under, so a file moved to another's name does not open.
+ * What a file is bound to: its path in a `1.2` pod (D-SEAL-1) and in a `1.3` or `1.4` pod, under resource format 2 and
+ * 3, its name in an answer cache; nothing in a `1.0` or `1.1` pod. A 1.3 pod's path is the file's own, not the keyed
+ * name it is stored under, so a file moved to another's name does not open.
  */
 function boundTo(
   kind: "pod" | "answers",
@@ -532,7 +696,7 @@ function boundTo(
 ): Uint8Array<ArrayBuffer> | undefined {
   if (kind === "answers")
     return joined(encoded("cascade-runtime-answers"), [0], encoded(path));
-  if (version !== "1.2" && version !== "1.3") return undefined;
+  if (version !== "1.2" && !keyedLayout(version)) return undefined;
   return joined(
     RESOURCE,
     [0],
@@ -837,7 +1001,7 @@ export class SealedIndex {
       const [counter] = countersIn(listing);
       if (counter === undefined && begun !== undefined) continue;
       if (counter !== undefined) {
-        if (current.version !== "1.3")
+        if (!keyedLayout(current.version))
           throw changed(
             `its header says version ${current.version} beside a 1.3 sealed index`,
           );
@@ -868,7 +1032,7 @@ export class SealedIndex {
         if (taken !== undefined) return taken;
         continue;
       }
-      if (current.version === "1.3")
+      if (keyedLayout(current.version))
         throw changed("its sealed index is missing");
       const upgrading = await SealedIndex.#upgrade(files, current, options);
       if (upgrading !== undefined) return upgrading;
@@ -1368,7 +1532,7 @@ export class EncryptedFiles implements Files {
     this.#key = this.#index?.key ?? key;
     if (
       this.#kind === "pod" &&
-      this.#key.version === "1.3" &&
+      keyedLayout(this.#key.version) &&
       this.#index === undefined
     )
       throw new Error(
