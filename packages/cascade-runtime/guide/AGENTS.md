@@ -78,7 +78,7 @@ answers `true` or `false` without opening the pod or writing anything.
 
 An app that keeps a key of its own, not words a person types, gives `openPod`
 a `key` in place of the secret: 32 random bytes in a `Uint8Array`, made once
-with `crypto.getRandomValues(new Uint8Array(32))` and kept where the app keeps
+with `newPodKey()` and kept where the app keeps
 its secrets. A pod sealed under a key opens without the Argon2id stretch that
 words pay on every opening, and opens with that key alone.
 A string, or bytes that are not 32 or read as text, throws a `TypeError`:

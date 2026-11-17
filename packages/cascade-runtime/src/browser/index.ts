@@ -76,6 +76,7 @@ export * from "../changes.js";
 export * from "../connect/index.js";
 export * from "../tools.js";
 export {
+  newPodKey,
   Refusal,
   Unopened,
   type UnopenedOutcome,

@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import vm from "node:vm";
 import { CorePod } from "../src/core-pod.js";
 import {
+  checkedKey,
   type DeriveKey,
   EncryptedFiles,
   type EncryptedFilesOptions,
   HEADER,
   madeNewPod,
   newHeader,
+  newPodKey,
   openHeader,
   SEALED_INDEX,
   SealedIndex,
@@ -344,6 +347,63 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
         );
       }
       assert.equal(derive.calls, 0);
+    });
+
+    it("accepts a key made in another realm, a Node `vm` context, as one it opens the pod with", async () => {
+      const derive = fastDerive();
+      const foreign = vm.runInNewContext("new Uint8Array(32)") as Uint8Array;
+      foreign.set(KEY);
+      assert.ok(!(foreign instanceof Uint8Array));
+      const { bytes } = await newHeader(foreign, derive);
+      assert.equal(derive.calls, 0);
+      await openHeader(bytes, KEY, derive);
+      await openHeader((await newHeader(KEY, derive)).bytes, foreign, derive);
+    });
+
+    it("throws Unopened, `malformed`, deriving nothing, for a 1.4 header that holds no key wrap, with a passphrase wrap or only a wrap of a kind it does not know", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      const keyed = JSON.parse(text(bytes)) as {
+        wraps: Record<string, unknown>[];
+      };
+      const { header: words } = await sealedPod();
+      const [passphrase] = (JSON.parse(text(words)) as { wraps: unknown[] })
+        .wraps;
+      const [wrap] = keyed.wraps;
+      for (const [name, wraps] of [
+        ["a passphrase wrap", [passphrase]],
+        ["an unknown kind", [{ ...wrap, by: "device-keychain" }]],
+      ] as const)
+        for (const secret of [KEY, SECRET])
+          assert.equal(
+            await outcomeOf(
+              openHeader(
+                encoded(JSON.stringify({ ...keyed, version: "1.4", wraps })),
+                secret,
+                derive,
+              ),
+            ),
+            "malformed",
+            name,
+          );
+      assert.equal(derive.calls, 0);
+    });
+  });
+
+  describe("newPodKey()", () => {
+    it("returns 32 bytes `checkedKey` accepts, a different key each time", () => {
+      const key = newPodKey();
+      assert.equal(key.length, 32);
+      assert.equal(checkedKey(key), key);
+      assert.notDeepEqual(newPodKey(), key);
+    });
+
+    it("draws again when the bytes it drew are refused, and returns the first it draws that is accepted", () => {
+      const draws = [new Uint8Array(32), encoded("a".repeat(32)), KEY];
+      let drawn = 0;
+      const key = newPodKey((bytes) => bytes.set(draws[drawn++] as Uint8Array));
+      assert.deepEqual(key, KEY);
+      assert.equal(drawn, 3);
     });
   });
 

@@ -83,7 +83,11 @@ interface KeyWrap {
   readonly wrapped: Uint8Array<ArrayBuffer>;
 }
 
-/** `1.4` is `1.3` with key wraps: a header holding one is `1.4`, so a runtime that knows only `1.3` refuses it by version. */
+/**
+ * `1.4` is `1.3` with key wraps: a header holding one is `1.4` and only such a header is, so a runtime that knows only
+ * `1.3` refuses it by version. `1.4` still skips a wrap kind it does not know, as `1.3` does, so the next new kind is a
+ * new version.
+ */
 export type HeaderVersion = "1.0" | "1.1" | "1.2" | "1.3" | "1.4";
 
 /** A header that validated: its version, and its passphrase wraps and its key wraps, each in order. */
@@ -111,7 +115,7 @@ export function checkedKey(key: unknown): Uint8Array {
       `A key is 32 random bytes in a Uint8Array, as crypto.getRandomValues(new Uint8Array(32)) makes; this one ${why}. Give a passphrase or words a person types as the secret instead.`,
     );
   };
-  if (!(key instanceof Uint8Array))
+  if (!isUint8Array(key))
     return refused(
       typeof key === "string" ? "is a string" : "is not a Uint8Array",
     );
@@ -119,6 +123,33 @@ export function checkedKey(key: unknown): Uint8Array {
   if (decodesAsText(key)) return refused("decodes as UTF-8 text");
   if (new Set(key).size < 16) return refused("repeats too few byte values");
   return key;
+}
+
+/** A `Uint8Array` of any realm (a Node `vm` context, jsdom), which `instanceof` refuses. */
+function isUint8Array(value: unknown): value is Uint8Array {
+  return (
+    ArrayBuffer.isView(value) &&
+    Object.prototype.toString.call(value) === "[object Uint8Array]"
+  );
+}
+
+/**
+ * A new key for a pod: 32 random bytes from `crypto.getRandomValues`, drawn again until `checkedKey` accepts them, as
+ * about 1 in 100 million are not, so that a key stored before the pod's first opening is never refused then.
+ */
+export function newPodKey(
+  random: (bytes: Uint8Array<ArrayBuffer>) => void = (bytes) =>
+    void globalThis.crypto.getRandomValues(bytes),
+): Uint8Array {
+  for (;;) {
+    const key = new Uint8Array(KEY_BYTES);
+    random(key);
+    try {
+      return checkedKey(key);
+    } catch {
+      // drawn again
+    }
+  }
 }
 
 function decodesAsText(bytes: Uint8Array): boolean {
@@ -322,6 +353,8 @@ function headerOf(value: unknown): Header {
     malformed(
       `its passphrase wraps ask for more than ${MAX_ARGON2_COST} of t times m in all`,
     );
+  if (version === "1.4" && keys.length === 0)
+    malformed("a 1.4 header holds a key wrap, and this one holds none");
   if (passphrases.length === 0 && keys.length === 0)
     throw new Unopened(
       "cannot open",
