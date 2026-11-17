@@ -545,6 +545,7 @@ export class CorePod {
   async #filled(union: Union, lens: string): Promise<Union> {
     const { pod, layout, address, title, time, build } = this.#options;
     if (
+      this.#options.besidePod !== undefined &&
       build?.incremental !== undefined &&
       lens === build.lens &&
       this.#built === undefined
