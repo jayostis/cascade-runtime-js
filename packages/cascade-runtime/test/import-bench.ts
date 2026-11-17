@@ -629,7 +629,9 @@ async function main(args: string[]): Promise<void> {
   const sizes = args
     .filter(
       (arg, index) =>
-        index !== at + 1 && index !== series + 1 && /^\d+$/.test(arg),
+        (at === -1 || index !== at + 1) &&
+        (series === -1 || index !== series + 1) &&
+        /^\d+$/.test(arg),
     )
     .map(Number);
   if (sizes.length === 0) {

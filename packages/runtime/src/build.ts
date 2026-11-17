@@ -2,7 +2,7 @@ import { Derivations, type SamesStillJoined, QUERIES } from "./derive.js";
 import { ENTRY_PLACEHOLDER } from "./entries.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
-import { timedAside } from "./probe.js";
+import { counted, timedAside } from "./probe.js";
 import {
   blank,
   iri,
@@ -317,9 +317,11 @@ export async function vocabularyBuild(
             .map(async ({ file, query: path }) => ({
               file,
               view: address + file,
-              triples: await timedAside(`build.query:${file}`, () =>
-                union.construct(query(path)),
-              ),
+              triples: await timedAside(`build.query:${file}`, async () => {
+                const rows = await union.construct(query(path));
+                counted(`build.query:${file}.rows`, rows.length);
+                return rows;
+              }),
             })),
         );
         await timedAside("build.queried.written", async () => {
