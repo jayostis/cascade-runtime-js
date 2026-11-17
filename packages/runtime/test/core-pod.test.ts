@@ -280,6 +280,34 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
       ]);
       assert.ok(wrote[0]?.startsWith("judgments/retractions/"));
     });
+
+    it("keeps a Same of records the pod does not hold, and writes nothing for it again, whatever its time", async () => {
+      const files = new MemoryFiles(ADDRESS);
+      const pod = new CorePod({
+        ...options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+        vocabulary: await vocabulary(),
+      });
+      const name = "urn:uuid:8d4f1b36-5a07-4e92-b3c8-6f2a9e0d7b15";
+      const filing = (time: string) => ({
+        name: "same.ttl",
+        base: ADDRESS,
+        bytes: new TextEncoder()
+          .encode(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+<${name}> a cascade:Judgment ; cascade:verdict cascade:Same ;
+  prov:hadMember <urn:uuid:0f6c2a9e-4d71-4b38-9e05-c8a3f2d61b7e>, <urn:uuid:c41d7e90-2b6a-4f3c-8d15-a9e0b7f26c48> ;
+  prov:generatedAtTime "${time}"^^<http://www.w3.org/2001/XMLSchema#dateTime> ;
+  prov:wasAttributedTo <https://pod.example/profile/card.ttl#me> .
+`),
+      });
+      const first = await pod.judge(filing("2026-03-04T07:00:00Z"));
+      const before = await pod.revision();
+      const retry = await pod.judge(filing("2026-03-04T09:00:00Z"));
+      assert.equal(first.refused, undefined);
+      assert.equal(first.wrote.length, 1);
+      assert.deepEqual([retry.refused, retry.wrote], [undefined, []]);
+      assert.equal(await pod.revision(), before);
+    });
   });
 });
 
