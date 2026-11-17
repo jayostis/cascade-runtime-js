@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { parseCrate } from "../src/crate.js";
 import { Derivations } from "../src/derive.js";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
@@ -126,6 +127,25 @@ describe("Deriving a pod's state with the vocabulary's queries · Derivations.de
       await assert.rejects(
         Derivations.of(vocabulary),
         /queries\/100%\.rq is not a percent-encoded path/,
+      );
+    });
+  });
+
+  describe("parseCrate(text)", () => {
+    it("reads an `@id` that is an absolute URL or a `#fragment` as written, whatever percent escape it holds", () => {
+      assert.deepEqual(
+        parseCrate(
+          JSON.stringify([
+            { "@id": "https://x.org/a%2Fb" },
+            { "@id": "#frag%20x" },
+            { "@id": "queries/a%20b.rq" },
+          ]),
+        ),
+        [
+          { "@id": "https://x.org/a%2Fb" },
+          { "@id": "#frag%20x" },
+          { "@id": "queries/a b.rq" },
+        ],
       );
     });
   });
