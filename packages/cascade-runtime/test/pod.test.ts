@@ -1168,7 +1168,7 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       );
     });
 
-    it("throws, writing nothing, for one that names no kind of warning, or two, and for one that names a version, a revision or a judgment", async () => {
+    it("throws, writing nothing, for an Acknowledged that names no one kind of warning or a member that is no IRI, a version, a revision or a judgment", async () => {
       const [{ revision = "" } = {}] = await select(
         owned,
         `SELECT ?revision WHERE { ?revision cascade:revisionOf <${record}> }`,
@@ -1187,6 +1187,24 @@ describe("Recording the owner's judgment · pod.judge()", () => {
           "two kinds",
           acknowledged(owned, [KIND, "ClockBehind"], [record]),
           /kind/,
+        ],
+        [
+          "a kind written as text",
+          judgment(owned, [
+            "cascade:verdict cascade:Acknowledged",
+            `cascade:answersWarningOfKind "${CASCADE}${KIND}"`,
+            `prov:hadMember <${record}>`,
+          ]),
+          /kind/,
+        ],
+        [
+          "a member written as text",
+          judgment(owned, [
+            "cascade:verdict cascade:Acknowledged",
+            `cascade:answersWarningOfKind cascade:${KIND}`,
+            'prov:hadMember "the record"',
+          ]),
+          /IRI/,
         ],
         [
           "a version",

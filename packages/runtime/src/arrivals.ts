@@ -800,10 +800,11 @@ export class Revisions {
 
   /**
    * Whether an act in the first-parent ancestry of the writer's last snapshot filed one of the findings, by its path, that
-   * no person's judgment answers: neither an Acknowledged of it nor a ClockDiscounted of that act stands.
+   * no person's judgment answers: neither an Acknowledged of its kind nor a ClockDiscounted of that act stands, each
+   * naming the act that filed it.
    */
   async #firstParentsFiledUnanswered(
-    findings: ReadonlyMap<string, string>,
+    findings: ReadonlySet<string>,
   ): Promise<boolean> {
     const head = this.context.lastSnapshot;
     if (head === undefined || findings.size === 0) return false;
@@ -819,11 +820,12 @@ export class Revisions {
       PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX prov: <${PROV}>
       ASK {
-        VALUES (?path ?finding) { ${[...findings].map(([path, finding]) => `("${path}" <${finding}>)`).join(" ")} }
+        VALUES ?path { ${[...findings].map((path) => `"${path}"`).join(" ")} }
         <${head}> cascade:firstParentSnapshot* ?snapshot .
         ?snapshot cascade:fileAddedToSet ?path ; prov:wasGeneratedBy ?act .
         FILTER NOT EXISTS {
-          ?acknowledgement cascade:verdict cascade:Acknowledged ; prov:hadMember ?finding .${stands("acknowledgement")}
+          ?acknowledgement cascade:verdict cascade:Acknowledged ; cascade:answersWarningOfKind cascade:ClockBehind ;
+            prov:hadMember ?act .${stands("acknowledgement")}
         }
         FILTER NOT EXISTS {
           ?discount cascade:verdict cascade:ClockDiscounted ; prov:hadMember ?act .${stands("discount")}
@@ -879,11 +881,10 @@ export class Revisions {
           ]),
         ]),
       ]);
-    const clocks = new Map(
-      (held.get(CLOCK_BEHIND) ?? []).map(({ name }) => [
+    const clocks = new Set(
+      (held.get(CLOCK_BEHIND) ?? []).map(({ name }) =>
         this.layout.place(FINDING).path(name),
-        name,
-      ]),
+      ),
     );
     if (
       this.clockBehind.length > 0 &&

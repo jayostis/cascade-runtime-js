@@ -7,7 +7,7 @@ const PAV = "http://purl.org/pav/";
 const DCT_REPLACES = "http://purl.org/dc/terms/replaces";
 /** The verdicts that say something of their members' versions, which name the document each member was shown from. */
 const SEEN = new Set(
-  ["Same", "Different", "Erroneous"].map((v) => CASCADE + v),
+  ["Same", "Different", "Erroneous", "Acknowledged"].map((v) => CASCADE + v),
 );
 
 /** Whether the verdict says something of its members' versions. */
@@ -77,14 +77,52 @@ export async function matcherJudgmentTouched(
     : `${touched.target} is a matcher's judgment: a person ${touched.retracts ? "retracts" : "replaces"} no matcher's judgment, and files a Same or a Different over its members instead`;
 }
 
-/** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
-async function isFinding(
+/** The kinds of warning an Acknowledged may answer: the concepts of cascade:FindingForReviewKinds. */
+const WARNING_KINDS: ReadonlySet<string> = new Set(
+  [
+    "MatcherJudgmentsNoLongerReached",
+    "SourceReportedOlderStates",
+    "ClockBehind",
+    "DifferentResultValuesAtOneInstant",
+    "DifferentResultUnitsAtOneInstant",
+  ].map((kind) => CASCADE + kind),
+);
+
+/**
+ * Why a judgment may not name `members`, the first of them the pod holds as a finding for review, whose name the pod
+ * derives from its triples, and, for an Acknowledged (`acknowledged`), as a version, a revision or a judgment, which
+ * the pod also derives or an answer is not about. Nothing when it names none.
+ */
+async function memberRefused(
   read: Pick<CorePod, "select">,
-  thing: string,
-): Promise<boolean> {
-  const { rows } = await read.select(`PREFIX cascade: <${CASCADE}>
-      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
-  return rows.length > 0;
+  members: readonly string[],
+  acknowledged: boolean,
+): Promise<string | undefined> {
+  if (members.length === 0) return undefined;
+  const { rows } =
+    await read.select(`PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}>
+      SELECT ?member ?finding ?version ?revision ?judgment WHERE {
+        VALUES ?member { ${members.map((member) => `<${member}>`).join(" ")} }
+        BIND (EXISTS { ?member a cascade:FindingForReview } AS ?finding)
+        BIND (EXISTS { ?member prov:specializationOf [] } AS ?version)
+        BIND (EXISTS { ?member a cascade:Revision } AS ?revision)
+        BIND (EXISTS { ?member a cascade:Judgment } AS ?judgment)
+      }`);
+  const is = (member: string, variable: string): boolean =>
+    rows.some(
+      (row) =>
+        row.get("member")?.value === member &&
+        row.get(variable)?.value === "true",
+    );
+  for (const member of members) {
+    if (is(member, "finding"))
+      return `${member} is a finding for review: a judgment never names one, whose name the pod derives, and names what it is about instead`;
+    if (acknowledged)
+      for (const kept of ["version", "revision", "judgment"])
+        if (is(member, kept))
+          return `${member} is a ${kept}: an Acknowledged names records, documents or acts, never a ${kept}`;
+  }
+  return undefined;
 }
 
 /**
@@ -118,9 +156,10 @@ async function nameTaken(
 /**
  * A person's judgment or retraction as the pod keeps it (N16), the one copy every way a judgment is filed shares: the
  * reason it is refused, for a name the pod gives something else, for replacing or retracting a matcher's judgment or,
- * for a member that is an entry of a view, an IRI under `views`, which no judgment is of, or for a verdict that says
- * something of its members' versions, for a member that is a finding; else its triples with the document each member was
- * shown from, and none the input states for the judgment itself. A member the pod does not hold is kept: it names no
+ * for a member that is an entry of a view, an IRI under `views`, which no judgment is of, for a member that is a
+ * finding, whatever the verdict, and for an Acknowledged, one that names no one kind of warning or a member that is a
+ * version, a revision or a judgment; else its triples with the document each member was shown from, and none the input
+ * states for the judgment itself. A member the pod does not hold is kept: it names no
  * document, and a restore or a rebuild may bring it back. `changed` is false when those are the triples it was given.
  * `stated` reads the pod's files alone, what a name is taken by, so that a judgment with nothing to read the matcher's
  * view for builds none.
@@ -162,26 +201,44 @@ export async function judgmentFiled(
   );
   const verdicts = of(`${CASCADE}verdict`);
   const members = of(`${PROV}hadMember`);
+  const unnamed = triples.find(
+    ([s, p, o]) =>
+      s.value === judgment &&
+      p.value === `${PROV}hadMember` &&
+      o.termType !== "NamedNode",
+  );
+  if (unnamed !== undefined)
+    return {
+      refused: `${written(unnamed[2])} is no IRI: a judgment's members are named by their IRIs`,
+    };
   const entry = members.find((member) => member.startsWith(views));
   if (entry !== undefined)
     return {
       refused: `${entry} is a view entry: a judgment is of records, never entries`,
     };
-  const [only] = members;
-  const overFinding =
-    verdicts.length === 1 &&
-    verdicts[0] === `${CASCADE}Same` &&
-    members.length === 1 &&
-    only !== undefined &&
-    (await isFinding(read, only));
+  const acknowledged = verdicts.includes(`${CASCADE}Acknowledged`);
+  const named = await memberRefused(read, members, acknowledged);
+  if (named !== undefined) return { refused: named };
+  if (acknowledged) {
+    const kinds = triples.flatMap(([s, p, o]) =>
+      s.value === judgment && p.value === `${CASCADE}answersWarningOfKind`
+        ? [o]
+        : [],
+    );
+    const [kind] = kinds;
+    if (
+      kinds.length !== 1 ||
+      kind === undefined ||
+      kind.termType !== "NamedNode" ||
+      !WARNING_KINDS.has(kind.value)
+    )
+      return {
+        refused: `an Acknowledged names one kind of warning it answers (cascade:answersWarningOfKind), a concept of cascade:FindingForReviewKinds: it names ${kinds.length === 0 ? "none" : kinds.map(written).join(", ")}`,
+      };
+  }
   const added: Triple[] = [];
-  if (!overFinding && verdicts.some(sawVersions)) {
+  if (verdicts.some(sawVersions)) {
     const shown = await documentsShownFrom(read, members);
-    for (const member of members)
-      if (!shown.has(member) && (await isFinding(read, member)))
-        return {
-          refused: `${member} is a finding for review: a Same may name one alone, and no other verdict may name one`,
-        };
     const documents = new Set([...shown.values()].flatMap((from) => [...from]));
     for (const document of documents)
       added.push([iri(judgment), iri(`${PROV}wasDerivedFrom`), iri(document)]);
