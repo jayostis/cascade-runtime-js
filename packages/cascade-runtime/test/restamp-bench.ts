@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { openPod } from "cascade-runtime";
+import { importClaimingEveryProfile } from "./claiming.js";
 import { syntheticPull } from "./import-bench.js";
 
 /**
@@ -67,7 +68,7 @@ export async function restampBench(resources: number): Promise<Restamped> {
     const steps: Counted[] = [];
     let held: Counted = { files: 0, bytes: 0 };
     for (const next of [pull, restamped(pull), restamped(pull)]) {
-      await pod.import(next, { claimProfiles: true });
+      await importClaimingEveryProfile(pod, next);
       const now = await counted(folder);
       steps.push({
         files: now.files - held.files,
