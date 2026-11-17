@@ -310,6 +310,8 @@ export interface Opened {
   readonly importMs: number;
   readonly openMs: number;
   readonly firstReadMs: number;
+  /** The spans and counts of the first read alone, the views it rebuilt among them. */
+  readonly firstRead: Pick<Measured, "spans" | "counts">;
   readonly secondReadMs: number;
   readonly rssAfterOpenMb: number;
   readonly peakRssMb: number;
@@ -510,11 +512,12 @@ export async function openBench(
         await pod.ask(FIRST_READ);
         return round(performance.now() - at);
       };
-      const firstReadMs = await timeOf();
+      const { result: firstReadMs, seen } = await probing(timeOf);
       return {
         openMs,
         rssAfterOpenMb,
         firstReadMs,
+        firstRead: tabulated(seen),
         secondReadMs: await timeOf(),
       };
     });
