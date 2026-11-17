@@ -107,9 +107,11 @@ function labPod(labs: number, texts: readonly string[] = []) {
     records: "1",
     ...(texts[n] === undefined
       ? {}
-      : { narrativeTexts: `${record(n)} ${texts[n]}` }),
+      : { narrativeTexts: [`${record(n)} ${texts[n]}`] }),
     entry: `pod://p/clinical/lab-results.ttl#${sha(record(n))}`,
-    sources: `${record(n)} from ${DOCUMENT}, retrieved 2024-02-01T00:00:00Z, written by Lab`,
+    sources: [
+      `${record(n)} from ${DOCUMENT}, retrieved 2024-02-01T00:00:00Z, written by Lab`,
+    ],
   }));
   const provenance: Row[] = rows.map(({ entry }, n) => ({
     entry: entry!,
@@ -834,7 +836,7 @@ describe("Reading a whole pod in pages · ask tool", () => {
       return linesOf(views[0]!.text)[0]!;
     }
     const conditionRead = (
-      row: Record<string, string>,
+      row: Record<string, string | readonly string[]>,
       entry = entryOf("conditions", 1),
     ) =>
       podOf(
@@ -843,7 +845,7 @@ describe("Reading a whole pod in pages · ask tool", () => {
             {
               condition: "Pulmonary embolism",
               entry,
-              sources: `${sourced(1, 1)}; ${sourced(2, 2)}`,
+              sources: [sourced(1, 1), sourced(2, 2)],
               ...row,
             },
           ],
@@ -907,19 +909,21 @@ describe("Reading a whole pod in pages · ask tool", () => {
             {
               condition: "Pulmonary embolism",
               status: "ruled out",
-              statuses: `${record(1)} ruled out; ${record(2)} active`,
+              statuses: [`${record(1)} ruled out`, `${record(2)} active`],
               entry: condition,
-              sources: `${sourced(1, 1)}; ${sourced(2, 2)}`,
+              sources: [sourced(1, 1), sourced(2, 2)],
             },
           ],
           "pod/My medication history": [
             {
               medication: "Progress note on warfarin plan",
               status: "on-hold",
-              statuses: `${record(3)} on-hold; ${record(4)} active`,
-              narrativeTexts: `${record(3)} hold warfarin; warfarin plan reviewed; progress note`,
+              statuses: [`${record(3)} on-hold`, `${record(4)} active`],
+              narrativeTexts: [
+                `${record(3)} hold warfarin; warfarin plan reviewed; progress note`,
+              ],
               entry: medication,
-              sources: `${sourced(3, 1)}; ${sourced(4, 2)}`,
+              sources: [sourced(3, 1), sourced(4, 2)],
             },
           ],
           "pod/My reports, notes and documents": [
@@ -928,7 +932,7 @@ describe("Reading a whole pod in pages · ask tool", () => {
               name: "CT angiography chest (pulmonary embolism protocol)",
               conclusion: "Pulmonary embolism.",
               entry: report,
-              sources: sourced(5, 1),
+              sources: [sourced(5, 1)],
             },
           ],
         },
@@ -976,14 +980,20 @@ describe("Reading a whole pod in pages · ask tool", () => {
     it("compares a text with the values its own source gave, not with the row's", async () => {
       const contradicting = conditionRead({
         status: "ruled out",
-        statuses: `${record(1)} active; ${record(2)} ruled out`,
-        narrativeTexts: `${record(1)} Pulmonary embolism ruled out; ${record(2)} Embolism, pulmonary: active`,
+        statuses: [`${record(1)} active`, `${record(2)} ruled out`],
+        narrativeTexts: [
+          `${record(1)} Pulmonary embolism ruled out`,
+          `${record(2)} Embolism, pulmonary: active`,
+        ],
       });
       const refuting = conditionRead({
         verificationStatus: "refuted",
         status: "active",
-        statuses: `${record(1)} active; ${record(2)} active`,
-        narrativeTexts: `${record(1)} Pulmonary embolism refuted; ${record(2)} Embolism, pulmonary: active`,
+        statuses: [`${record(1)} active`, `${record(2)} active`],
+        narrativeTexts: [
+          `${record(1)} Pulmonary embolism refuted`,
+          `${record(2)} Embolism, pulmonary: active`,
+        ],
       });
       try {
         assert.equal(

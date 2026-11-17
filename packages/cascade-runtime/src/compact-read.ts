@@ -1,7 +1,7 @@
 // The compact read: views `ask` offers, in one answer a page at a time, as tab-separated rows. It composes the questions
 // `ask` already asks, rewriting their rows only, and mints no query: each question is still asked once, in the
 // vocabulary. Every column a view gives is rendered by the same rules, so a column a view gains needs no change here.
-import type { Row } from "./pod.js";
+import { text, textRow, type Row } from "./pod.js";
 import {
   type CompactAnswer,
   type CompactInput,
@@ -67,8 +67,6 @@ function wordsOf(text: string): string[] {
 
 /** The column of each record's own text; the one column whose parts are left out when they say no more than the row. */
 const NARRATIVE_TEXTS = "narrativeTexts";
-/** Where one record's part of a cell ends: the next part starts with a record, so a "; " inside a text does not end it. */
-const RECORD = /; (?=urn:)/;
 /** The tail of a record's label that says when it was received, which a source's text does not. */
 const RECEIVED = / · received .*$/;
 
@@ -156,7 +154,8 @@ class Rewriter {
   constructor(provenance: readonly Row[], views: readonly (readonly Row[])[]) {
     const document = (iri: string) =>
       this.#documents.get(iri) ?? this.#documents.set(iri, {}).get(iri)!;
-    for (const row of provenance) {
+    for (const each of provenance) {
+      const row = textRow(each);
       if (row.record !== undefined && row.entry !== undefined)
         this.#recordEntry.set(row.record, row.entry);
       if (row.record !== undefined && row.document !== undefined)
@@ -170,7 +169,7 @@ class Rewriter {
     }
     for (const rows of views)
       for (const row of rows)
-        for (const part of (row.sources ?? "").split("; ")) {
+        for (const part of [row.sources ?? []].flat()) {
           const [, record, iri, how, writtenBy] = SOURCE.exec(part) ?? [];
           if (record === undefined || iri === undefined) continue;
           if (!this.#recordDocument.has(record))
@@ -238,15 +237,11 @@ class Rewriter {
 
   /**
    * A cell's parts: each part a value names an entry, record or document by is rewritten, parts of one value from
-   * several sources made one. The value is cut where `apart` says, which is "; " unless a part may hold one.
+   * several sources made one.
    */
-  cell(
-    value: string,
-    entry: string | undefined,
-    apart: string | RegExp = "; ",
-  ): string[] {
+  cell(parts: readonly string[], entry: string | undefined): string[] {
     const bySaid = new Map<string, string[]>();
-    value.split(apart).forEach((part, at) => {
+    parts.forEach((part, at) => {
       const [first = "", rest = ""] = part.split(/ (.*)/s);
       const handle = this.handles.get(first);
       const source = first.startsWith("urn:")
@@ -280,9 +275,11 @@ class Rewriter {
   }
 
   /** The sources of a row's records, as `sources` names them. */
-  from(value: string): string {
+  from(value: string | readonly string[]): string {
     return inOrder(
-      [...value.matchAll(IRI)].flatMap(([iri]) => this.sourceOf(iri) ?? []),
+      [...[value].flat().join("; ").matchAll(IRI)].flatMap(
+        ([iri]) => this.sourceOf(iri) ?? [],
+      ),
     );
   }
 }
@@ -311,20 +308,22 @@ function rendered(
       const at = order.indexOf(column);
       if (at === -1) order.splice((previous += 1), 0, column);
       else previous = at;
-      if (value === undefined || value === "") continue;
+      if (value === undefined || value === "" || value.length === 0) continue;
       if (["entry", "subject", "sources"].includes(column)) continue;
       if (column.endsWith("Label") && row[column.slice(0, -5)] !== undefined)
         continue;
       if (/(Low|High)$/.test(column) && row[column.replace(/(Low|High)$/, "")])
         continue;
-      const label = row[`${column}Label`];
+      const label = text(row[`${column}Label`]);
       // A record is told by its source and its own label, which says what that source wrote of it.
       const named =
-        label !== undefined && /^urn:\S+$/.test(value)
+        label !== undefined &&
+        typeof value === "string" &&
+        /^urn:\S+$/.test(value)
           ? `${value} ${plainLabel(label)}`
           : value;
       const narrative = column === NARRATIVE_TEXTS;
-      const written = rewrite.cell(named, row.entry, narrative ? RECORD : "; ");
+      const written = rewrite.cell([named].flat(), text(row.entry));
       const parts =
         label !== undefined && /\b(urn|pod|ni|https?):/.test(written.join(" "))
           ? [label]
@@ -341,19 +340,20 @@ function rendered(
       for (const part of shown) said.add(part, !merged);
       if (shown.length > 0) own.set(column, oneLine(shown.join("; ")));
     }
+    const entry = text(row.entry);
     own.set(
       "id",
-      row.entry === undefined
-        ? (row.subject ?? "")
-        : (rewrite.handles.get(row.entry) ?? row.entry),
+      entry === undefined
+        ? (text(row.subject) ?? "")
+        : (rewrite.handles.get(entry) ?? entry),
     );
     if (row.sources !== undefined) own.set("from", rewrite.from(row.sources));
     const dated = Object.entries(row).find(
       ([column, value]) =>
         !["entry", "subject", "sources"].includes(column) &&
-        DATE.test(value ?? ""),
-    )?.[1];
-    return { own, dated, entry: row.entry };
+        DATE.test(typeof value === "string" ? value : ""),
+    )?.[1] as string | undefined;
+    return { own, dated, entry };
   });
   const columns = [
     "id",
@@ -413,7 +413,9 @@ export async function compactRead(
   const views = answers.map((rows) =>
     wanted === undefined
       ? rows
-      : rows.filter(({ entry }) => entry !== undefined && wanted.has(entry)),
+      : rows.filter(
+          ({ entry }) => typeof entry === "string" && wanted.has(entry),
+        ),
   );
   const rewrite = new Rewriter(provenance!, views);
   const all = views.map((rows, at) => ({

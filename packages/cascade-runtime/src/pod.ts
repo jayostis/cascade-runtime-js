@@ -21,6 +21,7 @@ import {
   type Exported,
   exportedNames,
   ExportedFiles,
+  type ListColumn,
   MemoryFiles,
   podRevision,
   type PodKey,
@@ -39,6 +40,7 @@ import {
   Union,
   type VocabularyBuild,
   type VocabularyQuery,
+  withLists,
 } from "@cascade-runtime/runtime";
 import { timed, timedAside } from "@cascade-runtime/runtime/probe";
 import {
@@ -50,6 +52,7 @@ import {
 import { checkJudgment, judged } from "./judging.js";
 import { acceptOptions } from "./options.js";
 import { THIS_JUDGMENT } from "./proposals.js";
+import type { Row, TextRow } from "./row-text.js";
 import { currentOf, shipped, type Tables } from "./tables.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
@@ -168,6 +171,12 @@ export interface Pod {
   /** Why `judge` would fail on the Turtle before the pod's rules are asked, or nothing, writing nothing. */
   checkJudgment(turtle: string): Promise<string | undefined>;
   match(activity?: string): Promise<Done>;
+  ask(question: string, options?: { lens?: string }): Promise<Row[]>;
+  /** A query of your own gives text in every column: the vocabulary declares no list column for it. */
+  ask(
+    question: { query: string },
+    options?: { lens?: string },
+  ): Promise<TextRow[]>;
   ask(
     question: string | { query: string },
     options?: { lens?: string },
@@ -177,7 +186,7 @@ export interface Pod {
    * finds (`tables/agreement.rq`): the report's entry (`report`), the row (`row`), the version (`origin`) and the
    * `verdict`. It is answered over the app's current version of the table, kept as an answer is, and writes nothing.
    */
-  agreement(): Promise<Row[]>;
+  agreement(): Promise<TextRow[]>;
   /**
    * The classes the app's tables give each active medication of the pod
    * (`tables/medication-classes-through-precise-ingredients.rq`): the entry
@@ -185,7 +194,7 @@ export interface Pod {
    * table that holds the row (`origin`) and the code the row is on (`through`). It is answered over the current
    * versions of the tables, reads the pod and writes nothing. A combination product is in no class: MED-RT classes none.
    */
-  medicationClasses(): Promise<Row[]>;
+  medicationClasses(): Promise<TextRow[]>;
   /**
    * The lab results of the pod in the LOINC panel with the code `panel`, which the person picked (`tables/panel-results.rq`
    * asked of that panel): each member the panel lists, directly or through a panel nested in it, with its `sequence`,
@@ -195,14 +204,14 @@ export interface Pod {
    * several results a row for each. It is answered over the current versions of the tables, reads the pod and writes
    * nothing.
    */
-  panelResults(panel: string): Promise<Row[]>;
+  panelResults(panel: string): Promise<TextRow[]>;
   /**
    * The reference table versions that joined each entry's records (`tables/joined-by.rq`): the `entry` and the version
    * (`used`) that a counting machine Same cited while joining one of its records. The rule list and the records'
    * versions are never among them, a Same that no longer counts names nothing, and an entry joined without a table has no
    * row. It reads the pod and writes nothing.
    */
-  joinedBy(): Promise<Row[]>;
+  joinedBy(): Promise<TextRow[]>;
   /**
    * The current table versions the pod names that the app's tables do not hold, of each series a matcher Same used
    * another version of: such a Same counts where a device holds the version and its rows join the members, and not on
@@ -265,7 +274,7 @@ export interface Imported extends Done {
   readonly unclaimedProfiles: readonly string[];
 }
 
-export type Row = Readonly<Record<string, string>>;
+export { text, textRow, type Row, type TextRow } from "./row-text.js";
 
 /** A folder by its path. */
 export interface Folder {
@@ -452,6 +461,15 @@ function questionText(offered: Askable, question: string): string {
   return found.text;
 }
 
+/** The list columns the vocabulary declares for the question; none offered throws, as `questionText` does. */
+function questionLists(
+  offered: Askable,
+  question: string,
+): readonly ListColumn[] {
+  questionText(offered, question);
+  return offered.questions.get(question)!.lists;
+}
+
 /** The key the answer to the question, of the text given, under the lens is kept under at the revision. */
 function keyOf(
   build: VocabularyBuild,
@@ -460,12 +478,14 @@ function keyOf(
     readonly runtime: string;
     readonly question: string;
     readonly text: string;
+    /** The question's list columns, which change its rows as the text does. */
+    readonly lists?: readonly ListColumn[];
     readonly lens: string;
     readonly revision: string;
     readonly tables: readonly string[];
   },
 ): Promise<string> {
-  const { runtime, question, text, lens, revision, tables } = asked;
+  const { runtime, question, text, lists, lens, revision, tables } = asked;
   return answerKey({
     runtime,
     question,
@@ -474,6 +494,9 @@ function keyOf(
     tables,
     texts: [
       text,
+      ...(lists === undefined || lists.length === 0
+        ? []
+        : [JSON.stringify(lists)]),
       ...build.derivations.for(lens).map(({ query }) => query),
       layout,
       ...build.queries,
@@ -496,7 +519,7 @@ export interface KeptPod extends Described {
    */
   rows(question: string, lens?: string): Promise<Row[] | undefined>;
   /** The rows kept for `agreement()` under the lens for the pod as it stands; none when none were. */
-  agreement(): Promise<Row[] | undefined>;
+  agreement(): Promise<TextRow[] | undefined>;
 }
 
 /** The pod in `pod`, as its answers kept in `answers` read it: what `pod.json` says it is; none when it says nothing. */
@@ -526,6 +549,7 @@ export async function keptPod(
           runtime: answers.runtime,
           question,
           text,
+          lists: questionLists(offered, question),
           lens,
           revision: await revision,
           tables: await tables,
@@ -733,6 +757,11 @@ class OpenPod implements Pod {
     return this.#next(() => this.#core.match(activity));
   }
 
+  ask(question: string, options?: { lens?: string }): Promise<Row[]>;
+  ask(
+    question: { query: string },
+    options?: { lens?: string },
+  ): Promise<TextRow[]>;
   async ask(
     question: string | { query: string },
     options: { lens?: string } = {},
@@ -741,19 +770,19 @@ class OpenPod implements Pod {
     return this.#next(() => this.#ask(question, options));
   }
 
-  agreement(): Promise<Row[]> {
+  agreement(): Promise<TextRow[]> {
     return this.#next(() => this.#agreement());
   }
 
-  medicationClasses(): Promise<Row[]> {
+  medicationClasses(): Promise<TextRow[]> {
     return this.#next(() => this.#medicationClasses());
   }
 
-  panelResults(panel: string): Promise<Row[]> {
+  panelResults(panel: string): Promise<TextRow[]> {
     return this.#next(() => this.#panelResults(panel));
   }
 
-  joinedBy(): Promise<Row[]> {
+  joinedBy(): Promise<TextRow[]> {
     return this.#next(() => this.#joinedBy());
   }
 
@@ -999,7 +1028,7 @@ class OpenPod implements Pod {
     );
   }
 
-  async #agreement(): Promise<Row[]> {
+  async #agreement(): Promise<TextRow[]> {
     const { vocabulary, build, lens } = this.#parts;
     const [offered, text] = await Promise.all([
       askable(vocabulary),
@@ -1017,7 +1046,7 @@ class OpenPod implements Pod {
         tables: this.#tables,
       });
       const kept = await answers.rows(lens, AGREEMENT, key);
-      if (kept !== undefined) return kept;
+      if (kept !== undefined) return kept as TextRow[];
     }
     const { rows } = await this.#core.selectWithRows(
       text,
@@ -1038,7 +1067,7 @@ class OpenPod implements Pod {
    * core finds a row by a code the pod states, which a class seldom is: FDA gives it on an ingredient or a precise
    * ingredient the pod does not state.
    */
-  async #medicationClasses(): Promise<Row[]> {
+  async #medicationClasses(): Promise<TextRow[]> {
     const { vocabulary, lens, newStore, tables } = this.#parts;
     const [text, held, { codeSystems }] = await Promise.all([
       tableQueryText(vocabulary, CLASSES_QUERY),
@@ -1077,7 +1106,7 @@ class OpenPod implements Pod {
    * nested in it in the panel members versions, which are all the query needs to answer for that panel. It answers for
    * every panel it finds on the way down; the rows kept are the panel's.
    */
-  async #panelResults(panel: string): Promise<Row[]> {
+  async #panelResults(panel: string): Promise<TextRow[]> {
     const { vocabulary, lens, newStore, tables } = this.#parts;
     const [text, held] = await Promise.all([
       tableQueryText(vocabulary, PANEL_RESULTS_QUERY),
@@ -1103,7 +1132,7 @@ class OpenPod implements Pod {
       .filter((row) => row.panel === panel);
   }
 
-  async #joinedBy(): Promise<Row[]> {
+  async #joinedBy(): Promise<TextRow[]> {
     const { vocabulary, lens } = this.#parts;
     const [text, held] = await Promise.all([
       tableQueryText(vocabulary, JOINED_BY_QUERY),
@@ -1123,15 +1152,18 @@ class OpenPod implements Pod {
     const offered = await askable(vocabulary);
     offeredLens(offered, lens);
     let query: string;
+    let lists: readonly ListColumn[] = [];
     let keep: ((rows: Row[]) => Promise<void>) | undefined;
     if (typeof question === "string") {
       query = questionText(offered, question);
+      lists = questionLists(offered, question);
       const answers = this.#answers;
       if (answers !== undefined) {
         const key = await keyOf(build, offered.layout, {
           runtime: answers.runtime,
           question,
           text: query,
+          lists,
           lens,
           revision: await this.#core.revision(),
           tables: this.#tables,
@@ -1146,7 +1178,10 @@ class OpenPod implements Pod {
     }
     const store = await this.#core.dataset(lens);
     const rows = (await store.select(query)).rows.map((row) =>
-      Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
+      withLists(
+        Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
+        lists,
+      ),
     );
     await keep?.(rows);
     return rows;

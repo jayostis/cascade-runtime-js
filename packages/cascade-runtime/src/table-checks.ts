@@ -1,7 +1,7 @@
 // What a pod's rows and the reference tables say together that no question of the pod returns: each variant report
 // that differs from ClinVar today, and each pair of active medications whose codes share an ingredient. Rows, each
 // naming its entries and the table row it cites; the starter's page says them in its own sentences.
-import type { Row } from "./pod.js";
+import { type Row, type TextRow, textRow } from "./row-text.js";
 import type { About, Concept, VariantAsked } from "./tables/types.js";
 import { terms } from "./terms.js";
 
@@ -97,7 +97,7 @@ export function variantsAsked(
     { hgvs: string[]; variations: string[]; gene?: string }
   >();
   const genes = new Map<string, Set<string>>();
-  for (const row of variants) {
+  for (const row of variants.map(textRow)) {
     const variant = asked.get(row.variant!) ?? { hgvs: [], variations: [] };
     asked.set(row.variant!, variant);
     if (row.hgvs !== undefined && !variant.hgvs.includes(row.hgvs))
@@ -134,8 +134,8 @@ export function reportsDifferingFromClinVar(
     verdicts: readonly AgreementVerdict[];
   },
 ): ReportDifferingFromClinVar[] {
-  const reported = reportsByVariant(reports);
-  return variantEntries(variants, reported).flatMap((entry) => {
+  const reported = reportsByVariant(reports.map(textRow));
+  return variantEntries(variants.map(textRow), reported).flatMap((entry) => {
     const said = says.get(entry);
     if (said?.found !== "rows") return [];
     const [row] = said.rows;
@@ -163,8 +163,8 @@ export function reportsDifferingFromClinVar(
 }
 
 /** Each report of `reports`, by its variant's entry, in their order. */
-function reportsByVariant(reports: readonly Row[]): Map<string, Row[]> {
-  const reported = new Map<string, Row[]>();
+function reportsByVariant(reports: readonly TextRow[]): Map<string, TextRow[]> {
+  const reported = new Map<string, TextRow[]>();
   for (const report of reports)
     reported.set(report.variant!, [
       ...(reported.get(report.variant!) ?? []),
@@ -175,8 +175,8 @@ function reportsByVariant(reports: readonly Row[]): Map<string, Row[]> {
 
 /** The variant entries in the order `variants` and then `reported` name them. */
 function variantEntries(
-  variants: readonly Row[],
-  reported: ReadonlyMap<string, readonly Row[]>,
+  variants: readonly TextRow[],
+  reported: ReadonlyMap<string, readonly TextRow[]>,
 ): string[] {
   return [
     ...new Set([
@@ -218,21 +218,22 @@ export function variantsNotChecked(
   { variants, reports }: { variants: readonly Row[]; reports: readonly Row[] },
   says: ReadonlyMap<string, ClinVarSays>,
 ): VariantNotChecked[] {
-  return variantEntries(variants, reportsByVariant(reports)).flatMap(
-    (entry): VariantNotChecked[] => {
-      const said = says.get(entry);
-      if (said === undefined) return [{ entry, reason: "not asked" }];
-      if (said.found === "rows") return [];
-      return [
-        {
-          entry,
-          reason: said.found,
-          ...(said.found === "not covered" &&
-            said.genes !== undefined && { genes: said.genes }),
-        },
-      ];
-    },
-  );
+  return variantEntries(
+    variants.map(textRow),
+    reportsByVariant(reports.map(textRow)),
+  ).flatMap((entry): VariantNotChecked[] => {
+    const said = says.get(entry);
+    if (said === undefined) return [{ entry, reason: "not asked" }];
+    if (said.found === "rows") return [];
+    return [
+      {
+        entry,
+        reason: said.found,
+        ...(said.found === "not covered" &&
+          said.genes !== undefined && { genes: said.genes }),
+      },
+    ];
+  });
 }
 
 /**
@@ -245,7 +246,7 @@ export function medicationsNotChecked(
   about: ReadonlyMap<string, Partial<About>>,
 ): MedicationNotChecked[] {
   const codes = new Map<string, string[]>();
-  for (const row of history)
+  for (const row of history.map(textRow))
     if (row.lifecycle === terms.MedicationActive)
       codes.set(row.entry!, [
         ...(codes.get(row.entry!) ?? []),
@@ -273,6 +274,7 @@ export function medicationsSharingAnIngredient(
   about: ReadonlyMap<string, Partial<About>>,
 ): MedicationsSharingAnIngredient[] {
   const rows = history
+    .map(textRow)
     .filter((row) => row.lifecycle === terms.MedicationActive)
     .map((row) => ({
       entry: row.entry!,

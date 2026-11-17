@@ -18,7 +18,9 @@ export type {
   Opened,
   Pod,
   Row,
+  TextRow,
 } from "./pod.js";
+export { textRow } from "./pod.js";
 export type { Checked, Tables } from "./tables.js";
 export type {
   About,
