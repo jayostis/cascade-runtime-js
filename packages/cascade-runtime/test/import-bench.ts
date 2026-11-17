@@ -77,7 +77,6 @@ export const HOT_SPOTS = {
     "incremental.boundValues.calls",
     "incremental.boundValues.iris",
     "incremental.boundValues.batches",
-    "matcher.boundRecords",
   ],
 } as const;
 
