@@ -18,6 +18,7 @@ import { random } from "./random.js";
 import { ROOT, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+const PROV = "http://www.w3.org/ns/prov#";
 const ADDRESS = "https://pod.example/";
 const newStore = () => new OxigraphStore();
 
@@ -583,6 +584,98 @@ describe("Receiving another writer's files · CorePod.receive()", () => {
     it("leaves its own head the only snapshot that no snapshot names as a parent", () => {
       for (const { order, head, heads } of got(outcome))
         assert.deepEqual(heads, [head?.snapshot], order);
+    });
+  });
+
+  /**
+   * A person's replacement of a matcher's judgment, and a person's retraction of one, each filed through `judge()` and
+   * each arriving from another writer, over the replay's pod, whose matcher judged Cleo's records.
+   * @rule runtime/naming.feature N16
+   */
+  describe("given a person's file that replaces or retracts a matcher's judgment", () => {
+    type Result = { wrote: readonly string[]; refused?: string };
+    type Both = Record<"replaces" | "retracts", Result>;
+    let outcome: Kept<{ matcher: string; judged: Both; received: Both }>;
+
+    before(async () => {
+      outcome = await kept(async () => {
+        const { local, replayed: story } = await cleosReplay();
+        const { layout } = local;
+        let matcher = "";
+        for (const path of await story.pod.list(
+          layout.place(`${CASCADE}Judgment`).folder ?? "",
+        )) {
+          const bytes = await story.pod.read(path);
+          if (bytes === undefined) continue;
+          const graph = new Graph(
+            await newStore().parse(bytes, story.pod.iri + path),
+          );
+          matcher =
+            graph.triples.find(
+              ([, p]) => p.value === `${CASCADE}matcherRule`,
+            )?.[0].value ?? matcher;
+        }
+        assert.ok(matcher !== "", "the replay's matcher judged some records");
+        const person = "https://pod.example/profile/card.ttl#me";
+        const replacing = "urn:uuid:5d0e7a2c-91b4-4c38-8f16-b2a4e6c90d13";
+        const retracting = "urn:uuid:8c3f6b15-27a9-4e04-b7d2-1f95a0e4c6b8";
+        const files = {
+          replaces: {
+            path: layout.place(`${CASCADE}Judgment`).path(replacing),
+            text: `@prefix cascade: <${CASCADE}> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix prov: <${PROV}> .
+<${replacing}> a cascade:Judgment ;
+  cascade:verdict cascade:Same ;
+  dct:replaces <${matcher}> ;
+  prov:wasAttributedTo <${person}> .
+<${person}> a prov:Person .
+`,
+          },
+          retracts: {
+            path: layout
+              .place(`${PROV}Activity`, [`${PROV}invalidated`])
+              .path(retracting),
+            text: `@prefix prov: <${PROV}> .
+<${retracting}> a prov:Activity ;
+  prov:invalidated <${matcher}> ;
+  prov:wasAssociatedWith <${person}> .
+<${person}> a prov:Person .
+`,
+          },
+        };
+        const head = await replayHead();
+        const judged = {} as Both;
+        const received = {} as Both;
+        for (const which of ["replaces", "retracts"] as const) {
+          const { path, text } = files[which];
+          const bytes = new TextEncoder().encode(text);
+          judged[which] = await (
+            await cleosWriter(await copied(story.pod), head)
+          ).judge({ name: path, base: story.pod.iri + path, bytes });
+          received[which] = await (
+            await cleosWriter(await copied(story.pod), head)
+          ).receive(await copied(story.pod, { [path]: bytes }));
+        }
+        return { matcher, judged, received };
+      });
+    });
+
+    it("refuses what `judge()` is given, naming the matcher's judgment and writing nothing", () => {
+      const { matcher, judged } = got(outcome);
+      for (const which of ["replaces", "retracts"] as const) {
+        assert.ok(judged[which].refused?.includes(matcher), which);
+        assert.match(judged[which].refused ?? "", /matcher's judgment/, which);
+        assert.deepEqual(judged[which].wrote, [], which);
+      }
+    });
+
+    it("refuses what `receive()` is handed, naming the matcher's judgment and writing nothing", () => {
+      const { matcher, received } = got(outcome);
+      for (const which of ["replaces", "retracts"] as const) {
+        assert.ok(received[which].refused?.includes(matcher), which);
+        assert.deepEqual(received[which].wrote, [], which);
+      }
     });
   });
 });

@@ -1062,7 +1062,7 @@ describe("Recording the owner's judgment · pod.judge()", () => {
           imported.judge(turtle),
           (error: Error) =>
             error.message.includes(matcherSame) &&
-            error.message.includes("machine"),
+            error.message.includes("matcher's judgment"),
           name,
         );
       assert.deepEqual(await filesIn(at), held);

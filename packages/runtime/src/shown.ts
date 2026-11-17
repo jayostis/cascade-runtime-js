@@ -1,5 +1,5 @@
 import type { CorePod } from "./core-pod.js";
-import { iri, type Triple } from "./rdf.js";
+import { iri, RDF, type Triple, written } from "./rdf.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -42,30 +42,17 @@ export async function documentsShownFrom(
   return found;
 }
 
-/** The statements naming the documents each member of the judgment was shown from, once each; a member with no version adds none. */
-export async function documentsShown(
-  core: Pick<CorePod, "select">,
-  judgment: string,
-  members: readonly string[],
-): Promise<Triple[]> {
-  const shown = await documentsShownFrom(core, members);
-  const documents = new Set([...shown.values()].flatMap((from) => [...from]));
-  return [...documents].map((document) => [
-    iri(judgment),
-    iri(`${PROV}wasDerivedFrom`),
-    iri(document),
-  ]);
-}
-
 /**
  * Why a person's judgment or retraction, `subject` in `triples`, is refused for replacing (`dct:replaces`) or retracting
- * (`prov:invalidated`) a judgment a machine made, one attributed to a `prov:SoftwareAgent` of the pod: it says which, and
- * what to file instead (N16). Nothing when it touches none. The machine's judgment is in the pod, not in `triples`.
+ * (`prov:invalidated`) a matcher's judgment, one that carries `cascade:matcherRule` whatever its agent is typed: it says
+ * which, and what to file instead (N16). Nothing when it touches none. The matcher's judgment is in the pod, or among
+ * the names in `arriving`, not in `triples`.
  */
-export async function machineJudgmentTouched(
-  core: Pick<CorePod, "select">,
+export async function matcherJudgmentTouched(
+  read: Pick<CorePod, "select">,
   triples: readonly Triple[],
   subject: string,
+  arriving: ReadonlySet<string> = new Set(),
 ): Promise<string | undefined> {
   const targets = triples.flatMap(([s, p, o]) =>
     s.value === subject &&
@@ -75,16 +62,88 @@ export async function machineJudgmentTouched(
       : [],
   );
   if (targets.length === 0) return undefined;
-  const { rows } = await core.select(`PREFIX prov: <${PROV}>
+  const { rows } = await read.select(`PREFIX cascade: <${CASCADE}>
       SELECT DISTINCT ?judgment WHERE {
         VALUES ?judgment { ${targets.map(({ target }) => `<${target}>`).join(" ")} }
-        ?judgment prov:wasAttributedTo ?agent . ?agent a prov:SoftwareAgent
+        ?judgment cascade:matcherRule ?rule
       }`);
-  const machine = new Set(
-    rows.flatMap((row) => row.get("judgment")?.value ?? []),
-  );
-  const touched = targets.find(({ target }) => machine.has(target));
+  const matcher = new Set([
+    ...arriving,
+    ...rows.flatMap((row) => row.get("judgment")?.value ?? []),
+  ]);
+  const touched = targets.find(({ target }) => matcher.has(target));
   return touched === undefined
     ? undefined
-    : `${touched.target} is a judgment a machine made: a person ${touched.retracts ? "retracts" : "replaces"} no machine's judgment, and files a Same or a Different over its members instead`;
+    : `${touched.target} is a matcher's judgment: a person ${touched.retracts ? "retracts" : "replaces"} no matcher's judgment, and files a Same or a Different over its members instead`;
+}
+
+/** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
+async function isFinding(
+  read: Pick<CorePod, "select">,
+  thing: string,
+): Promise<boolean> {
+  const { rows } = await read.select(`PREFIX cascade: <${CASCADE}>
+      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
+  return rows.length > 0;
+}
+
+/**
+ * A person's judgment or retraction as the pod keeps it (N16), the one copy every way a judgment is filed shares: the
+ * reason it is refused, for replacing or retracting a matcher's judgment or, for a verdict that says something of its
+ * members' versions, for a member with no current version; else its triples with the document each member was shown
+ * from, and none the input states for the judgment itself. `changed` is false when those are the triples it was given.
+ */
+export async function judgmentFiled(
+  read: Pick<CorePod, "select">,
+  triples: readonly Triple[],
+): Promise<{ refused: string } | { triples: Triple[]; changed: boolean }> {
+  const subjectsOf = (predicate: string, object?: string): string[] =>
+    triples.flatMap(([s, p, o]) =>
+      p.value === predicate && (object === undefined || o.value === object)
+        ? [s.value]
+        : [],
+    );
+  for (const subject of new Set([
+    ...subjectsOf(DCT_REPLACES),
+    ...subjectsOf(`${PROV}invalidated`),
+  ])) {
+    const refused = await matcherJudgmentTouched(read, triples, subject);
+    if (refused !== undefined) return { refused };
+  }
+  const [judgment] = subjectsOf(`${RDF}type`, `${CASCADE}Judgment`);
+  if (judgment === undefined) return { triples: [...triples], changed: false };
+  const of = (predicate: string): string[] =>
+    triples.flatMap(([s, p, o]) =>
+      s.value === judgment && p.value === predicate ? [o.value] : [],
+    );
+  const kept = triples.filter(
+    ([s, p]) => !(s.value === judgment && p.value === `${PROV}wasDerivedFrom`),
+  );
+  const verdicts = of(`${CASCADE}verdict`);
+  const members = of(`${PROV}hadMember`);
+  const [only] = members;
+  const overFinding =
+    verdicts.length === 1 &&
+    verdicts[0] === `${CASCADE}Same` &&
+    members.length === 1 &&
+    only !== undefined &&
+    (await isFinding(read, only));
+  const added: Triple[] = [];
+  if (!overFinding && verdicts.some(sawVersions)) {
+    const shown = await documentsShownFrom(read, members);
+    for (const member of members)
+      if (!shown.has(member))
+        return {
+          refused: `${member} has no current version in the pod: it names no record or revision`,
+        };
+    const documents = new Set([...shown.values()].flatMap((from) => [...from]));
+    for (const document of documents)
+      added.push([iri(judgment), iri(`${PROV}wasDerivedFrom`), iri(document)]);
+  }
+  const filed = [...kept, ...added];
+  const key = (triple: Triple) => triple.map(written).join(" ");
+  const before = new Set(triples.map(key));
+  const changed =
+    filed.length !== before.size || filed.some((t) => !before.has(key(t)));
+  return { triples: changed ? filed : [...triples], changed };
 }

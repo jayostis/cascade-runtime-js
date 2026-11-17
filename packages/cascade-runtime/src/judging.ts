@@ -3,9 +3,7 @@
 // a version. Shared by the pod and by the run that performs a model's proposal as a step.
 import {
   type CorePod,
-  documentsShownFrom,
-  machineJudgmentTouched,
-  sawVersions,
+  judgmentFiled,
   type IdsAndTime,
   iri,
   literal,
@@ -19,14 +17,10 @@ import { THIS_JUDGMENT } from "./proposals.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
-const PAV = "http://purl.org/pav/";
-const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
 const USED = `${PROV}used`;
-const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
 const STARTED_AT = `${PROV}startedAtTime`;
-const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
 
 /** What files a judgment: the pod's step, what reads it, and the name and the time a new judgment is given. */
 export interface Judging {
@@ -42,26 +36,15 @@ export type Judged = Awaited<ReturnType<CorePod["judge"]>> & {
   readonly judgment?: string;
 };
 
-/** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
-async function isFinding(
-  core: Pick<CorePod, "select">,
-  thing: string,
-): Promise<boolean> {
-  const { rows } = await core.select(`${PREFIXES}
-      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
-  return rows.length > 0;
-}
-
 function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 /**
  * What filing the judgment or the retraction `turtle` holds writes, named `<urn:cascade:this-judgment>` in it: under a
- * new name, at the time now, and for a verdict that says something of its members' versions, naming the version each was at.
+ * new name, at the time now, and as the pod keeps it (`judgmentFiled`, N16), so that a refusal is told before a step is taken.
  *
- * @throws Error when the Turtle is none, holds more or less than one judgment or retraction, or names a member the pod
- *   holds no version of.
+ * @throws Error when the Turtle is none, holds more or less than one judgment or retraction, or `judgmentFiled` refuses it.
  */
 async function prepared(
   { core, newStore, address, time }: Judging,
@@ -103,47 +86,16 @@ async function prepared(
         !(
           s.value === name &&
           (p.value === USED ||
-            p.value === DERIVED_FROM ||
             p.value === GENERATED_AT ||
             p.value === STARTED_AT)
         ),
     );
-  const of = (predicate: string): string[] =>
-    named.flatMap(([s, p, o]) =>
-      s.value === name && p.value === predicate && o.termType === "NamedNode"
-        ? [o.value]
-        : [],
-    );
-  const touched = await machineJudgmentTouched(core, named, name);
-  if (touched !== undefined) throw new Error(touched);
-  const used: Triple[] = [];
-  const verdicts = of(`${CASCADE}verdict`);
-  const members = of(`${PROV}hadMember`);
-  const [only] = members;
-  const overFinding =
-    verdicts.length === 1 &&
-    verdicts[0] === `${CASCADE}Same` &&
-    members.length === 1 &&
-    only !== undefined &&
-    (await isFinding(core, only));
-  if (!overFinding && verdicts.some(sawVersions)) {
-    const current = await documentsShownFrom(core, members);
-    for (const member of members) {
-      const documents = current.get(member);
-      if (documents === undefined)
-        throw new Error(
-          `${member} has no current version in the pod: it names no record or revision`,
-        );
-      for (const document of documents)
-        if (!used.some(([, , o]) => o.value === document))
-          used.push([judgment, iri(DERIVED_FROM), iri(document)]);
-    }
-  }
+  const filed = await judgmentFiled(core, named);
+  if ("refused" in filed) throw new Error(filed.refused);
   return {
     name,
     triples: [
-      ...named,
-      ...used,
+      ...filed.triples,
       [
         judgment,
         iri(retracting ? STARTED_AT : GENERATED_AT),

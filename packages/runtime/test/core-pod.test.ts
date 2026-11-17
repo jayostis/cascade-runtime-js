@@ -8,7 +8,7 @@ import { randomId } from "../src/ids.js";
 import type { Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Triple, XSD } from "../src/rdf.js";
-import { layout, replayed, RUNTIME } from "./vocabulary.js";
+import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const CREATED = "http://purl.org/dc/terms/created";
 const ADDRESS = "https://pod.example/";
@@ -256,11 +256,13 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
   describe("CorePod.judge()", () => {
     it("files a retraction that also states `prov:used` with the retractions, not with the imports", async () => {
       const laidOut = await layout();
-      const pod = new CorePod(
-        options(new MemoryFiles(ADDRESS), laidOut, {
+      const pod = new CorePod({
+        ...options(new MemoryFiles(ADDRESS), laidOut, {
           now: "2026-02-01T08:00:00Z",
         }),
-      );
+        // A judgment is read against the pod's matcher view, which reads the vocabulary.
+        vocabulary: await vocabulary(),
+      });
       const name = "urn:uuid:3b9e2d47-8c15-4f6a-a0d2-7e5c1b9f4a63";
       const { wrote } = await pod.judge({
         name: "retraction.ttl",
