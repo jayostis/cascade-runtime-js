@@ -1346,6 +1346,7 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
   "reportCategory",
   "allergySeverity",
   "allergyCriticality",
+  "allergyCategory",
   "wasAttributedTo",
   "authorizingPrescription",
   "acmgClassification",
