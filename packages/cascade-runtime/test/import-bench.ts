@@ -73,6 +73,7 @@ export const HOT_SPOTS = {
     "matcher.recordReads",
     "core-pod.matcherSelect",
     "core-pod.matcherView",
+    "pod.unclaimedProfiles",
     "incremental.boundValues",
     "store.query",
     "read.first",

@@ -48,6 +48,7 @@ import {
   headerIn,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { pullFiles } from "../src/connect/index.js";
 import { shipped } from "../src/tables.js";
 import {
   checkSecret,
@@ -191,6 +192,16 @@ function about(by: Pod, profile: string): string {
     "cascade:basis cascade:OwnerStatement",
     `prov:hadMember <${profile}>`,
   ]);
+}
+
+/** The owner's retraction of a judgment they filed. */
+function retraction(by: Pod, filed: string): string {
+  return `${PREFIXES}
+<urn:cascade:this-judgment> a prov:Activity ;
+    prov:invalidated <${filed}> ;
+    prov:wasAssociatedWith <${by.owner}> ;
+    prov:qualifiedAssociation [ prov:agent <${by.owner}> ; prov:hadRole cascade:PatientRole ] .
+<${by.owner}> a prov:Person .`;
 }
 
 /** The owner's Same, Different or Erroneous over members. */
@@ -606,6 +617,99 @@ describe("Importing a health export · pod.import()", () => {
         "Penicillin G",
         "Sulfamethoxazole",
       ]);
+    });
+  });
+
+  describe("given a claim the owner retracted, and a later import naming the same patient", () => {
+    it("returns the patient in `unclaimedProfiles` again, with the export's other patient", async () => {
+      const retracting = await openPodWith(kept, join(pods, "retracted"));
+      try {
+        await retracting.import(exported("x-e2"), { match: false });
+        const claim = await retracting.judge(about(retracting, profile));
+        assert.ok(claim.judgment);
+        await retracting.judge(retraction(retracting, claim.judgment));
+        const later = await retracting.import(exported("x-e6"), {
+          match: false,
+        });
+        assert.deepEqual(later.claimedProfiles, []);
+        assert.deepEqual(
+          later.unclaimedProfiles,
+          [profile, await profileOf("J2")].sort(),
+        );
+      } finally {
+        await retracting.close();
+      }
+    });
+  });
+
+  describe("given a pull that names three patients", () => {
+    it("returns all three in `unclaimedProfiles`, in order of their IRIs", async () => {
+      const allergy = (id: string, patient: string) => ({
+        resourceType: "AllergyIntolerance",
+        id,
+        clinicalStatus: {
+          coding: [
+            {
+              system:
+                "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+              code: "active",
+            },
+          ],
+        },
+        code: {
+          coding: [
+            {
+              system: "http://snomed.info/sct",
+              code: "91935009",
+              display: "Peanuts",
+            },
+          ],
+          text: "Peanuts",
+        },
+        patient: { reference: `Patient/${patient}` },
+        onsetDateTime: "2020-01-01",
+      });
+      const fhirBase = "https://fhir.two-patients.invalid/r4";
+      const ordering = await openPodWith(kept, join(pods, "two-patients"));
+      try {
+        const done = await ordering.import(
+          pullFiles(
+            {
+              fhirBase,
+              patient: "zeta",
+              source: "Two Patients Hospital",
+              retrievedAt: "2026-11-01T09:00:00Z",
+              bundle: {
+                resourceType: "Bundle",
+                type: "collection",
+                entry: [
+                  {
+                    fullUrl: `${fhirBase}/AllergyIntolerance/a1`,
+                    resource: allergy("a1", "zeta"),
+                  },
+                  {
+                    fullUrl: `${fhirBase}/AllergyIntolerance/a2`,
+                    resource: allergy("a2", "mu"),
+                  },
+                  {
+                    fullUrl: `${fhirBase}/AllergyIntolerance/a3`,
+                    resource: allergy("a3", "alpha"),
+                  },
+                ],
+              },
+            },
+            "pull",
+          ),
+          { match: false },
+        );
+        assert.equal(done.unclaimedProfiles.length, 3);
+        assert.deepEqual(
+          done.unclaimedProfiles,
+          [...done.unclaimedProfiles].sort(),
+        );
+      } finally {
+        await ordering.close();
+      }
     });
   });
 
