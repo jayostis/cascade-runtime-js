@@ -15,6 +15,7 @@ import {
   textRow,
 } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
+import { importClaimingEveryProfile } from "./claiming.js";
 import { pulled } from "./hospitals.js";
 import { settled } from "./settled.js";
 
@@ -61,9 +62,10 @@ describe("Finding lab changes after a medication starts or stops · findChanges(
         const pull = await pullOf(patient);
         const pod = await openPod();
         pods.set(patient, pod);
-        const imported = await pod.import(pullFiles(pull, "north"), {
-          claimProfiles: true,
-        });
+        const imported = await importClaimingEveryProfile(
+          pod,
+          pullFiles(pull, "north"),
+        );
         assert.equal(imported.refused, undefined, patient);
         found.set(patient, await findChanges(pod, { limit: 20 }));
       }
@@ -193,14 +195,12 @@ describe("Finding lab changes after a medication starts or stops · findChanges(
     before(async () => {
       story = stories.find(({ ccdaFile }) => ccdaFile !== undefined)!;
       pod = await openPod();
-      const first = await pod.import(
+      const first = await importClaimingEveryProfile(
+        pod,
         pullFiles(await pullOf(story.patient), "n"),
-        { claimProfiles: true },
       );
       assert.equal(first.refused, undefined);
-      const second = await pod.import(story.ccdaFile!, {
-        claimProfiles: true,
-      });
+      const second = await importClaimingEveryProfile(pod, story.ccdaFile!);
       assert.equal(second.refused, undefined);
     });
 

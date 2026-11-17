@@ -492,8 +492,10 @@ export class Words {
     ).map(([version]) => version ?? "");
   }
 
-  /** Anything in words: a record, profile or person; a judgment; a reference series or version; a version of a record; a document; a record's entry. */
+  /** Anything in words: a record, profile or person; a judgment; a reference series or version; a version of a record; a document; a record's entry; or an IRI in angle brackets, which is itself. */
   async thing(words: string): Promise<string> {
+    const bare = /^<([^<>\s]+)>$/.exec(words);
+    if (bare !== null) return bare[1] ?? "";
     const person = this.#people.get(words);
     if (person !== undefined) return this.#remember(words, person.subject);
     if (words === "the runtime")

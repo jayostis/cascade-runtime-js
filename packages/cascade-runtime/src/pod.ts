@@ -84,12 +84,23 @@ export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
  * and the import files nothing. Left out, the Bridge's own apply: 120 seconds and 1024 MiB.
  */
 export interface ImportOptions extends ConvertBudget {
-  /** Claims each profile of the import that no counting About ties to the subject, with an About for it, for the owner. */
-  readonly claimProfiles?: boolean;
+  /**
+   * The profiles the person confirmed are theirs: the import files an About for the owner for each one it names that no
+   * counting About or counting NotAbout answers. An import claims no profile by itself, and `true` is refused.
+   */
+  readonly claimProfiles?: readonly string[];
   /** Runs the matcher on the import; on unless false. */
   readonly match?: boolean;
   /** Told as each part of the import begins, with what is done so far; the import goes on once what it returns settles. */
   readonly onProgress?: (progress: ImportProgress) => void | Promise<void>;
+}
+
+function shown(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 /** Throws for an option `pod.import` does not take; the browser's pod checks before it loads the engine. */
@@ -102,7 +113,19 @@ export function acceptImportOptions(options: ImportOptions): void {
     memoryBudgetMiB: true,
   });
   if (options === undefined) return;
-  const { timeBudgetSeconds, memoryBudgetMiB } = options;
+  const { claimProfiles, timeBudgetSeconds, memoryBudgetMiB } = options;
+  if (
+    claimProfiles !== undefined &&
+    !(
+      Array.isArray(claimProfiles) &&
+      claimProfiles.every(
+        (profile) => typeof profile === "string" && profile !== "",
+      )
+    )
+  )
+    throw new TypeError(
+      `pod.import options.claimProfiles takes the list of the profile IRIs the person confirmed, not ${shown(claimProfiles)}: an import claims no profile by itself. To claim one profile at a time, file its About with pod.judge, then call pod.match(activity).`,
+    );
   if (
     timeBudgetSeconds !== undefined &&
     !(Number.isFinite(timeBudgetSeconds) && timeBudgetSeconds > 0)
@@ -270,8 +293,12 @@ export interface Imported extends Done {
     readonly profile: string;
     readonly judgment: string;
   }[];
-  /** The import's profiles no counting About ties to the subject. */
+  /** The import's profiles that no counting About or counting NotAbout answers. */
   readonly unclaimedProfiles: readonly string[];
+  /** The import's profiles a counting NotAbout answers and no person's About stands against: an import claims none. */
+  readonly disclaimedProfiles: readonly string[];
+  /** The import's profiles a person's About stands against a counting NotAbout, which `profile/What needs review` lists. */
+  readonly heldBackProfiles: readonly string[];
 }
 
 export { text, textRow, type Row, type TextRow } from "./row-text.js";
@@ -929,14 +956,17 @@ class OpenPod implements Pod {
         ...(await this.#core.refuse(found)),
         claimedProfiles: [],
         unclaimedProfiles: [],
+        disclaimedProfiles: [],
+        heldBackProfiles: [],
       };
     const { onProgress, timeBudgetSeconds, memoryBudgetMiB } = options;
-    // What the import writes holds no judgment, so who is tied to the subject now is who is tied once it is written.
-    // It is read from the pod's kept build, built if the pod was just opened, which the import then continues from.
-    const tied =
-      options.claimProfiles === true
-        ? await timed("pod.profilesTied", () => this.#profilesTied(true))
-        : new Set<string>();
+    const confirmed = new Set(options.claimProfiles);
+    // What the import writes holds no judgment, so which profiles are answered now is which are answered once it is
+    // written. It is read from the pod's kept build, built if the pod was just opened, which the import then continues from.
+    const answered =
+      confirmed.size > 0
+        ? await timed("pod.profilesTied", () => this.#profilesAnswered(true))
+        : new Map<string, "About" | "NotAbout">();
     // The import, the judgments that claim its profiles and the pod's build after them (one rebuild of all three) come
     // before the matcher's run, which reads what the build derives of them.
     const done = await this.#core.deferring(async () => {
@@ -960,12 +990,12 @@ class OpenPod implements Pod {
           claimedProfiles,
         };
       const matching = options.match !== false;
-      const profiles =
-        options.claimProfiles === true
-          ? (profilesNamed ?? []).filter(
-              (profile) => profile !== this.subject && !tied.has(profile),
-            )
-          : [];
+      const profiles = [...new Set(profilesNamed ?? [])].filter(
+        (profile) =>
+          confirmed.has(profile) &&
+          profile !== this.subject &&
+          !answered.has(profile),
+      );
       const of = profiles.length + (matching ? 1 : 0);
       if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
       for (const [index, profile] of profiles.entries()) {
@@ -982,12 +1012,18 @@ class OpenPod implements Pod {
     });
     const { filed, activity, matched, claimedProfiles } = done;
     if (activity === undefined)
-      return { ...filed, claimedProfiles: [], unclaimedProfiles: [] };
+      return {
+        ...filed,
+        claimedProfiles: [],
+        unclaimedProfiles: [],
+        disclaimedProfiles: [],
+        heldBackProfiles: [],
+      };
     return {
       ...filed,
       ...(matched === undefined ? {} : { matched }),
       claimedProfiles,
-      unclaimedProfiles: await this.#unclaimedProfiles(activity),
+      ...(await this.#profilesOf(activity)),
     };
   }
 
@@ -1002,40 +1038,77 @@ class OpenPod implements Pod {
     return this.#bridge;
   }
 
-  /** The patient profiles the import's revisions' versions name that no counting About ties to the subject. */
-  #unclaimedProfiles(activity: string): Promise<string[]> {
-    return timed("pod.unclaimedProfiles", () =>
-      this.#profilesNotTied(activity),
-    );
-  }
-
-  async #profilesNotTied(activity: string): Promise<string[]> {
-    const [named, claimed] = await Promise.all([
-      this.#core.select(`${PREFIXES}
+  /**
+   * The patient profiles the import's revisions' versions name, in three lists by what answers them: those no counting
+   * About or NotAbout answers; those a counting NotAbout answers; those held back, a person's About standing against a
+   * counting NotAbout. Which About stands against which NotAbout is the vocabulary's, read as the reason it leaves a
+   * record out, and the runtime decides none of it.
+   */
+  #profilesOf(
+    activity: string,
+  ): Promise<
+    Pick<
+      Imported,
+      "unclaimedProfiles" | "disclaimedProfiles" | "heldBackProfiles"
+    >
+  > {
+    return timed("pod.unclaimedProfiles", async () => {
+      const [named, answered, heldBack] = await Promise.all([
+        this.#core.select(`${PREFIXES}
         SELECT DISTINCT ?profile WHERE {
           ?revision prov:wasGeneratedBy <${activity}> ; cascade:version ?version .
           ?version cascade:patient ?profile .
           FILTER (isIRI(?profile) && ?profile != <${this.subject}>)
         }`),
-      this.#profilesTied(),
-    ]);
-    return named.rows
-      .flatMap((row) => row.get("profile")?.value ?? [])
-      .filter((profile) => !claimed.has(profile))
-      .sort(compared);
+        this.#profilesAnswered(),
+        this.#core.select(`${PREFIXES}
+        SELECT DISTINCT ?profile WHERE {
+          ?left cascade:leftOutReason cascade:PatientProfileJudgedBothAboutAndNotAbout ;
+                cascade:leftOutBecauseOf ?profile .
+        }`),
+      ]);
+      const held = new Set(
+        heldBack.rows.flatMap((row) => row.get("profile")?.value ?? []),
+      );
+      const profiles = named.rows
+        .flatMap((row) => row.get("profile")?.value ?? [])
+        .sort(compared);
+      return {
+        unclaimedProfiles: profiles.filter((profile) => !answered.has(profile)),
+        disclaimedProfiles: profiles.filter(
+          (profile) =>
+            answered.get(profile) === "NotAbout" && !held.has(profile),
+        ),
+        heldBackProfiles: profiles.filter((profile) => held.has(profile)),
+      };
+    });
   }
 
-  /** The profiles a counting About ties to the subject; `kept`, read from the pod's kept build, built whole when none is. */
-  async #profilesTied(kept = false): Promise<Set<string>> {
+  /**
+   * The profiles a counting About ties to the subject or a counting NotAbout names, by which; one a person both ties and
+   * denies is a NotAbout's here. `kept`, read from the pod's kept build, built whole when none is.
+   */
+  async #profilesAnswered(
+    kept = false,
+  ): Promise<Map<string, "About" | "NotAbout">> {
     const query = `${PREFIXES}
-        SELECT DISTINCT ?profile WHERE {
-          ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
-            prov:hadMember ?profile ; cascade:subject <${this.subject}> .
+        SELECT DISTINCT ?profile ?verdict WHERE {
+          ?judgment cascade:countsUnderLens true ; prov:hadMember ?profile .
+          { ?judgment cascade:verdict cascade:About ; cascade:subject <${this.subject}> . BIND ("About" AS ?verdict) }
+          UNION
+          { ?judgment cascade:verdict cascade:NotAbout . BIND ("NotAbout" AS ?verdict) }
         }`;
-    const tied = await (kept
+    const answered = await (kept
       ? this.#core.selectKept(query)
       : this.#core.select(query));
-    return new Set(tied.rows.flatMap((row) => row.get("profile")?.value ?? []));
+    const by = new Map<string, "About" | "NotAbout">();
+    for (const row of answered.rows) {
+      const profile = row.get("profile")?.value;
+      if (profile === undefined) continue;
+      if (row.get("verdict")?.value === "NotAbout") by.set(profile, "NotAbout");
+      else if (!by.has(profile)) by.set(profile, "About");
+    }
+    return by;
   }
 
   #viewsAddress(): string {

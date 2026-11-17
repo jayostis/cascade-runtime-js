@@ -13,6 +13,7 @@ import {
   type Row,
   type ExportSource,
 } from "cascade-runtime";
+import { importClaimingEveryProfile } from "./claiming.js";
 import { pulled } from "./hospitals.js";
 
 const HYPERTENSION = "http://snomed.info/id/59621000";
@@ -66,7 +67,7 @@ describe("Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()", 
       [south, "south"],
     ] as const)
       imported.push(
-        await pod.import(pullFiles(one, name), { claimProfiles: true }),
+        await importClaimingEveryProfile(pod, pullFiles(one, name)),
       );
     conditions = await pod.ask("pod/My active conditions");
 
@@ -74,7 +75,7 @@ describe("Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()", 
       await mkdir(dirname(join(folder, path)), { recursive: true });
       await writeFile(join(folder, path), bytes);
     }
-    again = await pod.import(join(folder, "north"), { claimProfiles: true });
+    again = await pod.import(join(folder, "north"));
   });
 
   after(async () => {
@@ -91,7 +92,7 @@ describe("Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()", 
     });
   });
 
-  describe("given one person's pulls from two hospitals, each imported with `claimProfiles: true`", () => {
+  describe("given one person's pulls from two hospitals, each imported and claimed", () => {
     it("stores both, with neither import `refused`", () => {
       for (const [at, done] of imported.entries()) {
         assert.equal(done.refused, undefined, `import ${at}`);

@@ -18,7 +18,8 @@ import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
  * (10 laboratory results, 2 conditions, 2 medications, 2 immunizations, 1 allergy and 1 procedure in 200 resources).
  * A repeated laboratory result is meant to trigger the same-code-and-day rules on a result (same code, day, value and
  * unit); a repeated condition, medication, immunization, allergy or procedure the same-code-and-date rules.
- * It imports as the app does, with `claimProfiles`, so the matcher compares the records, then reads once.
+ * It imports as the app does, with `claimProfiles` naming the pull's patient, so the matcher compares the records,
+ * then reads once.
  *
  * Run it as `npm run bench:import -- 200 1000`: it prints a table per size, and `--json <file>` writes the numbers.
  * With `--second` it imports one hospital's pull, then a second hospital's onto the same pod, and reports the second
@@ -295,6 +296,22 @@ function round(ms: number): number {
   return Math.round(ms * 10) / 10;
 }
 
+/** The profile a hospital's patient has, which a pull of one resource names as a pull of any size does. */
+export async function profileOf(
+  hospital: keyof typeof HOSPITALS,
+): Promise<readonly string[]> {
+  const scratch = await openPod();
+  try {
+    const { unclaimedProfiles } = await scratch.import(
+      syntheticPull(1, { hospital }),
+      { match: false },
+    );
+    return unclaimedProfiles;
+  } finally {
+    await scratch.close();
+  }
+}
+
 /**
  * The import of a synthetic pull of `resources`, then the first read and one more, measured; with `second`, the
  * import of the second hospital's pull onto a pod that already holds the first's, which is measured and the first not;
@@ -312,10 +329,13 @@ export async function importBench(
   const folder = reopen
     ? await mkdtemp(join(tmpdir(), "import-bench-"))
     : undefined;
+  const claiming = await profileOf(second ? "second" : "first");
   let pod = await openPod(folder);
   try {
     if (second)
-      await pod.import(syntheticPull(resources), { claimProfiles: true });
+      await pod.import(syntheticPull(resources), {
+        claimProfiles: await profileOf("first"),
+      });
     if (reopen) {
       await pod.close();
       pod = await openPod(folder);
@@ -325,7 +345,7 @@ export async function importBench(
     const { result, seen } = await probing(async () => {
       started = performance.now();
       const done = await pod.import(pull, {
-        claimProfiles: true,
+        claimProfiles: claiming,
         onProgress: ({ part, done, of }) => {
           marks.push({
             name: of === undefined ? part : `${part} ${done}/${of}`,

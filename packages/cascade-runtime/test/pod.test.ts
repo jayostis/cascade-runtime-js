@@ -298,14 +298,15 @@ function alexPod(): Promise<Alex> {
     const pod = await openPodWith(kept, folder);
     try {
       const told: ImportProgress[] = [];
+      const claimProfiles = [await profileOf("J1"), await profileOf("J2")];
       const e2 = await pod.import(exported("x-e2"), {
-        claimProfiles: true,
+        claimProfiles,
         onProgress: (progress) => {
           told.push(progress);
         },
       });
-      const e4 = await pod.import(exported("x-e4"), { claimProfiles: true });
-      const e6 = await pod.import(exported("x-e6"), { claimProfiles: true });
+      const e4 = await pod.import(exported("x-e4"), { claimProfiles });
+      const e6 = await pod.import(exported("x-e6"), { claimProfiles });
       return { folder, imported: { e2, e4, e6 }, told };
     } finally {
       await pod.close();
@@ -670,7 +671,10 @@ describe("Importing a health export · pod.import()", () => {
         ["with a list naming it", [j1], [], [j2]],
         ["with a list naming it and the other patient", [j1, j2], [j2], []],
       ] as const) {
-        const denying = await openPodWith(kept, join(pods, `not-about-${name}`));
+        const denying = await openPodWith(
+          kept,
+          join(pods, `not-about-${name}`),
+        );
         try {
           await denying.import(exported("x-e2"), { match: false });
           await denying.judge(notAbout(denying, j1));
@@ -844,7 +848,7 @@ describe("Importing a health export · pod.import()", () => {
     });
   });
 
-  describe("with `claimProfiles: true`, which claims the export's patient for the owner", () => {
+  describe("with `claimProfiles` naming both of Alex's patients, on each of his exports", () => {
     it("returns one claim in `claimedProfiles` for each patient not yet claimed, and an empty `unclaimedProfiles`", async () => {
       const { e2, e4, e6 } = (await alexPod()).imported;
       for (const [name, done, expected] of [
@@ -1356,6 +1360,30 @@ describe("Recording the owner's judgment · pod.judge()", () => {
             error.message.includes(matcherSame) &&
             error.message.includes("matcher's judgment"),
           name,
+        );
+      assert.deepEqual(await filesIn(at), held);
+    });
+  });
+
+  describe("given an About whose basis is a machine's, attributed to a person", () => {
+    it("throws, writing nothing, for each machine basis", async () => {
+      const at = join(pods, "judged");
+      const held = await filesIn(at);
+      const profile = "urn:uuid:3f6c0f4e-8a52-4c1b-9d7e-5b2a1c8e0d44";
+      for (const basis of ["SameDemographics", "PortalAuthenticated"])
+        await assert.rejects(
+          owned.judge(
+            judgment(owned, [
+              "cascade:verdict cascade:About",
+              `cascade:subject <${owned.subject}>`,
+              `cascade:basis cascade:${basis}`,
+              `prov:hadMember <${profile}>`,
+            ]),
+          ),
+          (error: Error) =>
+            error.message.includes(`cascade:${basis}`) &&
+            error.message.includes("software agent"),
+          basis,
         );
       assert.deepEqual(await filesIn(at), held);
     });

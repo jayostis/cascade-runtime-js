@@ -9,6 +9,7 @@ import {
   HOT_SPOTS,
   importBench,
   type Measured,
+  profileOf,
   syntheticPull,
   tableOf,
 } from "./import-bench.js";
@@ -212,7 +213,7 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       try {
         let pod = await openPod(folder);
         await pod.import(syntheticPull(40, { hospital: "first" }), {
-          claimProfiles: true,
+          claimProfiles: await profileOf("first"),
         });
         await pod.close();
         pod = await openPod(folder);
@@ -220,13 +221,13 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
           for (let refused = 0; refused < refusals; refused++) {
             const done = await pod.import(
               new Map([["junk.json", new TextEncoder().encode("{not json")]]),
-              { claimProfiles: true },
             );
             assert.match(done.refused ?? "", /no importer/);
           }
+          const second = await profileOf("second");
           const { result, seen } = await probing(() =>
             pod.import(syntheticPull(40, { hospital: "second" }), {
-              claimProfiles: true,
+              claimProfiles: second,
             }),
           );
           return {

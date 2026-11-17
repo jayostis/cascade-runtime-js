@@ -85,9 +85,10 @@ only instruction.
   don't know about, and say yes or no to records it thinks are the same thing."
 
 Between them they use every call: reading, `openPod`, `ask`, `close`; writing,
-`openPod`, `look`, `import` with `claimProfiles: true` (only after a yes),
-`enter`, `judge`, `ask`, `close`. `match` is covered by the default `import` and `enter` run; an explicit
-`match` with matching on is a wrong turn.
+`openPod`, `look`, `import` (only after a yes, which claims no profile by itself),
+`judge` an About for each profile the person confirms, `match` on that import's `activity`, `enter`, `judge`,
+`ask`, `close`. `import` and `enter` run the matcher with matching on; an explicit `match` with matching on, other than
+one after the claims, is a wrong turn.
 
 ### What the person may say
 
@@ -171,7 +172,7 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   allergies, two conditions, an immunization, a procedure (E12 in "each import
   and entry writes the scenario's numbers of records, versions, revisions,
   documents and activities"). The app shows what was claimed: that server's one
-  patient profile, as J12 claims it (`claimedProfiles` holds it, `unclaimedProfiles` is empty).
+  patient profile, as J12 claims it (`unclaimedProfiles` holds it until the app files that About, after which it is answered).
   Sam's three records are in x-e12 unchanged since x-e10: the import writes
   nothing of them and does not claim his profile, so they stay in no view
   (`cascade:PatientProfileNotClaimed` in `record/Why it is in no view`). The matcher joins

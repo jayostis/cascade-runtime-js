@@ -721,6 +721,21 @@ const reasonWords = (reason: string): string =>
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .toLowerCase();
 
+/** The skos:prefLabel the vocabulary gives a left-out reason, found in its ontology's Turtle; undefined when it gives none. */
+async function reasonLabel(
+  vocabulary: Files,
+  reason: string,
+): Promise<string | undefined> {
+  if (!reason.startsWith(CASCADE)) return undefined;
+  const bytes = await vocabulary.read("ontologies/cascade.ttl");
+  if (bytes === undefined) return undefined;
+  const local = reason.slice(CASCADE.length);
+  return new RegExp(
+    `^cascade:${local} a skos:Concept ;(?:\\s+[^\\r\\n]*;)*?\\s+skos:prefLabel "((?:[^"\\\\]|\\\\.)*)"@en`,
+    "m",
+  ).exec(new TextDecoder().decode(bytes))?.[1];
+}
+
 function cellTerm(
   cell: string,
   prefixes: Readonly<Record<string, string>>,
@@ -1824,10 +1839,17 @@ const DEFINITIONS: Definition[] = [
         for (const [why, because] of await selected(
           reading.store,
           `SELECT ?why ?because WHERE { <${record}> <${CASCADE}leftOutFor> ?left . ?left <${CASCADE}leftOutReason> ?why . OPTIONAL { ?left <${CASCADE}leftOutBecauseOf> ?because } }`,
-        ))
+        )) {
+          const label = await reasonLabel(reading.vocabulary, why ?? "");
+          const after = ` | ${because ? reading.words.shown(because) : ""}`;
+          const labelled = `${words} | ${label ?? ""}${after}`;
+          // A reason is said by its local name's words or, as M2a says it, by its skos:prefLabel.
           found.push(
-            `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
+            label && expected.includes(labelled)
+              ? labelled
+              : `${words} | ${reasonWords(why ?? "")}${after}`,
           );
+        }
       }
       return compared(expected, found);
     };

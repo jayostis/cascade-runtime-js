@@ -4,6 +4,11 @@ import { iri, RDF, type Triple, written } from "./rdf.js";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
+/** The bases of an About a program states, which a software agent makes and a person never does. */
+const MACHINE_BASES = [
+  `${CASCADE}SameDemographics`,
+  `${CASCADE}PortalAuthenticated`,
+];
 const DCT_REPLACES = "http://purl.org/dc/terms/replaces";
 /** The verdicts that say something of their members' versions, which name the document each member was shown from. */
 const SEEN = new Set(
@@ -157,6 +162,21 @@ export async function judgmentFiled(
     triples.flatMap(([s, p, o]) =>
       s.value === judgment && p.value === predicate ? [o.value] : [],
     );
+  const machine = of(`${CASCADE}basis`).find((basis) =>
+    MACHINE_BASES.includes(basis),
+  );
+  const person = of(`${PROV}wasAttributedTo`).find((agent) =>
+    triples.some(
+      ([s, p, o]) =>
+        s.value === agent &&
+        p.value === `${RDF}type` &&
+        o.value === `${PROV}Person`,
+    ),
+  );
+  if (machine !== undefined && person !== undefined)
+    return {
+      refused: `${judgment} has the basis cascade:${machine.slice(CASCADE.length)}, which only a software agent states, and is attributed to the person ${person}: an About by a person has the basis cascade:OwnerStatement`,
+    };
   const kept = triples.filter(
     ([s, p]) => !(s.value === judgment && p.value === `${PROV}wasDerivedFrom`),
   );
