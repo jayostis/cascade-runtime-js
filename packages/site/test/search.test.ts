@@ -182,6 +182,23 @@ describe("Searching the hub · search.json, search.js, the search box of shell()
       assert.deepEqual(rank(rows, "cascade:wasDerivedFrom"), []);
     });
 
+    it("lands a bare name that terms of two namespaces hold on the cascade term, and the other by its prefixed name", () => {
+      const both: SearchRow[] = [
+        {
+          path: "terms/bridge/properties/verdict.html",
+          title: "bridge:verdict",
+          kind: "term",
+        },
+        {
+          path: "terms/cascade/properties/verdict.html",
+          title: "cascade:verdict",
+          kind: "term",
+        },
+      ];
+      assert.equal(rank(both, "verdict")[0]?.title, "cascade:verdict");
+      assert.equal(rank(both, "bridge:verdict")[0]?.title, "bridge:verdict");
+    });
+
     it("lists each rule of a rules page as an anchor of it, titled by its heading", () => {
       assert.deepEqual(
         rows
