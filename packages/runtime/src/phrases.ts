@@ -1130,6 +1130,24 @@ const DEFINITIONS: Definition[] = [
     },
   ],
   [
+    "{writer} receives the files of {writer} and the file {name} put in them on {time}",
+    (compiled, [to, from, name, when], _stated, _compiling, label) => {
+      const receiver = writerOf(compiled, to as number);
+      const sender = writerOf(compiled, from as number);
+      if (receiver === sender)
+        throw new Error("a writer receives the files of another writer");
+      happen(
+        compiled,
+        label,
+        undefined,
+        when as string,
+        { kind: "sync", from: sender, file: `judgments/${String(name)}.ttl` },
+        receiver,
+      );
+      compiled.writer = receiver;
+    },
+  ],
+  [
     "the tools offered a model are listed",
     (compiled) => {
       compiled.toolsListed = { canAsk: true };

@@ -44,6 +44,7 @@ import { type Act, same, StepWrites } from "./pod.js";
 import { iri, literal, RDF, type Triple, XSD } from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
+import { matcherJudgmentTouched } from "./shown.js";
 import {
   type OnProgress,
   Refusal,
@@ -657,9 +658,76 @@ export class CorePod {
     );
   }
 
-  /** A person's judgment, filed as it is (N10). */
+  /** A person's judgment, filed as N16 keeps it (N10). */
   judge(judgment: StepFile): Promise<Performed> {
-    return this.#step((context) => fileJudgment(context, judgment));
+    return this.#step((context) =>
+      fileJudgment(context, judgment, {
+        // The matcher's view is built only for a judgment that has something to read it for.
+        select: async (query) => (await context.matcherView()).select(query),
+      }),
+    );
+  }
+
+  /**
+   * Refuses another writer's files that replace or retract a matcher's judgment (N16), one of the pod's or one among
+   * the files arriving; reads nothing when no arriving file in a judgment's folder or a retraction's folder says so.
+   * Only a writer that went around its runtime files one, so a replacement placed outside those folders, or one whose
+   * matcher's judgment arrives in a later call, is not caught. One refused file refuses the whole receive, which writes
+   * nothing, and every later receive from that writer meets the same file.
+   */
+  async #refuseMatcherJudgmentsTouched(
+    layout: Layout,
+    arriving: readonly (readonly [string, Uint8Array])[],
+    address: string,
+    newStore: StoreFactory,
+  ): Promise<void> {
+    const folders = [
+      layout.find(`${CASCADE}Judgment`)?.folder,
+      layout.find(`${PROV}Activity`, [`${PROV}invalidated`])?.folder,
+    ].flatMap((folder) => folder ?? []);
+    const decoder = new TextDecoder();
+    const files = arriving.filter(([path]) =>
+      folders.some((folder) => path.startsWith(folder)),
+    );
+    if (
+      !files.some(([, bytes]) =>
+        /replaces|invalidated/.test(decoder.decode(bytes)),
+      )
+    )
+      return;
+    const parsed = await Promise.all(
+      files.map(async ([path, bytes]) =>
+        newStore().parse(bytes, address + path),
+      ),
+    );
+    const matchers = new Set(
+      parsed.flatMap((triples) =>
+        triples.flatMap(([s, p]) =>
+          p.value === `${CASCADE}matcherRule` ? [s.value] : [],
+        ),
+      ),
+    );
+    const read = await this.#matcherView();
+    for (const [at, triples] of parsed.entries())
+      for (const subject of new Set(
+        triples.flatMap(([s, p]) =>
+          p.value === "http://purl.org/dc/terms/replaces" ||
+          p.value === `${PROV}invalidated`
+            ? [s.value]
+            : [],
+        ),
+      )) {
+        const refused = await matcherJudgmentTouched(
+          read,
+          triples,
+          subject,
+          matchers,
+        );
+        if (refused !== undefined)
+          throw new Refusal(
+            `${files[at]?.[0] ?? ""} is refused, and with it every file of this receive: ${refused}. It came from a writer that went around its runtime: remove it on the sending device, or file a Same or a Different over the records instead`,
+          );
+      }
   }
 
   /** A step refused before the pod is given its inputs: it writes nothing, and the build is rebuilt as after any step. */
@@ -720,7 +788,9 @@ export class CorePod {
    * holds, never on what this call wrote, so a call that stops partway and is made again writes the same sync. Only
    * the files that arrived and the act files not read before are read. Then, when the pod's current rule list version
    * or one it revises declares a rule wrong, the rule list version migration, an act of its own (N15); a writer with no
-   * tables to read has none.
+   * tables to read has none. A file that replaces or retracts a matcher's judgment (N16) refuses the whole receive,
+   * which writes nothing; one placed outside the judgment folders, or whose matcher's judgment arrives in a later call,
+   * is not caught, as only a writer that went around its runtime makes one.
    */
   async receive(other: Pick<Files, "list" | "read">): Promise<Performed> {
     const arrived: string[] = [];
@@ -750,6 +820,12 @@ export class CorePod {
         }
         stored.sort(([a], [b]) => (a < b ? -1 : 1));
         others.sort(([a], [b]) => (a < b ? -1 : 1));
+        await this.#refuseMatcherJudgmentsTouched(
+          layout,
+          others,
+          pod.iri,
+          newStore,
+        );
         for (const [path, bytes] of [
           ...stored,
           ...others,

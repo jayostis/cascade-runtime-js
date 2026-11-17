@@ -32,6 +32,7 @@ export * from "./rdf.js";
 export * from "./replay.js";
 export * from "./saved-output-bridge.js";
 export * from "./shapes.js";
+export * from "./shown.js";
 export * from "./step.js";
 export * from "./store.js";
 export * from "./story.js";

@@ -483,12 +483,6 @@ const about = (pod, profile) =>
   ]);
 const same = (pod, records, reason) =>
   judgment(pod, reason, ["cascade:verdict cascade:Same", ...members(records)]);
-const sameInstead = (pod, records, machineSame, reason) =>
-  judgment(pod, reason, [
-    "cascade:verdict cascade:Same",
-    ...members(records),
-    `dct:replaces <${machineSame}>`,
-  ]);
 const different = (pod, records, reason) =>
   judgment(pod, reason, ["cascade:verdict cascade:Different", ...members(records)]);
 const erroneous = (pod, record, reason) =>
@@ -520,9 +514,9 @@ async function machineJoins() {
         joins.set(j, [...(joins.get(j) ?? []), member]);
   return joins;
 }
-for (const [machineSame, records] of await machineJoins())
+for (const records of (await machineJoins()).values())
   if (records.some((one) => oneAllergy.includes(one)))
-    await judged(sameInstead(pod, oneAllergy, machineSame, "confirmed"));
+    await judged(same(pod, oneAllergy, "confirmed"));
 
 async function sameAs(word, other, reason) {
   const [[mine], [theirs]] = [await search(word), await search(other)];
@@ -542,7 +536,7 @@ A Same or Different names the records the person means, typically two: "the new
 asthma record is not the same as the old one". Offer it per record or pair
 inside an entry, never one Different over a whole group, which overrides the
 person's own Sames. A Different wins over a Same, though a later record can
-rejoin them. `sameInstead` rests the matcher's join on the person. An Erroneous
+rejoin them. A Same over the records the matcher joined rests the join on the person, who never replaces or retracts the matcher's judgment. An Erroneous
 record leaves every view; one over a revision only stops it being current. A
 `before` names two revisions, of one record or of two an entry joins, as
 `record/Its revisions, in the order they arrived` or `record/What needs review`

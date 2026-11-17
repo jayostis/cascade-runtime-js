@@ -117,8 +117,8 @@ runtime/scripted-input/gus > pod > app-drugs > pharmacy > matcher | SameMedicati
 runtime/scripted-input/gus > pod > app-drugs > pharmacy > matcher | SameMedicationCode urn:uuid:4355a7f9-0439-88b5-b148-95ac12d9df8f urn:uuid:6b14d722-ebfc-830a-955e-bf2d18679054
 runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher > app-drug-products | SameProductCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
 runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher > app-drug-products | finding MatcherJudgmentsNoLongerReached urn:uuid:07274af2-3ef7-8cbd-bd66-24842fe7c621 urn:uuid:eab831dd-72cd-8abb-8f50-893c78570c2e
-runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher > same-instead-of-the-lisinopril-matcher-judgment > app-drug-products | SameProductCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
-runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher > same-instead-of-the-lisinopril-matcher-judgment > app-drug-products | finding MatcherJudgmentsNoLongerReached urn:uuid:07274af2-3ef7-8cbd-bd66-24842fe7c621
+runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher > same-over-the-lisinopril-records > app-drug-products | SameProductCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
+runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher > same-over-the-lisinopril-records > app-drug-products | finding MatcherJudgmentsNoLongerReached urn:uuid:07274af2-3ef7-8cbd-bd66-24842fe7c621 urn:uuid:eab831dd-72cd-8abb-8f50-893c78570c2e
 runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
 runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:43447c8b-c96a-847b-8322-ac36b1592400 urn:uuid:81388f55-b8dd-82cc-9cd8-7bcb39ba8a36
 runtime/scripted-input/gus > pod > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:cbffb586-ef65-8014-b074-74f1e191c429 urn:uuid:e353fb02-d4bd-819b-b7cd-7ab635c3633e
@@ -138,6 +138,9 @@ runtime/scripted-input/gus > pod > flu-shots > matcher | SameMappedCodeAndDate u
 runtime/scripted-input/gus > pod > flu-shots > matcher | SameMappedCodeAndDate urn:uuid:bc5177c0-c305-81c9-98a0-98519d693ac8 urn:uuid:ce572ba1-b9ea-82e2-91c0-d65df87e9ddb
 runtime/scripted-input/gus > pod > medicines-and-results > matcher | SameMedicationCode urn:uuid:a087441e-c8a8-85d6-ae5e-e0fb32544a91 urn:uuid:d8ef7d0f-32c4-8350-9b06-78486a79a341
 runtime/scripted-input/gus > pod > medicines-and-results > matcher | SameResult urn:uuid:98d52e01-ee36-8d1b-80e5-35ed72d78100 urn:uuid:9e904094-c427-8da8-9a25-6b3d7d7bda7e
+runtime/scripted-input/gus > pod > writer > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
+runtime/scripted-input/gus > pod > writer > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:43447c8b-c96a-847b-8322-ac36b1592400 urn:uuid:81388f55-b8dd-82cc-9cd8-7bcb39ba8a36
+runtime/scripted-input/gus > pod > writer > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:cbffb586-ef65-8014-b074-74f1e191c429 urn:uuid:e353fb02-d4bd-819b-b7cd-7ab635c3633e
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > allergies > match-allergies > app-rxnorm | SameMappedCode urn:uuid:b8adc39a-d1c7-87a6-ae5f-f40f113990f8 urn:uuid:c510eaba-1137-8cf9-9e83-465a8f1cdf5e
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > app-fewer-rules | finding MatcherJudgmentsNoLongerReached urn:uuid:a69086f9-08af-88be-ac11-2ff7ce4fc2e8 urn:uuid:fa536c89-0490-845b-bd0f-54ae662c6ece
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > app-icd > conditions > match-conditions > app-conversions | SameConvertedCode urn:uuid:726467d5-22ae-8a2f-a565-9cb2c6f0acd9 urn:uuid:deefc0c5-1231-864c-a376-096722cd1856
@@ -149,7 +152,6 @@ runtime/scripted-input/hana > pod > app > flu-shots > matcher > conditions > mat
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > episodes > match-episodes > app-periods | SameCodeAndPeriod urn:uuid:4f208350-6efe-8bfb-9f20-4e66e333d2f9 urn:uuid:921b760c-b966-893e-8f8d-24bbf0871f4d
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > episodes > match-episodes > app-periods | SameCodeAndPeriod urn:uuid:5a1e7e90-5ce4-88dc-b97f-669044f16b0c urn:uuid:aa1ecbce-b319-83b2-9c6e-2e132787e97c
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > episodes > match-episodes | SameCode urn:uuid:5660816f-bea3-827f-8fde-b4e2bd30ce7c urn:uuid:5a2468ba-cc03-8f28-ab5d-0898f142df82
-runtime/scripted-input/hana > pod > app > flu-shots > matcher > retract-fluad > app-later | SameMappedCodeAndDate urn:uuid:399e6297-e250-87dd-a4a8-93f746abc56c urn:uuid:be778cf3-05ca-8bfd-9d7c-649cb56009c2
 runtime/scripted-input/hana > pod > app > flu-shots > matcher | SameMappedCodeAndDate urn:uuid:0105c067-c295-89a9-a60a-6850fca971a5 urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a
 runtime/scripted-input/hana > pod > app > flu-shots > matcher | SameMappedCodeAndDate urn:uuid:f089b3de-86c4-88cb-af90-ff0fb846ca67 urn:uuid:fb28b299-1760-869e-a5c0-d1810a6d194c
 runtime/scripted-input/hana > pod > app-partial-dates > partial-dates > matcher | SameCodeAndPeriod urn:uuid:6f1b9991-3ffe-82fd-9a81-1aff2bb8d51f urn:uuid:891948d0-abad-84d2-b42c-9199a1fe5d16
@@ -160,7 +162,6 @@ runtime/scripted-input/hana > pod > flu-shots > match-kit > app > app-later > ol
 runtime/scripted-input/hana > pod > flu-shots > match-kit > app > app-later | SameMappedCodeAndDate urn:uuid:399e6297-e250-87dd-a4a8-93f746abc56c urn:uuid:be778cf3-05ca-8bfd-9d7c-649cb56009c2
 runtime/scripted-input/hana > pod > flu-shots > match-kit > app | SameMappedCodeAndDate urn:uuid:0105c067-c295-89a9-a60a-6850fca971a5 urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a
 runtime/scripted-input/hana > pod > flu-shots > match-kit > app | SameMappedCodeAndDate urn:uuid:f089b3de-86c4-88cb-af90-ff0fb846ca67 urn:uuid:fb28b299-1760-869e-a5c0-d1810a6d194c
-runtime/scripted-input/hana > pod > flu-shots > match-kit > retract-fluarix > app | SameMappedCodeAndDate urn:uuid:f089b3de-86c4-88cb-af90-ff0fb846ca67 urn:uuid:fb28b299-1760-869e-a5c0-d1810a6d194c
 runtime/scripted-input/hana > pod > flu-shots > match-kit | SameMappedCodeAndDate urn:uuid:0105c067-c295-89a9-a60a-6850fca971a5 urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a
 runtime/scripted-input/ivo > pod > app-variants > id-and-expression > matcher | SameVariationThroughTable urn:uuid:b95afa09-5609-892e-b28a-12dc9b68a518 urn:uuid:e7a5020f-955d-8576-9d98-690607338ca7
 runtime/scripted-input/ivo > pod > app-variants > one-row > matcher | SameVariationThroughTable urn:uuid:bcc4fe16-48ae-8123-9145-5d1da587d2d7 urn:uuid:f95b6d27-c485-841d-9f35-fdbeb66c9a4f

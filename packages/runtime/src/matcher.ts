@@ -1451,14 +1451,9 @@ function partnersOf(joined: Joins): Map<string, Map<string, string[]>> {
   return found;
 }
 
-/** The matcher's Sames that nothing retracts and no unretracted judgment replaces, in order of name. */
+/** The matcher's Sames that nothing retracts, in order of name: a person replaces none, and the matcher replaces none. */
 async function recheckable(dataset: Dataset): Promise<Judged[]> {
   const ours = `?judgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same .
-    FILTER NOT EXISTS {
-      ?replacing dct:replaces ?judgment
-      OPTIONAL { ?undoing prov:invalidated ?replacing }
-      FILTER (!BOUND(?undoing))
-    }
     FILTER NOT EXISTS { ?retraction prov:invalidated ?judgment }`;
   const [rules, members, used] = await Promise.all(
     ["cascade:matcherRule", "prov:hadMember", "prov:wasDerivedFrom"].map(

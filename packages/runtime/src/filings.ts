@@ -1,5 +1,7 @@
+import type { CorePod } from "./core-pod.js";
 import { iri, ntriples, RDF } from "./rdf.js";
 import type { References } from "./references.js";
+import { judgmentFiled } from "./shown.js";
 import {
   parseStepFile,
   CASCADE,
@@ -45,12 +47,14 @@ export async function fileCreation(context: StepContext): Promise<void> {
 }
 
 /**
- * A person's judgment or retraction: its file, as it is, filed by its name (N10), a retraction where the layout files
- * what states prov:invalidated.
+ * A person's judgment or retraction, filed by its name (N10), a retraction where the layout files what states
+ * prov:invalidated: as N16 keeps it (`judgmentFiled`), which is its file as it is when that changes nothing. `read` is
+ * the pod as the matcher reads it.
  */
 export async function fileJudgment(
   context: StepContext,
   judgment: StepFile,
+  read: Pick<CorePod, "select">,
 ): Promise<void> {
   const graph = await parseStepFile(judgment, context.newStore);
   const judgments = graph.subjects(`${RDF}type`, iri(`${CASCADE}Judgment`));
@@ -73,7 +77,12 @@ export async function fileJudgment(
           `${PROV}Activity`,
           graph.match(one).map(([, p]) => p.value),
         );
-  context.writes.add(placement.path(one.value), judgment.bytes);
+  const filed = await judgmentFiled(read, graph.triples);
+  if ("refused" in filed) throw new Refusal(filed.refused);
+  context.writes.add(
+    placement.path(one.value),
+    filed.changed ? ntriples(filed.triples) : judgment.bytes,
+  );
 }
 
 /** A reference version's arrival: what the reference index states about it, filed by its name. */

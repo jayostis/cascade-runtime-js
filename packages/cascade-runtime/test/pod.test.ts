@@ -995,9 +995,110 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       assert.match(judged.judgment ?? "", /^urn:uuid:/);
     });
 
-    it("records which version of the record the owner was looking at", () => {
+    it("cites nothing for a record entered by hand, which came from no document, and never its version", () => {
       assert.equal(current.length, 1);
-      assert.deepEqual(cited, current);
+      assert.deepEqual(cited, []);
+    });
+  });
+
+  describe("given records imported from documents", () => {
+    let imported: Pod;
+    let at: string;
+    let records: Rows;
+    let documents: Rows;
+    let different: Done;
+    let cited: Rows;
+    let versions: Rows;
+    let matcherSame: string;
+    let own: Done;
+
+    before(async () => {
+      at = await copied((await alexPod()).folder, "judged-from-documents");
+      imported = await openPodWith(kept, at);
+      records = await select(
+        imported,
+        `SELECT ?record (SAMPLE(?document) AS ?from) WHERE {
+          ?record cascade:currentRevision/prov:wasDerivedFrom ?document .
+          FILTER NOT EXISTS { ?record cascade:currentRevision/prov:wasDerivedFrom ?other FILTER (?other != ?document) }
+        } GROUP BY ?record ORDER BY ?from ?record`,
+      );
+      const first = records[0];
+      const other = records.find(({ from }) => from !== first?.from);
+      assert.ok(first?.record && other?.record, "two records of two documents");
+      documents = [first, other];
+      const members = [first.record, other.record];
+      different = await imported.judge(verdict(imported, "Different", members));
+      const named = `<${different.judgment ?? ""}>`;
+      cited = await select(
+        imported,
+        `SELECT ?document WHERE { ${named} prov:wasDerivedFrom ?document } ORDER BY ?document`,
+      );
+      versions = await select(
+        imported,
+        `SELECT ?version WHERE { ${named} prov:wasDerivedFrom ?version . ?record pav:hasCurrentVersion ?version }`,
+      );
+      const [same] = await select(
+        imported,
+        `SELECT ?judgment WHERE { ?judgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same } LIMIT 1`,
+      );
+      matcherSame = same?.judgment ?? "";
+      own = await imported.judge(
+        judgment(imported, [
+          "cascade:verdict cascade:Different",
+          `prov:hadMember <${first.record}>`,
+          `prov:hadMember <${other.record}>`,
+          `<http://purl.org/dc/terms/replaces> <${different.judgment ?? ""}>`,
+        ]),
+      );
+    });
+
+    after(async () => {
+      await imported.close();
+    });
+
+    it("names the document each member was shown from, and no version", () => {
+      assert.equal(different.refused, undefined);
+      assert.deepEqual(
+        cited.map(({ document }) => document),
+        documents.map(({ from }) => from).sort(),
+      );
+      assert.deepEqual(versions, []);
+    });
+
+    it("files a person's replacement of a person's judgment", () => {
+      assert.ok(matcherSame, "the matcher judged some records the same");
+      assert.equal(own.refused, undefined);
+      assert.match(own.judgment ?? "", /^urn:uuid:/);
+    });
+
+    it("throws, writing nothing, for a person's judgment that replaces a matcher's, and for a retraction of one", async () => {
+      const held = await filesIn(at);
+      const [first, other] = documents;
+      for (const [name, turtle] of [
+        [
+          "a replacement",
+          judgment(imported, [
+            "cascade:verdict cascade:Same",
+            `prov:hadMember <${first?.record ?? ""}>`,
+            `prov:hadMember <${other?.record ?? ""}>`,
+            `<http://purl.org/dc/terms/replaces> <${matcherSame}>`,
+          ]),
+        ],
+        [
+          "a retraction",
+          `@prefix prov: <http://www.w3.org/ns/prov#> .
+<urn:cascade:this-judgment> a prov:Activity ; prov:invalidated <${matcherSame}> ; prov:wasAssociatedWith <${imported.owner}> .
+<${imported.owner}> a prov:Person .`,
+        ],
+      ] as const)
+        await assert.rejects(
+          imported.judge(turtle),
+          (error: Error) =>
+            error.message.includes(matcherSame) &&
+            error.message.includes("matcher's judgment"),
+          name,
+        );
+      assert.deepEqual(await filesIn(at), held);
     });
   });
 

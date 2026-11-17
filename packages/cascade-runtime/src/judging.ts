@@ -1,8 +1,9 @@
 // A person's judgment or retraction as a pod files it: the Turtle an app hands `pod.judge`, given the name and the time of
-// its own, and for a verdict that says something of its members' versions, the version each one was at. Shared by the pod
-// and by the run that performs a model's proposal as a step.
+// its own, and for a verdict that says something of its members' versions, the document each member was shown from, never
+// a version. Shared by the pod and by the run that performs a model's proposal as a step.
 import {
   type CorePod,
+  judgmentFiled,
   type IdsAndTime,
   iri,
   literal,
@@ -16,18 +17,10 @@ import { THIS_JUDGMENT } from "./proposals.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
-const PAV = "http://purl.org/pav/";
-const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
 const USED = `${PROV}used`;
-const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
 const STARTED_AT = `${PROV}startedAtTime`;
-const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
-/** The verdicts that say something of their members' versions, which name each version they saw. */
-const SEEN = new Set(
-  ["Same", "Different", "Erroneous"].map((v) => CASCADE + v),
-);
 
 /** What files a judgment: the pod's step, what reads it, and the name and the time a new judgment is given. */
 export interface Judging {
@@ -43,47 +36,15 @@ export type Judged = Awaited<ReturnType<CorePod["judge"]>> & {
   readonly judgment?: string;
 };
 
-/** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
-async function isFinding(
-  core: Pick<CorePod, "select">,
-  thing: string,
-): Promise<boolean> {
-  const { rows } = await core.select(`${PREFIXES}
-      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
-  return rows.length > 0;
-}
-
-/** Each record's current version, under the everyday lens, and each revision's version, by the member. */
-async function currentVersions(
-  core: Pick<CorePod, "select">,
-  records: readonly string[],
-): Promise<Map<string, string>> {
-  if (records.length === 0) return new Map();
-  const { rows } = await core.select(`${PREFIXES}
-      SELECT ?record ?version WHERE {
-        VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
-        { ?record pav:hasCurrentVersion ?version } UNION { ?record cascade:version ?version }
-      }`);
-  return new Map(
-    rows.flatMap((row) => {
-      const [record, version] = [row.get("record"), row.get("version")];
-      return record === undefined || version === undefined
-        ? []
-        : [[record.value, version.value] as const];
-    }),
-  );
-}
-
 function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 /**
  * What filing the judgment or the retraction `turtle` holds writes, named `<urn:cascade:this-judgment>` in it: under a
- * new name, at the time now, and for a verdict that says something of its members' versions, naming the version each was at.
+ * new name, at the time now, and as the pod keeps it (`judgmentFiled`, N16), so that a refusal is told before a step is taken.
  *
- * @throws Error when the Turtle is none, holds more or less than one judgment or retraction, or names a member the pod
- *   holds no version of.
+ * @throws Error when the Turtle is none, holds more or less than one judgment or retraction, or `judgmentFiled` refuses it.
  */
 async function prepared(
   { core, newStore, address, time }: Judging,
@@ -125,43 +86,16 @@ async function prepared(
         !(
           s.value === name &&
           (p.value === USED ||
-            p.value === DERIVED_FROM ||
             p.value === GENERATED_AT ||
             p.value === STARTED_AT)
         ),
     );
-  const of = (predicate: string): string[] =>
-    named.flatMap(([s, p, o]) =>
-      s.value === name && p.value === predicate && o.termType === "NamedNode"
-        ? [o.value]
-        : [],
-    );
-  const used: Triple[] = [];
-  const verdicts = of(`${CASCADE}verdict`);
-  const members = of(`${PROV}hadMember`);
-  const [only] = members;
-  const overFinding =
-    verdicts.length === 1 &&
-    verdicts[0] === `${CASCADE}Same` &&
-    members.length === 1 &&
-    only !== undefined &&
-    (await isFinding(core, only));
-  if (!overFinding && verdicts.some((verdict) => SEEN.has(verdict))) {
-    const current = await currentVersions(core, members);
-    for (const member of members) {
-      const version = current.get(member);
-      if (version === undefined)
-        throw new Error(
-          `${member} has no current version in the pod: it names no record or revision`,
-        );
-      used.push([judgment, iri(DERIVED_FROM), iri(version)]);
-    }
-  }
+  const filed = await judgmentFiled(core, named);
+  if ("refused" in filed) throw new Error(filed.refused);
   return {
     name,
     triples: [
-      ...named,
-      ...used,
+      ...filed.triples,
       [
         judgment,
         iri(retracting ? STARTED_AT : GENERATED_AT),

@@ -435,6 +435,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       const importSaved = PERFORMERS.import;
       assert.ok(importSaved);
       const pods: Triple[][] = [];
+      const podLayout = await layout();
       for (const perform of [
         (pod: CorePod, time: StoryTime) =>
           importSaved(pod, step, {
@@ -444,6 +445,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
             activities: new Map(),
             time,
             newStore,
+            layout: podLayout,
             writer: () => pod,
           }),
         (pod: CorePod, time: StoryTime) => {
