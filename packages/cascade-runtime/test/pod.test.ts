@@ -239,6 +239,19 @@ function verdict(
   );
 }
 
+/** The owner's Acknowledged of the warning kinds given, over what the warning is about. */
+function acknowledged(
+  by: Pod,
+  kinds: readonly string[],
+  members: readonly string[],
+): string {
+  return judgment(by, [
+    "cascade:verdict cascade:Acknowledged",
+    ...kinds.map((kind) => `cascade:answersWarningOfKind cascade:${kind}`),
+    ...members.map((member) => `prov:hadMember <${member}>`),
+  ]);
+}
+
 /** Alex's first entry session as the owner of `of` enters it; `session` names another act than the kit's. */
 async function entryFor(of: Pod, session?: string): Promise<string> {
   const people = await triplesOf(`${KIT}/scripted-input/people.ttl`);
@@ -1265,6 +1278,210 @@ describe("Recording the owner's judgment · pod.judge()", () => {
     });
   });
 
+  describe("given an acknowledgement of a warning", () => {
+    const KIND = "ClockBehind";
+    const PAIR_KIND = "MatcherJudgmentsNoLongerReached";
+    const elsewhere = "urn:uuid:3f6c2a8e-7d41-4b9a-a5e2-0c8d9b1f4e67";
+    const another = "urn:uuid:5a1d7c3e-2b94-4e08-9f6a-1d3c8e7b2a40";
+
+    it("files one of a kind of a pair over exactly the pair's two records", async () => {
+      const filed = await owned.judge(
+        acknowledged(owned, [PAIR_KIND], [record, elsewhere]),
+      );
+      assert.equal(filed.refused, undefined);
+    });
+
+    it("files one of a kind the vocabulary names that this runtime has no code for", async () => {
+      const at = join(pods, "sixth-kind");
+      await cp((await alexPod()).folder, at, { recursive: true });
+      const ontology = "ontologies/cascade.ttl";
+      const { vocabulary } = kept;
+      const sixth: Files = {
+        iri: vocabulary.iri,
+        write: (path, bytes) => vocabulary.write(path, bytes),
+        list: (folder) => vocabulary.list(folder),
+        read: async (path) => {
+          const bytes = await vocabulary.read(path);
+          return bytes !== undefined &&
+            (path === ontology || path === vocabulary.iri + ontology)
+            ? new TextEncoder().encode(
+                `${new TextDecoder().decode(bytes)}\n<${CASCADE}SixthKind> <http://www.w3.org/2004/02/skos/core#inScheme> <${CASCADE}FindingForReviewKinds> .\n`,
+              )
+            : bytes;
+        },
+      };
+      const turtle = (by: Pod) =>
+        judgment(by, [
+          "cascade:verdict cascade:Acknowledged",
+          "cascade:answersWarningOfKind cascade:SixthKind",
+          `prov:hadMember <${elsewhere}>`,
+        ]);
+      const plain = await openPodWith(kept, at);
+      try {
+        await assert.rejects(plain.judge(turtle(plain)), /kind of warning/);
+      } finally {
+        await plain.close();
+      }
+      const named = await openPodWith({ ...kept, vocabulary: sixth }, at);
+      try {
+        assert.equal(await named.checkJudgment(turtle(named)), undefined);
+        assert.equal((await named.judge(turtle(named))).refused, undefined);
+      } finally {
+        await named.close();
+      }
+    });
+
+    it("refuses, saying the vocabulary names no warning kinds, an Acknowledged on a vocabulary that names none", async () => {
+      const at = join(pods, "no-kinds");
+      await cp((await alexPod()).folder, at, { recursive: true });
+      const ontology = "ontologies/cascade.ttl";
+      const { vocabulary } = kept;
+      const none: Files = {
+        iri: vocabulary.iri,
+        write: (path, bytes) => vocabulary.write(path, bytes),
+        list: (folder) => vocabulary.list(folder),
+        read: async (path) => {
+          const bytes = await vocabulary.read(path);
+          return bytes !== undefined &&
+            (path === ontology || path === vocabulary.iri + ontology)
+            ? new TextEncoder().encode(
+                new TextDecoder()
+                  .decode(bytes)
+                  .replaceAll(
+                    "FindingForReviewKinds",
+                    "FindingForReviewKindsGone",
+                  ),
+              )
+            : bytes;
+        },
+      };
+      const bare = await openPodWith({ ...kept, vocabulary: none }, at);
+      try {
+        const turtle = acknowledged(bare, [KIND], [elsewhere]);
+        await assert.rejects(bare.judge(turtle), /names no warning kinds/);
+        assert.match(
+          (await bare.checkJudgment(turtle)) ?? "",
+          /names no warning kinds/,
+        );
+      } finally {
+        await bare.close();
+      }
+    });
+
+    it("throws, writing nothing, for a verdict other than an Acknowledged that names a kind of warning", async () => {
+      const held = await filesIn(join(pods, "judged"));
+      for (const verdictName of ["Same", "Different", "Erroneous"]) {
+        const turtle = judgment(owned, [
+          `cascade:verdict cascade:${verdictName}`,
+          `cascade:answersWarningOfKind cascade:${KIND}`,
+          `prov:hadMember <${record}>`,
+          `prov:hadMember <${elsewhere}>`,
+        ]);
+        await assert.rejects(owned.judge(turtle), /only an Acknowledged/);
+        assert.match(
+          (await owned.checkJudgment(turtle)) ?? "",
+          /only an Acknowledged/,
+          verdictName,
+        );
+      }
+      assert.deepEqual(await filesIn(join(pods, "judged")), held);
+    });
+
+    it("throws, writing nothing, for an Acknowledged of a kind of a pair that does not name exactly two records", async () => {
+      const held = await filesIn(join(pods, "judged"));
+      for (const [what, members] of [
+        ["one record", [record]],
+        ["three records", [record, elsewhere, another]],
+      ] as const)
+        for (const kind of [
+          PAIR_KIND,
+          "DifferentResultValuesAtOneInstant",
+          "DifferentResultUnitsAtOneInstant",
+        ]) {
+          const turtle = acknowledged(owned, [kind], members);
+          await assert.rejects(owned.judge(turtle), /exactly the pair/);
+          assert.match(
+            (await owned.checkJudgment(turtle)) ?? "",
+            /exactly the pair/,
+            `${what} of ${kind}`,
+          );
+        }
+      assert.deepEqual(await filesIn(join(pods, "judged")), held);
+    });
+
+    it("files one of a kind over the records it is about", async () => {
+      const filed = await owned.judge(acknowledged(owned, [KIND], [record]));
+      assert.equal(filed.refused, undefined);
+      assert.deepEqual(
+        await select(
+          owned,
+          `SELECT ?kind ?member WHERE { <${filed.judgment ?? ""}> cascade:answersWarningOfKind ?kind ; prov:hadMember ?member }`,
+        ),
+        [{ kind: `${CASCADE}${KIND}`, member: record }],
+      );
+    });
+
+    it("throws, writing nothing, for an Acknowledged that names no one kind of warning or a member that is no IRI, a version, a revision or a judgment", async () => {
+      const [{ revision = "" } = {}] = await select(
+        owned,
+        `SELECT ?revision WHERE { ?revision cascade:revisionOf <${record}> }`,
+      );
+      const version = current[0]?.version ?? "";
+      assert.ok(revision && version && judged.judgment);
+      const held = await filesIn(join(pods, "judged"));
+      for (const [what, turtle, reason] of [
+        ["no kind", acknowledged(owned, [], [record]), /kind/],
+        [
+          "a kind that is no kind of warning",
+          acknowledged(owned, ["Same"], [record]),
+          /kind/,
+        ],
+        [
+          "two kinds",
+          acknowledged(owned, [KIND, "SourceReportedOlderStates"], [record]),
+          /kind/,
+        ],
+        [
+          "a kind written as text",
+          judgment(owned, [
+            "cascade:verdict cascade:Acknowledged",
+            `cascade:answersWarningOfKind "${CASCADE}${KIND}"`,
+            `prov:hadMember <${record}>`,
+          ]),
+          /kind/,
+        ],
+        [
+          "a member written as text",
+          judgment(owned, [
+            "cascade:verdict cascade:Acknowledged",
+            `cascade:answersWarningOfKind cascade:${KIND}`,
+            'prov:hadMember "the record"',
+          ]),
+          /IRI/,
+        ],
+        [
+          "a version",
+          acknowledged(owned, [KIND], [record, version]),
+          /version/,
+        ],
+        [
+          "a revision",
+          acknowledged(owned, [KIND], [record, revision]),
+          /revision/,
+        ],
+        [
+          "a judgment",
+          acknowledged(owned, [KIND], [record, judged.judgment ?? ""]),
+          /judgment/,
+        ],
+      ] as const) {
+        await assert.rejects(owned.judge(turtle), reason, what);
+        assert.match((await owned.checkJudgment(turtle)) ?? "", reason, what);
+      }
+      assert.deepEqual(await filesIn(join(pods, "judged")), held);
+    });
+  });
+
   describe("given records imported from documents", () => {
     let imported: Pod;
     let at: string;
@@ -1327,6 +1544,50 @@ describe("Recording the owner's judgment · pod.judge()", () => {
         documents.map(({ from }) => from).sort(),
       );
       assert.deepEqual(versions, []);
+    });
+
+    it("names the same documents for an Acknowledged of those records, and none for a document it names itself", async () => {
+      const [first, other] = documents;
+      const filed = await imported.judge(
+        acknowledged(
+          imported,
+          ["ClockBehind"],
+          [first?.record ?? "", other?.record ?? "", first?.from ?? ""],
+        ),
+      );
+      assert.equal(filed.refused, undefined);
+      assert.deepEqual(
+        (
+          await select(
+            imported,
+            `SELECT ?document WHERE { <${filed.judgment ?? ""}> prov:wasDerivedFrom ?document } ORDER BY ?document`,
+          )
+        ).map(({ document }) => document),
+        documents.map(({ from }) => from).sort(),
+      );
+    });
+
+    it("throws, writing nothing, for an Acknowledged that names a matcher judgment assertion", async () => {
+      const [{ assertion = "" } = {}] = await select(
+        imported,
+        `SELECT ?assertion WHERE { ?assertion a cascade:MatcherJudgmentAssertion } LIMIT 1`,
+      );
+      assert.ok(assertion, "the matcher asserted some judgment");
+      const held = await filesIn(at);
+      const turtle = acknowledged(
+        imported,
+        ["ClockBehind"],
+        [documents[0]?.record ?? "", assertion],
+      );
+      await assert.rejects(
+        imported.judge(turtle),
+        /matcher judgment assertion/,
+      );
+      assert.match(
+        (await imported.checkJudgment(turtle)) ?? "",
+        /matcher judgment assertion/,
+      );
+      assert.deepEqual(await filesIn(at), held);
     });
 
     it("files a person's replacement of a person's judgment", () => {
@@ -1785,11 +2046,10 @@ describe("Recording the owner's judgment · pod.judge()", () => {
   describe("given a finding", () => {
     let finding: string;
     let holder: Pod;
-    let same: Done;
-    let versions: Rows;
+    let at: string;
 
     before(async () => {
-      const at = join(pods, "a-finding");
+      at = join(pods, "a-finding");
       await (await openPodWith(kept, at)).close();
       const content = (subject: string): Triple[] => [
         [iri(subject), iri(`${RDF}type`), iri(`${CASCADE}FindingForReview`)],
@@ -1810,27 +2070,35 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, ntriples(content(finding)));
       holder = await openPodWith(kept, at);
-      same = await holder.judge(verdict(holder, "Same", [finding]));
-      versions = await select(
-        holder,
-        `SELECT ?version WHERE { <${same.judgment ?? ""}> prov:wasDerivedFrom ?version }`,
-      );
     });
 
     after(async () => {
       await holder.close();
     });
 
-    it("files a Same whose only member is the finding, citing no version", () => {
-      assert.ok(same.judgment);
-      assert.deepEqual(versions, []);
-    });
-
-    it("throws for a Different about the finding", async () => {
-      await assert.rejects(
-        holder.judge(verdict(holder, "Different", [finding])),
-        (error: Error) => error.message.includes(finding),
-      );
+    it("throws, writing nothing, for a judgment of any verdict that names the finding", async () => {
+      const elsewhere = "urn:uuid:3f6c2a8e-7d41-4b9a-a5e2-0c8d9b1f4e67";
+      const held = await filesIn(at);
+      for (const [what, turtle] of [
+        ["a Same of it alone", verdict(holder, "Same", [finding])],
+        ["a Different of it", verdict(holder, "Different", [finding])],
+        [
+          "an Erroneous of it and another",
+          verdict(holder, "Erroneous", [elsewhere, finding]),
+        ],
+        [
+          "an Acknowledged of its kind",
+          acknowledged(holder, ["MatcherJudgmentsNoLongerReached"], [finding]),
+        ],
+      ] as const) {
+        const reason = (error: Error) => error.message.includes(finding);
+        await assert.rejects(holder.judge(turtle), reason, what);
+        assert.ok(
+          ((await holder.checkJudgment(turtle)) ?? "").includes(finding),
+          what,
+        );
+      }
+      assert.deepEqual(await filesIn(at), held);
     });
   });
 });

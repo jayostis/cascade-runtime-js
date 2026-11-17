@@ -1086,6 +1086,12 @@ export class CorePod {
     );
   }
 
+  /** The kinds of finding for review the vocabulary names, which an Acknowledged may answer. */
+  async findingKinds(): Promise<ReadonlySet<string>> {
+    const { vocabulary, newStore } = this.#options;
+    return (await tableTerms(vocabulary, newStore)).findingKinds;
+  }
+
   /**
    * `select`, read from the build kept across steps, which a pod just opened has none of and is built whole for it: so
    * the step after, an import's, continues from that build and does not read and derive the pod again. Where the build
