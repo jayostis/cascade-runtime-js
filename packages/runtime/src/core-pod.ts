@@ -121,10 +121,11 @@ export interface CorePodOptions {
   readonly besidePod?: Files;
 }
 
-/** Where the derived state of the build under the lens is kept beside the pod. */
-function builtBeside(lens: string): string {
-  return `build-${lens}.nt`;
-}
+/**
+ * Where the build's derived state is kept beside the pod: one name whatever the pod or its lens, as a sealed pod's
+ * names say nothing of what it holds.
+ */
+const BUILT_BESIDE = "build.nt";
 
 function hex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -1848,9 +1849,7 @@ export class CorePod {
       store.free?.();
     }
     if (named !== inputsHash) return undefined;
-    const kept = await besidePod
-      .read(builtBeside(build.lens))
-      .catch(() => undefined);
+    const kept = await besidePod.read(BUILT_BESIDE).catch(() => undefined);
     if (kept === undefined) return undefined;
     const end = kept.indexOf(0x0a);
     if (end < 0) return undefined;
@@ -1881,11 +1880,7 @@ export class CorePod {
    * Keeps the build's derived state beside the pod under the hash of what it read, naming the files of the pod its
    * queries wrote; a failure keeps nothing, and the pod is built whole when next opened.
    */
-  async #keepBeside(
-    lens: string,
-    inputsHash: string,
-    built: KeptBuild,
-  ): Promise<void> {
+  async #keepBeside(inputsHash: string, built: KeptBuild): Promise<void> {
     const { besidePod, layout } = this.#options;
     if (besidePod === undefined) return;
     const views = new Set(layout.views.map(({ file }) => file));
@@ -1901,7 +1896,7 @@ export class CorePod {
     const bytes = new Uint8Array(header.length + derived.length);
     bytes.set(header);
     bytes.set(derived, header.length);
-    await besidePod.write(builtBeside(lens), bytes).catch(() => undefined);
+    await besidePod.write(BUILT_BESIDE, bytes).catch(() => undefined);
   }
 
   async #rebuild(
@@ -1948,7 +1943,7 @@ export class CorePod {
       if (inputsHash !== undefined) {
         const keeping = built;
         await timedAside("core-pod.rebuild.keepBeside", () =>
-          this.#keepBeside(build.lens, inputsHash, keeping),
+          this.#keepBeside(inputsHash, keeping),
         );
       }
       await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
