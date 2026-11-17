@@ -88,14 +88,48 @@ async function isFinding(
 }
 
 /**
+ * Why `name`, the name a judgment (`retraction` false) or a retraction is filed under, is no name for it: the pod holds
+ * that IRI as something else already, which includes a retraction under a judgment's name and the reverse. Nothing when
+ * the pod holds it as no more than the same kind, as a retry meets, or does not hold it.
+ */
+async function nameTaken(
+  read: Pick<CorePod, "select">,
+  name: string,
+  retraction: boolean,
+): Promise<string | undefined> {
+  const { rows } =
+    await read.select(`PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}>
+      SELECT ?judgment ?retraction ?stated WHERE {
+        BIND (EXISTS { <${name}> a cascade:Judgment } AS ?judgment)
+        BIND (EXISTS { <${name}> prov:invalidated ?target } AS ?retraction)
+        BIND (EXISTS { <${name}> ?p ?o } AS ?stated)
+      }`);
+  const [row] = rows;
+  const is = (variable: string): boolean =>
+    row?.get(variable)?.value === "true";
+  const [same, other] = retraction
+    ? [is("retraction"), is("judgment")]
+    : [is("judgment"), is("retraction")];
+  return is("stated") && (!same || other)
+    ? `${name} is the name of something else in the pod already: a judgment is named with an IRI nothing else has`
+    : undefined;
+}
+
+/**
  * A person's judgment or retraction as the pod keeps it (N16), the one copy every way a judgment is filed shares: the
- * reason it is refused, for replacing or retracting a matcher's judgment or, for a verdict that says something of its
- * members' versions, for a member with no current version; else its triples with the document each member was shown
- * from, and none the input states for the judgment itself. `changed` is false when those are the triples it was given.
+ * reason it is refused, for a name the pod gives something else, for replacing or retracting a matcher's judgment or,
+ * for a member that is an entry of a view, an IRI under `views`, which no judgment is of, or for a verdict that says
+ * something of its members' versions, for a member that is a finding; else its triples with the document each member was
+ * shown from, and none the input states for the judgment itself. A member the pod does not hold is kept: it names no
+ * document, and a restore or a rebuild may bring it back. `changed` is false when those are the triples it was given.
+ * `stated` reads the pod's files alone, what a name is taken by, so that a judgment with nothing to read the matcher's
+ * view for builds none.
  */
 export async function judgmentFiled(
   read: Pick<CorePod, "select">,
   triples: readonly Triple[],
+  views: string,
+  stated: Pick<CorePod, "select">,
 ): Promise<{ refused: string } | { triples: Triple[]; changed: boolean }> {
   const subjectsOf = (predicate: string, object?: string): string[] =>
     triples.flatMap(([s, p, o]) =>
@@ -103,6 +137,13 @@ export async function judgmentFiled(
         ? [s.value]
         : [],
     );
+  const [judged] = subjectsOf(`${RDF}type`, `${CASCADE}Judgment`);
+  const [retracting] = subjectsOf(`${PROV}invalidated`);
+  const name = judged ?? retracting;
+  if (name !== undefined) {
+    const taken = await nameTaken(stated, name, judged === undefined);
+    if (taken !== undefined) return { refused: taken };
+  }
   for (const subject of new Set([
     ...subjectsOf(DCT_REPLACES),
     ...subjectsOf(`${PROV}invalidated`),
@@ -110,7 +151,7 @@ export async function judgmentFiled(
     const refused = await matcherJudgmentTouched(read, triples, subject);
     if (refused !== undefined) return { refused };
   }
-  const [judgment] = subjectsOf(`${RDF}type`, `${CASCADE}Judgment`);
+  const judgment = judged;
   if (judgment === undefined) return { triples: [...triples], changed: false };
   const of = (predicate: string): string[] =>
     triples.flatMap(([s, p, o]) =>
@@ -121,6 +162,11 @@ export async function judgmentFiled(
   );
   const verdicts = of(`${CASCADE}verdict`);
   const members = of(`${PROV}hadMember`);
+  const entry = members.find((member) => member.startsWith(views));
+  if (entry !== undefined)
+    return {
+      refused: `${entry} is a view entry: a judgment is of records, never entries`,
+    };
   const [only] = members;
   const overFinding =
     verdicts.length === 1 &&
@@ -132,9 +178,9 @@ export async function judgmentFiled(
   if (!overFinding && verdicts.some(sawVersions)) {
     const shown = await documentsShownFrom(read, members);
     for (const member of members)
-      if (!shown.has(member))
+      if (!shown.has(member) && (await isFinding(read, member)))
         return {
-          refused: `${member} has no current version in the pod: it names no record or revision`,
+          refused: `${member} is a finding for review: a Same may name one alone, and no other verdict may name one`,
         };
     const documents = new Set([...shown.values()].flatMap((from) => [...from]));
     for (const document of documents)

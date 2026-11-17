@@ -216,7 +216,12 @@ interface Says {
 
 interface Rows {
   readonly answers: Readonly<
-    Record<string, { readonly rows: readonly Record<string, string>[] }>
+    Record<
+      string,
+      {
+        readonly rows: readonly Record<string, string | readonly string[]>[];
+      }
+    >
   >;
   readonly views: ReadonlyMap<string, readonly Says[]>;
   readonly folder: string;
@@ -240,7 +245,10 @@ interface ExplorerShape {
 
 type Answers = Record<
   string,
-  Record<string, { rows: readonly Record<string, string>[] }>
+  Record<
+    string,
+    { rows: readonly Record<string, string | readonly string[]>[] }
+  >
 >;
 
 /** What a built example's site says of its questions and views, or nothing when it is not Alex Rivera's or lacks them. */
@@ -290,7 +298,7 @@ const phrase = (iri: string): string => prefixed(iri) ?? iri;
  * column it labels. A row omits a variable it leaves unbound, so the first row alone misses some.
  */
 function shownColumns(
-  rows: readonly Readonly<Record<string, string>>[],
+  rows: readonly Readonly<Record<string, string | readonly string[]>>[],
 ): string[] {
   const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
   return columns.filter(
@@ -303,10 +311,14 @@ function shownColumns(
 }
 
 const cellOf = (
-  row: Readonly<Record<string, string>>,
+  row: Readonly<Record<string, string | readonly string[]>>,
   column: string,
 ): Html => {
-  const said = row[`${column}Label`] ?? phrase(row[column] ?? "");
+  const label = row[`${column}Label`];
+  const said =
+    label === undefined
+      ? [row[column] ?? ""].flat().map(phrase).join("; ")
+      : [label].flat().join("; ");
   return new Html(
     said
       .split(/(?<=[/#])/)

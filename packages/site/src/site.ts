@@ -244,6 +244,7 @@ export class Site {
     const read = async (path: string): Promise<VocabularyQuery> => ({
       path,
       text: await readText(vocabulary, path),
+      lists: [],
     });
     const pipeline = new Map<string, PipelineStep[]>();
     for (const [each, built] of builds) {

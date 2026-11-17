@@ -373,6 +373,31 @@ describe("Every query of the vocabulary has a page · queryPages(), queriesSecti
     });
   });
 
+  describe("given answer rows with a list column, kept as an array", () => {
+    it("shows each value of the list, one after another in its cell", async () => {
+      const files = await vocabulary();
+      const tree = await build(
+        files,
+        alex({
+          "pod/My vaccines": {
+            key: "k",
+            rows: [
+              {
+                vaccine: "https://pod.example/v1",
+                given: ["2025-10-15", "2025-10-16"],
+              },
+            ],
+          },
+        }),
+      );
+      const page = [...tree.keys()].find((path) =>
+        read(tree, path).includes("2025-10-15"),
+      );
+      assert.ok(page, "a page shows the row");
+      assert.match(read(tree, page), /2025-10-15; 2025-10-16/);
+    });
+  });
+
   describe("given a wide table of answer rows", () => {
     it("scrolls inside its own box, its columns kept from breaking per character", () => {
       assert.match(STYLESHEET, /table\.rows\s*\{[^}]*width:\s*max-content/);

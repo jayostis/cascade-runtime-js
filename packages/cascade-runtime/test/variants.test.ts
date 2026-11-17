@@ -24,7 +24,13 @@ import {
 import { Answers } from "../src/answers.js";
 import { answersToPublish } from "../src/node/published.js";
 import { answersBeside, partsOf } from "../src/node/resolved.js";
-import { keptPod, openPodWith, type Parts, type Pod } from "../src/pod.js";
+import {
+  keptPod,
+  openPodWith,
+  type Parts,
+  type Pod,
+  textRow,
+} from "../src/pod.js";
 import {
   Tables,
   type VariantAsked,
@@ -312,8 +318,10 @@ async function filesOf(folder: string): Promise<string[]> {
 
 /** The gene of the variant each report is of, with the report's verdict: what the cases above name. */
 async function verdictsByGene(pod: Pod): Promise<Record<string, string>> {
-  const variants = await pod.ask("pod/My genetic variants");
-  const reports = await pod.ask("pod/What each report says of a variant");
+  const variants = (await pod.ask("pod/My genetic variants")).map(textRow);
+  const reports = (await pod.ask("pod/What each report says of a variant")).map(
+    textRow,
+  );
   const geneOf = (report?: string): string => {
     const variant = reports.find((each) => each.report === report)?.variant;
     return variants.find((each) => each.variant === variant)?.gene ?? "";

@@ -1186,10 +1186,15 @@ describe("Checking a citation of a view entry · checkCitation(), podRowsSource(
       {
         subject: PERSON,
         subjectLabel: "The person this pod is about",
-        dateOfBirth: "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc 1957-09-30",
-        dateOfDeath: "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc 2024-03-04",
-        administrativeGender:
+        dateOfBirth: [
+          "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc 1957-09-30",
+        ],
+        dateOfDeath: [
+          "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc 2024-03-04",
+        ],
+        administrativeGender: [
           "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc female",
+        ],
       },
     ],
   );

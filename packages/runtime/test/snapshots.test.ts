@@ -921,4 +921,36 @@ describe("Keeping a writer's set hash between sessions · Head.set", () => {
       }
     });
   });
+
+  /**
+   * A person's Same of two records the pod does not hold, filed through `judge()` and arriving from another writer.
+   * @rule runtime/naming.feature N10
+   */
+  describe("given a person's Same of records the pod does not hold", () => {
+    it("is kept by `judge()` and by `receive()`, as the one file under its own name", async () => {
+      const { local, replayed: story } = await cleosReplay();
+      const name = "urn:uuid:2b8e5d71-0c46-4a93-9f1d-7e3a6c0b4d58";
+      const person = "https://pod.example/profile/card.ttl#me";
+      const path = local.layout.place(`${CASCADE}Judgment`).path(name);
+      const bytes = new TextEncoder().encode(`@prefix cascade: <${CASCADE}> .
+@prefix prov: <${PROV}> .
+<${name}> a cascade:Judgment ;
+  cascade:verdict cascade:Same ;
+  prov:hadMember <urn:uuid:0f6c2a9e-4d71-4b38-9e05-c8a3f2d61b7e>, <urn:uuid:c41d7e90-2b6a-4f3c-8d15-a9e0b7f26c48> ;
+  prov:wasAttributedTo <${person}> .
+<${person}> a prov:Person .
+`);
+      const head = await replayHead();
+      const judged = await (
+        await cleosWriter(await copied(story.pod), head)
+      ).judge({ name: path, base: story.pod.iri + path, bytes });
+      const received = await (
+        await cleosWriter(await copied(story.pod), head)
+      ).receive(await copied(story.pod, { [path]: bytes }));
+      assert.equal(judged.refused, undefined);
+      assert.deepEqual(judged.wrote, [path]);
+      assert.equal(received.refused, undefined);
+      assert.ok(received.arrived?.includes(path));
+    });
+  });
 });

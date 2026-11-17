@@ -30,6 +30,7 @@ import {
   migrateRuleListVersions,
   openWithTables,
   podCodes,
+  podRows,
   releaseRetractions,
   runMatcher,
 } from "./matcher.js";
@@ -1060,6 +1061,11 @@ export class CorePod {
     return timed("core-pod.matcherSelect", async () =>
       (await this.#matcherView()).select(query),
     );
+  }
+
+  /** The query's rows over the pod's RDF files but those the build writes, with nothing derived: the vocabulary is not read. */
+  selectStated(query: string): Promise<Rows> {
+    return podRows(this.#options, query);
   }
 
   /**

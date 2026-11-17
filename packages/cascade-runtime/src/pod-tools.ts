@@ -10,7 +10,7 @@ import {
   type LabChange,
 } from "./changes.js";
 import { checkInput, type InputSchema } from "./check.js";
-import type { Row } from "./pod.js";
+import { type Row, textRow } from "./row-text.js";
 import type {
   Answer,
   ProposalCheck,
@@ -165,11 +165,13 @@ export async function entriesNamed(
   wanted: readonly string[],
   members: readonly Row[],
 ): Promise<Set<string>> {
-  const pairs = members.flatMap(({ entry, record }) =>
-    entry === undefined
-      ? []
-      : [{ entry, ...(record === undefined ? {} : { record }) }],
-  );
+  const pairs = members
+    .map(textRow)
+    .flatMap(({ entry, record }) =>
+      entry === undefined
+        ? []
+        : [{ entry, ...(record === undefined ? {} : { record }) }],
+    );
   const found = new Set<string>();
   for (const each of wanted) {
     const entry = HANDLE.test(each) ? await entryOfHandle(each, pairs) : each;
@@ -698,7 +700,7 @@ export const TOOLS: readonly PodTool[] = (
         );
         const wanted = await entriesNamed(entries, provenance!.rows);
         const rows = all!.rows.filter(
-          ({ entry }) => entry !== undefined && wanted.has(entry),
+          ({ entry }) => typeof entry === "string" && wanted.has(entry),
         );
         return {
           question,

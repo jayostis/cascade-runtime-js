@@ -40,6 +40,7 @@ import {
   SEALED_INDEX,
   SealedIndex,
   type Triple,
+  valuesOf,
 } from "@cascade-runtime/runtime";
 import {
   checkouts,
@@ -72,7 +73,14 @@ import { answersBeside, resolved } from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
 import { samplesOf } from "../src/node/samples.js";
 // A browser's `openPod` reads published answers with `keptPod` and `withLookups`, which a Node test cannot call as a page does.
-import { keptPod, openPodWith, type Parts } from "../src/pod.js";
+import {
+  keptPod,
+  openPodWith,
+  type Parts,
+  type Row,
+  type TextRow,
+  textRow,
+} from "../src/pod.js";
 // The race of two openings is in `podKey`, which the public `openPod` does not let two callers reach at once.
 import { podKey } from "../src/encrypted.js";
 import { settled } from "./settled.js";
@@ -94,7 +102,7 @@ const UUID4 =
 const SESSION = "5c5734fb-433f-4ed1-8de7-1ad16d7d21cc";
 
 type Looked = Awaited<ReturnType<Pod["look"]>>;
-type Rows = Awaited<ReturnType<Pod["ask"]>>;
+type Rows = TextRow[];
 type Done = Awaited<ReturnType<Pod["enter"]>>;
 type Imported = Awaited<ReturnType<Pod["import"]>>;
 
@@ -239,11 +247,12 @@ async function entryFor(of: Pod, session?: string): Promise<string> {
 
 async function allergens(of: Pod): Promise<string[]> {
   return (await of.ask(QUESTION))
+    .map(textRow)
     .map(({ allergenName }) => allergenName ?? "")
     .sort();
 }
 
-function select(of: Pod, query: string): Promise<Rows> {
+function select(of: Pod, query: string): Promise<TextRow[]> {
   return of.ask({ query: `${PREFIXES}${query}` });
 }
 
@@ -408,7 +417,9 @@ describe("Opening a pod · openPod()", () => {
 
   it("gives an owner and files that all lie under its address", async () => {
     assert.ok(fresh.owner.startsWith(fresh.address));
-    const rows = await fresh.ask("pod/Which file states each thing");
+    const rows = (await fresh.ask("pod/Which file states each thing")).map(
+      textRow,
+    );
     assert.ok(rows.length > 0);
     for (const { file } of rows)
       assert.ok(file?.startsWith(fresh.address), `${file}`);
@@ -575,7 +586,7 @@ describe("Looking into an export before importing · pod.look()", () => {
 describe("Importing a health export · pod.import()", () => {
   let waiting: Pod;
   let imported: Imported;
-  let shown: Rows;
+  let shown: Row[];
   let afterClaim: string[];
   let matched: Done;
   let profile: string;
@@ -966,12 +977,36 @@ describe("Asking a pod questions · pod.ask()", () => {
     await alex.close();
   });
 
-  it("answers a named question with rows of plain strings", async () => {
+  it("answers a named question with a string for each column and an array of strings for each column the vocabulary declares a list", async () => {
     const rows = await alex.ask(QUESTION);
     assert.ok(rows.length > 0);
-    for (const row of rows)
+    for (const row of rows) {
       for (const [column, value] of Object.entries(row))
-        assert.equal(typeof value, "string", column);
+        if (column === "sources" || column === "reactionsByRecord") {
+          assert.ok(Array.isArray(value), column);
+          assert.ok(
+            value.length > 0 && value.every((each) => each.startsWith("urn:")),
+            `${column}: ${JSON.stringify(value)}`,
+          );
+        } else assert.equal(typeof value, "string", column);
+    }
+  });
+
+  it("gives a query of its own's columns as strings, whatever their names", async () => {
+    const [row] = await alex.ask({
+      query: `SELECT ("a; urn:b" AS ?sources) WHERE {}`,
+    });
+    assert.equal(row?.sources, "a; urn:b");
+  });
+
+  it("ends a list column's value at every declared separator, so a value's own '; ' stays in it", () => {
+    const records = { column: "x", separator: "\u001f" };
+    assert.deepEqual(
+      valuesOf("urn:a 5 mg; as needed, daily\u001furn:b 10 mg", records),
+      ["urn:a 5 mg; as needed, daily", "urn:b 10 mg"],
+    );
+    assert.deepEqual(valuesOf("urn:a one", records), ["urn:a one"]);
+    assert.deepEqual(valuesOf("", records), []);
   });
 
   it("runs the app's own SELECT under the lens named, and returns none of the `export` lens's rows when none is named", async () => {
@@ -1206,36 +1241,317 @@ describe("Recording the owner's judgment · pod.judge()", () => {
     });
   });
 
-  describe("given Turtle it cannot file", () => {
-    it("throws when the judgment has any name but `urn:cascade:this-judgment`", async () => {
+  describe("given a judgment that names itself, and states its time and its author", () => {
+    const named = "urn:uuid:9e1d1f66-8f43-4a8e-9c7b-2f0c5e6d7a81";
+    const stated = "2026-03-04T07:00:00Z";
+    const author = "urn:uuid:5a1c7e30-2b94-4d68-8f13-6e0a9c2d4b75";
+    const at = (): string => join(pods, "judged");
+    /** A judgment by someone who is not the pod's owner, whose name and time (when given) the app minted. */
+    const byAnother = (
+      name: string,
+      time?: string,
+      kind = "Erroneous",
+      role = "PatientRole",
+      agent = author,
+    ): string => `${PREFIXES}
+<${name}> a cascade:Judgment ; cascade:verdict cascade:${kind} ; prov:hadMember <${record}> ;
+    ${time === undefined ? "" : `prov:generatedAtTime ${time} ;`}
+    prov:wasAttributedTo <${author}> ;
+    prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${agent}> ; prov:hadRole cascade:${role} ] ] .
+<${author}> a prov:Person .`;
+    const dateTime = (value: string): string =>
+      `"${value}"^^<http://www.w3.org/2001/XMLSchema#dateTime>`;
+    const stating = (name: string) =>
+      select(
+        owned,
+        `SELECT ?made ?author WHERE { <${name}> prov:generatedAtTime ?made ; prov:wasAttributedTo ?author }`,
+      );
+    let first: Done;
+
+    before(async () => {
+      first = await owned.judge(byAnother(named, dateTime(stated)));
+    });
+
+    it("files it under that name, returns it, and keeps its time and its author as given", async () => {
+      assert.equal(first.refused, undefined);
+      assert.equal(first.judgment, named);
+      assert.equal(first.wrote.length, 1);
+      assert.deepEqual(await stating(named), [{ made: stated, author }]);
+    });
+
+    it("writes nothing for a retry, with its time or without, and the pod's files are the same", async () => {
+      const held = await filesIn(at());
+      for (const [name, time] of [
+        ["as it was", dateTime(stated)],
+        ["with no time", undefined],
+        ["at another time", dateTime("2026-03-05T07:00:00Z")],
+      ] as const) {
+        const again = await owned.judge(byAnother(named, time));
+        assert.deepEqual(
+          [again.refused, again.wrote, again.judgment],
+          [undefined, [], named],
+          name,
+        );
+        assert.deepEqual(await filesIn(at()), held, name);
+      }
+      assert.deepEqual(await stating(named), [{ made: stated, author }]);
+    });
+
+    it("refuses another judgment under a name the pod holds, writing nothing", async () => {
+      const held = await filesIn(at());
+      const other = await owned.judge(byAnother(named, undefined, "Same"));
+      assert.match(other.refused ?? "", /holds already/);
+      assert.deepEqual(await filesIn(at()), held);
+    });
+
+    it("refuses a retry that states another role or another agent for its author, writing nothing", async () => {
+      const held = await filesIn(at());
+      for (const [name, turtle] of [
+        [
+          "another role",
+          byAnother(named, undefined, "Erroneous", "ModelProposerRole"),
+        ],
+        [
+          "another agent",
+          byAnother(named, undefined, "Erroneous", "PatientRole", record),
+        ],
+      ] as const) {
+        const again = await owned.judge(turtle);
+        assert.match(again.refused ?? "", /holds already/, name);
+      }
+      assert.deepEqual(await filesIn(at()), held);
+    });
+
+    it("throws, writing nothing, for a name the pod gives something else, whether a record or the pod's subject", async () => {
+      const held = await filesIn(at());
+      for (const taken of [record, owned.subject]) {
+        const turtle = byAnother(taken);
+        await assert.rejects(owned.judge(turtle), /something else/, taken);
+        assert.match(
+          (await owned.checkJudgment(turtle)) ?? "",
+          /something else/,
+        );
+      }
+      assert.deepEqual(await filesIn(at()), held);
+    });
+
+    it("throws, writing nothing, for a retraction under the name of a judgment, and a judgment under the name of a retraction", async () => {
+      const held = await filesIn(at());
+      const retraction = (name: string, target: string): string => `${PREFIXES}
+<${name}> a prov:Activity ; prov:invalidated <${target}> ; prov:wasAssociatedWith <${author}> .
+<${author}> a prov:Person .`;
       await assert.rejects(
-        owned.judge(
-          verdict(
-            owned,
-            "Erroneous",
-            [record],
-            "urn:uuid:9e1d1f66-8f43-4a8e-9c7b-2f0c5e6d7a81",
-          ),
+        owned.judge(retraction(named, named)),
+        /something else/,
+      );
+      const fresh = "urn:uuid:a2f6c8e1-5b39-4d07-9c64-1e8b3a7d0f52";
+      await owned.judge(retraction(fresh, named));
+      const after = await filesIn(at());
+      await assert.rejects(owned.judge(byAnother(fresh)), /something else/);
+      assert.deepEqual(await filesIn(at()), after);
+      assert.equal(after.length, held.length + 1);
+    });
+
+    it("throws, writing nothing, for a name that no file can be named after, and says to name it a urn:uuid:", async () => {
+      const held = await filesIn(at());
+      for (const unplaceable of [
+        "https://app.example/j/1",
+        "urn:example:j1",
+        "ni:///sha-256;!!",
+        "urn:uuid:abc",
+        "urn:uuid:B2F6C8E1-4D3A-4F5B-9C7E-1A2B3C4D5E6F",
+        "urn:uuid:--------",
+        "ni:///sha-256;AAAA",
+      ]) {
+        const turtle = byAnother(unplaceable);
+        await assert.rejects(owned.judge(turtle), /urn:uuid:/, unplaceable);
+        assert.match((await owned.checkJudgment(turtle)) ?? "", /urn:uuid:/);
+      }
+      assert.deepEqual(await filesIn(at()), held);
+    });
+
+    it("names a judgment with no time the time now, and keeps a time in the future", async () => {
+      const untimed = await owned.judge(
+        byAnother("urn:uuid:0b7d3c52-6e18-4f49-a2d0-1c8f5a9e3b64"),
+      );
+      const future = await owned.judge(
+        byAnother(
+          "urn:uuid:7c2e9a14-3d58-4b06-9e71-5f0b8d4a2c93",
+          dateTime("2999-01-01T00:00:00Z"),
         ),
-        /urn:cascade:this-judgment/,
+      );
+      assert.deepEqual(
+        (await stating(untimed.judgment ?? "")).map(({ made }) =>
+          /^\d{4}-/.test(made ?? ""),
+        ),
+        [true],
+      );
+      assert.deepEqual(await stating(future.judgment ?? ""), [
+        { made: "2999-01-01T00:00:00Z", author },
+      ]);
+    });
+
+    it("files a retraction under the name and the start time it gives, and writes nothing for a retry", async () => {
+      const retracting = "urn:uuid:4e9a2c68-b013-4d75-8c3f-9a1e6d0b5f27";
+      const turtle = `${PREFIXES}
+<${retracting}> a prov:Activity ; prov:invalidated <${named}> ;
+    prov:startedAtTime ${dateTime("2026-03-06T10:30:00+02:00")} ;
+    prov:wasAssociatedWith <${author}> .
+<${author}> a prov:Person .`;
+      const done = await owned.judge(turtle);
+      const again = await owned.judge(turtle);
+      assert.equal(done.judgment, retracting);
+      assert.deepEqual([again.refused, again.wrote], [undefined, []]);
+      assert.deepEqual(
+        await select(
+          owned,
+          `SELECT ?made ?author WHERE { <${retracting}> prov:startedAtTime ?made ; prov:wasAssociatedWith ?author }`,
+        ),
+        [{ made: "2026-03-06T10:30:00+02:00", author }],
       );
     });
 
-    it("throws, naming the member and writing nothing, when a member is not a record the pod holds", async () => {
-      const unknown = "urn:uuid:3f6c2a8e-7d41-4b9a-a5e2-0c8d9b1f4e67";
-      const at = join(pods, "judged");
-      const held = await filesIn(at);
-      for (const [name, member, members] of [
-        ["an entry in place of its record", entry, [entry, record]],
-        ["a name the pod does not hold", unknown, [unknown]],
-      ] as const) {
-        await assert.rejects(
-          owned.judge(verdict(owned, "Same", members)),
-          (error: Error) => error.message.includes(member),
-          name,
+    it("throws, writing nothing, for a time that is no xsd:dateTime, for two times, and for a name that is a blank node", async () => {
+      const held = await filesIn(at());
+      const free = "urn:uuid:c3a81f06-92d4-4e7b-b5a8-0d6e2f1c7943";
+      for (const [name, turtle, why] of [
+        [
+          "a time that is no dateTime",
+          byAnother(free, dateTime("yesterday")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "a time that is a plain string",
+          byAnother(free, '"2026-03-04T07:00:00Z"'),
+          /no xsd:dateTime/,
+        ],
+        [
+          "a time that is not a date",
+          byAnother(free, dateTime("2026-13-45T07:00:00Z")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "a day the month lacks",
+          byAnother(free, dateTime("2026-02-31T00:00:00Z")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "the hour 24",
+          byAnother(free, dateTime("2026-03-04T24:00:00Z")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "an offset past +14:00",
+          byAnother(free, dateTime("2026-03-04T07:00:00+14:30")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "an offset past -14:00",
+          byAnother(free, dateTime("2026-03-04T07:00:00-14:01")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "two times",
+          byAnother(
+            free,
+            `${dateTime("2026-03-04T07:00:00Z")}, ${dateTime("2026-03-04T08:00:00Z")}`,
+          ),
+          /2 times/,
+        ],
+        [
+          "a blank node for a name",
+          byAnother(free).replace(`<${free}> a`, "[] a"),
+          /blank node/,
+        ],
+      ] as const)
+        await assert.rejects(owned.judge(turtle), why, name);
+      assert.deepEqual(await filesIn(at()), held);
+    });
+  });
+
+  describe("given a judgment read from one pod and filed into a rebuilt one", () => {
+    it("counts the same there, under the name, the time and the author it had", async () => {
+      const [from, into] = await Promise.all([
+        enteredPod("judged-from"),
+        enteredPod("judged-into"),
+      ]);
+      try {
+        assert.equal(
+          from.record,
+          into.record,
+          "a rebuild names a record alike",
         );
-        assert.deepEqual(await filesIn(at), held, name);
+        const named = "urn:uuid:e6b4a0d9-1f27-4c83-8a5e-3b9d7c2f6018";
+        const filed = await from.pod.judge(
+          judgment(
+            from.pod,
+            [
+              "cascade:verdict cascade:Erroneous",
+              `prov:hadMember <${from.record}>`,
+              'prov:generatedAtTime "2026-03-04T07:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime>',
+            ],
+            named,
+          ),
+        );
+        const text = await readFile(
+          join(pods, "judged-from", ...(filed.wrote[0] ?? "").split("/")),
+          "utf8",
+        );
+        const again = await into.pod.judge(text);
+        const read = (of: Pod) =>
+          select(
+            of,
+            `SELECT ?verdict ?made ?author ?member ?counts WHERE {
+              <${named}> cascade:verdict ?verdict ; prov:generatedAtTime ?made ; prov:wasAttributedTo ?author ;
+                prov:hadMember ?member ; cascade:countsUnderLens ?counts }`,
+          );
+        assert.equal(again.judgment, named);
+        assert.deepEqual(await read(into.pod), await read(from.pod));
+        assert.equal((await read(into.pod)).length, 1);
+      } finally {
+        await Promise.all([from.pod.close(), into.pod.close()]);
       }
+    });
+  });
+
+  describe("given a judgment of a member the pod does not hold", () => {
+    const unknown = "urn:uuid:3f6c2a8e-7d41-4b9a-a5e2-0c8d9b1f4e67";
+
+    it("keeps it, citing no document, and lists it with Who judged what", async () => {
+      const kept = await owned.judge(verdict(owned, "Same", [unknown]));
+      const both = await owned.judge(
+        verdict(owned, "Erroneous", [record, unknown]),
+      );
+      assert.equal(kept.refused, undefined);
+      assert.equal(both.refused, undefined);
+      assert.equal(kept.wrote.length, 1);
+      for (const { judgment } of [kept, both]) {
+        assert.deepEqual(
+          await select(
+            owned,
+            `SELECT ?document WHERE { <${judgment ?? ""}> prov:wasDerivedFrom ?document }`,
+          ),
+          [],
+        );
+        const listed = await owned.ask("judgment/Who judged what");
+        assert.ok(
+          listed.some(
+            (row) => row.judgment === judgment && row.member === unknown,
+          ),
+        );
+      }
+    });
+  });
+
+  describe("given a judgment of a view entry", () => {
+    it("throws, writing nothing, for an entry among the members, as it does on records, never entries", async () => {
+      const held = await filesIn(join(pods, "judged"));
+      for (const members of [[entry], [record, entry]]) {
+        const turtle = verdict(owned, "Erroneous", members);
+        await assert.rejects(owned.judge(turtle), /view entry/);
+        assert.match((await owned.checkJudgment(turtle)) ?? "", /view entry/);
+      }
+      assert.deepEqual(await filesIn(join(pods, "judged")), held);
     });
   });
 
@@ -1302,7 +1618,7 @@ const NOT_BUILT = new Error("the pod was built");
 describe("Opening a pod again · openPod()", () => {
   let again: string;
   let made: { address: string; subject: string; owner: string };
-  let rows: Rows;
+  let rows: Row[];
 
   /** The parts that open a pod with a build that fails, so that an answer that is not kept shows it. */
   const unbuilt = (build: Partial<Parts["build"]> = {}): Parts => ({
@@ -1515,7 +1831,7 @@ describe("Opening a pod again · openPod()", () => {
       const at = join(pods, "retitled");
       await cp((await alexPod()).folder, at, { recursive: true });
       const first = await open(at);
-      let rows: Rows;
+      let rows: Row[];
       try {
         assert.equal(first.titled, false);
         rows = await first.ask(QUESTION);
@@ -2603,7 +2919,9 @@ describe("Publishing a pod for a browser · answersToPublish(), samplesToPublish
     }
     publishing = await partsOf(await checkouts(root));
     codes = (await alex.ask(QUESTION)).flatMap((row) =>
-      Object.values(row).filter((value) => value.startsWith("http")),
+      Object.values(row).flatMap((value) =>
+        typeof value === "string" && value.startsWith("http") ? [value] : [],
+      ),
     );
     published = await answersToPublish(publishing, podFiles, {
       name: "pod",

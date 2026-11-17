@@ -32,7 +32,8 @@ import {
   type ExportSource,
   openPod,
   type Pod,
-  type Row,
+  type TextRow,
+  textRow,
 } from "cascade-runtime";
 import { settled } from "./settled.js";
 
@@ -372,9 +373,9 @@ async function showPerson(shown) {
       }[];
       assert.ok(allergies.length > 0, "the reading example showed no allergy");
       const stated = new Map<string, Set<string>>();
-      for (const { record, field, value } of await examplesPod().ask(
-        "record/What each version says",
-      ))
+      for (const { record, field, value } of (
+        await examplesPod().ask("record/What each version says")
+      ).map(textRow))
         if (record && value && field?.endsWith("#allergyCriticality"))
           stated.set(record, (stated.get(record) ?? new Set()).add(value));
       const severity = ["unable-to-assess", "low", "high"];
@@ -456,7 +457,7 @@ async function showPerson(shown) {
       }
     >;
     /** The records left out of every view, and why. */
-    let hidden: Row[];
+    let hidden: TextRow[];
     /** The view entry of each record the owner entered, by the title of its view. */
     let enteredIn: Map<string, string>;
 
@@ -476,7 +477,8 @@ async function showPerson(shown) {
     before(async () => {
       await runExamples();
       const pod = examplesPod();
-      const ask = (question: string): Promise<Row[]> => pod.ask(question);
+      const ask = async (question: string): Promise<TextRow[]> =>
+        (await pod.ask(question)).map(textRow);
       entryOf = new Map(
         (await ask("record/Which entry shows it")).flatMap(
           ({ record, entry }) =>
@@ -645,11 +647,11 @@ async function showPerson(shown) {
         [],
         "the son's profile has a counting About",
       );
-      const his = (
-        await examplesPod().ask("profile/Which records name it")
-      ).flatMap(({ profile, record }) =>
-        profile === notTheirs && record ? [record] : [],
-      );
+      const his = (await examplesPod().ask("profile/Which records name it"))
+        .map(textRow)
+        .flatMap(({ profile, record }) =>
+          profile === notTheirs && record ? [record] : [],
+        );
       assert.ok(his.length > 0, "no record names the son's profile");
       for (const record of his)
         assert.ok(
