@@ -570,12 +570,13 @@ entry leads. A retraction takes a judgment back; none is edited.
 When a newer rule list stops joining pairs the matcher joined, its first run
 files one finding naming those matcher judgments, and `entry/What needs review` lists it
 as rows sharing one `finding`, one per pair now apart, each with its `record` and
-`otherRecord`. Show it as one line the person answers once, by the records of its
-pairs, never by the finding, whose name the pod derives and which a judgment
-cannot name: a Same over a pair's two records joins it, one for each row, or
+`otherRecord`. Show it as one line the person answers once, by the records of each
+pair, never by the finding, whose name the pod derives and which a judgment
+cannot name: a Same over a pair's two records joins it, or one
 `cascade:Acknowledged` of kind `cascade:MatcherJudgmentsNoLongerReached`
-(`cascade:answersWarningOfKind`) with every row's two records as its members takes
-the line off and changes nothing else, or the person judges the pairs one by one.
+(`cascade:answersWarningOfKind`) for each pair, whose members are exactly that
+pair's two records, takes that row off and changes nothing else. File one for each
+row to take the line off: a longer list of records answers no pair.
 
 ## When an export holds someone else's records
 
