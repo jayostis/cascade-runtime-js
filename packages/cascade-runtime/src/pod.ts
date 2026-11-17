@@ -721,6 +721,7 @@ class OpenPod implements Pod {
           core: this.#core,
           newStore: this.#parts.newStore,
           address: this.address,
+          views: this.#viewsAddress(),
           time: clock,
         },
         turtle,
@@ -981,12 +982,17 @@ class OpenPod implements Pod {
       .sort(compared);
   }
 
+  #viewsAddress(): string {
+    return `${this.address}${this.#parts.layout.viewsFolder}`;
+  }
+
   #judge(turtle: string): Promise<Done> {
     return judged(
       {
         core: this.#core,
         newStore: this.#parts.newStore,
         address: this.address,
+        views: this.#viewsAddress(),
         time: clock,
       },
       turtle,

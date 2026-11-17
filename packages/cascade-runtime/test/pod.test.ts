@@ -1216,11 +1216,13 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       name: string,
       time?: string,
       kind = "Erroneous",
+      role = "PatientRole",
+      agent = author,
     ): string => `${PREFIXES}
 <${name}> a cascade:Judgment ; cascade:verdict cascade:${kind} ; prov:hadMember <${record}> ;
     ${time === undefined ? "" : `prov:generatedAtTime ${time} ;`}
     prov:wasAttributedTo <${author}> ;
-    prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${author}> ; prov:hadRole cascade:PatientRole ] ] .
+    prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${agent}> ; prov:hadRole cascade:${role} ] ] .
 <${author}> a prov:Person .`;
     const dateTime = (value: string): string =>
       `"${value}"^^<http://www.w3.org/2001/XMLSchema#dateTime>`;
@@ -1264,6 +1266,68 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       const held = await filesIn(at());
       const other = await owned.judge(byAnother(named, undefined, "Same"));
       assert.match(other.refused ?? "", /holds already/);
+      assert.deepEqual(await filesIn(at()), held);
+    });
+
+    it("refuses a retry that states another role or another agent for its author, writing nothing", async () => {
+      const held = await filesIn(at());
+      for (const [name, turtle] of [
+        [
+          "another role",
+          byAnother(named, undefined, "Erroneous", "ModelProposerRole"),
+        ],
+        [
+          "another agent",
+          byAnother(named, undefined, "Erroneous", "PatientRole", record),
+        ],
+      ] as const) {
+        const again = await owned.judge(turtle);
+        assert.match(again.refused ?? "", /holds already/, name);
+      }
+      assert.deepEqual(await filesIn(at()), held);
+    });
+
+    it("throws, writing nothing, for a name the pod gives something else, whether a record or the pod's subject", async () => {
+      const held = await filesIn(at());
+      for (const taken of [record, owned.subject]) {
+        const turtle = byAnother(taken);
+        await assert.rejects(owned.judge(turtle), /something else/, taken);
+        assert.match(
+          (await owned.checkJudgment(turtle)) ?? "",
+          /something else/,
+        );
+      }
+      assert.deepEqual(await filesIn(at()), held);
+    });
+
+    it("throws, writing nothing, for a retraction under the name of a judgment, and a judgment under the name of a retraction", async () => {
+      const held = await filesIn(at());
+      const retraction = (name: string, target: string): string => `${PREFIXES}
+<${name}> a prov:Activity ; prov:invalidated <${target}> ; prov:wasAssociatedWith <${author}> .
+<${author}> a prov:Person .`;
+      await assert.rejects(
+        owned.judge(retraction(named, named)),
+        /something else/,
+      );
+      const fresh = "urn:uuid:a2f6c8e1-5b39-4d07-9c64-1e8b3a7d0f52";
+      await owned.judge(retraction(fresh, named));
+      const after = await filesIn(at());
+      await assert.rejects(owned.judge(byAnother(fresh)), /something else/);
+      assert.deepEqual(await filesIn(at()), after);
+      assert.equal(after.length, held.length + 1);
+    });
+
+    it("throws, writing nothing, for a name that no file can be named after, and says to name it a urn:uuid:", async () => {
+      const held = await filesIn(at());
+      for (const unplaceable of [
+        "https://app.example/j/1",
+        "urn:example:j1",
+        "ni:///sha-256;!!",
+      ]) {
+        const turtle = byAnother(unplaceable);
+        await assert.rejects(owned.judge(turtle), /urn:uuid:/, unplaceable);
+        assert.match((await owned.checkJudgment(turtle)) ?? "", /urn:uuid:/);
+      }
       assert.deepEqual(await filesIn(at()), held);
     });
 
@@ -1325,6 +1389,16 @@ describe("Recording the owner's judgment · pod.judge()", () => {
         [
           "a time that is not a date",
           byAnother(free, dateTime("2026-13-45T07:00:00Z")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "a day the month lacks",
+          byAnother(free, dateTime("2026-02-31T00:00:00Z")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "the hour 24",
+          byAnother(free, dateTime("2026-03-04T24:00:00Z")),
           /no xsd:dateTime/,
         ],
         [
@@ -1397,7 +1471,7 @@ describe("Recording the owner's judgment · pod.judge()", () => {
     it("keeps it, citing no document, and lists it with Who judged what", async () => {
       const kept = await owned.judge(verdict(owned, "Same", [unknown]));
       const both = await owned.judge(
-        verdict(owned, "Erroneous", [entry, unknown]),
+        verdict(owned, "Erroneous", [record, unknown]),
       );
       assert.equal(kept.refused, undefined);
       assert.equal(both.refused, undefined);
@@ -1417,6 +1491,18 @@ describe("Recording the owner's judgment · pod.judge()", () => {
           ),
         );
       }
+    });
+  });
+
+  describe("given a judgment of a view entry", () => {
+    it("throws, writing nothing, for an entry among the members, as it does on records, never entries", async () => {
+      const held = await filesIn(join(pods, "judged"));
+      for (const members of [[entry], [record, entry]]) {
+        const turtle = verdict(owned, "Erroneous", members);
+        await assert.rejects(owned.judge(turtle), /view entry/);
+        assert.match((await owned.checkJudgment(turtle)) ?? "", /view entry/);
+      }
+      assert.deepEqual(await filesIn(join(pods, "judged")), held);
     });
   });
 

@@ -87,7 +87,6 @@ function entryLines(
     });
 }
 
-/** A record, or a revision, by its label and where it came from, as the pod has it; its IRI only when the pod gives it no label. */
 /**
  * The first member of a model's judgment that the pod holds as no record or revision, nor, for a Same of it alone, as a
  * finding. A person's or an app's statement of a record the pod lacks is kept (N10); a model's is checked before the
@@ -114,6 +113,7 @@ async function unheldMember(
   return members.find((member) => !held.has(member));
 }
 
+/** A record, or a revision, by its label and where it came from, as the pod has it; its IRI only when the pod gives it no label. */
 async function recordLine(pod: Pod, record: string): Promise<string> {
   const rows = await pod.ask({
     query: `${PREFIXES}

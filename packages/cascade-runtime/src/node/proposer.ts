@@ -98,7 +98,16 @@ export const proposer: Proposer = async ({
               base: address,
               name: "the entry",
             })
-          : await judged({ core: pod, newStore, address, time }, turtle);
+          : await judged(
+              {
+                core: pod,
+                newStore,
+                address,
+                views: `${address}${layout.viewsFolder}`,
+                time,
+              },
+              turtle,
+            );
       return {
         ...(performed.refused === undefined
           ? {}

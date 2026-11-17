@@ -3,6 +3,7 @@
 // each member was shown from, never a version. Shared by the pod and by the run that performs a model's proposal as a step.
 import {
   type CorePod,
+  fileStem,
   judgmentFiled,
   type IdsAndTime,
   iri,
@@ -29,6 +30,8 @@ export interface Judging {
   readonly newStore: StoreFactory;
   /** The pod's address, which the judgment's Turtle is parsed against. */
   readonly address: string;
+  /** The IRI the pod's views are under, which no judgment's member is. */
+  readonly views: string;
   readonly time: IdsAndTime;
 }
 
@@ -40,17 +43,43 @@ export type Judged = Awaited<ReturnType<CorePod["judge"]>> & {
 /** The time a judgment states, which is kept as the app gave it when it is an `xsd:dateTime` that reads as one. */
 function datedLiteral(term: Term): Term {
   const lexical =
-    /^-?\d{4,}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+    /^(-?\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
+  const found = term.termType === "Literal" ? lexical.exec(term.value) : null;
+  const [year, month, day, hour, minute, second, offsetHour, offsetMinute] = (
+    found?.slice(1) ?? []
+  ).map((part) => (part === undefined ? 0 : Number(part)));
+  const leap =
+    (year ?? 0) % 4 === 0 &&
+    ((year ?? 0) % 100 !== 0 || (year ?? 0) % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][
+    (month ?? 0) - 1
+  ];
   if (
     term.termType !== "Literal" ||
     term.datatype.value !== `${XSD}dateTime` ||
-    !lexical.test(term.value) ||
-    Number.isNaN(Date.parse(term.value))
+    found === null ||
+    days === undefined ||
+    (day ?? 0) < 1 ||
+    (day ?? 0) > days ||
+    (hour ?? 0) > 23 ||
+    (minute ?? 0) > 59 ||
+    (second ?? 0) > 59 ||
+    (offsetHour ?? 0) > 14 ||
+    (offsetMinute ?? 0) > 59
   )
     throw new Error(
       `the judgment states a time that is no xsd:dateTime: ${term.value}`,
     );
   return term;
+}
+
+/** Whether the pod can name a file after `name`: a `urn:uuid:` or an `ni:` IRI, whose stem is hex digits and hyphens. */
+function placed(name: string): boolean {
+  try {
+    return /^[0-9a-f-]+$/i.test(fileStem(name));
+  } catch {
+    return false;
+  }
 }
 
 function failure(error: unknown): string {
@@ -64,7 +93,7 @@ function failure(error: unknown): string {
  * @throws Error when the Turtle is none, holds more or less than one judgment or retraction, or `judgmentFiled` refuses it.
  */
 async function prepared(
-  { core, newStore, address, time }: Judging,
+  { core, newStore, address, views, time }: Judging,
   turtle: string,
 ): Promise<{ name: string; triples: Triple[] }> {
   let stated: Triple[];
@@ -93,6 +122,10 @@ async function prepared(
     );
   const retracting = retractions.length > 0;
   const name = given === THIS_JUDGMENT ? time.newId() : given;
+  if (!placed(name))
+    throw new Error(
+      `the judgment's name ${name} is no urn:uuid: IRI: the app names it with a urn:uuid: it minted, or with <${THIS_JUDGMENT}> to have the pod name it`,
+    );
   const judgment = iri(name);
   const [at, ...more] = stated.filter(
     ([s, p]) =>
@@ -122,7 +155,7 @@ async function prepared(
             p.value === STARTED_AT)
         ),
     );
-  const filed = await judgmentFiled(core, named);
+  const filed = await judgmentFiled(core, named, views);
   if ("refused" in filed) throw new Error(filed.refused);
   return {
     name,
