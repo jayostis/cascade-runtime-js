@@ -73,7 +73,7 @@ export interface Description {
 
 /** What a conversion may spend, as the Bridge reads it; a conversion that passes either fails with a `BridgeError` of kind `bridge`. */
 export interface ConvertBudget {
-  /** The heap, in whole MiB from 1 to 3072. The Bridge's default is 1024. */
+  /** The heap, in whole MiB, up to the Bridge's own cap. The Bridge's default is 1024. */
   readonly memoryBudgetMiB?: number;
   /** The seconds, a positive number. The Bridge's default is 120. */
   readonly timeBudgetSeconds?: number;

@@ -154,6 +154,32 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
     });
   });
 
+  describe("given a `timeBudgetSeconds` or `memoryBudgetMiB` that is not a number the Bridge can take", () => {
+    it("throws, naming the option, for zero, a negative, NaN, Infinity, null, a string and a fraction of a MiB", async () => {
+      for (const [option, given] of [
+        ["timeBudgetSeconds", 0],
+        ["timeBudgetSeconds", -5],
+        ["timeBudgetSeconds", Number.NaN],
+        ["timeBudgetSeconds", Number.POSITIVE_INFINITY],
+        ["timeBudgetSeconds", null],
+        ["timeBudgetSeconds", "5"],
+        ["memoryBudgetMiB", 0],
+        ["memoryBudgetMiB", -1],
+        ["memoryBudgetMiB", 1.5],
+        ["memoryBudgetMiB", Number.POSITIVE_INFINITY],
+        ["memoryBudgetMiB", null],
+        ["memoryBudgetMiB", "512"],
+      ] as const)
+        assert.match(
+          await refusedWith(() =>
+            pod.import("x", { [option]: given } as never),
+          ),
+          new RegExp(`^pod\\.import options\\.${option} is not `),
+          `${option}: ${String(given)}`,
+        );
+    });
+  });
+
   describe("given several keys the call does not take", () => {
     it("names each of them, and the keys the call takes", async () => {
       assert.equal(

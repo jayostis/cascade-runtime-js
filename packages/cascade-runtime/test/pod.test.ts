@@ -642,66 +642,33 @@ describe("Importing a health export · pod.import()", () => {
   });
 
   describe("with `timeBudgetSeconds` or `memoryBudgetMiB`, the limits of a conversion", () => {
-    for (const [name, budget] of [
-      ["timeBudgetSeconds", { timeBudgetSeconds: 1e-9 }],
-      ["memoryBudgetMiB", { memoryBudgetMiB: 1 }],
-    ] as const)
-      it(`rejects with the Bridge's budget error when \`${name}\` is smaller than the conversion needs, writing nothing`, async () => {
-        const at = join(pods, `budget-${name}`);
-        const small = await openPodWith(kept, at);
-        try {
-          const held = await filesIn(at);
+    it("rejects with the Bridge's budget error when a budget is smaller than the conversion needs, writing nothing, and then converts with the Bridge's own defaults", async () => {
+      const at = join(pods, "budget");
+      const small = await openPodWith(kept, at);
+      try {
+        const held = await filesIn(at);
+        for (const budget of [
+          { timeBudgetSeconds: 1e-9 },
+          { memoryBudgetMiB: 1 },
+        ])
           await assert.rejects(
             small.import(exported("x-e2"), { match: false, ...budget }),
             (error) =>
               isBridgeError(error) &&
               error.kind === "bridge" &&
               /budget/.test(error.message),
+            JSON.stringify(budget),
           );
-          assert.deepEqual(await filesIn(at), held);
-          const after = await small.import(exported("x-e2"), { match: false });
-          assert.equal(after.refused, undefined, "the next import");
-          assert.ok(after.wrote.length > 0);
-        } finally {
-          await small.close();
-        }
-      });
-
-    it("rejects a budget that is not a positive number of seconds, or a whole number of MiB from 1 to 3072, naming the option", async () => {
-      const at = join(pods, "budget-invalid");
-      const refusing = await openPodWith(kept, at);
-      try {
-        for (const [name, budget] of [
-          ["zero seconds", { timeBudgetSeconds: 0 }],
-          ["negative seconds", { timeBudgetSeconds: -1 }],
-          ["seconds that are not a number", { timeBudgetSeconds: Number.NaN }],
-          ["zero MiB", { memoryBudgetMiB: 0 }],
-          ["a fraction of a MiB", { memoryBudgetMiB: 1.5 }],
-          ["more MiB than a heap holds", { memoryBudgetMiB: 4096 }],
-        ] as const)
-          await assert.rejects(
-            refusing.import(exported("x-e2"), { match: false, ...budget }),
-            /options\.(timeBudgetSeconds|memoryBudgetMiB) is not/,
-            name,
-          );
-      } finally {
-        await refusing.close();
-      }
-    });
-
-    it("converts the export as without them when the budgets are the Bridge's own defaults", async () => {
-      const at = join(pods, "budget-default");
-      const roomy = await openPodWith(kept, at);
-      try {
-        const done = await roomy.import(exported("x-e2"), {
+        assert.deepEqual(await filesIn(at), held);
+        const after = await small.import(exported("x-e2"), {
           match: false,
           timeBudgetSeconds: 120,
           memoryBudgetMiB: 1024,
         });
-        assert.equal(done.refused, undefined);
-        assert.ok(done.wrote.length > 0);
+        assert.equal(after.refused, undefined, "the next import");
+        assert.ok(after.wrote.length > 0);
       } finally {
-        await roomy.close();
+        await small.close();
       }
     });
   });

@@ -75,8 +75,8 @@ function sorted(counts: Map<string, number>): Record<string, number> {
 export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
 
 /**
- * `timeBudgetSeconds` and `memoryBudgetMiB` hold each document's conversion to the seconds and the heap, in whole MiB
- * from 1 to 3072, they name; a conversion that passes either rejects the import with a `BridgeError` of kind `bridge`
+ * `timeBudgetSeconds` (a positive number) and `memoryBudgetMiB` (a positive whole number, up to the Bridge's own cap)
+ * hold each document's conversion to the seconds and the heap they name; a conversion that passes either rejects the import with a `BridgeError` of kind `bridge`
  * and the import files nothing. Left out, the Bridge's own apply: 120 seconds and 1024 MiB.
  */
 export interface ImportOptions extends ConvertBudget {
@@ -97,6 +97,22 @@ export function acceptImportOptions(options: ImportOptions): void {
     timeBudgetSeconds: true,
     memoryBudgetMiB: true,
   });
+  if (options === undefined) return;
+  const { timeBudgetSeconds, memoryBudgetMiB } = options;
+  if (
+    timeBudgetSeconds !== undefined &&
+    !(Number.isFinite(timeBudgetSeconds) && timeBudgetSeconds > 0)
+  )
+    throw new TypeError(
+      `pod.import options.timeBudgetSeconds is not a finite number of seconds above zero: ${String(timeBudgetSeconds)}`,
+    );
+  if (
+    memoryBudgetMiB !== undefined &&
+    !(Number.isInteger(memoryBudgetMiB) && memoryBudgetMiB > 0)
+  )
+    throw new TypeError(
+      `pod.import options.memoryBudgetMiB is not a positive whole number of MiB: ${String(memoryBudgetMiB)}`,
+    );
 }
 
 /** Throws for an option `pod.ask` does not take; the browser's pod checks before it reads its kept answers. */
