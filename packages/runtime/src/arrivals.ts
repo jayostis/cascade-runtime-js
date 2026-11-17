@@ -47,7 +47,7 @@ import type { Shapes } from "./shapes.js";
 import { podFiles } from "./dataset.js";
 import { scanned, timedAside, timedSync } from "./probe.js";
 import { DERIVED, derivationsOf, QUERIES } from "./derive.js";
-import { type Dataset, type StoreFactory, Union } from "./store.js";
+import { type Dataset, Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
@@ -1077,18 +1077,6 @@ function typedAs(
   ];
 }
 
-async function hasFindings(
-  findings: Uint8Array,
-  document: string,
-  newStore: StoreFactory,
-): Promise<boolean> {
-  return (
-    findings.length > 0 &&
-    (await parseGraph(findings, `${document}#findings`, newStore)).triples
-      .length > 0
-  );
-}
-
 /** What the export says of a document; an export the importer cannot read is refused (A14). */
 function read(found: ExportDocument, started: string): Uint8Array {
   try {
@@ -1155,7 +1143,8 @@ async function serverRecord(
 
 /**
  * Files an export's documents, each converted by the first adapter of its media type that accepts it: A1 to A11, with
- * the import named by a new random ID (N7), and the refusals of A14. `onProgress` is told of each conversion as its
+ * the import named by a new random ID (N7), and the refusals of A14. Every document whose bytes the pod does not keep
+ * is kept, whether or not it wrote a revision (A10). `onProgress` is told of each conversion as its
  * adapter is found. Each conversion is held to `budget`; one that passes it stops the step with the Bridge's error.
  * Gives the import's name, the patient profiles the versions of its new revisions name and the files it wrote for each record it revised.
  */
@@ -1209,51 +1198,33 @@ export async function fileExport(
     const arriving = timedSync("arrivals.arrivals", () =>
       arrivals(layout, graph, name, found.path),
     );
-    const { revised, reportedOlder } = await timedAside(
-      "arrivals.revisions",
-      async () => {
-        let revised = false;
-        let reportedOlder = false;
-        await timedAside("arrivals.revisions.prepare", () =>
-          revisions.prepare(arriving),
-        );
-        for (const arrival of arriving) {
-          const repeated = await revisions.repeats(arrival);
-          const older = repeated
-            ? revisions.holding(arrival)
-            : await revisions.revise(arrival, writes);
-          revised ||= !repeated;
-          if (older === undefined) continue;
-          const contradicted = await revisions.contradictedBy(arrival);
-          if (contradicted.length === 0) continue;
-          wentBack.push({ older, contradicted });
-          reportedOlder = true;
-        }
-        return { revised, reportedOlder };
-      },
-    );
-    if (
-      revised ||
-      reportedOlder ||
-      (await hasFindings(conversion.findings, documentIri, newStore))
-    ) {
-      writes.add(layout.storedBytes.path(documentIri), found.bytes);
-      writes.add(
-        layout.place(`${PROV}Entity`).path(documentIri),
-        ntriples(graph.closure(subject)),
+    await timedAside("arrivals.revisions", async () => {
+      await timedAside("arrivals.revisions.prepare", () =>
+        revisions.prepare(arriving),
       );
-      kept.set(
-        documentIri,
-        importDescription(graph, subject, name, found.path),
-      );
-      for (const base of graph.objects(subject, SERVER_BASE_URL)) {
-        const server = await serverRecord(layout, base.value);
-        if (server !== undefined)
-          writes.add(
-            server.place.path(server.record.value),
-            ntriples(server.triples),
-          );
+      for (const arrival of arriving) {
+        const repeated = await revisions.repeats(arrival);
+        const older = repeated
+          ? revisions.holding(arrival)
+          : await revisions.revise(arrival, writes);
+        if (older === undefined) continue;
+        const contradicted = await revisions.contradictedBy(arrival);
+        if (contradicted.length > 0) wentBack.push({ older, contradicted });
       }
+    });
+    writes.add(layout.storedBytes.path(documentIri), found.bytes);
+    writes.add(
+      layout.place(`${PROV}Entity`).path(documentIri),
+      ntriples(graph.closure(subject)),
+    );
+    kept.set(documentIri, importDescription(graph, subject, name, found.path));
+    for (const base of graph.objects(subject, SERVER_BASE_URL)) {
+      const server = await serverRecord(layout, base.value);
+      if (server !== undefined)
+        writes.add(
+          server.place.path(server.record.value),
+          ntriples(server.triples),
+        );
     }
   }
   await timedAside("arrivals.revisions.write", () =>

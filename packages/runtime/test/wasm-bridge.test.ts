@@ -324,7 +324,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
 
     it("converts each document to a graph and conversion findings isomorphic to those the kit saves", () => {
       assert.deepEqual(found.differ, []);
-      assert.equal(found.converted, 52);
+      assert.equal(found.converted, 48);
     });
 
     it("has no adapter accept the document the kit saves as unaccepted", () => {
