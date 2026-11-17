@@ -12,12 +12,8 @@
       "path": "known-answer-1.4/key-wrap",
       "layout": "pod",
       "headerVersion": "1.4",
-      "keys": [
-        "wZLrCSygoef4/WQq8a49WQqRWYYxVQ/fK7ElgPYxbmY="
-      ],
-      "mustNotOpenWith": [
-        "wZLrCSygoef4/WQq8a49WQqRWYYxVQ/fK7ElgPYxbmc="
-      ],
+      "keys": ["wZLrCSygoef4/WQq8a49WQqRWYYxVQ/fK7ElgPYxbmY="],
+      "mustNotOpenWith": ["wZLrCSygoef4/WQq8a49WQqRWYYxVQ/fK7ElgPYxbmc="],
       "proves": "a 1.4 header whose one wrap is a key wrap (HKDF-SHA-256, no Argon2); two resources, one at a non-ASCII path, each stored under the keyed name of its path and tag, and the sealed index naming both",
       "header": "{\n  \"version\": \"1.4\",\n  \"algorithm\": \"aes-256-gcm\",\n  \"resourceFormat\": 3,\n  \"wraps\": [\n    {\n      \"by\": \"key\",\n      \"label\": \"primary\",\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"kdf\": \"hkdf-sha256\",\n      \"kdfParams\": {\n        \"salt\": \"0e+420MllG5z9GBIt+fRNQ==\"\n      },\n      \"wrappedDek\": \"s9eQLN2Wfv8HsUSXPgZLHyRB8xApmin576PMSMp2p2sCQDJSq7t8xj3ErFM1rHM4rUh3BLHrjxlEuH49\"\n    }\n  ]\n}\n",
       "files": [

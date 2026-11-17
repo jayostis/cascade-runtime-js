@@ -512,8 +512,7 @@ describe("Matching a 1.4 pod's key wrap against known answers · newHeader(), op
           await assert.rejects(
             openHeader(encoded(vector.header), bytesOf(wrong), derive),
             (error: unknown) =>
-              error instanceof Unopened &&
-              error.outcome === "incorrect secret",
+              error instanceof Unopened && error.outcome === "incorrect secret",
           );
         assert.equal(calls.length, 0);
       }
