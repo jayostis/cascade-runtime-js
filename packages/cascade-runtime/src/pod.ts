@@ -931,37 +931,58 @@ class OpenPod implements Pod {
         unclaimedProfiles: [],
       };
     const { onProgress, timeBudgetSeconds, memoryBudgetMiB } = options;
-    const filed = await this.#core.import(
-      found.files,
-      found.name,
-      async () => (await this.#loadedBridge()).adapters,
-      onProgress,
-      {
-        ...(timeBudgetSeconds !== undefined && { timeBudgetSeconds }),
-        ...(memoryBudgetMiB !== undefined && { memoryBudgetMiB }),
-      },
-    );
-    const activity = filed.activity;
-    if (filed.refused !== undefined || activity === undefined)
-      return { ...filed, claimedProfiles: [], unclaimedProfiles: [] };
-    const matching = options.match !== false;
-    const profiles =
+    // What the import writes holds no judgment, so who is tied to the subject now is who is tied once it is written.
+    // It is read from the pod's kept build, built if the pod was just opened, which the import then continues from.
+    const tied =
       options.claimProfiles === true
-        ? await this.#unclaimedProfiles(activity)
-        : [];
-    const of = profiles.length + (matching ? 1 : 0);
-    if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
-    const claimedProfiles: { profile: string; judgment: string }[] = [];
-    for (const [index, profile] of profiles.entries()) {
-      const { judgment } = await timedAside("pod.judge", () =>
-        this.#judge(about(this.subject, profile, this.owner)),
+        ? await timed("pod.profilesTied", () => this.#profilesTied(true))
+        : new Set<string>();
+    // The import, the judgments that claim its profiles and the pod's build after them (one rebuild of all three) come
+    // before the matcher's run, which reads what the build derives of them.
+    const done = await this.#core.deferring(async () => {
+      const { profilesNamed, ...filed } = await this.#core.import(
+        found.files,
+        found.name,
+        async () => (await this.#loadedBridge()).adapters,
+        onProgress,
+        {
+          ...(timeBudgetSeconds !== undefined && { timeBudgetSeconds }),
+          ...(memoryBudgetMiB !== undefined && { memoryBudgetMiB }),
+        },
       );
-      if (judgment !== undefined) claimedProfiles.push({ profile, judgment });
-      await onProgress?.({ part: "judging", done: index + 1, of });
-    }
-    const matched = matching
-      ? await timedAside("pod.match", () => this.#core.match(activity))
-      : undefined;
+      const activity = filed.activity;
+      const claimedProfiles: { profile: string; judgment: string }[] = [];
+      if (filed.refused !== undefined || activity === undefined)
+        return {
+          filed,
+          activity: undefined,
+          matched: undefined,
+          claimedProfiles,
+        };
+      const matching = options.match !== false;
+      const profiles =
+        options.claimProfiles === true
+          ? (profilesNamed ?? []).filter(
+              (profile) => profile !== this.subject && !tied.has(profile),
+            )
+          : [];
+      const of = profiles.length + (matching ? 1 : 0);
+      if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
+      for (const [index, profile] of profiles.entries()) {
+        const { judgment } = await timedAside("pod.judge", () =>
+          this.#judge(about(this.subject, profile, this.owner)),
+        );
+        if (judgment !== undefined) claimedProfiles.push({ profile, judgment });
+        await onProgress?.({ part: "judging", done: index + 1, of });
+      }
+      const matched = matching
+        ? await timedAside("pod.match", () => this.#core.match(activity))
+        : undefined;
+      return { filed, activity, matched, claimedProfiles };
+    });
+    const { filed, activity, matched, claimedProfiles } = done;
+    if (activity === undefined)
+      return { ...filed, claimedProfiles: [], unclaimedProfiles: [] };
     return {
       ...filed,
       ...(matched === undefined ? {} : { matched }),
@@ -989,26 +1010,32 @@ class OpenPod implements Pod {
   }
 
   async #profilesNotTied(activity: string): Promise<string[]> {
-    const [named, tied] = await Promise.all([
+    const [named, claimed] = await Promise.all([
       this.#core.select(`${PREFIXES}
         SELECT DISTINCT ?profile WHERE {
           ?revision prov:wasGeneratedBy <${activity}> ; cascade:version ?version .
           ?version cascade:patient ?profile .
           FILTER (isIRI(?profile) && ?profile != <${this.subject}>)
         }`),
-      this.#core.select(`${PREFIXES}
-        SELECT DISTINCT ?profile WHERE {
-          ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
-            prov:hadMember ?profile ; cascade:subject <${this.subject}> .
-        }`),
+      this.#profilesTied(),
     ]);
-    const claimed = new Set(
-      tied.rows.flatMap((row) => row.get("profile")?.value ?? []),
-    );
     return named.rows
       .flatMap((row) => row.get("profile")?.value ?? [])
       .filter((profile) => !claimed.has(profile))
       .sort(compared);
+  }
+
+  /** The profiles a counting About ties to the subject; `kept`, read from the pod's kept build, built whole when none is. */
+  async #profilesTied(kept = false): Promise<Set<string>> {
+    const query = `${PREFIXES}
+        SELECT DISTINCT ?profile WHERE {
+          ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
+            prov:hadMember ?profile ; cascade:subject <${this.subject}> .
+        }`;
+    const tied = await (kept
+      ? this.#core.selectKept(query)
+      : this.#core.select(query));
+    return new Set(tied.rows.flatMap((row) => row.get("profile")?.value ?? []));
   }
 
   #viewsAddress(): string {

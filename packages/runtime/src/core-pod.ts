@@ -136,6 +136,30 @@ export interface Performed {
   readonly unheld?: readonly string[];
   /** The files that arrived from another writer, which it wrote but its act did not (S3). */
   readonly arrived?: readonly string[];
+  /** The patient profiles the versions of an import's new revisions name, sorted. */
+  readonly profilesNamed?: readonly string[];
+}
+
+/** The steps whose perform reads none of what the build writes, so that within `deferring` they leave their rebuild to the next read. */
+const DEFERRABLE = new Set(["import", "judge"]);
+
+/** The files each record was written in by either of two steps. */
+function filesTogether(
+  first: ReadonlyMap<string, readonly string[]> | undefined,
+  second: ReadonlyMap<string, readonly string[]>,
+): Map<string, readonly string[]> {
+  const together = new Map(first);
+  for (const [record, paths] of second)
+    together.set(record, [...(together.get(record) ?? []), ...paths]);
+  return together;
+}
+
+/** The rebuild of the steps `deferring` has not yet rebuilt after: what they changed, when the last began, and what they did. */
+interface Pending {
+  readonly kinds: readonly string[];
+  readonly at: string;
+  readonly change: Change;
+  readonly performed: Performed;
 }
 
 /** The build after a step failed: the step itself is in the pod, as `performed` says. */
@@ -456,6 +480,10 @@ export class CorePod {
   #performing = false;
   /** The quads the matcher's views lent from the kept build's store have had it remove and add again. */
   #movedInBuilt = 0;
+  /** How many `deferring` calls are running, which let the steps of `DEFERRABLE` leave their rebuild. */
+  #deferring = 0;
+  /** What the steps that left their rebuild changed, rebuilt before anything reads what the build writes. */
+  #pending: Pending | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -482,6 +510,7 @@ export class CorePod {
    * the matcher's view.
    */
   async dataset(lens: string): Promise<Union> {
+    await this.#settle();
     await this.#putBackMatcherView();
     return this.#held(`${DATASET}${lens}`, () =>
       this.#filled(new Union(this.#options.newStore()), lens),
@@ -514,7 +543,8 @@ export class CorePod {
    * The pod's revision, as `podRevision` names it. Any step that writes changes it, and so does a refused one, whose
    * build writes the manifest again.
    */
-  revision(): Promise<string> {
+  async revision(): Promise<string> {
+    await this.#settle();
     return this.#held(REVISION, () => {
       const { pod, layout, address } = this.#options;
       return podRevision(pod, layout, address);
@@ -527,6 +557,7 @@ export class CorePod {
    * kept answer changes. What is kept is dropped, since it holds the old title; the pod builds again when next read.
    */
   async retitle(title: string): Promise<void> {
+    await this.#settle();
     this.#options = { ...this.#options, title };
     const { pod, layout, address, build, time } = this.#options;
     this.#release();
@@ -550,10 +581,85 @@ export class CorePod {
     );
   }
 
-  /** Drops what is kept, and frees it; the pod builds again when next read. */
+  /**
+   * Drops what is kept, and frees it; the pod builds again when next read. Inside `deferring` it throws and drops
+   * nothing, since the steps it left would be lost with their rebuild undone.
+   */
   close(): void {
+    if (this.#deferring > 0)
+      throw new Error("close() inside deferring() would drop its rebuild");
+    this.#pending = undefined;
     this.#release();
     this.#dropBuilt();
+  }
+
+  /**
+   * Runs `run`, in which an import's step and the judgments filed after it leave their rebuild until something reads what
+   * the build writes, or `run` ends, and are then rebuilt once for all of them: the rebuild of what several steps wrote
+   * is the one the last would make, since a rebuild reads the files as they stand. A step that reads it (the matcher's
+   * run, which reads each record's current version and subject) first rebuilds what was left. When `run` fails, what was
+   * left is rebuilt before the failure is thrown, and when that rebuild fails too, an AggregateError of what `run`
+   * threw and the rebuild's failure, in that order, is thrown; what `run` threw is not touched. A rebuild that
+   * fails comes after the judgments were filed, since the steps it follows are all done by then: where each step
+   * rebuilt on its own, the import's rebuild failed before any judgment was filed.
+   */
+  async deferring<T>(run: () => Promise<T>): Promise<T> {
+    this.#deferring += 1;
+    let result: T;
+    try {
+      result = await run();
+    } catch (error) {
+      this.#deferring -= 1;
+      if (this.#deferring === 0)
+        try {
+          await this.#settle();
+        } catch (failure) {
+          throw new AggregateError(
+            [error, failure],
+            `the rebuild failed after the run failed: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: failure },
+          );
+        }
+      throw error;
+    }
+    this.#deferring -= 1;
+    if (this.#deferring === 0) await this.#settle();
+    return result;
+  }
+
+  /** Rebuilds after the steps that left their rebuild, if any did, as the last of them would have. */
+  async #settle(): Promise<void> {
+    const pending = this.#pending;
+    if (pending === undefined) return;
+    this.#pending = undefined;
+    await this.#rebuilt(
+      pending.kinds.join("+"),
+      pending.at,
+      pending.change,
+      pending.performed,
+    );
+  }
+
+  /** The build rebuilt after a step, or after the steps that left it. */
+  async #rebuilt(
+    kind: string,
+    at: string | undefined,
+    change: Change,
+    performed: Performed,
+  ): Promise<void> {
+    const { build } = this.#options;
+    if (build === undefined) return;
+    try {
+      await timedAside(`core-pod.step.rebuild:${kind}`, () =>
+        this.#rebuild(build, at, change),
+      );
+    } catch (error) {
+      this.#dropBuilt();
+      if (error instanceof Unopened) throw error;
+      throw new BuildFailure(performed, error);
+    } finally {
+      this.#builtBefore = undefined;
+    }
   }
 
   /** Frees the build kept across steps; the next step builds whole. */
@@ -592,7 +698,7 @@ export class CorePod {
    * once an importer reads the path. `onProgress` is told as loading the adapter, each conversion and saving begin;
    * each conversion is held to `budget`.
    */
-  import(
+  async import(
     exported: Pick<Files, "read" | "list">,
     folder: string,
     adapters: () => Promise<AdaptersOf>,
@@ -600,7 +706,9 @@ export class CorePod {
     budget?: ConvertBudget,
   ): Promise<Performed> {
     const { importers } = this.#options;
-    return this.#step(
+    let profilesNamed: readonly string[] = [];
+    let filesOf: ReadonlyMap<string, readonly string[]> | undefined;
+    const performed = await this.#step(
       async (context) => {
         let documents: readonly ExportDocument[] | undefined;
         for (const importer of importers) {
@@ -621,15 +729,21 @@ export class CorePod {
           );
         await onProgress?.({ part: "loading the adapter" });
         const loaded = await timedAside("core-pod.import.adapters", adapters);
-        const activity = await timedAside("arrivals.fileExport", () =>
+        const filed = await timedAside("arrivals.fileExport", () =>
           fileExport(context, documents, loaded, onProgress, budget),
         );
+        profilesNamed = filed.patients;
+        filesOf = filed.filesOf;
         await onProgress?.({ part: "saving" });
-        return activity;
+        return filed.activity;
       },
       false,
       "import",
+      () => filesOf,
     );
+    return performed.refused === undefined
+      ? { ...performed, profilesNamed }
+      : performed;
   }
 
   /** A connect to a server, as the folder of the files saves it (A16, A14). */
@@ -672,6 +786,7 @@ export class CorePod {
         }),
       false,
       "judge",
+      () => new Map(),
     );
   }
 
@@ -971,6 +1086,22 @@ export class CorePod {
     return (await tableTerms(vocabulary, newStore)).findingKinds;
   }
 
+  /**
+   * `select`, read from the build kept across steps, which a pod just opened has none of and is built whole for it: so
+   * the step after, an import's, continues from that build and does not read and derive the pod again. Where the build
+   * is not kept across steps this is `select`.
+   */
+  async selectKept(query: string): Promise<Rows> {
+    await this.#settle();
+    const { build, time } = this.#options;
+    const kept = await this.#keptOrBuiltWhole(
+      build === undefined ? undefined : time.now(),
+    );
+    if (kept === undefined) return this.select(query);
+    countedQuery("core-pod.matcherSelect", query);
+    return timed("core-pod.matcherSelect", () => kept.select(query));
+  }
+
   /** The query's rows over the pod's RDF files but those the build writes, with nothing derived: the vocabulary is not read. */
   selectStated(query: string): Promise<Rows> {
     return podRows(this.#options, query);
@@ -983,6 +1114,7 @@ export class CorePod {
    * dataset or an answer.
    */
   async selectWithRows(query: string, kind: string): Promise<Rows> {
+    await this.#settle();
     const { vocabulary, newStore, build } = this.#options;
     const [union, references, terms] = await Promise.all([
       this.#filled(new Union(newStore()), build?.lens ?? ""),
@@ -1010,6 +1142,7 @@ export class CorePod {
    * first, when the matcher's view is lent from it.
    */
   async #keptDataset(): Promise<Union | undefined> {
+    await this.#settle();
     await this.#putBackMatcherView();
     return this.#keptUnderLens();
   }
@@ -1029,7 +1162,8 @@ export class CorePod {
    * the dataset is read, when it is put back as it was; but during a step a dataset the build does not keep across
    * steps is taken from what the pod keeps, which builds it again after. Else read and derived.
    */
-  #matcherView(): Promise<Union> {
+  async #matcherView(): Promise<Union> {
+    await this.#settle();
     return this.#held(MATCHER_VIEW, () => this.#lendMatcherView());
   }
 
@@ -1155,6 +1289,7 @@ export class CorePod {
 
   /** A pod that stands where this one does, over a copy of its files, with its own time. */
   async fork(time: IdsAndTime): Promise<CorePod> {
+    await this.#settle();
     const fork = new CorePod({
       ...this.#options,
       pod: await copied(this.#options.pod),
@@ -1172,6 +1307,7 @@ export class CorePod {
 
   /** A second writer of the pod: over a copy of its files, with no snapshot of its own, a new writer (N14). */
   async newWriter(): Promise<CorePod> {
+    await this.#settle();
     const writer = new CorePod({
       ...this.#options,
       pod: await copied(this.#options.pod),
@@ -1248,8 +1384,12 @@ export class CorePod {
     perform: (context: StepContext) => Promise<string | void>,
     everything = false,
     kind = "other",
+    /** The records of the files of the clinical kinds the step wrote, for the steps that know them. */
+    filesWritten?: () => ReadonlyMap<string, readonly string[]> | undefined,
   ): Promise<Performed> {
     const options = this.#options;
+    const deferred = this.#deferring > 0 && DEFERRABLE.has(kind);
+    if (!deferred) await this.#settle();
     const at = options.build === undefined ? undefined : options.time.now();
     const writes = new StepWrites();
     let performed: Performed;
@@ -1313,22 +1453,50 @@ export class CorePod {
       if (change === undefined) {
         this.#dropBuilt();
         this.#builtBefore = undefined;
-      } else change = { ...change, written: writes.committed };
-    }
-    const { build } = options;
-    if (build !== undefined) {
-      try {
-        await timedAside(`core-pod.step.rebuild:${kind}`, () =>
-          this.#rebuild(build, at, change),
-        );
-      } catch (error) {
-        this.#dropBuilt();
-        if (error instanceof Unopened) throw error;
-        throw new BuildFailure(performed, error);
-      } finally {
-        this.#builtBefore = undefined;
+      } else {
+        const filesOf =
+          writes.committed.length === 0
+            ? new Map<string, readonly string[]>()
+            : filesWritten?.();
+        change = {
+          ...change,
+          written: writes.committed,
+          ...(filesOf === undefined ? {} : { filesOf }),
+        };
       }
     }
+    if (options.build === undefined) return performed;
+    if (deferred && at !== undefined) {
+      const before = this.#pending;
+      this.#pending = {
+        kinds: before?.kinds.includes(kind)
+          ? before.kinds
+          : [...(before?.kinds ?? []), kind],
+        at,
+        change: {
+          written: [...(before?.change.written ?? []), ...change.written],
+          ...(before?.change.everything === true || change.everything === true
+            ? { everything: true }
+            : {}),
+          ...(change.filesOf !== undefined &&
+          (before === undefined || before.change.filesOf !== undefined)
+            ? {
+                filesOf: filesTogether(before?.change.filesOf, change.filesOf),
+              }
+            : {}),
+        },
+        performed: {
+          ...performed,
+          wrote: [...(before?.performed.wrote ?? []), ...performed.wrote],
+          ...(performed.activity === undefined &&
+          before?.performed.activity !== undefined
+            ? { activity: before.performed.activity }
+            : {}),
+        },
+      };
+      return performed;
+    }
+    await this.#rebuilt(kind, at, change, performed);
     return performed;
   }
 

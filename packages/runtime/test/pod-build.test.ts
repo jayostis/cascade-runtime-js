@@ -9,17 +9,19 @@ import {
 } from "../src/build.js";
 import { dataset, podDataset, podStated } from "../src/dataset.js";
 import { KeptBuild } from "../src/incremental.js";
-import { CorePod } from "../src/core-pod.js";
+import { BuildFailure, CorePod } from "../src/core-pod.js";
 import type { SamesStillJoined } from "../src/derive.js";
 import { viewEntryName } from "../src/names.js";
 import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
+import { probing } from "../src/probe.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, type Triple } from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
-import { type Dataset, Union } from "../src/store.js";
+import type { StepFile } from "../src/step.js";
+import { type Dataset, type Rows, Union } from "../src/store.js";
 import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
 import { copied } from "./cleo.js";
@@ -628,6 +630,216 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       await writtenAsBuiltWhole(entered, (path) =>
         Promise.resolve([...(wholeFiles.get(path) ?? [])]),
       );
+    });
+  });
+
+  /** An About judgment of `profile`, as the owner files it, named at random. */
+  function aboutJudgment(profile: string): StepFile {
+    const owner = `${address}${layout.card}#me`;
+    return {
+      bytes: new TextEncoder().encode(`
+          <urn:uuid:${crypto.randomUUID()}> a <https://ns.cascadeprotocol.org/cascade#Judgment> ;
+            <https://ns.cascadeprotocol.org/cascade#verdict> <https://ns.cascadeprotocol.org/cascade#About> ;
+            <https://ns.cascadeprotocol.org/cascade#subject> <${subject}> ;
+            <https://ns.cascadeprotocol.org/cascade#basis> <https://ns.cascadeprotocol.org/cascade#OwnerStatement> ;
+            <http://www.w3.org/ns/prov#hadMember> <${profile}> ;
+            <http://www.w3.org/ns/prov#wasAttributedTo> <${owner}> ;
+            <http://www.w3.org/ns/prov#wasGeneratedBy> [ <http://www.w3.org/ns/prov#qualifiedAssociation> [
+              <http://www.w3.org/ns/prov#agent> <${owner}> ;
+              <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#PatientRole> ] ] .
+          <${owner}> a <http://www.w3.org/ns/prov#Person> .`),
+      base: "urn:judgment",
+      name: "the judgment",
+    };
+  }
+  const profiles = [
+    "urn:uuid:11111111-1111-4111-8111-111111111111",
+    "urn:uuid:22222222-2222-4222-8222-222222222222",
+  ];
+
+  describe("given a pod opened over files that hold a counting About, read with `CorePod.selectKept()`", () => {
+    const tied = () => `${PREFIXES}
+      SELECT DISTINCT ?profile WHERE {
+        ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
+          prov:hadMember ?profile ; cascade:subject <${subject}> . }`;
+    const profilesOf = (found: Rows) =>
+      found.rows.map((row) => row.get("profile")?.value).sort();
+
+    async function aboutFiled(): Promise<CorePod> {
+      const files = await countedCopy();
+      const filed = opened(files);
+      await filed.judge(aboutJudgment(profiles[0] as string));
+      await filed.judge(aboutJudgment(profiles[1] as string));
+      filed.close();
+      return opened(files);
+    }
+
+    it("builds the pod whole for the first read and builds nothing for the second", async () => {
+      const reopened = await aboutFiled();
+      const first = await probing(() => reopened.selectKept(tied()));
+      assert.equal(first.seen.spans.get("kept.whole")?.calls, 1);
+      const second = await probing(() => reopened.selectKept(tied()));
+      assert.equal(second.seen.spans.get("kept.whole"), undefined);
+      assert.equal(second.seen.spans.get("matcher.view"), undefined);
+      for (const profile of profiles)
+        assert.ok(profilesOf(second.result).includes(profile), profile);
+      reopened.close();
+    });
+
+    it("finds the profiles the matcher's view finds, the read the import's claim was made over before it read the kept build", async () => {
+      const reopened = await aboutFiled();
+      const kept = await reopened.selectKept(tied());
+      const view = await reopened.select(tied());
+      for (const profile of profiles)
+        assert.ok(profilesOf(kept).includes(profile), profile);
+      assert.deepEqual(profilesOf(kept), profilesOf(view));
+      reopened.close();
+    });
+  });
+
+  describe("given two judgments filed inside `CorePod.deferring()`, whose steps leave their rebuild", () => {
+    /** The times the build wrote the pod's manifest, which it writes once in each rebuild. */
+    const rebuilds = (files: CountedFiles) =>
+      files.writes.get(layout.manifest) ?? 0;
+
+    it("rebuilds once for both, as a build of the whole pod writes", async () => {
+      const files = await countedCopy();
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      const before = rebuilds(files);
+      await stepped.deferring(async () => {
+        for (const profile of profiles)
+          assert.equal(
+            (await stepped.judge(aboutJudgment(profile))).refused,
+            undefined,
+          );
+      });
+      assert.equal(rebuilds(files) - before, 1);
+      const { kept, files: whole } = await KeptBuild.whole(
+        {
+          pod: files,
+          layout,
+          address,
+          newStore: () => new OxigraphStore(),
+          build: incremental,
+          lens: LENS,
+          samesStillJoined: () => Promise.resolve([]),
+        },
+        {
+          address,
+          at: (await podStated(files, layout, new OxigraphStore())).at ?? "",
+          title: "matching",
+          ...(stepped.head === undefined
+            ? {}
+            : { snapshot: stepped.head.snapshot }),
+        },
+      );
+      kept.free();
+      await writtenAsBuiltWhole(files, (path) =>
+        Promise.resolve([...(whole.get(path) ?? [])]),
+      );
+    });
+
+    it("rebuilds before the first read inside `deferring()`, which finds the judgment counting", async () => {
+      const files = await countedCopy();
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      const before = rebuilds(files);
+      let counting: Awaited<ReturnType<CorePod["select"]>> | undefined;
+      await stepped.deferring(async () => {
+        await stepped.judge(aboutJudgment(profiles[0] as string));
+        assert.equal(rebuilds(files) - before, 0, "left to the read");
+        counting = await stepped.select(
+          `${PREFIXES} SELECT ?judgment WHERE { ?judgment cascade:countsUnderLens true ; prov:hadMember <${profiles[0]}> }`,
+        );
+        assert.equal(rebuilds(files) - before, 1, "by the read");
+        await stepped.judge(aboutJudgment(profiles[1] as string));
+      });
+      assert.equal(counting?.rows.length, 1);
+      assert.equal(rebuilds(files) - before, 2);
+    });
+
+    it("rebuilds before it throws what the run threw, leaving the judgment counting for the next read", async () => {
+      const files = await countedCopy();
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      const before = rebuilds(files);
+      await assert.rejects(
+        stepped.deferring(async () => {
+          await stepped.judge(aboutJudgment(profiles[0] as string));
+          throw new Error("the run stopped");
+        }),
+        /the run stopped/,
+      );
+      assert.equal(rebuilds(files) - before, 1);
+      const rows = await stepped.select(
+        `${PREFIXES} SELECT ?judgment WHERE { ?judgment cascade:countsUnderLens true ; prov:hadMember <${profiles[0]}> }`,
+      );
+      assert.equal(rows.rows.length, 1);
+    });
+
+    /** What `deferring` throws when the run throws `fromRun` and the rebuild after it fails. */
+    async function thrownWhenBothFail(fromRun: unknown): Promise<unknown> {
+      const files = await countedCopy();
+      let failing = false;
+      const write = files.write.bind(files);
+      files.write = (path, bytes) =>
+        failing && path === layout.manifest
+          ? Promise.reject(new Error("the manifest cannot be written"))
+          : write(path, bytes);
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      return stepped
+        .deferring(async () => {
+          await stepped.judge(aboutJudgment(profiles[0] as string));
+          failing = true;
+          throw fromRun;
+        })
+        .catch((error: unknown) => error);
+    }
+
+    it("throws an AggregateError of what the run threw and the failure of the rebuild after it, when both fail", async () => {
+      const original = new Error("the run stopped");
+      const thrown = await thrownWhenBothFail(original);
+      assert.ok(thrown instanceof AggregateError);
+      assert.match(
+        thrown.message,
+        /the rebuild failed after the run failed: the run stopped/,
+      );
+      assert.equal(thrown.errors[0], original);
+      assert.equal(
+        original.cause,
+        undefined,
+        "the caller's error is not touched",
+      );
+      const [, rebuild] = thrown.errors as [unknown, unknown];
+      assert.ok(rebuild instanceof BuildFailure);
+      assert.match(rebuild.message, /the manifest cannot be written/);
+    });
+
+    it("keeps a frozen error the run threw, when the rebuild after it fails too", async () => {
+      const original = Object.freeze(new Error("the run stopped"));
+      const thrown = await thrownWhenBothFail(original);
+      assert.ok(thrown instanceof AggregateError);
+      assert.equal(thrown.errors[0], original);
+    });
+
+    it("keeps what the run threw when it is no Error, when the rebuild after it fails too", async () => {
+      const thrown = await thrownWhenBothFail("a string");
+      assert.ok(thrown instanceof AggregateError);
+      assert.equal(thrown.errors[0], "a string");
+    });
+
+    it("refuses to close, leaving the rebuild to the end of the run", async () => {
+      const files = await countedCopy();
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      const before = rebuilds(files);
+      await stepped.deferring(async () => {
+        await stepped.judge(aboutJudgment(profiles[0] as string));
+        assert.throws(() => stepped.close(), /close\(\) inside deferring/);
+      });
+      assert.equal(rebuilds(files) - before, 1);
     });
   });
 });

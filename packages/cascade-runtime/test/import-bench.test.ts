@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openPod } from "cascade-runtime";
+import { probing } from "@cascade-runtime/runtime/probe";
 import {
   HOT_SPOTS,
   importBench,
@@ -58,6 +63,14 @@ function matchingPairs(bundle: {
   return pairs;
 }
 
+/** Each rebuild of the pod the run made, named by the steps it followed, with how many were made. */
+function rebuildsOf(run: Measured): [string, number][] {
+  return run.spans
+    .filter(({ name }) => name.startsWith("core-pod.step.rebuild:"))
+    .map(({ name, calls }): [string, number] => [name, calls])
+    .sort(([a], [b]) => (a < b ? -1 : 1));
+}
+
 /**
  * The import bench imports a synthetic pull of one hospital as the app does, and reports the time and the counts of
  * each place an import spends it, so that a speed-up is argued from a measurement.
@@ -81,6 +94,13 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
           (run.spans.find((span) => span.name === name)?.calls ?? 0) > 0,
           `${name} was not measured`,
         );
+    });
+
+    it("rebuilds the pod twice, once for the import and the judgment that claims its patient and once after the matcher's run, not after each of the three steps", () => {
+      assert.deepEqual(rebuildsOf(run), [
+        ["core-pod.step.rebuild:import+judge", 1],
+        ["core-pod.step.rebuild:match", 1],
+      ]);
     });
 
     it("reports every counted mechanism with a non-zero count", () => {
@@ -136,10 +156,18 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.ok(second.wrote > 0);
     });
 
-    it("reports the time of `pod.unclaimedProfiles`, which the import calls twice", () => {
+    it("reports the time of `pod.profilesTied` and of `pod.unclaimedProfiles`, each of which the import calls once", () => {
+      for (const name of ["pod.profilesTied", "pod.unclaimedProfiles"])
+        assert.equal(
+          second.spans.find((span) => span.name === name)?.calls,
+          1,
+          name,
+        );
+    });
+
+    it("rebuilds the pod twice, as a first import does", () => {
       assert.equal(
-        second.spans.find((span) => span.name === "pod.unclaimedProfiles")
-          ?.calls,
+        rebuildsOf(second).reduce((all, [, calls]) => all + calls, 0),
         2,
       );
     });
@@ -147,6 +175,84 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
     it("binds the records of the run into the comparisons' text, the path a first import never takes", () => {
       assert.ok((second.counts["matcher.queriesRun"] ?? 0) > 0);
       assert.ok((second.counts["matcher.boundRecords"] ?? 0) > 0);
+    });
+  });
+
+  describe("given a pull of 200 resources imported onto a pod that holds another hospital's, closed and opened again", () => {
+    let reopened: Measured;
+
+    before(async () => {
+      reopened = await importBench(200, { reopen: true });
+    });
+
+    it("imports it, with nothing refused", () => {
+      assert.equal(reopened.refused, undefined);
+      assert.ok(reopened.wrote > 0);
+    });
+
+    it("builds the pod whole once, the build the import's rebuilds continue from, and derives no matcher view of it apart, as the read before the import would", () => {
+      const calls = (name: string) =>
+        reopened.spans.find((span) => span.name === name)?.calls ?? 0;
+      assert.equal(calls("kept.whole"), 1);
+      assert.equal(calls("matcher.view"), 0);
+    });
+
+    it("rebuilds the pod twice, as an import onto an open pod does", () => {
+      assert.equal(
+        rebuildsOf(reopened).reduce((all, [, calls]) => all + calls, 0),
+        2,
+      );
+    });
+  });
+
+  describe("given a pod holding one hospital's pull, closed and opened again, whose next import is refused before the good one", () => {
+    /** The good import onto the reopened pod, after `refusals` imports of a file no importer reads. */
+    async function importedAfter(refusals: number) {
+      const folder = await mkdtemp(join(tmpdir(), "import-refused-"));
+      try {
+        let pod = await openPod(folder);
+        await pod.import(syntheticPull(40, { hospital: "first" }), {
+          claimProfiles: true,
+        });
+        await pod.close();
+        pod = await openPod(folder);
+        try {
+          for (let refused = 0; refused < refusals; refused++) {
+            const done = await pod.import(
+              new Map([["junk.json", new TextEncoder().encode("{not json")]]),
+              { claimProfiles: true },
+            );
+            assert.match(done.refused ?? "", /no importer/);
+          }
+          const { result, seen } = await probing(() =>
+            pod.import(syntheticPull(40, { hospital: "second" }), {
+              claimProfiles: true,
+            }),
+          );
+          return {
+            refused: result.refused,
+            wrote: result.wrote.length,
+            builtWhole: seen.spans.get("kept.whole")?.calls ?? 0,
+            rows: await pod.ask("record/Which entry shows it"),
+          };
+        } finally {
+          await pod.close();
+        }
+      } finally {
+        await rm(folder, { recursive: true, force: true });
+      }
+    }
+
+    it("builds the pod no more than once for the refused import and the good one, and imports as it would with none refused", async () => {
+      const control = await importedAfter(0);
+      const refused = await importedAfter(2);
+      assert.equal(control.refused, undefined);
+      assert.equal(refused.refused, undefined);
+      assert.equal(control.builtWhole, 1);
+      assert.equal(refused.builtWhole, 0, "built by the refused import's read");
+      assert.ok(control.rows.length > 0);
+      assert.equal(refused.wrote, control.wrote);
+      assert.equal(refused.rows.length, control.rows.length);
     });
   });
 
