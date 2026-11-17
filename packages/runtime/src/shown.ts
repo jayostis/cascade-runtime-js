@@ -89,30 +89,55 @@ const PAIR_KINDS: ReadonlySet<string> = new Set(
 /**
  * Why a judgment may not name `members`, the first of them the pod holds as a finding for review, whose name the pod
  * derives from its triples, and, for an Acknowledged (`acknowledged`), as a version, a revision, a judgment or a matcher
- * judgment assertion, which the pod also derives or an answer is not about. Nothing when it names none.
+ * judgment assertion, which the pod also derives or an answer is not about. Nothing when it names none. A finding is a
+ * file the build wrote, so `stated` holds it; `read` settles the pod, which a judgment filed inside a step that leaves
+ * its rebuild must not force, and is asked only for an Acknowledged, whose other kinds are derived.
  */
 async function memberRefused(
   read: Pick<CorePod, "select">,
+  stated: Pick<CorePod, "select">,
   members: readonly string[],
   acknowledged: boolean,
 ): Promise<string | undefined> {
   if (members.length === 0) return undefined;
-  const { rows } =
-    await read.select(`PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}>
-      SELECT ?member ?finding ?version ?revision ?judgment ?assertion WHERE {
-        VALUES ?member { ${members.map((member) => `<${member}>`).join(" ")} }
-        BIND (EXISTS { ?member a cascade:FindingForReview } AS ?finding)
-        BIND (EXISTS { ?member prov:specializationOf [] } AS ?version)
-        BIND (EXISTS { ?member a cascade:Revision } AS ?revision)
-        BIND (EXISTS { ?member a cascade:Judgment } AS ?judgment)
-        BIND (EXISTS { ?member a cascade:MatcherJudgmentAssertion } AS ?assertion)
-      }`);
-  const is = (member: string, variable: string): boolean =>
-    rows.some(
-      (row) =>
-        row.get("member")?.value === member &&
-        row.get(variable)?.value === "true",
+  const values = `VALUES ?member { ${members.map((member) => `<${member}>`).join(" ")} }`;
+  const flagged = (
+    rows: Awaited<ReturnType<CorePod["select"]>>["rows"],
+    variable: string,
+  ): Set<string> =>
+    new Set(
+      rows.flatMap((row) =>
+        row.get(variable)?.value === "true"
+          ? (row.get("member")?.value ?? [])
+          : [],
+      ),
     );
+  const findings = flagged(
+    (
+      await stated.select(`PREFIX cascade: <${CASCADE}>
+        SELECT ?member ?finding WHERE {
+          ${values}
+          BIND (EXISTS { ?member a cascade:FindingForReview } AS ?finding)
+        }`)
+    ).rows,
+    "finding",
+  );
+  const rows = acknowledged
+    ? (
+        await read.select(`PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}>
+          SELECT ?member ?version ?revision ?judgment ?assertion WHERE {
+            ${values}
+            BIND (EXISTS { ?member prov:specializationOf [] } AS ?version)
+            BIND (EXISTS { ?member a cascade:Revision } AS ?revision)
+            BIND (EXISTS { ?member a cascade:Judgment } AS ?judgment)
+            BIND (EXISTS { ?member a cascade:MatcherJudgmentAssertion } AS ?assertion)
+          }`)
+      ).rows
+    : [];
+  const is = (member: string, variable: string): boolean =>
+    variable === "finding"
+      ? findings.has(member)
+      : flagged(rows, variable).has(member);
   for (const member of members) {
     if (is(member, "finding"))
       return `${member} is a finding for review: a judgment never names one, whose name the pod derives, and names what it is about instead`;
@@ -224,7 +249,7 @@ export async function judgmentFiled(
       refused: `${entry} is a view entry: a judgment is of records, never entries`,
     };
   const acknowledged = verdicts.includes(`${CASCADE}Acknowledged`);
-  const named = await memberRefused(read, members, acknowledged);
+  const named = await memberRefused(read, stated, members, acknowledged);
   if (named !== undefined) return { refused: named };
   const answered = triples.flatMap(([s, p, o]) =>
     s.value === judgment && p.value === `${CASCADE}answersWarningOfKind`
