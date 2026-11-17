@@ -603,6 +603,29 @@ describe("Checking what a reply says a pod lacks · checkAbsence()", () => {
         stillBacked,
       );
     });
+
+    it("ignores a source's short name where it only marks which source gave a reason a medication was taken for", () => {
+      const calls = ran([
+        {
+          question: "pod/My active medications",
+          total: 1,
+          offset: 0,
+          shown: 1,
+          text: "id\tmedication\treasons\nM0000cafe1\tAlbuterol\tS2 for C0000cafe2, Asthma",
+        },
+      ]);
+      assert.deepEqual(
+        check(
+          {
+            what: "S2",
+            coverage: "every medication",
+            match: { terms: ["S2"] },
+          },
+          calls,
+        ),
+        stillBacked,
+      );
+    });
   });
 
   describe("given a compact read of several pages", () => {
