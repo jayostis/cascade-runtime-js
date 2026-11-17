@@ -7,25 +7,30 @@ import { BRIDGE_REPOSITORY } from "@cascade-runtime/runtime/node";
 configureTables({ checkOnOpen: false });
 
 /**
- * No test reaches the network. Git speaks only to a path (`file`), so a `git ls-remote` or a fetch of a URL fails at once,
+ * Off CI, no test reaches the network. Git speaks only to a path (`file`), so a `git ls-remote` or a fetch of a URL fails at once,
  * saying so; a request to any host but this machine fails the same way, unless the test stubs `fetch` itself. The Bridge
- * is the build `npm run bridge` left in the cache, pinned for the run (outside CI, where the first pick is kept for the
- * run's attempt instead), so none looks at the remote for the newest one.
+ * is the build `npm run bridge` left in the cache, pinned for the run, so none looks at the remote for the newest one. CI
+ * has a network, and a job that installs the package fetches the components it has no checkout of, so it is left as it
+ * is; its first pick of the Bridge is kept for the run's attempt.
  */
-process.env.GIT_ALLOW_PROTOCOL = "file";
-process.env.GIT_TERMINAL_PROMPT = "0";
+const offline = process.env.CI !== "true";
+if (offline) {
+  process.env.GIT_ALLOW_PROTOCOL = "file";
+  process.env.GIT_TERMINAL_PROMPT = "0";
+}
 
 const real = globalThis.fetch;
-globalThis.fetch = (input, init) => {
-  const url = new URL(
-    typeof input === "string" || input instanceof URL ? input : input.url,
-  );
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))
-    throw new Error(
-      `a test asked ${url.href}: tests run offline (packages/cascade-runtime/test/offline.ts). Stub fetch, or use a local file`,
+if (offline)
+  globalThis.fetch = (input, init) => {
+    const url = new URL(
+      typeof input === "string" || input instanceof URL ? input : input.url,
     );
-  return real(input, init);
-};
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))
+      throw new Error(
+        `a test asked ${url.href}: tests run offline (packages/cascade-runtime/test/offline.ts). Stub fetch, or use a local file`,
+      );
+    return real(input, init);
+  };
 
 /** The newest build in the cache `npm run bridge` fills, if any. */
 function cachedBuild(): string | undefined {
