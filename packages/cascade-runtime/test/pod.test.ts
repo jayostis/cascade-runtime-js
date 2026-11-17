@@ -1206,6 +1206,43 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       }
     });
 
+    it("refuses, saying the vocabulary names no warning kinds, an Acknowledged on a vocabulary that names none", async () => {
+      const at = join(pods, "no-kinds");
+      await cp((await alexPod()).folder, at, { recursive: true });
+      const ontology = "ontologies/cascade.ttl";
+      const { vocabulary } = kept;
+      const none: Files = {
+        iri: vocabulary.iri,
+        write: (path, bytes) => vocabulary.write(path, bytes),
+        list: (folder) => vocabulary.list(folder),
+        read: async (path) => {
+          const bytes = await vocabulary.read(path);
+          return bytes !== undefined &&
+            (path === ontology || path === vocabulary.iri + ontology)
+            ? new TextEncoder().encode(
+                new TextDecoder()
+                  .decode(bytes)
+                  .replaceAll(
+                    "FindingForReviewKinds",
+                    "FindingForReviewKindsGone",
+                  ),
+              )
+            : bytes;
+        },
+      };
+      const bare = await openPodWith({ ...kept, vocabulary: none }, at);
+      try {
+        const turtle = acknowledged(bare, [KIND], [elsewhere]);
+        await assert.rejects(bare.judge(turtle), /names no warning kinds/);
+        assert.match(
+          (await bare.checkJudgment(turtle)) ?? "",
+          /names no warning kinds/,
+        );
+      } finally {
+        await bare.close();
+      }
+    });
+
     it("throws, writing nothing, for a verdict other than an Acknowledged that names a kind of warning", async () => {
       const held = await filesIn(join(pods, "judged"));
       for (const verdictName of ["Same", "Different", "Erroneous"]) {

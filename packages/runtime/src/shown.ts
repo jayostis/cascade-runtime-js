@@ -167,15 +167,15 @@ async function nameTaken(
  * from, and none the input states for the judgment itself. A member the pod does not hold is kept: it names no
  * document, and a restore or a rebuild may bring it back. `changed` is false when those are the triples it was given.
  * `stated` reads the pod's files alone, what a name is taken by, so that a judgment with nothing to read the matcher's
- * view for builds none. `kinds` are the kinds of warning the vocabulary names, the concepts of
- * cascade:FindingForReviewKinds.
+ * view for builds none. `kinds` reads the kinds of warning the vocabulary names, the concepts of
+ * cascade:FindingForReviewKinds, and is called only for a judgment that is an Acknowledged or names a kind.
  */
 export async function judgmentFiled(
   read: Pick<CorePod, "select">,
   triples: readonly Triple[],
   views: string,
   stated: Pick<CorePod, "select">,
-  kinds: ReadonlySet<string>,
+  kinds: () => Promise<ReadonlySet<string>>,
 ): Promise<{ refused: string } | { triples: Triple[]; changed: boolean }> {
   const subjectsOf = (predicate: string, object?: string): string[] =>
     triples.flatMap(([s, p, o]) =>
@@ -237,11 +237,17 @@ export async function judgmentFiled(
     };
   if (acknowledged) {
     const [kind] = answered;
+    const known = await kinds();
+    if (known.size === 0)
+      return {
+        refused:
+          "an Acknowledged names one kind of warning it answers (cascade:answersWarningOfKind), and the vocabulary names no warning kinds (no concept of cascade:FindingForReviewKinds)",
+      };
     if (
       answered.length !== 1 ||
       kind === undefined ||
       kind.termType !== "NamedNode" ||
-      !kinds.has(kind.value)
+      !known.has(kind.value)
     )
       return {
         refused: `an Acknowledged names one kind of warning it answers (cascade:answersWarningOfKind), a concept of cascade:FindingForReviewKinds: it names ${answered.length === 0 ? "none" : answered.map(written).join(", ")}`,

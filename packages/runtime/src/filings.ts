@@ -83,7 +83,8 @@ export async function fileJudgment(
     graph.triples,
     context.address + context.layout.viewsFolder,
     { select: (query) => podRows(context, query) },
-    (await tableTerms(context.vocabulary, context.newStore)).findingKinds,
+    async () =>
+      (await tableTerms(context.vocabulary, context.newStore)).findingKinds,
   );
   if ("refused" in filed) throw new Refusal(filed.refused);
   const path = placement.path(one.value);

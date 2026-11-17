@@ -167,7 +167,7 @@ async function prepared(
     {
       select: (query) => core.selectStated(query),
     },
-    await core.findingKinds(),
+    () => core.findingKinds(),
   );
   if ("refused" in filed) throw new Error(filed.refused);
   return {
