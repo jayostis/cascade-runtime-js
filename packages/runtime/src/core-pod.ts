@@ -6,7 +6,7 @@ import {
   fileExport,
 } from "./arrivals.js";
 import { countedQuery, timed } from "./probe.js";
-import type { AdaptersOf } from "./bridge.js";
+import type { AdaptersOf, ConvertBudget } from "./bridge.js";
 import {
   builtFileBytes,
   type Derive,
@@ -587,13 +587,15 @@ export class CorePod {
   /**
    * An export's or a download's arrival: its documents, as the first importer that reads the path finds them, each
    * converted by the first adapter of its media type that accepts it (A1 to A11, A14). The adapters are asked for only
-   * once an importer reads the path. `onProgress` is told as loading the adapter, each conversion and saving begin.
+   * once an importer reads the path. `onProgress` is told as loading the adapter, each conversion and saving begin;
+   * each conversion is held to `budget`.
    */
   import(
     exported: Pick<Files, "read" | "list">,
     folder: string,
     adapters: () => Promise<AdaptersOf>,
     onProgress?: OnProgress,
+    budget?: ConvertBudget,
   ): Promise<Performed> {
     const { importers } = this.#options;
     return this.#step(async (context) => {
@@ -618,6 +620,7 @@ export class CorePod {
         documents,
         await adapters(),
         onProgress,
+        budget,
       );
       await onProgress?.({ part: "saving" });
       return activity;

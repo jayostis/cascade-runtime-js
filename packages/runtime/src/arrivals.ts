@@ -2,6 +2,7 @@ import type { Reported } from "@cascade-runtime/fhir-pull";
 import {
   type AdaptersOf,
   type BridgeDocument,
+  type ConvertBudget,
   isBridgeError,
   type LoadedAdapter,
 } from "./bridge.js";
@@ -1135,13 +1136,14 @@ async function serverRecord(
 /**
  * Files an export's documents, each converted by the first adapter of its media type that accepts it: A1 to A11, with
  * the import named by a new random ID (N7), and the refusals of A14. `onProgress` is told of each conversion as its
- * adapter is found.
+ * adapter is found. Each conversion is held to `budget`; one that passes it stops the step with the Bridge's error.
  */
 export async function fileExport(
   context: StepContext,
   documents: readonly ExportDocument[],
   adapters: AdaptersOf,
   onProgress?: OnProgress,
+  budget: ConvertBudget = {},
 ): Promise<string> {
   const { pod, writes, newStore, time } = context;
   const name = time.newId();
@@ -1166,7 +1168,7 @@ export async function fileExport(
     const adapter = await accepting(adapters, found, document);
     await onProgress?.({ part: "converting", done, of: documents.length });
     const conversion = await refusing(found.path, () =>
-      adapter.convert(document),
+      adapter.convert(document, budget),
     );
     const graph = await parseGraph(conversion.graph, documentIri, newStore);
     const subject = iri(documentIri);
