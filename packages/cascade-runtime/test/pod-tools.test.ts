@@ -1346,21 +1346,33 @@ describe("Checking a pod against the reference tables · reference_table_checks 
   });
 });
 
-describe("cascade-runtime/tools in a browser bundle", () => {
+describe("cascade-runtime/check, cascade-runtime/terms and cascade-runtime/tools in a browser bundle", () => {
   let bundle: { errors: unknown[]; metafile: Metafile };
 
   before(async () => {
     bundle = await build({
-      entryPoints: [
-        fileURLToPath(import.meta.resolve("cascade-runtime/tools")),
-      ],
+      entryPoints: ["check", "terms", "tools"].map((entry) =>
+        fileURLToPath(import.meta.resolve(`cascade-runtime/${entry}`)),
+      ),
       bundle: true,
       platform: "browser",
       format: "esm",
       write: false,
+      outdir: "out",
       metafile: true,
       logLevel: "silent",
     });
+  });
+
+  it("reaches no pod.js from any of them, so a page that imports one takes in neither the Pod, its store nor its wasm", () => {
+    assert.deepEqual(
+      Object.values(bundle.metafile.outputs).flatMap(({ entryPoint, inputs }) =>
+        Object.keys(inputs)
+          .filter((it) => /(^|\/)pod\.js$/.test(it))
+          .map((it) => `${entryPoint} reaches ${it}`),
+      ),
+      [],
+    );
   });
 
   it("bundles for a browser with no error", () => {
