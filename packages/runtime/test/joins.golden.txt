@@ -131,6 +131,9 @@ runtime/scripted-input/gus > pod > flu-shots > matcher | SameMappedCodeAndDate u
 runtime/scripted-input/gus > pod > flu-shots > matcher | SameMappedCodeAndDate urn:uuid:bc5177c0-c305-81c9-98a0-98519d693ac8 urn:uuid:ce572ba1-b9ea-82e2-91c0-d65df87e9ddb
 runtime/scripted-input/gus > pod > medicines-and-results > matcher | SameMedicationCode urn:uuid:a087441e-c8a8-85d6-ae5e-e0fb32544a91 urn:uuid:d8ef7d0f-32c4-8350-9b06-78486a79a341
 runtime/scripted-input/gus > pod > medicines-and-results > matcher | SameResult urn:uuid:98d52e01-ee36-8d1b-80e5-35ed72d78100 urn:uuid:9e904094-c427-8da8-9a25-6b3d7d7bda7e
+runtime/scripted-input/gus > pod > writer > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
+runtime/scripted-input/gus > pod > writer > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:43447c8b-c96a-847b-8322-ac36b1592400 urn:uuid:81388f55-b8dd-82cc-9cd8-7bcb39ba8a36
+runtime/scripted-input/gus > pod > writer > app-drugs > version-six-sames > matcher | SameMedicationCode urn:uuid:cbffb586-ef65-8014-b074-74f1e191c429 urn:uuid:e353fb02-d4bd-819b-b7cd-7ab635c3633e
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > app-icd > conditions > match-conditions | SameConvertedCode urn:uuid:726467d5-22ae-8a2f-a565-9cb2c6f0acd9 urn:uuid:deefc0c5-1231-864c-a376-096722cd1856
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > app-rxnorm > allergies > match-allergies | SameMappedCode urn:uuid:b8adc39a-d1c7-87a6-ae5f-f40f113990f8 urn:uuid:c510eaba-1137-8cf9-9e83-465a8f1cdf5e
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > episodes > match-episodes | SameCode urn:uuid:5660816f-bea3-827f-8fde-b4e2bd30ce7c urn:uuid:5a2468ba-cc03-8f28-ab5d-0898f142df82
