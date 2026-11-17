@@ -97,6 +97,11 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         assert.ok((run.counts[`${name}.store.queries`] ?? 0) > 0, name);
     });
 
+    it("binds no record into a comparison's text, since the pod held no record before the import", () => {
+      assert.ok((run.counts["matcher.queriesRun"] ?? 0) > 0);
+      assert.equal(run.counts["matcher.boundRecords"] ?? 0, 0);
+    });
+
     it("counts the rows of each matcher rule that ran", () => {
       for (const { name } of run.spans.filter(({ name }) =>
         name.startsWith("matcher.rule:"),
@@ -116,6 +121,24 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       const table = tableOf(run);
       for (const name of [...HOT_SPOTS.spans, ...HOT_SPOTS.counts])
         assert.ok(table.includes(name), `${name} is not in the table`);
+    });
+  });
+
+  describe("given a pull of 200 resources imported onto a pod that holds another hospital's", () => {
+    let second: Measured;
+
+    before(async () => {
+      second = await importBench(200, { second: true });
+    });
+
+    it("imports it, with nothing refused", () => {
+      assert.equal(second.refused, undefined);
+      assert.ok(second.wrote > 0);
+    });
+
+    it("binds the records of the run into the comparisons' text, the path a first import never takes", () => {
+      assert.ok((second.counts["matcher.queriesRun"] ?? 0) > 0);
+      assert.ok((second.counts["matcher.boundRecords"] ?? 0) > 0);
     });
   });
 

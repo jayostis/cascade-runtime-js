@@ -4,15 +4,18 @@ import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import { featureStory } from "../src/conformance.js";
 import { featuresOf, readFeature } from "../src/features.js";
-import { MemoryFiles } from "../src/files.js";
+import { MemoryFiles, relative } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { importersNamed } from "../src/importers.js";
 import { MATCHER, readEveryRecord } from "../src/matcher.js";
+import { documentName } from "../src/names.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { localVocabulary, readConfig } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
+import { probing } from "../src/probe.js";
 import { iri } from "../src/rdf.js";
+import { References } from "../src/references.js";
 import { Replay, type ReplayOptions, titleOf } from "../src/replay.js";
 import type { Step } from "../src/story.js";
 import { layout, ROOT, RUNTIME, vocabulary } from "./vocabulary.js";
@@ -27,9 +30,19 @@ const newStore = () => new OxigraphStore();
 const byCodePoint = (a: string, b: string): number =>
   a < b ? -1 : a > b ? 1 : 0;
 
-let everyRun: Promise<Compared[]> | undefined;
+let everyRun: Promise<Runs> | undefined;
 /** The runs of the stories, found once for the file's tests. */
-const allRuns = (): Promise<Compared[]> => (everyRun ??= storyRuns());
+const allRuns = (): Promise<Runs> => (everyRun ??= storyRuns());
+
+/**
+ * The runs that take records, each performed both ways; and each run over the whole pod, an open's (O1) or a
+ * recheck's (M7), after one that took records, as the story performed it: such a run alone files M18's finding of the
+ * matcher judgments a rule list version no longer reaches, and its count hangs on what the runs before it asserted.
+ */
+interface Runs {
+  readonly compared: readonly Compared[];
+  readonly whole: readonly { readonly label: string; readonly wrote: Wrote }[];
+}
 
 /** What one run wrote, by path, but the run's act file, which its random name (N7) makes differ; and any refusal. */
 interface Wrote {
@@ -44,7 +57,6 @@ async function performed(
   step: Step,
   every: boolean,
 ): Promise<Wrote> {
-  const laidOut = await layout();
   const fork = await replay.fork();
   readEveryRecord(every);
   try {
@@ -52,7 +64,13 @@ async function performed(
   } finally {
     readEveryRecord(false);
   }
-  const replayed = fork.replayed();
+  return lastWrote(fork, step);
+}
+
+/** What the replay's last step, the step given, wrote, by path. */
+async function lastWrote(replay: Replay, step: Step): Promise<Wrote> {
+  const laidOut = await layout();
+  const replayed = replay.replayed();
   const last = replayed.steps.at(-1);
   assert.equal(last?.step, step, replayed.stopped?.why);
   const wrote = [...(last?.wrote ?? [])].sort();
@@ -75,15 +93,26 @@ interface Compared {
   readonly every: unknown;
 }
 
+/** A step that runs the matcher over the whole pod: an open (O1) or a recheck (M7). */
+function overWholePod({ happened }: Step): boolean {
+  return (
+    happened.kind === "open" ||
+    (happened.kind === "matcher" && happened.takes === undefined)
+  );
+}
+
 /**
  * Every run that takes records in the stories of the feature files, each performed twice on a fork of the replay as it
- * stood: reading what its joins reach, and reading every record.
+ * stood: reading what its joins reach, and reading every record; and each run over the whole pod after one of them.
  */
-async function storyRuns(): Promise<Compared[]> {
+async function storyRuns(): Promise<Runs> {
   const files = await vocabulary();
   const laidOut = await layout();
   const config = await readConfig(ROOT);
-  /** Each story's steps through its last run that takes records, as a tree: stories that begin alike share a replay. */
+  /**
+   * Each story's steps through its last run that takes records, or its last run over the whole pod after one, as a
+   * tree: stories that begin alike share a replay.
+   */
   interface Node {
     readonly step?: Step;
     readonly children: Map<string, Node>;
@@ -102,11 +131,11 @@ async function storyRuns(): Promise<Compared[]> {
       const { person, steps } = await featureStory(files, path, newStore, {
         example: example.name,
       });
+      const first = steps.findIndex(takesRecords);
+      if (first < 0) continue;
       const through = steps.findLastIndex(
-        ({ happened }) =>
-          happened.kind === "matcher" && happened.takes !== undefined,
+        (step, at) => takesRecords(step) || (at > first && overWholePod(step)),
       );
-      if (through < 0) continue;
       const title = await titleOf(files, feature.folder);
       const start = JSON.stringify([person, title]);
       let tree = roots.get(start);
@@ -142,31 +171,38 @@ async function storyRuns(): Promise<Compared[]> {
     }
   }
   const compared: Compared[] = [];
+  const whole: { label: string; wrote: Wrote }[] = [];
   const labels = new Set<string>();
+  const labelOf = (through: string): string => {
+    let label = through;
+    for (let again = 2; labels.has(label); again += 1)
+      label = `${through} #${again}`;
+    labels.add(label);
+    return label;
+  };
   const walk = async (
     replay: Replay,
     node: Node,
     through: string,
+    took: boolean,
   ): Promise<void> => {
     const { step } = node;
     if (step !== undefined) {
       through = `${through} > ${step.name}`;
-      if (
-        step.happened.kind === "matcher" &&
-        step.happened.takes !== undefined
-      ) {
-        let label = through;
-        for (let again = 2; labels.has(label); again += 1)
-          label = `${through} #${again}`;
-        labels.add(label);
+      if (takesRecords(step))
         compared.push({
           name: step.name,
-          label,
+          label: labelOf(through),
           scoped: await performed(replay, step, false),
           every: await performed(replay, step, true),
         });
-      }
       await replay.perform(step);
+      if (took && overWholePod(step))
+        whole.push({
+          label: labelOf(through),
+          wrote: await lastWrote(replay, step),
+        });
+      took ||= takesRecords(step);
     }
     const children = [...node.children.values()];
     for (const [index, child] of children.entries())
@@ -174,19 +210,26 @@ async function storyRuns(): Promise<Compared[]> {
         index === children.length - 1 ? replay : await replay.fork(),
         child,
         through,
+        took,
       );
   };
   for (const { folder, options, root } of roots.values())
-    await walk(new Replay(options), root, folder);
+    await walk(new Replay(options), root, folder, false);
   compared.push(...(await noteMasterIdentifierRuns(files, laidOut, config)));
-  return compared;
+  return { compared, whole };
+}
+
+/** A step that runs the matcher on the records a step brought (M1). */
+function takesRecords({ happened }: Step): boolean {
+  return happened.kind === "matcher" && happened.takes !== undefined;
 }
 
 /**
  * The runs no story of the vocabulary has, for R21: two notes of different types sharing a master identifier typed by
  * its system, which R21 joins (and neither note-text rule can, since no two of the four notes share a type); then two of
- * different types sharing a plain-string identifier, which joins nothing. The notes' graphs are the saved output of
- * `joins-extra/note-master-identifier/`, which these runs read as their own source.
+ * different types sharing a plain-string identifier, which joins nothing. The notes' graphs under
+ * `joins-extra/note-master-identifier/bridge/` are edited by hand, no converter's output, and these runs read that folder
+ * as their own source.
  */
 async function noteMasterIdentifierRuns(
   vocabularyFiles: Awaited<ReturnType<typeof vocabulary>>,
@@ -275,10 +318,10 @@ async function noteMasterIdentifierRuns(
  */
 describe("Running the matcher on a step's records alone · CorePod.match(), readEveryRecord()", () => {
   describe("given each matcher run that takes records in the stories of the vocabulary's feature files", () => {
-    let runs: Compared[];
+    let runs: readonly Compared[];
 
     before(async () => {
-      runs = await allRuns();
+      runs = (await allRuns()).compared;
       assert.ok(runs.length > 0, "no story has a run that takes records");
     });
 
@@ -287,7 +330,123 @@ describe("Running the matcher on a step's records alone · CorePod.match(), read
         assert.deepEqual(scoped, every, name);
     });
   });
+
+  describe("given a first import and a comparison that returns a reference series as its `?record`", () => {
+    it("is evaluated unbound and keeps no row whose `?record` the run did not begin", async () => {
+      const { seen, refused } = await seriesAsRecordRun();
+      assert.equal(refused, undefined);
+      assert.equal(seen.counts.get("matcher.queriesRun"), 1);
+      assert.equal(seen.counts.get("matcher.boundRecords"), undefined);
+      assert.equal(seen.counts.get(`matcher.rule:${CASCADE}SameCode.rows`), 0);
+    });
+  });
 });
+
+const SERIES_AS_RECORD = `PREFIX cascade: <${CASCADE}>
+PREFIX prov: <${PROV}>
+SELECT DISTINCT ?record ?other ?origin WHERE {
+  ?origin prov:specializationOf ?record .
+  ?record a cascade:ReferenceSeries .
+  ?other a cascade:Subject .
+}`;
+
+/**
+ * Dev's first entry, in the stories of the matcher's feature, matched by a rule list of one rule whose comparison
+ * returns a reference series as `?record`, with a version of its table as `?origin`: a thing the run's count of
+ * records leaves out and `over()` adds to the matcher's view, so no row of it is a record the run began. The rule
+ * list and its table are written here and the comparison is served beside the vocabulary's own; the run is probed.
+ */
+async function seriesAsRecordRun(): Promise<{
+  seen: Awaited<ReturnType<typeof probing>>["seen"];
+  refused: string | undefined;
+}> {
+  const text = (content: string): Uint8Array =>
+    new TextEncoder().encode(content);
+  const [files, laidOut, config] = await Promise.all([
+    vocabulary(),
+    layout(),
+    readConfig(ROOT),
+  ]);
+  const query = text(SERIES_AS_RECORD);
+  const rules = "urn:uuid:7d3f0c52-1b8e-4a46-9c0d-2e5a8b6f4d11";
+  const rulesVersion = "urn:uuid:3a9e5b17-6c24-4d80-8f13-b0c7d2e9a456";
+  const ingredients = "urn:uuid:5c1e8a47-9d02-4f63-b7a8-1e4d6c0f2b93";
+  const ingredientsVersion = "urn:uuid:0e6b4d28-3f91-4a7c-8c5d-9b2a7e1f6d40";
+  const tables = new MemoryFiles("https://tables.example/");
+  await tables.write(
+    "references.ttl",
+    text(`@prefix cascade: <${CASCADE}> .
+@prefix pav: <http://purl.org/pav/> .
+@prefix prov: <${PROV}> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<${rules}> a cascade:ReferenceSeries ; rdfs:label "Matcher rules" ; cascade:defaultTableVersion <${rulesVersion}> .
+<${rulesVersion}> a prov:Entity ; prov:specializationOf <${rules}> ; pav:version "1" .
+<${ingredients}> a cascade:ReferenceSeries ; rdfs:label "Ingredients" ; cascade:tableKind cascade:SubstanceIngredients ; cascade:defaultTableVersion <${ingredientsVersion}> .
+<${ingredientsVersion}> a prov:Entity ; prov:specializationOf <${ingredients}> ; pav:version "1" .
+`),
+  );
+  await tables.write(
+    `${rulesVersion.slice("urn:uuid:".length)}.ttl`,
+    text(`@prefix cascade: <${CASCADE}> .
+[] a cascade:RuleListRow ;
+  cascade:matcherRule cascade:SameCodeRule ;
+  cascade:justifiedAs cascade:SameCode ;
+  cascade:appliesToClass cascade:AllergyOrIntolerance ;
+  cascade:tableKind cascade:SubstanceIngredients ;
+  cascade:queryPath "matcher/series-as-record.rq" ;
+  cascade:queryHash <${await documentName(query)}> .
+`),
+  );
+  await tables.write(
+    `${ingredientsVersion.slice("urn:uuid:".length)}.ttl`,
+    text(
+      "<urn:example:ingredient> <http://www.w3.org/2000/01/rdf-schema#label> 'x' .",
+    ),
+  );
+  const { person, steps } = await featureStory(
+    files,
+    "runtime/matcher.feature",
+    newStore,
+    {
+      example:
+        "two allergies with one code are the same by code, and one with another code joins neither",
+    },
+  );
+  const [entry, run] = steps.slice(1, 3) as [Step, Step];
+  assert.equal(entry.happened.kind, "entry");
+  assert.deepEqual(run.happened, { kind: "matcher", takes: entry.name });
+  const replay = new Replay({
+    story: { address: person.address, subject: person.subject, steps },
+    source: files,
+    vocabulary: {
+      iri: files.iri,
+      read: async (path) =>
+        relative(files, path) === "queries/matcher/series-as-record.rq"
+          ? query
+          : files.read(path),
+      write: (path, bytes) => files.write(path, bytes),
+      list: (folder) => files.list(folder),
+    },
+    folder: person.folder,
+    title: "",
+    pod: new MemoryFiles(person.address),
+    layout: laidOut,
+    newStore,
+    runtime: RUNTIME,
+    importers: importersNamed(config.importers),
+    references: () => References.of(tables, "", newStore),
+  });
+  await replay.perform(steps[0] as Step);
+  await replay.perform(entry);
+  const { seen } = await probing(() => replay.perform(run));
+  const replayed = replay.replayed();
+  return {
+    seen,
+    refused:
+      replayed.stopped?.why ??
+      replayed.steps.find((one) => one.refused !== undefined)?.refused,
+  };
+}
 
 /**
  * What the matcher filed in `files`, one line each: a Same as its rule's name and its members, and a finding for
@@ -332,10 +491,12 @@ async function filedIn(
 /** Today's joins: for each run in each story and each kit's whole story, what the matcher files, one line each. */
 async function joinsNow(): Promise<string[]> {
   const lines: string[] = [];
-  for (const { label, scoped } of await allRuns())
-    for (const filed of await filedIn(
-      scoped.files.map(([path, text]) => [path, text]),
-    ))
+  const { compared, whole } = await allRuns();
+  for (const { label, wrote } of [
+    ...compared.map(({ label, scoped }) => ({ label, wrote: scoped })),
+    ...whole,
+  ])
+    for (const filed of await filedIn(wrote.files))
       lines.push(`${label} | ${filed}`);
   const local = await localVocabulary(ROOT);
   const folders = [`${CASCADE}Judgment`, `${CASCADE}FindingForReview`].map(
@@ -356,7 +517,8 @@ async function joinsNow(): Promise<string[]> {
 
 /**
  * Narrowing the pairs a rule compares must leave its joins as they are. `joins.golden.txt` holds today's: for each run
- * that takes records in each story of the feature files, and for each kit's whole story, the Sames filed, as the rule's
+ * that takes records in each story of the feature files, each run over the whole pod after one, and for each kit's
+ * whole story, the Sames filed, as the rule's
  * name and the members it joined, and the findings for review, as their body and their targets; and the runs of
  * `joins-extra/`, which cover what no story does. To write it again after a change to the vocabulary's names or rules,
  * run this file with `UPDATE_JOINS_GOLDEN=1`: it writes the file and fails, so a run that writes is never green.
