@@ -40,6 +40,7 @@ import {
   type VocabularyBuild,
   type VocabularyQuery,
 } from "@cascade-runtime/runtime";
+import { timed } from "@cascade-runtime/runtime/probe";
 import {
   answerKey,
   Answers,
@@ -949,7 +950,13 @@ class OpenPod implements Pod {
   }
 
   /** The patient profiles the import's revisions' versions name that no counting About ties to the subject. */
-  async #unclaimedProfiles(activity: string): Promise<string[]> {
+  #unclaimedProfiles(activity: string): Promise<string[]> {
+    return timed("pod.unclaimedProfiles", () =>
+      this.#profilesNotTied(activity),
+    );
+  }
+
+  async #profilesNotTied(activity: string): Promise<string[]> {
     const [named, tied] = await Promise.all([
       this.#core.select(`${PREFIXES}
         SELECT DISTINCT ?profile WHERE {

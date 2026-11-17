@@ -136,6 +136,14 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.ok(second.wrote > 0);
     });
 
+    it("reports the time of `pod.unclaimedProfiles`, which the import calls twice", () => {
+      assert.equal(
+        second.spans.find((span) => span.name === "pod.unclaimedProfiles")
+          ?.calls,
+        2,
+      );
+    });
+
     it("binds the records of the run into the comparisons' text, the path a first import never takes", () => {
       assert.ok((second.counts["matcher.queriesRun"] ?? 0) > 0);
       assert.ok((second.counts["matcher.boundRecords"] ?? 0) > 0);
