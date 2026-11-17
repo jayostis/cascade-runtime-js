@@ -104,12 +104,11 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         assert.notEqual(run.counts[`${name}.rows`], undefined, name);
     });
 
-    it("credits each graph scan to the span that made it: arrivals one per version and one whole-graph scan; refuseUnaccounted one per version, one whole-graph scan and three graph.subjects() scans", () => {
-      const versions = bundleOf(200).entry.length;
-      assert.equal(run.counts["arrivals.arrivals.graph.scans"], versions + 1);
+    it("credits each graph scan to the span that made it, a constant however many versions: arrivals one graph.subjects() scan; refuseUnaccounted one whole-graph scan, three graph.subjects() scans and one pass to build the name index", () => {
+      assert.equal(run.counts["arrivals.arrivals.graph.scans"], 1);
       assert.equal(
         run.counts["arrivals.refuseUnaccounted.graph.scans"],
-        versions + 1 + 3,
+        1 + 3 + 1,
       );
     });
 
