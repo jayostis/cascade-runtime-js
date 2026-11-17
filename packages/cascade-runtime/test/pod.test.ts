@@ -2290,7 +2290,8 @@ describe("Opening a pod again · openPod()", () => {
 
     /** The parts that keep nothing beside the pod, so every read builds it whole. */
     const keepingNothing = (): Parts => {
-      const { answers: _, ...parts } = kept;
+      const parts: { -readonly [K in keyof Parts]: Parts[K] } = { ...kept };
+      delete parts.answers;
       return parts;
     };
 
@@ -2366,7 +2367,18 @@ describe("Opening a pod again · openPod()", () => {
           spans.filter((span) => DERIVING.test(span)),
           [],
         );
-        assert.deepEqual(result, wholeRows[1]);
+        const whole = await openFolderPod(
+          { ...keepingNothing(), derive: fastDerive() },
+          at,
+          { secret: WORDS },
+        );
+        try {
+          const rows = await whole.ask("pod/My active allergies");
+          assert.ok(rows.length > 0);
+          assert.deepEqual(result, rows);
+        } finally {
+          await whole.close();
+        }
       } finally {
         await reopened.close();
       }

@@ -191,10 +191,11 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.ok(reopened.wrote > 0);
     });
 
-    it("builds the pod whole once, the build the import's rebuilds continue from, and derives no matcher view of it apart, as the read before the import would", () => {
+    it("reads the build the first import wrote back once, rather than building the pod whole, as the build the import's rebuilds continue from, and derives no matcher view of it apart", () => {
       const calls = (name: string) =>
         reopened.spans.find((span) => span.name === name)?.calls ?? 0;
-      assert.equal(calls("kept.whole"), 1);
+      assert.equal(calls("kept.readBack"), 1);
+      assert.equal(calls("kept.whole"), 0);
       assert.equal(calls("matcher.view"), 0);
     });
 

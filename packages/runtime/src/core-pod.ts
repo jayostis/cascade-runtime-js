@@ -42,7 +42,15 @@ import {
 } from "./names.js";
 import { type Change, KeptBuild } from "./incremental.js";
 import { type Act, same, StepWrites } from "./pod.js";
-import { iri, literal, RDF, type Triple, XSD } from "./rdf.js";
+import {
+  iri,
+  literal,
+  ntriples,
+  RDF,
+  type Triple,
+  written,
+  XSD,
+} from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
 import { matcherJudgmentTouched } from "./shown.js";
@@ -72,6 +80,7 @@ const MATCHER_VIEW = "matcher view";
 const COMPACT_AFTER_MOVED = 2_000_000;
 const REVISION = "revision";
 const KEPT = "kept";
+const INPUTS = "inputs";
 
 export interface CorePodOptions {
   /** The pod's files, named by its address. */
@@ -104,6 +113,21 @@ export interface CorePodOptions {
    * row "view").
    */
   readonly build?: PodBuildOption;
+  /**
+   * Where the runtime keeps what it built of the pod beside it, never in it. Given, with a build kept across steps, each
+   * rebuild keeps the lens's derived state there and the manifest names the hash of what the build read, so a pod
+   * opened again reads its build back instead of building it whole when the hash is still the pod's (C8).
+   */
+  readonly besidePod?: Files;
+}
+
+/** Where the derived state of the build under the lens is kept beside the pod. */
+function builtBeside(lens: string): string {
+  return `build-${lens}.nt`;
+}
+
+function hex(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /** The lens a pod's files are built under after every step, how, and the build to keep across steps. */
@@ -520,6 +544,23 @@ export class CorePod {
   /** The union with the pod's files, the lens's derived state, the files the build writes and the layout. */
   async #filled(union: Union, lens: string): Promise<Union> {
     const { pod, layout, address, title, time, build } = this.#options;
+    if (
+      build?.incremental !== undefined &&
+      lens === build.lens &&
+      this.#built === undefined
+    ) {
+      const stated = await podStated(pod, layout, union.store);
+      const back = await this.#writtenBuild(build, build.incremental, {
+        address,
+        at: stated.at ?? time.now(),
+        title,
+      });
+      if (back !== undefined) {
+        union.store.free?.();
+        this.#built = back.kept;
+        return back.kept.union;
+      }
+    }
     await podFiles(pod, layout, address, union);
     if (build === undefined) {
       for (const path of layout.rebuilt.filter((path) => layout.isRdf(path))) {
@@ -564,9 +605,9 @@ export class CorePod {
     this.#dropBuilt();
     if (build === undefined) return;
     const store = this.#options.newStore();
-    let at: string;
+    let stated: Awaited<ReturnType<typeof podStated>>;
     try {
-      at = (await podStated(pod, layout, store)).at ?? time.now();
+      stated = await podStated(pod, layout, store);
     } finally {
       store.free?.();
     }
@@ -576,7 +617,13 @@ export class CorePod {
         layout,
         address,
         layout.manifest,
-        manifest(address + layout.manifest, title, at, this.#head?.snapshot),
+        manifest(
+          address + layout.manifest,
+          title,
+          stated.at ?? time.now(),
+          this.#head?.snapshot,
+          stated.inputsHash,
+        ),
       ),
     );
   }
@@ -1529,9 +1576,14 @@ export class CorePod {
     )
       return kept;
     return this.#held(DATASET + build.lens, async () => {
-      const whole = await timedAside("kept.whole", () =>
-        KeptBuild.whole(this.#rebuilding(build, incremental), this.#state(at)),
-      );
+      const whole =
+        (await this.#writtenBuild(build, incremental, this.#state(at))) ??
+        (await timedAside("kept.whole", () =>
+          KeptBuild.whole(
+            this.#rebuilding(build, incremental),
+            this.#state(at),
+          ),
+        ));
       this.#built = whole.kept;
       this.#builtBefore = whole.files;
       return whole.kept.union;
@@ -1723,6 +1775,134 @@ export class CorePod {
     return fileDigest(bytes);
   }
 
+  /**
+   * The hash of everything a build of the pod as it stands reads (C8): the runtime, the lens, the pod's address, the
+   * path of each of its files but those the build writes, the bytes of each of them that changes in place, the tables'
+   * index, and the texts of the lens's derivations, the layout and the build's queries. A file of the set is named by
+   * what it holds (N9), so its path stands for its bytes. None without a place beside the pod to keep the build in.
+   */
+  #inputsHash(
+    build: PodBuildOption,
+    incremental: VocabularyBuild,
+  ): Promise<string | undefined> {
+    const { pod, layout, address, runtime, besidePod } = this.#options;
+    if (besidePod === undefined) return Promise.resolve(undefined);
+    return this.#held(INPUTS, () =>
+      timedAside("core-pod.inputsHash", async () => {
+        const rebuilt = new Set(layout.rebuilt);
+        const paths = (await pod.list(""))
+          .filter((path) => !rebuilt.has(path))
+          .sort();
+        const inPlace: string[] = [];
+        for (const path of paths)
+          if (!layout.inSnapshotSet(path)) {
+            const bytes = await pod.read(path);
+            inPlace.push(
+              path,
+              bytes === undefined ? "" : hex(await fileDigest(bytes)),
+            );
+          }
+        const tables = (await this.#tables()).index
+          .match()
+          .map((triple) => triple.map(written).join(" "))
+          .sort();
+        const read = JSON.stringify([
+          runtime,
+          build.lens,
+          address,
+          paths,
+          inPlace,
+          tables,
+          incremental.derivations.for(build.lens).map(({ query }) => query),
+          layout.turtle,
+          incremental.queries,
+        ]);
+        return hex(await fileDigest(new TextEncoder().encode(read)));
+      }),
+    );
+  }
+
+  /**
+   * The build the pod's files and what is kept beside it hold, read back, when the manifest names the hash of what a
+   * build of the pod as it stands reads, and the derived state kept beside it was kept under that hash with every file
+   * it names still held; otherwise none, and the pod is built.
+   */
+  async #writtenBuild(
+    build: PodBuildOption,
+    incremental: VocabularyBuild,
+    state: PodState,
+  ): Promise<
+    | { kept: KeptBuild; files: ReadonlyMap<string, readonly Triple[]> }
+    | undefined
+  > {
+    const { pod, layout, besidePod, newStore } = this.#options;
+    if (besidePod === undefined) return undefined;
+    const inputsHash = await this.#inputsHash(build, incremental);
+    if (inputsHash === undefined) return undefined;
+    const store = newStore();
+    let named: string | undefined;
+    try {
+      named = (await podStated(pod, layout, store)).inputsHash;
+    } finally {
+      store.free?.();
+    }
+    if (named !== inputsHash) return undefined;
+    const kept = await besidePod
+      .read(builtBeside(build.lens))
+      .catch(() => undefined);
+    if (kept === undefined) return undefined;
+    const end = kept.indexOf(0x0a);
+    if (end < 0) return undefined;
+    let header: { inputsHash?: unknown; built?: unknown };
+    try {
+      header = JSON.parse(
+        new TextDecoder().decode(kept.subarray(2, end)),
+      ) as typeof header;
+    } catch {
+      return undefined;
+    }
+    if (header.inputsHash !== inputsHash || !Array.isArray(header.built))
+      return undefined;
+    const files = new Map<string, Uint8Array>();
+    for (const path of header.built as unknown[]) {
+      if (typeof path !== "string") return undefined;
+      const bytes = await pod.read(path);
+      if (bytes === undefined) return undefined;
+      files.set(path, bytes);
+    }
+    return KeptBuild.readBack(this.#rebuilding(build, incremental), state, {
+      derived: kept.subarray(end + 1),
+      files,
+    });
+  }
+
+  /**
+   * Keeps the build's derived state beside the pod under the hash of what it read, naming the files of the pod its
+   * queries wrote; a failure keeps nothing, and the pod is built whole when next opened.
+   */
+  async #keepBeside(
+    lens: string,
+    inputsHash: string,
+    built: KeptBuild,
+  ): Promise<void> {
+    const { besidePod, layout } = this.#options;
+    if (besidePod === undefined) return;
+    const views = new Set(layout.views.map(({ file }) => file));
+    const header = new TextEncoder().encode(
+      `# ${JSON.stringify({
+        inputsHash,
+        built: layout.built
+          .flatMap(({ file }) => file ?? [])
+          .filter((file) => !views.has(file) || built.held.has(file)),
+      })}\n`,
+    );
+    const derived = ntriples(await built.derived());
+    const bytes = new Uint8Array(header.length + derived.length);
+    bytes.set(header);
+    bytes.set(derived, header.length);
+    await besidePod.write(builtBeside(lens), bytes).catch(() => undefined);
+  }
+
   async #rebuild(
     build: PodBuildOption,
     at: string | undefined,
@@ -1730,7 +1910,11 @@ export class CorePod {
   ): Promise<void> {
     const { pod, layout, address, title, newStore } = this.#options;
     if (build.incremental !== undefined && at !== undefined) {
-      const state = this.#state(at);
+      const inputsHash = await this.#inputsHash(build, build.incremental);
+      const state = {
+        ...this.#state(at),
+        ...(inputsHash === undefined ? {} : { inputsHash }),
+      };
       const rebuilding = this.#rebuilding(build, build.incremental);
       let built = this.#built;
       let files = await timedAside("kept.step", async () =>
@@ -1750,11 +1934,22 @@ export class CorePod {
       }
       const made = files;
       const bytes = await timedAside("core-pod.rebuild.bytes", async () =>
-        [...made].map(
-          ([path, triples]) =>
-            [path, builtFileBytes(layout, address, path, triples)] as const,
-        ),
+        [...made]
+          .map(
+            ([path, triples]) =>
+              [path, builtFileBytes(layout, address, path, triples)] as const,
+          )
+          .sort(
+            ([a], [b]) =>
+              Number(a === layout.manifest) - Number(b === layout.manifest),
+          ),
       );
+      if (inputsHash !== undefined) {
+        const keeping = built;
+        await timedAside("core-pod.rebuild.keepBeside", () =>
+          this.#keepBeside(build.lens, inputsHash, keeping),
+        );
+      }
       await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
       return;

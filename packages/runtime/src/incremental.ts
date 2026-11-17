@@ -171,6 +171,18 @@ export class KeptBuild {
     return this.#union;
   }
 
+  /** The views written. */
+  get held(): ReadonlySet<string> {
+    return this.#held;
+  }
+
+  /** The lens's derived state. */
+  derived(): Promise<Triple[]> {
+    return this.#union.construct(
+      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${this.#derived}> { ?s ?p ?o } }`,
+    );
+  }
+
   /**
    * Moves the union to a store of its own holding the same graphs, and frees the one it was in: Oxigraph keeps something
    * of every quad it removes, so a store whose quads are removed and added again many times grows without end.
@@ -299,8 +311,65 @@ export class KeptBuild {
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }> {
-    const { layout, address, newStore, build, lens, samesStillJoined } =
-      rebuilding;
+    const { address, build, lens, samesStillJoined } = rebuilding;
+    return KeptBuild.#made(rebuilding, pod, async (union) => ({
+      derived: await timedAside("kept.whole.derive", () =>
+        build.derivations.derive(union, lens, samesStillJoined),
+      ),
+      ...(await build.queried(union, address)),
+    }));
+  }
+
+  /**
+   * The pod's files, the layout, and the lens's derived state and the files a build wrote, read back as they were
+   * written rather than derived and built (C8): the derived state as N-Triples, each file the build's queries write by
+   * its path, the views among them those written.
+   */
+  static async readBack(
+    rebuilding: Rebuilding,
+    pod: PodState,
+    written: {
+      readonly derived: Uint8Array;
+      readonly files: ReadonlyMap<string, Uint8Array>;
+    },
+  ): Promise<{
+    kept: KeptBuild;
+    files: ReadonlyMap<string, readonly Triple[]>;
+  }> {
+    const { layout, address, lens } = rebuilding;
+    return timedAside("kept.readBack", () =>
+      KeptBuild.#made(rebuilding, pod, async (union) => {
+        const derived = await union.store.parse(written.derived, address);
+        await union.add(derived, DERIVED + lens);
+        const files = new Map<string, readonly Triple[]>();
+        for (const [path, bytes] of written.files) {
+          const triples = await union.store.parse(bytes, address + path);
+          files.set(path, triples);
+          await union.add(triples, address + path);
+        }
+        const views = new Set(layout.views.map(({ file }) => file));
+        return {
+          derived: [{ path: DERIVED + lens, added: derived }],
+          files,
+          held: new Set([...files.keys()].filter((path) => views.has(path))),
+        };
+      }),
+    );
+  }
+
+  static async #made(
+    rebuilding: Rebuilding,
+    pod: PodState,
+    build: (union: Union) => Promise<{
+      readonly derived: readonly DerivedStep[];
+      readonly files: ReadonlyMap<string, readonly Triple[]>;
+      readonly held: ReadonlySet<string>;
+    }>,
+  ): Promise<{
+    kept: KeptBuild;
+    files: ReadonlyMap<string, readonly Triple[]>;
+  }> {
+    const { layout, address, newStore } = rebuilding;
     const rebuilt = new Set(layout.rebuilt);
     const paths = (await rebuilding.pod.list("")).filter(
       (path) => layout.isRdf(path) && !rebuilt.has(path),
@@ -309,12 +378,9 @@ export class KeptBuild {
     await timedAside("kept.whole.podFiles", () =>
       podFiles(rebuilding.pod, layout, address, union, paths),
     );
-    const derived = await timedAside("kept.whole.derive", () =>
-      build.derivations.derive(union, lens, samesStillJoined),
-    );
-    const { files, held } = await build.queried(union, address);
+    const { derived, files, held } = await build(union);
     const all = new Map(files);
-    for (const [path, triples] of build.closing(pod, held)) {
+    for (const [path, triples] of rebuilding.build.closing(pod, held)) {
       all.set(path, triples);
       await union.add(triples, address + path);
     }
