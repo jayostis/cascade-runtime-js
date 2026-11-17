@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { podDataset } from "../src/dataset.js";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { questions } from "../src/questions.js";
+import { questions, withLists } from "../src/questions.js";
 import { packed, vocabularyOf } from "../src/node/components.js";
 import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
@@ -38,6 +38,9 @@ const DRUG_PRODUCTS = join(
   "drug-products",
 );
 
+/** A row the script printed: a string for each column, an array of strings for each list column. */
+type StoryRow = Record<string, string | readonly string[]>;
+
 /**
  * Each row the script printed, run from a fresh folder, or the app's, on the arguments; its pod is removed after. A
  * fresh folder starts with `tables` as its `.tables/`; the app brings its own.
@@ -47,7 +50,7 @@ async function story(
   pod: string,
   downloads: readonly string[],
   tables?: string,
-): Promise<Record<string, string>[]> {
+): Promise<StoryRow[]> {
   const folder = APP ?? (await mkdtemp(join(tmpdir(), "developer-story-")));
   if (APP === undefined && tables !== undefined)
     await cp(tables, join(folder, ".tables"), { recursive: true });
@@ -82,8 +85,13 @@ async function story(
     return printed.map((row) =>
       Object.fromEntries(
         Object.entries(row).map(([column, value]) => {
-          assert.equal(typeof value, "string", `?${column} is no string`);
-          return [column, value as string];
+          assert.ok(
+            typeof value === "string" ||
+              (Array.isArray(value) &&
+                value.every((each) => typeof each === "string")),
+            `?${column} is neither a string nor an array of strings`,
+          );
+          return [column, value as string | readonly string[]];
         }),
       ),
     );
@@ -96,8 +104,8 @@ async function story(
 }
 
 /** The row with its entry as the path inside its pod: the replay's pod and the script's have different addresses. */
-function inPod(row: Record<string, string>): Record<string, string> {
-  return row.entry === undefined
+function inPod(row: StoryRow): StoryRow {
+  return typeof row.entry !== "string"
     ? row
     : {
         ...row,
@@ -144,8 +152,8 @@ const AMLODIPINE = {
  */
 describe("The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs", () => {
   describe("when `allergies.mjs` is run on Alex's first export", () => {
-    let printed: Record<string, string>[];
-    let expected: Record<string, string>[];
+    let printed: StoryRow[];
+    let expected: StoryRow[];
 
     before(async () => {
       const vocabulary = await kits();
@@ -177,8 +185,11 @@ describe("The developer story's scripts, run from a fresh folder · developer-st
       assert.ok(query, `the vocabulary has no question ${QUESTION}`);
       expected = (await store.select(query.text)).rows.map((row) =>
         inPod(
-          Object.fromEntries(
-            [...row].map(([column, term]) => [column, term.value]),
+          withLists(
+            Object.fromEntries(
+              [...row].map(([column, term]) => [column, term.value]),
+            ),
+            query.lists,
           ),
         ),
       );
@@ -198,12 +209,12 @@ describe("The developer story's scripts, run from a fresh folder · developer-st
    * @rule conformance/priya-natarajan/priya-natarajan.feature P2
    */
   describe("when `medications.mjs` is run on Priya's export and her health summary", () => {
-    let printed: Record<string, string>[];
-    const medication = ({
+    let printed: StoryRow[];
+    const medication = ({ medication, code, records }: StoryRow) => ({
       medication,
       code,
       records,
-    }: Record<string, string>) => ({ medication, code, records });
+    });
 
     before(async () => {
       const { files } = await kits();

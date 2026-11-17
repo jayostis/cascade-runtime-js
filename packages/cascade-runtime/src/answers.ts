@@ -115,14 +115,14 @@ export class Answers {
   }
 
   /** The rows kept for the question under the lens, if they were kept under the key. */
-  async rows(
+  async rows<R extends Row = Row>(
     lens: string,
     question: string,
     key: string,
-  ): Promise<Row[] | undefined> {
+  ): Promise<R[] | undefined> {
     const kept = (await this.#read())[lens]?.[question];
     return kept?.key === key && Array.isArray(kept.rows)
-      ? copied(kept.rows)
+      ? (copied(kept.rows) as R[])
       : undefined;
   }
 

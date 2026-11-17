@@ -384,8 +384,22 @@
   "pod/The person this pod is about": [
     {
       "subject": "urn:uuid:a6a69b65-6745-4520-b1cd-fc8321062ab3",
-      "dateOfBirth": "urn:uuid:052a6e7d-382b-891b-a6f0-cc7540681817 1968-11-04; urn:uuid:2ac2622d-c327-8f8b-ad3b-c818bbda69f2 1968-11-04; urn:uuid:42b81298-5706-89b9-a054-bc4dfacc0753 1968-11-04; urn:uuid:5d5ec9e3-66e6-8264-96ec-1cb07f9fb0ba 1968-11-04; urn:uuid:5f56d939-331d-8188-a8c9-498c75654753 1968-11-04; urn:uuid:c51f530c-52eb-876a-9d3c-4c705e1dae23 1968-11-04",
-      "administrativeGender": "urn:uuid:052a6e7d-382b-891b-a6f0-cc7540681817 female; urn:uuid:2ac2622d-c327-8f8b-ad3b-c818bbda69f2 female; urn:uuid:42b81298-5706-89b9-a054-bc4dfacc0753 female; urn:uuid:5d5ec9e3-66e6-8264-96ec-1cb07f9fb0ba female; urn:uuid:5f56d939-331d-8188-a8c9-498c75654753 female; urn:uuid:c51f530c-52eb-876a-9d3c-4c705e1dae23 female"
+      "dateOfBirth": [
+        "urn:uuid:052a6e7d-382b-891b-a6f0-cc7540681817 1968-11-04",
+        "urn:uuid:2ac2622d-c327-8f8b-ad3b-c818bbda69f2 1968-11-04",
+        "urn:uuid:42b81298-5706-89b9-a054-bc4dfacc0753 1968-11-04",
+        "urn:uuid:5d5ec9e3-66e6-8264-96ec-1cb07f9fb0ba 1968-11-04",
+        "urn:uuid:5f56d939-331d-8188-a8c9-498c75654753 1968-11-04",
+        "urn:uuid:c51f530c-52eb-876a-9d3c-4c705e1dae23 1968-11-04"
+      ],
+      "administrativeGender": [
+        "urn:uuid:052a6e7d-382b-891b-a6f0-cc7540681817 female",
+        "urn:uuid:2ac2622d-c327-8f8b-ad3b-c818bbda69f2 female",
+        "urn:uuid:42b81298-5706-89b9-a054-bc4dfacc0753 female",
+        "urn:uuid:5d5ec9e3-66e6-8264-96ec-1cb07f9fb0ba female",
+        "urn:uuid:5f56d939-331d-8188-a8c9-498c75654753 female",
+        "urn:uuid:c51f530c-52eb-876a-9d3c-4c705e1dae23 female"
+      ]
     }
   ]
 }

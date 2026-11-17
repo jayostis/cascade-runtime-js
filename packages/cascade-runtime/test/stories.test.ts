@@ -12,6 +12,7 @@ import {
   type Pod,
   type Pull,
   pullFiles,
+  textRow,
 } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
 import { pulled } from "./hospitals.js";
@@ -121,7 +122,7 @@ describe("Finding lab changes after a medication starts or stops · findChanges(
           for (const side of ["before", "after"] as const) {
             const values = gold[side].map(({ value }) => value);
             assert.deepEqual(
-              change.rows[side].map((row) => ({
+              change.rows[side].map(textRow).map((row) => ({
                 date: day(row.performed),
                 value: Number(row.value),
               })),

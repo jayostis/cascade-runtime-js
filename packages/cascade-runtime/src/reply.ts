@@ -28,6 +28,7 @@ import {
   type Verdict,
 } from "./citations.js";
 import { type CompactSources, compactSources } from "./compact-read.js";
+import { type Row, type TextRow, textRow } from "./pod.js";
 import {
   COMPACT_QUESTIONS,
   entryOfHandle,
@@ -208,7 +209,7 @@ export function replyErrors(
 
 /** What reads a pod's questions: the pod itself, or a pinned build of the runtime asked in its own process. */
 export interface PodAsker {
-  ask(question: string): Promise<readonly Readonly<Record<string, string>>[]>;
+  ask(question: string): Promise<readonly Row[]>;
 }
 
 /** The question whose rows give each entry's fields, each with the record that states it. */
@@ -230,8 +231,9 @@ export const REPLY_QUESTIONS: readonly string[] = [
 ];
 
 function podEntryAsked(pod: PodAsker) {
-  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
-  return () => (all ??= pod.ask(POD_ENTRY_QUESTION));
+  let all: Promise<readonly TextRow[]> | undefined;
+  return () =>
+    (all ??= pod.ask(POD_ENTRY_QUESTION).then((rows) => rows.map(textRow)));
 }
 
 /**
@@ -270,7 +272,7 @@ export function podEntryRows(pod: PodAsker) {
 
 /** The row `pod/The person this pod is about` gives, which names no entry: the person is cited by its subject IRI. */
 export function podPersonRows(pod: PodAsker) {
-  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
+  let all: Promise<readonly Row[]> | undefined;
   return () => (all ??= pod.ask(POD_PERSON_QUESTION));
 }
 

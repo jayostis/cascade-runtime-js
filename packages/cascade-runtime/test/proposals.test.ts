@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import * as oxigraph from "oxigraph";
-import { openPod } from "cascade-runtime";
+import { openPod, textRow } from "cascade-runtime";
 import { Refusal } from "@cascade-runtime/runtime/refusal";
 import {
   findRoot,
@@ -541,10 +541,12 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
         turtle: ASTHMA.replace(/<urn:uuid:1b4e[^>]*>/, `<${subject}>`),
       },
     });
-    const { rows } = await reads.ask({
-      pod: "p",
-      question: "entry/Where it came from",
-    });
+    const rows = (
+      await reads.ask({
+        pod: "p",
+        question: "entry/Where it came from",
+      })
+    ).rows.map(textRow);
     await reads.write!({
       pod: "p",
       model: FILED_BY,
@@ -552,7 +554,9 @@ describe("Recording a write a model proposed in a pod's files · podReads().writ
     });
     const eczema = (
       await reads.ask({ pod: "p", question: "entry/Where it came from" })
-    ).rows.find((row) => /Eczema/.test(row.recordLabel ?? ""))!;
+    ).rows
+      .map(textRow)
+      .find((row) => /Eczema/.test(row.recordLabel ?? ""))!;
     const second = await reads.write!({
       pod: "p",
       model: FILED_BY,
