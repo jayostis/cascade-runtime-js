@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { Derivations } from "../src/derive.js";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { questions } from "../src/questions.js";
 import { iri, literal, type Triple, written } from "../src/rdf.js";
 import { Union } from "../src/store.js";
 
@@ -81,6 +82,87 @@ describe("Deriving a pod's state with the vocabulary's queries · Derivations.de
       assert.deepEqual(
         await derivedBy([construct("1"), construct("1", "2")], []),
         [rows([triple("urn:test:a", "1")]), rows([triple("urn:test:a", "2")])],
+      );
+    });
+
+    it("gives a derivation whose file name holds a space the position of its percent-encoded `@id` in the crate", async () => {
+      const vocabulary = new MemoryFiles("urn:test:vocabulary/");
+      const enc = new TextEncoder();
+      await vocabulary.write(
+        "ro-crate-metadata.json",
+        enc.encode(
+          JSON.stringify({
+            "@graph": [
+              { "@id": "queries/derivations/a%20b.rq", position: 0 },
+              { "@id": "queries/lenses/l.rq", position: 99 },
+            ],
+          }),
+        ),
+      );
+      await vocabulary.write(
+        "queries/derivations/a b.rq",
+        enc.encode(construct("1")),
+      );
+      await vocabulary.write("queries/lenses/l.rq", enc.encode(NEVER));
+      const union = new Union(new OxigraphStore());
+      const steps = await (await Derivations.of(vocabulary)).derive(union, "l");
+      assert.deepEqual(
+        steps.map((step) => [step.path, rows(step.added)]),
+        [
+          [
+            "queries/derivations/a b.rq",
+            rows([triple("urn:test:a", "1")]),
+          ],
+          ["queries/lenses/l.rq", []],
+        ],
+      );
+    });
+
+    it("refuses a crate whose `@id` is not a percent-encoded path", async () => {
+      const vocabulary = new MemoryFiles("urn:test:vocabulary/");
+      await vocabulary.write(
+        "ro-crate-metadata.json",
+        new TextEncoder().encode(
+          JSON.stringify({ "@graph": [{ "@id": "queries/100%.rq" }] }),
+        ),
+      );
+      await assert.rejects(
+        Derivations.of(vocabulary),
+        /queries\/100%\.rq is not a percent-encoded path/,
+      );
+    });
+  });
+
+  describe("questions(vocabulary)", () => {
+    it("gives a question whose file name holds a space the list columns its percent-encoded `@id` declares in the crate", async () => {
+      const vocabulary = new MemoryFiles("urn:test:vocabulary/");
+      const enc = new TextEncoder();
+      await vocabulary.write(
+        "ro-crate-metadata.json",
+        enc.encode(
+          JSON.stringify({
+            "@graph": [
+              {
+                "@id": "queries/questions/pod/My%20list%2C%20here.rq",
+                "csvw:tableSchema": { "@id": "#columns" },
+              },
+              { "@id": "#columns", "csvw:column": [{ "@id": "#column" }] },
+              {
+                "@id": "#column",
+                "csvw:name": "items",
+                "csvw:separator": "\u001f",
+              },
+            ],
+          }),
+        ),
+      );
+      await vocabulary.write(
+        "queries/questions/pod/My list, here.rq",
+        enc.encode("SELECT ?items WHERE {}"),
+      );
+      assert.deepEqual(
+        (await questions(vocabulary)).get("pod/My list, here")?.lists,
+        [{ column: "items", separator: "\u001f" }],
       );
     });
   });
