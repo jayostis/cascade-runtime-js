@@ -716,11 +716,6 @@ const judgmentsHolding =
     return comparedJudgments(reading, rows, found, columns);
   };
 
-const reasonWords = (reason: string): string =>
-  localName(reason)
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .toLowerCase();
-
 function cellTerm(
   cell: string,
   prefixes: Readonly<Record<string, string>>,
@@ -1826,7 +1821,7 @@ const DEFINITIONS: Definition[] = [
           `SELECT ?why ?because WHERE { <${record}> <${CASCADE}leftOutFor> ?left . ?left <${CASCADE}leftOutReason> ?why . OPTIONAL { ?left <${CASCADE}leftOutBecauseOf> ?because } }`,
         ))
           found.push(
-            `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
+            `${words} | ${await reading.words.reasonShown(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
           );
       }
       return compared(expected, found);

@@ -183,13 +183,14 @@ function judgment(
   by: Pod,
   statements: readonly string[],
   named = "urn:cascade:this-judgment",
+  ownerTypes: readonly string[] = ["prov:Person"],
 ): string {
   return `${PREFIXES}
 <${named}> a cascade:Judgment ;
     ${statements.join(" ;\n    ")} ;
     prov:wasAttributedTo <${by.owner}> ;
     prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${by.owner}> ; prov:hadRole cascade:PatientRole ] ] .
-<${by.owner}> a prov:Person .`;
+${ownerTypes.length === 0 ? "" : `<${by.owner}> a ${ownerTypes.join(" , ")} .`}`;
 }
 
 /** The owner's claim that a hospital's patient is them. */
@@ -198,6 +199,15 @@ function about(by: Pod, profile: string): string {
     "cascade:verdict cascade:About",
     `cascade:subject <${by.subject}>`,
     "cascade:basis cascade:OwnerStatement",
+    `prov:hadMember <${profile}>`,
+  ]);
+}
+
+/** The owner's statement that a hospital's patient is not them. */
+function notAbout(by: Pod, profile: string): string {
+  return judgment(by, [
+    "cascade:verdict cascade:NotAbout",
+    `cascade:subject <${by.subject}>`,
     `prov:hadMember <${profile}>`,
   ]);
 }
@@ -302,14 +312,15 @@ function alexPod(): Promise<Alex> {
     const pod = await openPodWith(kept, folder);
     try {
       const told: ImportProgress[] = [];
+      const claimProfiles = [await profileOf("J1"), await profileOf("J2")];
       const e2 = await pod.import(exported("x-e2"), {
-        claimProfiles: true,
+        claimProfiles,
         onProgress: (progress) => {
           told.push(progress);
         },
       });
-      const e4 = await pod.import(exported("x-e4"), { claimProfiles: true });
-      const e6 = await pod.import(exported("x-e6"), { claimProfiles: true });
+      const e4 = await pod.import(exported("x-e4"), { claimProfiles });
+      const e6 = await pod.import(exported("x-e6"), { claimProfiles });
       return { folder, imported: { e2, e4, e6 }, told };
     } finally {
       await pod.close();
@@ -666,6 +677,72 @@ describe("Importing a health export · pod.import()", () => {
     });
   });
 
+  describe("given the owner's NotAbout over the export's patient, and a later import naming it", () => {
+    it("claims nothing and files no About, with the list naming that patient and without it, and returns it in `disclaimedProfiles`", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      for (const [name, claimProfiles, claimed, unclaimed] of [
+        ["without a list", undefined, [], [j2]],
+        ["with a list naming it", [j1], [], [j2]],
+        ["with a list naming it and the other patient", [j1, j2], [j2], []],
+      ] as const) {
+        const denying = await openPodWith(
+          kept,
+          join(pods, `not-about-${name}`),
+        );
+        try {
+          await denying.import(exported("x-e2"), { match: false });
+          await denying.judge(notAbout(denying, j1));
+          const later = await denying.import(exported("x-e6"), {
+            ...(claimProfiles === undefined ? {} : { claimProfiles }),
+          });
+          assert.deepEqual(
+            later.claimedProfiles.map(({ profile }) => profile),
+            claimed,
+            name,
+          );
+          assert.deepEqual(later.unclaimedProfiles, unclaimed, name);
+          assert.deepEqual(later.disclaimedProfiles, [j1], name);
+          assert.deepEqual(later.heldBackProfiles, [], name);
+          assert.deepEqual(
+            await select(
+              denying,
+              `SELECT ?about WHERE { ?about cascade:verdict cascade:About ; prov:hadMember <${j1}> }`,
+            ),
+            [],
+            `${name}: an About for the patient the owner said is not them`,
+          );
+          if (claimed.length === 0)
+            assert.deepEqual(await allergens(denying), [], name);
+        } finally {
+          await denying.close();
+        }
+      }
+    });
+
+    it("returns the patient in `heldBackProfiles`, and claims nothing for it, when an About of the owner's stands against the NotAbout", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      const disagreeing = await openPodWith(kept, join(pods, "held-back"));
+      try {
+        await disagreeing.import(exported("x-e2"), { match: false });
+        await disagreeing.judge(notAbout(disagreeing, j1));
+        await disagreeing.judge(about(disagreeing, j1));
+        const later = await disagreeing.import(exported("x-e6"), {
+          match: false,
+          claimProfiles: [j1, j2],
+        });
+        assert.deepEqual(
+          later.claimedProfiles.map(({ profile }) => profile),
+          [j2],
+        );
+        assert.deepEqual(later.heldBackProfiles, [j1]);
+        assert.deepEqual(later.disclaimedProfiles, []);
+        assert.deepEqual(later.unclaimedProfiles, []);
+      } finally {
+        await disagreeing.close();
+      }
+    });
+  });
+
   describe("given a pull that names three patients", () => {
     it("returns all three in `unclaimedProfiles`, in order of their IRIs", async () => {
       const allergy = (id: string, patient: string) => ({
@@ -737,7 +814,55 @@ describe("Importing a health export · pod.import()", () => {
     });
   });
 
-  describe("with `claimProfiles: true`, which claims the export's patient for the owner", () => {
+  describe("with `claimProfiles`, the list of the patients the person confirmed", () => {
+    it("claims exactly the listed patients the import names, once each, and returns the rest in `unclaimedProfiles`", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      for (const [name, list, claimed, unclaimed] of [
+        ["one of two", [j1], [j1], [j2]],
+        ["the same one twice", [j2, j2], [j2], [j1]],
+        ["none", [], [], [j1, j2]],
+        ["one the import does not name", ["urn:uuid:not-in-it"], [], [j1, j2]],
+      ] as const) {
+        const claiming = await openPodWith(kept, join(pods, `list-${name}`));
+        try {
+          const done = await claiming.import(exported("x-e6"), {
+            claimProfiles: list,
+            match: false,
+          });
+          assert.deepEqual(
+            done.claimedProfiles.map(({ profile }) => profile),
+            claimed,
+            name,
+          );
+          assert.deepEqual(done.unclaimedProfiles, [...unclaimed].sort(), name);
+          assert.deepEqual(done.disclaimedProfiles, [], name);
+        } finally {
+          await claiming.close();
+        }
+      }
+    });
+
+    it("files no About for a pod's own subject, and none for a patient a counting About already ties", async () => {
+      const [j1, j2] = [await profileOf("J1"), await profileOf("J2")];
+      const tied = await openPodWith(kept, join(pods, "list-tied"));
+      try {
+        await tied.import(exported("x-e2"), { match: false });
+        await tied.judge(about(tied, j1));
+        const done = await tied.import(exported("x-e6"), {
+          claimProfiles: [j1, j2, tied.subject],
+          match: false,
+        });
+        assert.deepEqual(
+          done.claimedProfiles.map(({ profile }) => profile),
+          [j2],
+        );
+      } finally {
+        await tied.close();
+      }
+    });
+  });
+
+  describe("with `claimProfiles` naming both of Alex's patients, on each of his exports", () => {
     it("returns one claim in `claimedProfiles` for each patient not yet claimed, and an empty `unclaimedProfiles`", async () => {
       const { e2, e4, e6 } = (await alexPod()).imported;
       for (const [name, done, expected] of [
@@ -1499,6 +1624,119 @@ describe("Recording the owner's judgment · pod.judge()", () => {
           name,
         );
       assert.deepEqual(await filesIn(at), held);
+    });
+  });
+
+  describe("given an About whose basis is a machine's, attributed to a person", () => {
+    const profile = "urn:uuid:3f6c0f4e-8a52-4c1b-9d7e-5b2a1c8e0d44";
+    const BASES = [
+      "SameDemographics",
+      "PortalAuthenticated",
+      "RelatedPersonConnection",
+    ];
+    /** An About by the owner with `basis`, whose own Turtle types the owner as each of `types`, or as none. */
+    const machines = (basis: string, types: readonly string[]): string =>
+      judgment(
+        owned,
+        [
+          "cascade:verdict cascade:About",
+          `cascade:subject <${owned.subject}>`,
+          `cascade:basis cascade:${basis}`,
+          `prov:hadMember <${profile}>`,
+        ],
+        undefined,
+        types,
+      );
+
+    it("throws, writing nothing, for each machine basis, the owner typed a person in the judgment, not typed in it, or typed also a software agent", async () => {
+      const at = join(pods, "judged");
+      const held = await filesIn(at);
+      for (const basis of BASES)
+        for (const types of [
+          ["prov:Person"],
+          [],
+          ["prov:Person", "prov:SoftwareAgent"],
+        ])
+          await assert.rejects(
+            owned.judge(machines(basis, types)),
+            (error: Error) =>
+              error.message.includes(`cascade:${basis}`) &&
+              error.message.includes("software agent"),
+            `${basis} typed ${types.join(" and ") || "nothing"}`,
+          );
+      assert.deepEqual(await filesIn(at), held);
+    });
+
+    it("files each machine basis by a software agent the judgment types", async () => {
+      const portal = "urn:uuid:7c2a5f10-3d4e-4b86-a1f9-0e8d6b4c2a13";
+      for (const basis of BASES)
+        assert.equal(
+          (
+            await owned.judge(
+              `${PREFIXES}
+<urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:About ;
+    cascade:subject <${owned.subject}> ; cascade:basis cascade:${basis} ; prov:hadMember <${profile}> ;
+    prov:wasAttributedTo <${portal}> .
+<${portal}> a prov:SoftwareAgent .`,
+            )
+          ).refused,
+          undefined,
+          basis,
+        );
+    });
+
+    /** An About by `BASES[0]` whose author is written as `author`, with `more` stated beside it. */
+    const authored = (author: string, more = ""): string =>
+      `${PREFIXES}
+<urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:About ;
+    cascade:subject <${owned.subject}> ; cascade:basis cascade:SameDemographics ; prov:hadMember <${profile}> ;
+    prov:wasAttributedTo ${author} .${more}`;
+
+    it("files a machine basis by a software agent that is a blank node the judgment types", async () => {
+      assert.equal(
+        (await owned.judge(authored("[ a prov:SoftwareAgent ]"))).refused,
+        undefined,
+      );
+    });
+
+    it("files a machine basis by an author only the vocabulary types: cascade:CascadeMatcher, or an agent the judgment types a cascade:Server", async () => {
+      assert.equal(
+        (await owned.judge(authored("cascade:CascadeMatcher"))).refused,
+        undefined,
+        "cascade:CascadeMatcher",
+      );
+      const host = "urn:uuid:2b7e4c19-5d83-4f0a-9a61-c3e8d1f47a52";
+      assert.equal(
+        (
+          await owned.judge(
+            authored(`<${host}>`, `\n<${host}> a cascade:Server .`),
+          )
+        ).refused,
+        undefined,
+        "a cascade:Server",
+      );
+    });
+
+    it("refuses a machine basis by an author that is a blank node with no type or a literal, with the shape's message", async () => {
+      const held = await filesIn(join(pods, "judged"));
+      for (const author of ["[ ]", '"the portal"', "[ a prov:Person ]"])
+        await assert.rejects(
+          owned.judge(authored(author)),
+          (error: Error) =>
+            error.message.includes("typed prov:SoftwareAgent") &&
+            error.message.includes("cascade:OwnerStatement"),
+          author,
+        );
+      assert.deepEqual(await filesIn(join(pods, "judged")), held);
+    });
+
+    it("says each machine basis, and that a person's About has the basis cascade:OwnerStatement", async () => {
+      await assert.rejects(
+        owned.judge(machines("RelatedPersonConnection", [])),
+        (error: Error) =>
+          BASES.every((basis) => error.message.includes(`cascade:${basis}`)) &&
+          error.message.includes("cascade:OwnerStatement"),
+      );
     });
   });
 

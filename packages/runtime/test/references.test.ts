@@ -7,6 +7,7 @@ import { iri, type Triple } from "../src/rdf.js";
 import {
   CODES,
   linesAbout,
+  reasonLabels,
   References,
   rowsByCode,
   tableTerms,
@@ -95,6 +96,53 @@ describe("Reading reference tables from a folder · References.of(), References.
           ),
         ),
         0,
+      );
+    });
+  });
+
+  describe("reasonLabels(vocabulary, newStore)", () => {
+    it("gives two Files that open the same ontology at one address the same labels, parsed once", async () => {
+      const files = await vocabulary();
+      const opened = (): Files =>
+        Object.assign(Object.create(files) as Files, {
+          iri: "https://labels.example/vocabulary/",
+          read: (path: string) => files.read(path),
+        });
+      const [first, second] = [
+        await reasonLabels(opened(), newStore),
+        await reasonLabels(opened(), newStore),
+      ];
+      assert.ok(first.size > 0, "the vocabulary gives left-out reasons");
+      assert.equal(second, first);
+    });
+
+    it("gives a vocabulary whose ontology differs at the same address its own labels", async () => {
+      const files = await vocabulary();
+      const address = "https://labels-changed.example/vocabulary/";
+      const at = (text: string): Files =>
+        Object.assign(Object.create(files) as Files, {
+          iri: address,
+          read: async (path: string) =>
+            path === RECORDS
+              ? new TextEncoder().encode(text)
+              : files.read(path),
+        });
+      const original = await readText(files, RECORDS);
+      const [reason, label] =
+        [...(await reasonLabels(files, newStore))][0] ?? [];
+      assert.ok(reason !== undefined && label !== undefined);
+      const changed = original.replaceAll(
+        `"${label}"@en`,
+        `"${label} changed"@en`,
+      );
+      assert.notEqual(changed, original);
+      assert.equal(
+        (await reasonLabels(at(original), newStore)).get(reason),
+        label,
+      );
+      assert.equal(
+        (await reasonLabels(at(changed), newStore)).get(reason),
+        `${label} changed`,
       );
     });
   });

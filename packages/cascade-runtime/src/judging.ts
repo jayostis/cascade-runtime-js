@@ -29,7 +29,7 @@ const STARTED_AT = `${PROV}startedAtTime`;
 export interface Judging {
   readonly core: Pick<
     CorePod,
-    "judge" | "select" | "selectStated" | "findingKinds"
+    "judge" | "select" | "selectStated" | "vocabularyShapes" | "findingKinds"
   >;
   readonly newStore: StoreFactory;
   /** The pod's address, which the judgment's Turtle is parsed against. */
@@ -167,6 +167,7 @@ async function prepared(
     {
       select: (query) => core.selectStated(query),
     },
+    () => core.vocabularyShapes(),
     () => core.findingKinds(),
   );
   if ("refused" in filed) throw new Error(filed.refused);

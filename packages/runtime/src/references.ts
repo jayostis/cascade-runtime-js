@@ -122,6 +122,53 @@ async function readTableTerms(
   };
 }
 
+const labelsRead = new Map<string, Promise<ReadonlyMap<string, string>>>();
+
+/**
+ * The skos:prefLabel in English of each left-out reason the vocabulary gives (`cascade:LeftOutReasons`), by its IRI;
+ * parsed once for each ontology file's contents at an address, however many `Files` open it, so a changed file at an
+ * address reads its own labels.
+ */
+export async function reasonLabels(
+  vocabulary: Files,
+  newStore: StoreFactory,
+): Promise<ReadonlyMap<string, string>> {
+  const text = await readText(vocabulary, ONTOLOGY);
+  const digest = new Uint8Array(
+    await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(text),
+    ),
+  );
+  const key = `${vocabulary.iri} ${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  let read = labelsRead.get(key);
+  if (read === undefined) {
+    read = readReasonLabels(text, vocabulary.iri, newStore);
+    read.catch(() => labelsRead.delete(key));
+    labelsRead.set(key, read);
+  }
+  return read;
+}
+
+async function readReasonLabels(
+  text: string,
+  base: string,
+  newStore: StoreFactory,
+): Promise<ReadonlyMap<string, string>> {
+  const graph = new Graph(await newStore().parse(text, base + ONTOLOGY));
+  const labels = new Map<string, string>();
+  for (const reason of graph.subjects(
+    `${SKOS}inScheme`,
+    iri(`${CASCADE}LeftOutReasons`),
+  )) {
+    const label = graph
+      .objects(reason, `${SKOS}prefLabel`)
+      .find((term) => term.termType === "Literal" && term.language === "en");
+    if (label !== undefined) labels.set(reason.value, label.value);
+  }
+  return labels;
+}
+
 const ROW_SUBJECT = `${CASCADE}RowSubject`;
 
 /** Whether a kind's rows are found by their own subjects alone: the code is the subject, so no index is needed. */

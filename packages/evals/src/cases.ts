@@ -9,7 +9,13 @@ import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { componentsOf } from "@cascade-runtime/runtime/node";
-import { type Citation, openPod, type Pod, type Tie } from "cascade-runtime";
+import {
+  type Citation,
+  openPod,
+  ownerAbout,
+  type Pod,
+  type Tie,
+} from "cascade-runtime";
 import { type Environment, pinnedPod } from "./pinned.js";
 import { CASES, WORK } from "./paths.js";
 import { giveTables, referenceTables } from "./reference-tables.js";
@@ -340,7 +346,11 @@ export async function prepare(
           });
           continue;
         }
-        const done = await pod.import(path, { claimProfiles: true });
+        // The person said yes to every patient the download names: an import claims none by itself.
+        const done = await pod.import(path, { match: false });
+        for (const profile of done.unclaimedProfiles)
+          await pod.judge(ownerAbout(pod, profile));
+        if (done.activity !== undefined) await pod.match(done.activity);
         imports.push({
           download: name,
           records: sources.reduce(

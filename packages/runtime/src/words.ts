@@ -12,7 +12,12 @@ import {
 } from "./names.js";
 import { MATCHER } from "./matcher.js";
 import { codeIri, iri, RDF, written } from "./rdf.js";
-import { referenceIndex, tableTerms, versionsNumbered } from "./references.js";
+import {
+  reasonLabels,
+  referenceIndex,
+  tableTerms,
+  versionsNumbered,
+} from "./references.js";
 import type { Replayed } from "./replay.js";
 import { CASCADE } from "./step.js";
 import { selected, type Dataset, type StoreFactory } from "./store.js";
@@ -273,6 +278,14 @@ export class Words {
     return this.#names.get(name) ?? `<${name}>`;
   }
 
+  /** The words a left-out reason is said in: the skos:prefLabel the vocabulary gives it, or the IRI. */
+  async reasonShown(reason: string): Promise<string> {
+    return (
+      (await reasonLabels(this.#vocabulary, this.#newStore)).get(reason) ??
+      `<${reason}>`
+    );
+  }
+
   #remember(words: string, name: string): string {
     if (!this.#names.has(name)) this.#names.set(name, words);
     return name;
@@ -492,8 +505,10 @@ export class Words {
     ).map(([version]) => version ?? "");
   }
 
-  /** Anything in words: a record, profile or person; a judgment; a reference series or version; a version of a record; a document; a record's entry. */
+  /** Anything in words: a record, profile or person; a judgment; a reference series or version; a version of a record; a document; a record's entry; or an IRI in angle brackets, which is itself. */
   async thing(words: string): Promise<string> {
+    const bare = /^<([^<>\s]+)>$/.exec(words);
+    if (bare !== null) return bare[1] ?? "";
     const person = this.#people.get(words);
     if (person !== undefined) return this.#remember(words, person.subject);
     if (words === "the runtime")

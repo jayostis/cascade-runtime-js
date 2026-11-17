@@ -780,10 +780,16 @@ export class CorePod {
   judge(judgment: StepFile): Promise<Performed> {
     return this.#step(
       (context) =>
-        fileJudgment(context, judgment, {
-          // The matcher's view is built only for a judgment that has something to read it for.
-          select: async (query) => (await context.matcherView()).select(query),
-        }),
+        fileJudgment(
+          context,
+          judgment,
+          {
+            // The matcher's view is built only for a judgment that has something to read it for.
+            select: async (query) =>
+              (await context.matcherView()).select(query),
+          },
+          () => this.#shapes(),
+        ),
       false,
       "judge",
       () => new Map(),
@@ -1360,6 +1366,11 @@ export class CorePod {
       }
     }
     return (await kept)?.unheld ?? [];
+  }
+
+  /** The vocabulary's shapes, read once for the pod. */
+  vocabularyShapes(): Promise<Shapes> {
+    return this.#shapes();
   }
 
   #shapes(): Promise<Shapes> {

@@ -59,7 +59,20 @@ if (command === "build") {
         imports.push({ path, records: 0, refused: error.message });
         continue;
       }
-      const done = await opened.import(path, { claimProfiles: true });
+      // The person said yes to every patient the download names. Filing, then an About for each, then the matcher
+      // does that on any build of the runtime, as the lists of claimProfiles do not. The About is written here, not
+      // imported: a pinned earlier build of cascade-runtime does not export `ownerAbout`.
+      const done = await opened.import(path, { match: false });
+      for (const profile of done.unclaimedProfiles)
+        await opened.judge(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+<urn:cascade:this-judgment> a cascade:Judgment ;
+    cascade:verdict cascade:About ; cascade:subject <${opened.subject}> ; cascade:basis cascade:OwnerStatement ;
+    prov:hadMember <${profile}> ; prov:wasAttributedTo <${opened.owner}> ;
+    prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${opened.owner}> ; prov:hadRole cascade:PatientRole ] ] .
+<${opened.owner}> a prov:Person .
+`);
+      if (done.activity !== undefined) await opened.match(done.activity);
       imports.push({
         path,
         records: sources.reduce(
