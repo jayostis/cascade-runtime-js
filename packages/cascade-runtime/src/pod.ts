@@ -932,9 +932,10 @@ class OpenPod implements Pod {
       };
     const { onProgress, timeBudgetSeconds, memoryBudgetMiB } = options;
     // What the import writes holds no judgment, so who is tied to the subject now is who is tied once it is written.
+    // It is read from the pod's kept build, built if the pod was just opened, which the import then continues from.
     const tied =
       options.claimProfiles === true
-        ? await timed("pod.unclaimedProfiles", () => this.#profilesTied())
+        ? await timed("pod.profilesTied", () => this.#profilesTied(true))
         : new Set<string>();
     // The import, the judgments that claim its profiles and the pod's build after them (one rebuild of all three) come
     // before the matcher's run, which reads what the build derives of them.
@@ -1024,13 +1025,16 @@ class OpenPod implements Pod {
       .sort(compared);
   }
 
-  /** The profiles a counting About ties to the subject. */
-  async #profilesTied(): Promise<Set<string>> {
-    const tied = await this.#core.select(`${PREFIXES}
+  /** The profiles a counting About ties to the subject; `kept`, read from the pod's kept build, built whole when none is. */
+  async #profilesTied(kept = false): Promise<Set<string>> {
+    const query = `${PREFIXES}
         SELECT DISTINCT ?profile WHERE {
           ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
             prov:hadMember ?profile ; cascade:subject <${this.subject}> .
-        }`);
+        }`;
+    const tied = await (kept
+      ? this.#core.selectKept(query)
+      : this.#core.select(query));
     return new Set(tied.rows.flatMap((row) => row.get("profile")?.value ?? []));
   }
 

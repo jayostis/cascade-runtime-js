@@ -9,7 +9,7 @@ import {
 } from "../src/build.js";
 import { dataset, podDataset, podStated } from "../src/dataset.js";
 import { KeptBuild } from "../src/incremental.js";
-import { CorePod } from "../src/core-pod.js";
+import { BuildFailure, CorePod } from "../src/core-pod.js";
 import type { SamesStillJoined } from "../src/derive.js";
 import { viewEntryName } from "../src/names.js";
 import { MemoryFiles, readText } from "../src/files.js";
@@ -735,6 +735,41 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         `${PREFIXES} SELECT ?judgment WHERE { ?judgment cascade:countsUnderLens true ; prov:hadMember <${profiles[0]}> }`,
       );
       assert.equal(rows.rows.length, 1);
+    });
+
+    it("throws what the run threw with the failure of the rebuild after it as its cause, when both fail", async () => {
+      const files = await countedCopy();
+      let failing = false;
+      const write = files.write.bind(files);
+      files.write = (path, bytes) =>
+        failing && path === layout.manifest
+          ? Promise.reject(new Error("the manifest cannot be written"))
+          : write(path, bytes);
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      const thrown = await stepped
+        .deferring(async () => {
+          await stepped.judge(aboutJudgment(profiles[0] as string));
+          failing = true;
+          throw new Error("the run stopped");
+        })
+        .catch((error: unknown) => error);
+      assert.ok(thrown instanceof Error);
+      assert.match(thrown.message, /the run stopped/);
+      assert.ok(thrown.cause instanceof BuildFailure);
+      assert.match(thrown.cause.message, /the manifest cannot be written/);
+    });
+
+    it("refuses to close, leaving the rebuild to the end of the run", async () => {
+      const files = await countedCopy();
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      const before = rebuilds(files);
+      await stepped.deferring(async () => {
+        await stepped.judge(aboutJudgment(profiles[0] as string));
+        assert.throws(() => stepped.close(), /close\(\) inside deferring/);
+      });
+      assert.equal(rebuilds(files) - before, 1);
     });
   });
 });

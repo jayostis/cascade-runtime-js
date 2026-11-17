@@ -151,12 +151,13 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.ok(second.wrote > 0);
     });
 
-    it("reports the time of `pod.unclaimedProfiles`, which the import calls twice", () => {
-      assert.equal(
-        second.spans.find((span) => span.name === "pod.unclaimedProfiles")
-          ?.calls,
-        2,
-      );
+    it("reports the time of `pod.profilesTied` and of `pod.unclaimedProfiles`, each of which the import calls once", () => {
+      for (const name of ["pod.profilesTied", "pod.unclaimedProfiles"])
+        assert.equal(
+          second.spans.find((span) => span.name === name)?.calls,
+          1,
+          name,
+        );
     });
 
     it("rebuilds the pod twice, as a first import does", () => {
@@ -169,6 +170,33 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
     it("binds the records of the run into the comparisons' text, the path a first import never takes", () => {
       assert.ok((second.counts["matcher.queriesRun"] ?? 0) > 0);
       assert.ok((second.counts["matcher.boundRecords"] ?? 0) > 0);
+    });
+  });
+
+  describe("given a pull of 200 resources imported onto a pod that holds another hospital's, closed and opened again", () => {
+    let reopened: Measured;
+
+    before(async () => {
+      reopened = await importBench(200, { reopen: true });
+    });
+
+    it("imports it, with nothing refused", () => {
+      assert.equal(reopened.refused, undefined);
+      assert.ok(reopened.wrote > 0);
+    });
+
+    it("builds the pod whole once, the build the import's rebuilds continue from, and derives no matcher view of it apart, as the read before the import would", () => {
+      const calls = (name: string) =>
+        reopened.spans.find((span) => span.name === name)?.calls ?? 0;
+      assert.equal(calls("kept.whole"), 1);
+      assert.equal(calls("matcher.view"), 0);
+    });
+
+    it("rebuilds the pod twice, as an import onto an open pod does", () => {
+      assert.equal(
+        rebuildsOf(reopened).reduce((all, [, calls]) => all + calls, 0),
+        2,
+      );
     });
   });
 

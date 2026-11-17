@@ -581,8 +581,13 @@ export class CorePod {
     );
   }
 
-  /** Drops what is kept, and frees it; the pod builds again when next read. */
+  /**
+   * Drops what is kept, and frees it; the pod builds again when next read. Inside `deferring` it throws and drops
+   * nothing, since the steps it left would be lost with their rebuild undone.
+   */
   close(): void {
+    if (this.#deferring > 0)
+      throw new Error("close() inside deferring() would drop its rebuild");
     this.#pending = undefined;
     this.#release();
     this.#dropBuilt();
@@ -593,7 +598,10 @@ export class CorePod {
    * the build writes, or `run` ends, and are then rebuilt once for all of them: the rebuild of what several steps wrote
    * is the one the last would make, since a rebuild reads the files as they stand. A step that reads it (the matcher's
    * run, which reads each record's current version and subject) first rebuilds what was left. When `run` fails, what was
-   * left is rebuilt before the failure is thrown.
+   * left is rebuilt before the failure is thrown, and when that rebuild fails too, its failure is the `cause` of what
+   * `run` threw (an AggregateError of the two when that error has a cause already, or is no Error). A rebuild that
+   * fails comes after the judgments were filed, since the steps it follows are all done by then: where each step
+   * rebuilt on its own, the import's rebuild failed before any judgment was filed.
    */
   async deferring<T>(run: () => Promise<T>): Promise<T> {
     this.#deferring += 1;
@@ -602,7 +610,20 @@ export class CorePod {
       result = await run();
     } catch (error) {
       this.#deferring -= 1;
-      if (this.#deferring === 0) await this.#settle().catch(() => undefined);
+      if (this.#deferring === 0)
+        try {
+          await this.#settle();
+        } catch (failure) {
+          if (error instanceof Error && error.cause === undefined) {
+            error.cause = failure;
+            throw error;
+          }
+          throw new AggregateError(
+            [error, failure],
+            `${error instanceof Error ? error.message : String(error)}, and the build after the steps it left failed too`,
+            { cause: failure },
+          );
+        }
       throw error;
     }
     this.#deferring -= 1;
@@ -1061,6 +1082,22 @@ export class CorePod {
     return timed("core-pod.matcherSelect", async () =>
       (await this.#matcherView()).select(query),
     );
+  }
+
+  /**
+   * `select`, read from the build kept across steps, which a pod just opened has none of and is built whole for it: so
+   * the step after, an import's, continues from that build and does not read and derive the pod again. Where the build
+   * is not kept across steps this is `select`.
+   */
+  async selectKept(query: string): Promise<Rows> {
+    await this.#settle();
+    const { build, time } = this.#options;
+    const kept = await this.#keptOrBuiltWhole(
+      build === undefined ? undefined : time.now(),
+    );
+    if (kept === undefined) return this.select(query);
+    countedQuery("core-pod.matcherSelect", query);
+    return timed("core-pod.matcherSelect", () => kept.select(query));
   }
 
   /** The query's rows over the pod's RDF files but those the build writes, with nothing derived: the vocabulary is not read. */
