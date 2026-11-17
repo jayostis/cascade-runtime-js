@@ -4,7 +4,7 @@ import { DERIVED, type DerivedStep, type SamesStillJoined } from "./derive.js";
 import { ENTRY_PLACEHOLDER, unionFind } from "./entries.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
-import { counted, timed } from "./probe.js";
+import { counted, timed, timedAside } from "./probe.js";
 import { type Term, type Triple, written } from "./rdf.js";
 import { type StoreFactory, Union } from "./store.js";
 
@@ -301,11 +301,11 @@ export class KeptBuild {
       (path) => layout.isRdf(path) && !rebuilt.has(path),
     );
     const union = new Union(newStore());
-    await podFiles(rebuilding.pod, layout, address, union, paths);
-    const derived = await build.derivations.derive(
-      union,
-      lens,
-      samesStillJoined,
+    await timedAside("kept.whole.podFiles", () =>
+      podFiles(rebuilding.pod, layout, address, union, paths),
+    );
+    const derived = await timedAside("kept.whole.derive", () =>
+      build.derivations.derive(union, lens, samesStillJoined),
     );
     const { files, held } = await build.queried(union, address);
     const all = new Map(files);
@@ -316,7 +316,9 @@ export class KeptBuild {
     await addLayout(union, layout, address);
     const kept = new KeptBuild(rebuilding, union, new Set(paths), held);
     kept.#index(files);
-    const owned = await kept.#recordsAndTheirs();
+    const owned = await timedAside("kept.whole.recordsAndTheirs", () =>
+      kept.#recordsAndTheirs(),
+    );
     kept.#globalDerived = KeptBuild.#global(derived, owned);
     return { kept, files: all };
   }
@@ -516,16 +518,23 @@ export class KeptBuild {
         sharedPaths.push(path);
       else return undefined;
     }
-    const scope = await this.#scoped();
-    await podFiles(this.#rebuilding.pod, layout, address, this.union, fresh);
-    for (const path of fresh) this.#loaded.add(path);
-    const newShared = sharedPaths.filter(
-      (path) => !this.#scopeLoaded.has(path),
-    );
-    await podFiles(this.#rebuilding.pod, layout, address, scope, newShared);
-    for (const path of newShared) this.#scopeLoaded.add(path);
-    await this.#learnJudging(scope, newShared);
-    if (await this.#namedBefore(sharedPaths, fresh)) return undefined;
+    const scope = await timedAside("kept.step.scoped", () => this.#scoped());
+    await timedAside("kept.step.podFiles", async () => {
+      await podFiles(this.#rebuilding.pod, layout, address, this.union, fresh);
+      for (const path of fresh) this.#loaded.add(path);
+      const newShared = sharedPaths.filter(
+        (path) => !this.#scopeLoaded.has(path),
+      );
+      await podFiles(this.#rebuilding.pod, layout, address, scope, newShared);
+      for (const path of newShared) this.#scopeLoaded.add(path);
+      await this.#learnJudging(scope, newShared);
+    });
+    if (
+      await timedAside("kept.step.namedBefore", () =>
+        this.#namedBefore(sharedPaths, fresh),
+      )
+    )
+      return undefined;
 
     const references = this.#referencesFolder;
     const described = sharedPaths.filter(
@@ -533,10 +542,12 @@ export class KeptBuild {
     );
     if (described.length > 0 && !(await this.#currentVersionsKept()))
       return undefined;
-    const reached = await this.#reached(
-      clinicalPaths,
-      sharedPaths.filter((path) => !described.includes(path)),
-      described,
+    const reached = await timedAside("kept.step.reached", () =>
+      this.#reached(
+        clinicalPaths,
+        sharedPaths.filter((path) => !described.includes(path)),
+        described,
+      ),
     );
     if (reached === undefined) return undefined;
     const acts = [
@@ -550,13 +561,11 @@ export class KeptBuild {
       )
     )
       return this.#closing(pod);
-    const records = await this.#closed(reached.records);
-    return this.#rebuilt(
-      records,
-      reached.matcherJudgments,
-      sharedPaths,
-      scope,
-      pod,
+    const records = await timedAside("kept.step.closed", () =>
+      this.#closed(reached.records),
+    );
+    return timedAside("kept.step.rebuilt", () =>
+      this.#rebuilt(records, reached.matcherJudgments, sharedPaths, scope, pod),
     );
   }
 
@@ -844,8 +853,12 @@ export class KeptBuild {
       `GRAPH <${derivedGraph}> { ?bound cascade:inEntry ?found }`,
     );
 
-    const paths = await this.#filesOf(read);
-    await podFiles(this.#rebuilding.pod, layout, address, scope, paths);
+    const paths = await timedAside("kept.rebuilt.filesOf", () =>
+      this.#filesOf(read),
+    );
+    await timedAside("kept.rebuilt.podFiles", () =>
+      podFiles(this.#rebuilding.pod, layout, address, scope, paths),
+    );
     const touchesStale = await boundValues(
       union,
       records,
@@ -871,12 +884,12 @@ export class KeptBuild {
             ),
             ...keptBefore,
           ];
-    const derived = await build.derivations.derive(
-      scope,
-      lens,
-      scopedSamesStillJoined,
+    const derived = await timedAside("kept.rebuilt.derive", () =>
+      build.derivations.derive(scope, lens, scopedSamesStillJoined),
     );
-    const held = await build.held(union, this.#held);
+    const held = await timedAside("kept.rebuilt.held", () =>
+      build.held(union, this.#held),
+    );
     const { files } = await build.queried(scope, address, held);
 
     // The derived state.

@@ -12,7 +12,7 @@ import {
   inUtc,
   releaseRetractionName,
 } from "./names.js";
-import { counted, timed } from "./probe.js";
+import { counted, timed, timedAside } from "./probe.js";
 import { codeIri, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type References, tableTerms, type TableTerms } from "./references.js";
 import { CASCADE, Refusal, type StepContext } from "./step.js";
@@ -1789,13 +1789,21 @@ export async function runMatcher(
   activity?: string,
 ): Promise<string | undefined> {
   const takes =
-    activity === undefined ? undefined : await actsTaken(context, activity);
-  const matcher = await Matcher.of(context, references, undefined, takes);
+    activity === undefined
+      ? undefined
+      : await timedAside("matcher.actsTaken", () =>
+          actsTaken(context, activity),
+        );
+  const matcher = await timedAside("matcher.of", () =>
+    Matcher.of(context, references, undefined, takes),
+  );
   if (takes === undefined) {
-    await matcher.recheck();
-    await matcher.fileNoLongerReached();
-  } else await matcher.take(takes);
-  await matcher.fileFindings();
+    await timedAside("matcher.recheck", () => matcher.recheck());
+    await timedAside("matcher.fileNoLongerReached", () =>
+      matcher.fileNoLongerReached(),
+    );
+  } else await timedAside("matcher.take", () => matcher.take(takes));
+  await timedAside("matcher.fileFindings", () => matcher.fileFindings());
   matcher.finish();
   return actOfRun(context, activity);
 }

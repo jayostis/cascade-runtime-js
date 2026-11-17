@@ -5,7 +5,7 @@ import {
   fileEntry,
   fileExport,
 } from "./arrivals.js";
-import { countedQuery, timed } from "./probe.js";
+import { countedQuery, timed, timedAside } from "./probe.js";
 import type { AdaptersOf, ConvertBudget } from "./bridge.js";
 import {
   builtFileBytes,
@@ -599,33 +599,36 @@ export class CorePod {
     budget?: ConvertBudget,
   ): Promise<Performed> {
     const { importers } = this.#options;
-    return this.#step(async (context) => {
-      let documents: readonly ExportDocument[] | undefined;
-      for (const importer of importers) {
-        try {
-          documents = await importer.documents(exported, folder);
-        } catch (error) {
-          throw new Refusal(
-            `${folder}: ${error instanceof Error ? error.message : String(error)}`,
-          );
+    return this.#step(
+      async (context) => {
+        let documents: readonly ExportDocument[] | undefined;
+        for (const importer of importers) {
+          try {
+            documents = await timedAside("core-pod.import.documents", () =>
+              importer.documents(exported, folder),
+            );
+          } catch (error) {
+            throw new Refusal(
+              `${folder}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+          if (documents !== undefined) break;
         }
-        if (documents !== undefined) break;
-      }
-      if (documents === undefined)
-        throw new Refusal(
-          `no importer of ${importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
+        if (documents === undefined)
+          throw new Refusal(
+            `no importer of ${importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
+          );
+        await onProgress?.({ part: "loading the adapter" });
+        const loaded = await timedAside("core-pod.import.adapters", adapters);
+        const activity = await timedAside("arrivals.fileExport", () =>
+          fileExport(context, documents, loaded, onProgress, budget),
         );
-      await onProgress?.({ part: "loading the adapter" });
-      const activity = await fileExport(
-        context,
-        documents,
-        await adapters(),
-        onProgress,
-        budget,
-      );
-      await onProgress?.({ part: "saving" });
-      return activity;
-    });
+        await onProgress?.({ part: "saving" });
+        return activity;
+      },
+      false,
+      "import",
+    );
   }
 
   /** A connect to a server, as the folder of the files saves it (A16, A14). */
@@ -660,11 +663,14 @@ export class CorePod {
 
   /** A person's judgment, filed as N16 keeps it (N10). */
   judge(judgment: StepFile): Promise<Performed> {
-    return this.#step((context) =>
-      fileJudgment(context, judgment, {
-        // The matcher's view is built only for a judgment that has something to read it for.
-        select: async (query) => (await context.matcherView()).select(query),
-      }),
+    return this.#step(
+      (context) =>
+        fileJudgment(context, judgment, {
+          // The matcher's view is built only for a judgment that has something to read it for.
+          select: async (query) => (await context.matcherView()).select(query),
+        }),
+      false,
+      "judge",
     );
   }
 
@@ -771,8 +777,10 @@ export class CorePod {
   async match(activity?: string): Promise<Performed> {
     const tables = await this.#tables();
     const migrated = await this.#migrated(tables, false);
-    const performed = await this.#step((context) =>
-      runMatcher(context, tables, activity),
+    const performed = await this.#step(
+      (context) => runMatcher(context, tables, activity),
+      false,
+      "match",
     );
     return migrated === undefined
       ? performed
@@ -1227,6 +1235,7 @@ export class CorePod {
   async #step(
     perform: (context: StepContext) => Promise<string | void>,
     everything = false,
+    kind = "other",
   ): Promise<Performed> {
     const options = this.#options;
     const at = options.build === undefined ? undefined : options.time.now();
@@ -1235,41 +1244,46 @@ export class CorePod {
     let change: Change | undefined = { written: [], everything };
     try {
       this.#performing = true;
-      const activity = await perform({
-        address: options.address,
-        subject: options.subject,
-        pod: options.pod,
-        time: options.time,
-        writes,
-        newStore: options.newStore,
-        layout: options.layout,
-        vocabulary: options.vocabulary,
-        ...(this.#head === undefined
-          ? {}
-          : { lastSnapshot: this.#head.snapshot }),
-        matcherView: () => this.#matcherView(),
-        releaseMatcherView: () => this.#releaseMatcherView(),
-        keptDataset: () => this.#keptOrBuiltWhole(at),
-      }).finally(async () => {
+      const activity = await timedAside("core-pod.step.perform", () =>
+        perform({
+          address: options.address,
+          subject: options.subject,
+          pod: options.pod,
+          time: options.time,
+          writes,
+          newStore: options.newStore,
+          layout: options.layout,
+          vocabulary: options.vocabulary,
+          ...(this.#head === undefined
+            ? {}
+            : { lastSnapshot: this.#head.snapshot }),
+          matcherView: () => this.#matcherView(),
+          releaseMatcherView: () => this.#releaseMatcherView(),
+          keptDataset: () => this.#keptOrBuiltWhole(at),
+        }),
+      ).finally(async () => {
         this.#performing = false;
         await this.#releaseMatcherView();
       });
       let head: Head | undefined;
       let hashed: { readonly set: HashedSet; readonly act: string } | undefined;
-      const wrote = await writes.commit(
-        options.pod,
-        async (act, fresh, arrived) => {
-          const finished = await this.#finished(act, fresh, arrived);
-          head = finished.head;
-          hashed = { set: finished.hashed, act: act.path };
-          return finished.triples;
-        },
+      const wrote = await timedAside("core-pod.step.commit", () =>
+        writes.commit(options.pod, (act, fresh, arrived) =>
+          timedAside("core-pod.step.finished", async () => {
+            const finished = await this.#finished(act, fresh, arrived);
+            head = finished.head;
+            hashed = { set: finished.hashed, act: act.path };
+            return finished.triples;
+          }),
+        ),
       );
       for (const [path, file] of this.#writing) this.#chain.set(path, file);
       if (head !== undefined) {
         this.#head = head;
         this.#headHeld = true;
-        const kept = await this.#keptAfter(hashed);
+        const kept = await timedAside("core-pod.step.keptAfter", () =>
+          this.#keptAfter(hashed),
+        );
         if (kept !== undefined) this.#head = head = { ...head, set: kept };
         await options.keepHead?.(head).catch(() => undefined);
       }
@@ -1289,9 +1303,12 @@ export class CorePod {
         this.#builtBefore = undefined;
       } else change = { ...change, written: writes.committed };
     }
-    if (options.build !== undefined) {
+    const { build } = options;
+    if (build !== undefined) {
       try {
-        await this.#rebuild(options.build, at, change);
+        await timedAside(`core-pod.step.rebuild:${kind}`, () =>
+          this.#rebuild(build, at, change),
+        );
       } catch (error) {
         this.#dropBuilt();
         if (error instanceof Unopened) throw error;
@@ -1321,9 +1338,8 @@ export class CorePod {
     )
       return kept;
     return this.#held(DATASET + build.lens, async () => {
-      const whole = await KeptBuild.whole(
-        this.#rebuilding(build, incremental),
-        this.#state(at),
+      const whole = await timedAside("kept.whole", () =>
+        KeptBuild.whole(this.#rebuilding(build, incremental), this.#state(at)),
       );
       this.#built = whole.kept;
       this.#builtBefore = whole.files;
@@ -1526,24 +1542,29 @@ export class CorePod {
       const state = this.#state(at);
       const rebuilding = this.#rebuilding(build, build.incremental);
       let built = this.#built;
-      let files = await built?.step(change, state);
+      let files = await timedAside("kept.step", async () =>
+        built?.step(change, state),
+      );
       if (files !== undefined && this.#builtBefore !== undefined)
         files = new Map([...this.#builtBefore, ...files]);
       if (built !== undefined && files !== undefined && build.verify === true)
         await built.verify(await KeptBuild.whole(rebuilding, state));
       if (built === undefined || files === undefined) {
         this.#dropBuilt();
-        const whole = await KeptBuild.whole(rebuilding, state);
+        const whole = await timedAside("kept.whole", () =>
+          KeptBuild.whole(rebuilding, state),
+        );
         built = this.#built = whole.kept;
         files = whole.files;
       }
-      await writeAll(
-        pod,
-        [...files].map(
+      const made = files;
+      const bytes = await timedAside("core-pod.rebuild.bytes", async () =>
+        [...made].map(
           ([path, triples]) =>
             [path, builtFileBytes(layout, address, path, triples)] as const,
         ),
       );
+      await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
       return;
     }

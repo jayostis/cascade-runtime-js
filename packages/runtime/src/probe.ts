@@ -95,6 +95,23 @@ export function timed<T>(name: string, run: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Runs the function as the named span while probing, but not as an open one: a count made inside is credited to the
+ * innermost span `timed` opened, as it would be without this one. For the time of a step whose counts are another's.
+ */
+export function timedAside<T>(name: string, run: () => Promise<T>): Promise<T> {
+  if (active === undefined) return run();
+  const probe = active;
+  const started = performance.now();
+  return (async () => {
+    try {
+      return await run();
+    } finally {
+      probe.end(name, started);
+    }
+  })();
+}
+
+/**
  * A store query, counted and timed as the span `store.query`, and credited to the innermost span open as a count, but
  * not an open span itself, so the counts of what it runs inside are not taken from it.
  */

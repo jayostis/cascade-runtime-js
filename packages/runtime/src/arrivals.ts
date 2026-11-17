@@ -45,7 +45,7 @@ import {
 } from "./step.js";
 import type { Shapes } from "./shapes.js";
 import { podFiles } from "./dataset.js";
-import { scanned, timedSync } from "./probe.js";
+import { scanned, timedAside, timedSync } from "./probe.js";
 import { DERIVED, derivationsOf, QUERIES } from "./derive.js";
 import { type Dataset, type StoreFactory, Union } from "./store.js";
 
@@ -1149,7 +1149,9 @@ export async function fileExport(
   const name = time.newId();
   const started = time.now();
   const { layout } = context;
-  const revisions = await Revisions.of(context);
+  const revisions = await timedAside("arrivals.revisionsOf", () =>
+    Revisions.of(context),
+  );
   const kept = new Map<string, Triple[]>();
   const wentBack: WentBack[] = [];
   for (const [done, found] of documents.entries()) {
@@ -1165,34 +1167,46 @@ export async function fileExport(
       envelope: found.envelope,
       facts: { iri: `${documentIri}#facts`, bytes: read(found, started) },
     };
-    const adapter = await accepting(adapters, found, document);
-    await onProgress?.({ part: "converting", done, of: documents.length });
-    const conversion = await refusing(found.path, () =>
-      adapter.convert(document, budget),
+    const adapter = await timedAside("arrivals.accepting", () =>
+      accepting(adapters, found, document),
     );
-    const graph = await parseGraph(conversion.graph, documentIri, newStore);
+    await onProgress?.({ part: "converting", done, of: documents.length });
+    const conversion = await timedAside("arrivals.convert", () =>
+      refusing(found.path, () => adapter.convert(document, budget)),
+    );
+    const graph = await timedAside("arrivals.parseGraph", () =>
+      parseGraph(conversion.graph, documentIri, newStore),
+    );
     const subject = iri(documentIri);
     timedSync("arrivals.refuseUnaccounted", () =>
       refuseUnaccounted(graph, subject, found.path),
     );
-    let revised = false;
-    let reportedOlder = false;
     const arriving = timedSync("arrivals.arrivals", () =>
       arrivals(layout, graph, name, found.path),
     );
-    await revisions.prepare(arriving);
-    for (const arrival of arriving) {
-      const repeated = await revisions.repeats(arrival);
-      const older = repeated
-        ? revisions.holding(arrival)
-        : await revisions.revise(arrival, writes);
-      revised ||= !repeated;
-      if (older === undefined) continue;
-      const contradicted = await revisions.contradictedBy(arrival);
-      if (contradicted.length === 0) continue;
-      wentBack.push({ older, contradicted });
-      reportedOlder = true;
-    }
+    const { revised, reportedOlder } = await timedAside(
+      "arrivals.revisions",
+      async () => {
+        let revised = false;
+        let reportedOlder = false;
+        await timedAside("arrivals.revisions.prepare", () =>
+          revisions.prepare(arriving),
+        );
+        for (const arrival of arriving) {
+          const repeated = await revisions.repeats(arrival);
+          const older = repeated
+            ? revisions.holding(arrival)
+            : await revisions.revise(arrival, writes);
+          revised ||= !repeated;
+          if (older === undefined) continue;
+          const contradicted = await revisions.contradictedBy(arrival);
+          if (contradicted.length === 0) continue;
+          wentBack.push({ older, contradicted });
+          reportedOlder = true;
+        }
+        return { revised, reportedOlder };
+      },
+    );
     if (
       revised ||
       reportedOlder ||
@@ -1217,7 +1231,9 @@ export async function fileExport(
       }
     }
   }
-  await revisions.write(writes, wentBack);
+  await timedAside("arrivals.revisions.write", () =>
+    revisions.write(writes, wentBack),
+  );
   if (kept.size === 0) return name;
   const descriptions = [...kept.values()];
   const forms = new Set(await Promise.all(descriptions.map(canonical)));

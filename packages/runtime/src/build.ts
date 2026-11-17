@@ -2,6 +2,7 @@ import { Derivations, type SamesStillJoined, QUERIES } from "./derive.js";
 import { ENTRY_PLACEHOLDER } from "./entries.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
+import { timedAside } from "./probe.js";
 import {
   blank,
   iri,
@@ -281,40 +282,53 @@ export async function vocabularyBuild(
     return held;
   };
 
-  const queried = async (
+  const queried = (
     union: Union,
     address: string,
     given?: ReadonlySet<string>,
-  ): Promise<QueriedFiles> => {
-    const { rows } = await union.select(query(CURRENT_REFERENCE_VERSIONS));
-    const used = [
-      ...new Set(rows.flatMap((row) => row.get("version")?.value ?? [])),
-    ];
-    const held = given ?? (await viewsHeld(union));
-    const files = new Map<string, readonly Triple[]>();
-    for (const group of groups) {
-      const made = await Promise.all(
-        group
-          .filter(({ file }) => !views.includes(file) || held.has(file))
-          .map(async ({ file, query: path }) => ({
-            file,
-            view: address + file,
-            triples: await union.construct(query(path)),
-          })),
+  ): Promise<QueriedFiles> =>
+    timedAside("build.queried", async () => {
+      const { rows } = await timedAside("build.queried.currentVersions", () =>
+        union.select(query(CURRENT_REFERENCE_VERSIONS)),
       );
-      const owner = entryViews(made.filter(({ file }) => views.includes(file)));
-      for (const { file, view, triples } of made) {
-        const written = marked(
-          view,
-          views.includes(file) ? entriesInView(view, triples, owner) : triples,
-          used,
+      const used = [
+        ...new Set(rows.flatMap((row) => row.get("version")?.value ?? [])),
+      ];
+      const held =
+        given ??
+        (await timedAside("build.queried.viewsHeld", () => viewsHeld(union)));
+      const files = new Map<string, readonly Triple[]>();
+      for (const group of groups) {
+        const made = await Promise.all(
+          group
+            .filter(({ file }) => !views.includes(file) || held.has(file))
+            .map(async ({ file, query: path }) => ({
+              file,
+              view: address + file,
+              triples: await timedAside(`build.query:${file}`, () =>
+                union.construct(query(path)),
+              ),
+            })),
         );
-        files.set(file, written);
-        await union.add(written, address + file);
+        await timedAside("build.queried.written", async () => {
+          const owner = entryViews(
+            made.filter(({ file }) => views.includes(file)),
+          );
+          for (const { file, view, triples } of made) {
+            const written = marked(
+              view,
+              views.includes(file)
+                ? entriesInView(view, triples, owner)
+                : triples,
+              used,
+            );
+            files.set(file, written);
+            await union.add(written, address + file);
+          }
+        });
       }
-    }
-    return { files, held };
-  };
+      return { files, held };
+    });
 
   const closing = (
     pod: PodState,
