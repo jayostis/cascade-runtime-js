@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { type Components, packed } from "../src/node/components.js";
 import { checkout, git } from "../src/node/git.js";
 import {
+  optionsKey,
   type Resolved,
   type ResolverOptions,
   resolve,
@@ -97,6 +98,53 @@ describe("Finding the vocabulary and adapters a run uses · resolve(), siblingsO
       assert.match(said, /^cascade-vocabulary: the sibling checkout /);
       assert.ok(said.includes(at.slice(0, 12)), said);
       assert.match(said, /with 1 uncommitted files$/);
+    });
+  });
+
+  describe("given a process that lives on while a sibling checkout moves", () => {
+    it("resolves it again at the commit it is at now", async () => {
+      const siblings = join(root, "siblings-moving");
+      const folder = join(siblings, "cascade-vocabulary");
+      const first = await repositoryAt(folder);
+      const options = { siblingsIn: [siblings], cache: join(root, "cache") };
+      assert.equal((await resolved(options)).found.commit, first);
+      await writeFile(join(folder, "more.md"), "more\n");
+      await git(folder, "add", ".");
+      await git(
+        folder,
+        "-c",
+        "user.name=test",
+        "-c",
+        "user.email=test@example.org",
+        "commit",
+        "--quiet",
+        "-m",
+        "next",
+      );
+      const next = (await git(folder, "rev-parse", "HEAD")).trim();
+      assert.equal((await resolved(options)).found.commit, next);
+    });
+
+    it("keys the folders handed in without regard to their order", () => {
+      const cache = join(root, "cache");
+      assert.equal(
+        optionsKey({
+          siblingsIn: [],
+          cache,
+          folders: new Map([
+            ["b", "1"],
+            ["a", "2"],
+          ]),
+        }),
+        optionsKey({
+          siblingsIn: [],
+          cache,
+          folders: new Map([
+            ["a", "2"],
+            ["b", "1"],
+          ]),
+        }),
+      );
     });
   });
 
