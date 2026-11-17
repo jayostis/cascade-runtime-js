@@ -922,17 +922,26 @@ class OpenPod implements Pod {
 
   /** The patient profiles the import's revisions' versions name that no counting About ties to the subject. */
   async #unclaimedProfiles(activity: string): Promise<string[]> {
-    const { rows } = await this.#core.select(`${PREFIXES}
-      SELECT DISTINCT ?profile WHERE {
-        ?revision prov:wasGeneratedBy <${activity}> ; cascade:version ?version .
-        ?version cascade:patient ?profile .
-        FILTER (isIRI(?profile) && ?profile != <${this.subject}>)
-        FILTER NOT EXISTS {
+    const [named, tied] = await Promise.all([
+      this.#core.select(`${PREFIXES}
+        SELECT DISTINCT ?profile WHERE {
+          ?revision prov:wasGeneratedBy <${activity}> ; cascade:version ?version .
+          ?version cascade:patient ?profile .
+          FILTER (isIRI(?profile) && ?profile != <${this.subject}>)
+        }`),
+      this.#core.select(`${PREFIXES}
+        SELECT DISTINCT ?profile WHERE {
           ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
             prov:hadMember ?profile ; cascade:subject <${this.subject}> .
-        }
-      } ORDER BY ?profile`);
-    return rows.flatMap((row) => row.get("profile")?.value ?? []);
+        }`),
+    ]);
+    const claimed = new Set(
+      tied.rows.flatMap((row) => row.get("profile")?.value ?? []),
+    );
+    return named.rows
+      .flatMap((row) => row.get("profile")?.value ?? [])
+      .filter((profile) => !claimed.has(profile))
+      .sort(compared);
   }
 
   #judge(turtle: string): Promise<Done> {
