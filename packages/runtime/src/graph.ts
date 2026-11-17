@@ -48,6 +48,27 @@ export class Graph {
     return [...found.values()];
   }
 
+  /** The triples of named subjects by the name up to its first `#`, in the order of `triples`, made on first use. */
+  #byName: Map<string, Triple[]> | undefined;
+
+  /** The triples whose subject is the named node or a fragment of it (`name#…`), in the order of `triples`. */
+  inName(name: string): Triple[] {
+    if (this.#byName === undefined) {
+      this.#byName = new Map();
+      for (const triple of this.triples) {
+        const subject = triple[0];
+        if (subject.termType !== "NamedNode") continue;
+        const base = subject.value.split("#", 1)[0] ?? "";
+        const held = this.#byName.get(base);
+        if (held === undefined) this.#byName.set(base, [triple]);
+        else held.push(triple);
+      }
+    }
+    return (this.#byName.get(name.split("#", 1)[0] ?? "") ?? []).filter(
+      ([s]) => s.value === name || s.value.startsWith(`${name}#`),
+    );
+  }
+
   /** The node's triples, and those of every blank node they lead to. */
   closure(node: Term): Triple[] {
     const found: Triple[] = [];
