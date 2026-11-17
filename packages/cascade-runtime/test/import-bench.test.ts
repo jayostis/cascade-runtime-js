@@ -104,9 +104,12 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         assert.notEqual(run.counts[`${name}.rows`], undefined, name);
     });
 
-    it("credits each graph scan to the span that made it, a constant however many versions: arrivals one graph.subjects() scan; refuseUnaccounted one whole-graph scan and three graph.subjects() scans", () => {
+    it("credits each graph scan to the span that made it, a constant however many versions: arrivals one graph.subjects() scan; refuseUnaccounted one whole-graph scan, three graph.subjects() scans and one pass to build the name index", () => {
       assert.equal(run.counts["arrivals.arrivals.graph.scans"], 1);
-      assert.equal(run.counts["arrivals.refuseUnaccounted.graph.scans"], 1 + 3);
+      assert.equal(
+        run.counts["arrivals.refuseUnaccounted.graph.scans"],
+        1 + 3 + 1,
+      );
     });
 
     it("prints the table, with a row for each hot spot", () => {
