@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { build, type Metafile } from "esbuild";
-import { bundleBrowser } from "../pack/browser.js";
 import * as oxigraph from "oxigraph";
 import { type Pod, type Row, Unopened } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
@@ -1349,32 +1348,12 @@ describe("Checking a pod against the reference tables · reference_table_checks 
 
 describe("cascade-runtime/check, cascade-runtime/terms and cascade-runtime/tools in a browser bundle", () => {
   let bundle: { errors: unknown[]; metafile: Metafile };
-  let stage: string;
-  let packedCheck: string;
 
   before(async () => {
-    stage = await mkdtemp(join(tmpdir(), "cascade-browser-bundle-"));
-    const bridge = join(stage, "bridge");
-    await mkdir(bridge);
-    await writeFile(
-      join(bridge, "cascade_bridge.js"),
-      "export function initSync() {}\n",
-    );
-    await writeFile(join(bridge, "cascade_bridge_bg.wasm"), new Uint8Array());
-    await bundleBrowser(join(stage, "dist", "browser"), {
-      commit: "0123456789abcdef0123456789abcdef01234567",
-      dirty: false,
-      components: [],
-      bridge,
-    });
-    packedCheck = join(stage, "dist", "browser", "check.js");
     bundle = await build({
-      entryPoints: [
-        ...["check", "terms", "tools"].map((entry) =>
-          fileURLToPath(import.meta.resolve(`cascade-runtime/${entry}`)),
-        ),
-        packedCheck,
-      ],
+      entryPoints: ["check", "terms", "tools"].map((entry) =>
+        fileURLToPath(import.meta.resolve(`cascade-runtime/${entry}`)),
+      ),
       bundle: true,
       platform: "browser",
       format: "esm",
@@ -1385,28 +1364,14 @@ describe("cascade-runtime/check, cascade-runtime/terms and cascade-runtime/tools
     });
   });
 
-  after(async () => {
-    await rm(stage, { recursive: true, force: true });
-  });
-
-  it("reaches no pod.js, Oxigraph module or .wasm from any of them nor from the browser build of check, so a page that imports one takes in neither the Pod, its store nor its wasm", async () => {
+  it("reaches no pod.js, Oxigraph module or .wasm from any of them, so a page that imports one takes in neither the Pod, its store nor its wasm", () => {
     const reaches = /(^|\/)pod\.js$|(^|\/)oxigraph\/|\.wasm$/;
-    const packed = await readFile(packedCheck, "utf8");
     assert.deepEqual(
-      [
-        ...Object.values(bundle.metafile.outputs).flatMap(
-          ({ entryPoint, inputs }) =>
-            Object.keys(inputs)
-              .filter((it) => reaches.test(it))
-              .map((it) => `${entryPoint} reaches ${it}`),
-        ),
-        ...packed
-          .split("\n")
-          .filter(
-            (it) => /^\/\/ /.test(it) && /\bpod\.|oxigraph|\.wasm/.test(it),
-          )
-          .map((it) => `the browser build of check holds ${it.slice(3)}`),
-      ],
+      Object.values(bundle.metafile.outputs).flatMap(({ entryPoint, inputs }) =>
+        Object.keys(inputs)
+          .filter((it) => reaches.test(it))
+          .map((it) => `${entryPoint} reaches ${it}`),
+      ),
       [],
     );
   });

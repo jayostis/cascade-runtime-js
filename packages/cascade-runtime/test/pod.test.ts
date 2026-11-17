@@ -1411,15 +1411,37 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       );
     });
 
-    it("files a time at an offset of +14:00 and of -14:00, the bounds, as given", async () => {
-      for (const [name, time] of [
-        ["urn:uuid:7d2f9b41-3a60-4c85-9e1b-5f8a0c6e2d73", "+14:00"],
-        ["urn:uuid:b05c8e32-6f17-4a9d-8d24-1e7b3a9f4c60", "-14:00"],
+    it("files a judgment's time and a retraction's start time at an offset of +14:00 and of -14:00, the bounds, as given", async () => {
+      for (const [name, retracting, time] of [
+        [
+          "urn:uuid:7d2f9b41-3a60-4c85-9e1b-5f8a0c6e2d73",
+          "urn:uuid:2f6c8a1d-5e93-4b07-a4d2-9c1e7b3f0a58",
+          "+14:00",
+        ],
+        [
+          "urn:uuid:b05c8e32-6f17-4a9d-8d24-1e7b3a9f4c60",
+          "urn:uuid:8a3d5f19-c26e-4071-b9a4-6e0d2c7f1b35",
+          "-14:00",
+        ],
       ] as const) {
         const made = `2026-03-04T07:00:00${time}`;
         const done = await owned.judge(byAnother(name, dateTime(made)));
         assert.equal(done.refused, undefined, time);
         assert.deepEqual(await stating(name), [{ made, author }], time);
+        const retracted = await owned.judge(`${PREFIXES}
+<${retracting}> a prov:Activity ; prov:invalidated <${name}> ;
+    prov:startedAtTime ${dateTime(made)} ;
+    prov:wasAssociatedWith <${author}> .
+<${author}> a prov:Person .`);
+        assert.equal(retracted.refused, undefined, `a retraction at ${time}`);
+        assert.deepEqual(
+          await select(
+            owned,
+            `SELECT ?made WHERE { <${retracting}> prov:startedAtTime ?made }`,
+          ),
+          [{ made }],
+          `a retraction at ${time}`,
+        );
       }
     });
 
