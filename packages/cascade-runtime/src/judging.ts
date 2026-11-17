@@ -1,8 +1,11 @@
 // A person's judgment or retraction as a pod files it: the Turtle an app hands `pod.judge`, given the name and the time of
-// its own, and for a verdict that says something of its members' versions, the version each one was at. Shared by the pod
-// and by the run that performs a model's proposal as a step.
+// its own, and for a verdict that says something of its members' versions, the document each member was shown from, never
+// a version. Shared by the pod and by the run that performs a model's proposal as a step.
 import {
   type CorePod,
+  documentsShownFrom,
+  machineJudgmentTouched,
+  sawVersions,
   type IdsAndTime,
   iri,
   literal,
@@ -24,10 +27,6 @@ const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
 const STARTED_AT = `${PROV}startedAtTime`;
 const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
-/** The verdicts that say something of their members' versions, which name each version they saw. */
-const SEEN = new Set(
-  ["Same", "Different", "Erroneous"].map((v) => CASCADE + v),
-);
 
 /** What files a judgment: the pod's step, what reads it, and the name and the time a new judgment is given. */
 export interface Judging {
@@ -51,27 +50,6 @@ async function isFinding(
   const { rows } = await core.select(`${PREFIXES}
       SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
   return rows.length > 0;
-}
-
-/** Each record's current version, under the everyday lens, and each revision's version, by the member. */
-async function currentVersions(
-  core: Pick<CorePod, "select">,
-  records: readonly string[],
-): Promise<Map<string, string>> {
-  if (records.length === 0) return new Map();
-  const { rows } = await core.select(`${PREFIXES}
-      SELECT ?record ?version WHERE {
-        VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
-        { ?record pav:hasCurrentVersion ?version } UNION { ?record cascade:version ?version }
-      }`);
-  return new Map(
-    rows.flatMap((row) => {
-      const [record, version] = [row.get("record"), row.get("version")];
-      return record === undefined || version === undefined
-        ? []
-        : [[record.value, version.value] as const];
-    }),
-  );
 }
 
 function failure(error: unknown): string {
@@ -136,6 +114,8 @@ async function prepared(
         ? [o.value]
         : [],
     );
+  const touched = await machineJudgmentTouched(core, named, name);
+  if (touched !== undefined) throw new Error(touched);
   const used: Triple[] = [];
   const verdicts = of(`${CASCADE}verdict`);
   const members = of(`${PROV}hadMember`);
@@ -146,15 +126,17 @@ async function prepared(
     members.length === 1 &&
     only !== undefined &&
     (await isFinding(core, only));
-  if (!overFinding && verdicts.some((verdict) => SEEN.has(verdict))) {
-    const current = await currentVersions(core, members);
+  if (!overFinding && verdicts.some(sawVersions)) {
+    const current = await documentsShownFrom(core, members);
     for (const member of members) {
-      const version = current.get(member);
-      if (version === undefined)
+      const documents = current.get(member);
+      if (documents === undefined)
         throw new Error(
           `${member} has no current version in the pod: it names no record or revision`,
         );
-      used.push([judgment, iri(DERIVED_FROM), iri(version)]);
+      for (const document of documents)
+        if (!used.some(([, , o]) => o.value === document))
+          used.push([judgment, iri(DERIVED_FROM), iri(document)]);
     }
   }
   return {

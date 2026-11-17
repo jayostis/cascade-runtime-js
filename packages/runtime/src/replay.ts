@@ -8,7 +8,13 @@ import { StoryTime } from "./ids.js";
 import type { Files } from "./files.js";
 import type { Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
+import { ntriples, RDF } from "./rdf.js";
 import { References } from "./references.js";
+import {
+  documentsShown,
+  machineJudgmentTouched,
+  sawVersions,
+} from "./shown.js";
 import { SavedOutputBridge } from "./saved-output-bridge.js";
 import type { StepFile } from "./step.js";
 import type { StoreFactory } from "./store.js";
@@ -112,6 +118,52 @@ async function revisionsNamed(
   );
 }
 
+const CASCADE_TERMS = "https://ns.cascadeprotocol.org/cascade#";
+const DCT_TERMS = "http://purl.org/dc/terms/";
+const PROV_TERMS = "http://www.w3.org/ns/prov#";
+
+/**
+ * A person's judgment or retraction as filing it through `pod.judge` makes it (N16): for a verdict that says something
+ * of its members' versions, with the document each member was shown from, and none the story states; or the reason it
+ * is refused, for replacing or retracting a judgment a machine made.
+ */
+async function judgmentFiled(
+  pod: CorePod,
+  story: StorySide,
+  judgment: StepFile,
+): Promise<StepFile | string> {
+  const triples = await story.newStore().parse(judgment.bytes, judgment.base);
+  const subjectsOf = (predicate: string, object?: string): string[] =>
+    triples.flatMap(([s, p, o]) =>
+      p.value === predicate && (object === undefined || o.value === object)
+        ? [s.value]
+        : [],
+    );
+  for (const subject of new Set([
+    ...subjectsOf(`${DCT_TERMS}replaces`),
+    ...subjectsOf(`${PROV_TERMS}invalidated`),
+  ])) {
+    const refused = await machineJudgmentTouched(pod, triples, subject);
+    if (refused !== undefined) return refused;
+  }
+  const [judging] = subjectsOf(`${RDF}type`, `${CASCADE_TERMS}Judgment`);
+  if (judging === undefined) return judgment;
+  const of = (predicate: string): string[] =>
+    triples.flatMap(([s, p, o]) =>
+      s.value === judging && p.value === predicate ? [o.value] : [],
+    );
+  const kept = triples.filter(
+    ([subject, p]) =>
+      !(subject.value === judging && p.value === `${PROV_TERMS}wasDerivedFrom`),
+  );
+  const added = of(`${CASCADE_TERMS}verdict`).some(sawVersions)
+    ? await documentsShown(pod, judging, of(`${PROV_TERMS}hadMember`))
+    : [];
+  return added.length === 0 && kept.length === triples.length
+    ? judgment
+    : { ...judgment, bytes: ntriples([...kept, ...added]) };
+}
+
 const ACT_OF_STEP = /<urn:cascade:act-of-step:([^>]+)>/g;
 
 /**
@@ -190,15 +242,17 @@ export const PERFORMERS: Performers = {
     if (happened.kind !== "judgment")
       throw new Error("the step is no judgment");
     begun(story, step);
-    return withStoryFile(pod, story, happened.file, async (judgment) =>
-      pod.judge({
+    return withStoryFile(pod, story, happened.file, async (judgment) => {
+      const named = {
         ...judgment,
         bytes: await revisionsNamed(
           pod,
           actsNamed(story, judgment.bytes, happened.steps),
         ),
-      }),
-    );
+      };
+      const filed = await judgmentFiled(pod, story, named);
+      return typeof filed === "string" ? pod.refuse(filed) : pod.judge(filed);
+    });
   },
   reference: (pod, step, story) => {
     const { happened } = step;
