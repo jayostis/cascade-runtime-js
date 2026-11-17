@@ -34,6 +34,7 @@ import {
   vocabulary,
 } from "./vocabulary.js";
 
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const FEATURE = "runtime/matcher.feature";
 const EXAMPLE =
   "the matcher joins the pair a person called different, and not the pair a person called the same";
@@ -126,12 +127,13 @@ before(async () => {
 function opened(
   files: MemoryFiles,
   newStore: () => OxigraphStore = () => new OxigraphStore(),
+  over: { address: string; subject: string } = { address, subject },
 ): CorePod {
   return new CorePod({
     runtime: RUNTIME,
     pod: files,
-    address,
-    subject,
+    address: over.address,
+    subject: over.subject,
     title: "matching",
     vocabulary: vocabularyFiles,
     layout,
@@ -635,6 +637,14 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
 
   /** An About judgment of `profile`, as the owner files it, named at random. */
   function aboutJudgment(profile: string): StepFile {
+    return aboutJudgmentIn({ address, subject }, profile);
+  }
+
+  /** An About judgment of `profile` as the owner of the pod at `in.address`, whose person is `in.subject`, files it. */
+  function aboutJudgmentIn(
+    { address, subject }: { address: string; subject: string },
+    profile: string,
+  ): StepFile {
     const owner = `${address}${layout.card}#me`;
     return {
       bytes: new TextEncoder().encode(`
@@ -840,6 +850,63 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         assert.throws(() => stepped.close(), /close\(\) inside deferring/);
       });
       assert.equal(rebuilds(files) - before, 1);
+    });
+
+    it("refuses a judgment that names a finding the pod holds, and leaves the rebuild to the end of the run", async () => {
+      const files = await countedCopy();
+      const finding = `urn:uuid:${crypto.randomUUID()}`;
+      await files.write(
+        layout.place(`${CASCADE}FindingForReview`).path(finding),
+        new TextEncoder().encode(
+          `<${finding}> a <${CASCADE}FindingForReview> ; <http://www.w3.org/ns/oa#hasBody> <${CASCADE}MatcherJudgmentsNoLongerReached> .`,
+        ),
+      );
+      const stepped = opened(files);
+      await stepped.refuse("a first step");
+      const before = rebuilds(files);
+      let refused: string | undefined;
+      await stepped.deferring(async () => {
+        await stepped.judge(aboutJudgment(profiles[0] as string));
+        refused = (await stepped.judge(aboutJudgment(finding))).refused;
+        assert.equal(rebuilds(files) - before, 0, "forced by the check");
+      });
+      assert.ok(refused?.includes(`${finding} is a finding for review`));
+      assert.equal(rebuilds(files) - before, 1);
+    });
+  });
+
+  describe("given a pod whose matcher filed a finding for review, outside any step", () => {
+    it("refuses a judgment that names the finding", async () => {
+      const kit = await localVocabulary(ROOT);
+      const built = await featurePod(
+        kit,
+        FEATURE,
+        new MemoryFiles("https://pod.example/"),
+        {
+          example:
+            "a potassium of another value at the same instant and unit is a finding of different result values, and one in another unit a finding of different result units, never a Same",
+        },
+      );
+      const where = {
+        address: built.story.address,
+        subject: built.story.subject,
+      };
+      const reopened = opened(
+        built.pod as MemoryFiles,
+        () => new OxigraphStore(),
+        where,
+      );
+      const { rows } = await reopened.select(
+        `${PREFIXES} SELECT ?finding WHERE { ?finding a cascade:FindingForReview } LIMIT 1`,
+      );
+      const finding = rows[0]?.get("finding")?.value;
+      assert.ok(finding, "the matcher filed no finding");
+      const judged = await reopened.judge(aboutJudgmentIn(where, finding));
+      assert.ok(
+        judged.refused?.includes(`${finding} is a finding for review`),
+        String(judged.refused),
+      );
+      reopened.close();
     });
   });
 });

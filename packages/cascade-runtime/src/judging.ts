@@ -27,7 +27,10 @@ const STARTED_AT = `${PROV}startedAtTime`;
 
 /** What files a judgment: the pod's step, what reads it, and the name and the time a new judgment is given. */
 export interface Judging {
-  readonly core: Pick<CorePod, "judge" | "select" | "selectStated">;
+  readonly core: Pick<
+    CorePod,
+    "judge" | "select" | "selectStated" | "findingKinds"
+  >;
   readonly newStore: StoreFactory;
   /** The pod's address, which the judgment's Turtle is parsed against. */
   readonly address: string;
@@ -157,9 +160,15 @@ async function prepared(
             p.value === STARTED_AT)
         ),
     );
-  const filed = await judgmentFiled(core, named, views, {
-    select: (query) => core.selectStated(query),
-  });
+  const filed = await judgmentFiled(
+    core,
+    named,
+    views,
+    {
+      select: (query) => core.selectStated(query),
+    },
+    () => core.findingKinds(),
+  );
   if ("refused" in filed) throw new Error(filed.refused);
   return {
     name,

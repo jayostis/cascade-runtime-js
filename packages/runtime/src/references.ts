@@ -8,6 +8,7 @@ import type { StoreFactory } from "./store.js";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
+const SKOS = "http://www.w3.org/2004/02/skos/core#";
 const VOID = "http://rdfs.org/ns/void#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const DEFAULT_TABLE_VERSION = `${CASCADE}defaultTableVersion`;
@@ -38,6 +39,8 @@ export interface TableTerms {
   readonly declared: ReadonlySet<string>;
   /** The kinds the vocabulary marks `cascade:readByAppPages true`: an app keeps their series though no rule reads the kind. */
   readonly readByPages: ReadonlySet<string>;
+  /** The kinds of finding for review the vocabulary names: the concepts of `cascade:FindingForReviewKinds`. */
+  readonly findingKinds: ReadonlySet<string>;
 }
 
 const termsRead = new WeakMap<Files, Promise<TableTerms>>();
@@ -110,6 +113,11 @@ async function readTableTerms(
         .match(undefined, `${CASCADE}readByAppPages`)
         .filter(([, , marked]) => marked.value === "true")
         .map(([kind]) => kind.value),
+    ),
+    findingKinds: new Set(
+      graph
+        .subjects(`${SKOS}inScheme`, iri(`${CASCADE}FindingForReviewKinds`))
+        .map(({ value }) => value),
     ),
   };
 }
