@@ -18,6 +18,7 @@ const newStore = (): OxigraphStore => new OxigraphStore();
 const FEATURE = "runtime/arrivals.feature";
 const OA = "http://www.w3.org/ns/oa#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+const USED = "http://www.w3.org/ns/prov#used";
 
 /**
  * Finn's stray-statement import, the stray line dropped, the arrival's selector node blank as saved, named `<urn:example:selector>`,
@@ -269,6 +270,15 @@ async function threeStatesOfOneRecord(): Promise<Replayed> {
           converted: `bridge/${name}`,
         },
       })),
+      {
+        name: "second-again",
+        when: "2026-01-09T10:00:00Z",
+        happened: {
+          kind: "import" as const,
+          export: "second/apple_health_export",
+          converted: "bridge/second",
+        },
+      },
     ],
   };
   return replay({
@@ -289,9 +299,11 @@ async function threeStatesOfOneRecord(): Promise<Replayed> {
  * An adapter converts each document of an export into arrivals: one arrival is one state of one record, as its source
  * reported it. `CorePod.import()` files each arrival as a revision of its record, and writes nothing for a state the
  * record is already at.
+ * @rule runtime/arrivals.feature A1
  * @rule runtime/arrivals.feature A4
  * @rule runtime/arrivals.feature A5
  * @rule runtime/arrivals.feature A7
+ * @rule runtime/arrivals.feature A10
  * @rule runtime/arrivals.feature A21
  * @rule runtime/naming.feature N4
  */
@@ -321,23 +333,48 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
     let second: string[];
     let stopped: unknown;
     let refused: (string | undefined)[];
+    let storedBy: number[];
+    let usedBy: number[];
+    let again: readonly string[];
 
     before(async () => {
       const done = await threeStatesOfOneRecord();
+      const pod = await layout();
       stopped = done.stopped;
       refused = done.steps.map((step) => step.refused);
       first = await versionsRevised(done, 1);
       second = await versionsRevised(done, 2);
+      storedBy = done.steps.map(
+        ({ wrote }) => wrote.filter((path) => pod.inStoredBytes(path)).length,
+      );
+      usedBy = await Promise.all(
+        done.steps.map(
+          async (_, index) =>
+            (await wroteBy(done, index)).triples.filter(
+              ([, p]) => p.value === USED,
+            ).length,
+        ),
+      );
+      again = done.steps[3]?.wrote ?? [];
     });
 
     it("writes two revisions, of the new state and of the first again", () => {
       assert.equal(stopped, undefined);
-      assert.deepEqual(refused, [undefined, undefined, undefined]);
+      assert.deepEqual(refused, [undefined, undefined, undefined, undefined]);
       assert.equal(first.length, 1);
       const [version] = first;
       assert.equal(second.length, 2);
       assert.equal(second.filter((one) => one === version).length, 1);
       assert.equal(second.filter((one) => one !== version).length, 1);
+    });
+
+    it("keeps all three documents, the one that repeats the state the record is at as the two that wrote a revision do, and its import uses all three (A10)", () => {
+      assert.deepEqual(storedBy, [0, 1, 3, 0]);
+      assert.deepEqual(usedBy, [0, 1, 3, 0]);
+    });
+
+    it("keeps nothing of the same export imported again, its documents being kept already (A1)", () => {
+      assert.deepEqual(again, []);
     });
   });
 
