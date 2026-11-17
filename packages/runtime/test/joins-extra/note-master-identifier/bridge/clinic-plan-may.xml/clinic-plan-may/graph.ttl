@@ -1,0 +1,74 @@
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix org: <http://www.w3.org/ns/org#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+<urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> a cascade:Organization .
+<ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> prov:wasGeneratedBy _:writing ;
+	prov:wasAttributedTo <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> .
+_:writing prov:qualifiedAssociation _:bcd56298d3ff1d0ea432e261f5e9e871 .
+_:bcd56298d3ff1d0ea432e261f5e9e871 prov:agent <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> ;
+	prov:hadRole cascade:CustodianRole .
+<ni:///sha-256;it6jHPm47tRiUzK2--q_Db_G99RHNpDFB-SUrlhJFew> prov:specializationOf <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> .
+_:dc5f37ad52f4aa9c63402ace92ad4b40 bridge:arrivedAs <ni:///sha-256;it6jHPm47tRiUzK2--q_Db_G99RHNpDFB-SUrlhJFew> ;
+	oa:hasSelector _:b5b36a9326f81ac6de6f8a9947d4fb72 .
+_:b5b36a9326f81ac6de6f8a9947d4fb72 a oa:XPathSelector ;
+	rdf:value "/*[local-name()='ClinicalDocument' and namespace-uri()='urn:hl7-org:v3']/*[local-name()='custodian' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='assignedCustodian' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='representedCustodianOrganization' and namespace-uri()='urn:hl7-org:v3'][1]" .
+<ni:///sha-256;it6jHPm47tRiUzK2--q_Db_G99RHNpDFB-SUrlhJFew> foaf:name "Fernhill Family Clinic" ;
+	org:identifier "CLINIC-7"^^<urn:oid:2.16.840.1.113883.19.5.2> .
+_:writing prov:qualifiedAssociation _:a9c17eacf9dffe5f2724b47fd825ea63 .
+_:a9c17eacf9dffe5f2724b47fd825ea63 prov:agent <urn:uuid:5f0b3af1-bc5d-84fc-a2fc-3551a9d2d8dc> ;
+	prov:hadRole cascade:AuthorRole .
+<ni:///sha-256;D8RmCVA9kzvhHBRUhAtlV5KUFzGkRYE53U1Hlo-Z76c> cascade:noteOrDocumentDate "2026-05-20T09:00:00-05:00"^^xsd:dateTime ;
+	cascade:noteOrDocumentTypeName "Plan of care note" ;
+	cascade:workflowStatus "current" ;
+	cascade:noteOrDocumentTitle "Plan of treatment, May 20" ;
+	cascade:narrativeText "Fatigue for two months and pale skin on examination. Check a vitamin B12 level, a folate level and a complete blood count today; keep a food diary, and return in four weeks to go over the results with Elena Marsh, MD." ;
+	cascade:noteOrDocumentMasterIdentifier "CCD-2026-1005"^^<urn:oid:2.16.840.1.113883.19.5.99999.1> ;
+	cascade:noteOrDocumentTypeCode <http://loinc.org/rdf/18776-5> .
+<ni:///sha-256;LdCRCJyD209oG-LAnKrWwzUqdpMc09wV0n8-0IotsYU> foaf:givenName "Gus" ;
+	foaf:familyName "Lindqvist" ;
+	cascade:dateOfBirth "1971-03-18"^^xsd:date ;
+	cascade:administrativeGender "male" .
+<urn:uuid:0de4921b-84d0-84da-afeb-1e546a42af37> a cascade:PatientProfile ;
+	cascade:sourceUrl <urn:hl7ii:2.16.840.1.113883.19.5.99999.4:MRN-771204> ;
+	cascade:sourceRecordId "2.16.840.1.113883.19.5.99999.4:MRN-771204" .
+<ni:///sha-256;LdCRCJyD209oG-LAnKrWwzUqdpMc09wV0n8-0IotsYU> prov:specializationOf <urn:uuid:0de4921b-84d0-84da-afeb-1e546a42af37> .
+_:f0ffdcad567903d2275a065e6b5002b1 a oa:XPathSelector ;
+	rdf:value "/*[local-name()='ClinicalDocument' and namespace-uri()='urn:hl7-org:v3']/*[local-name()='recordTarget' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='patientRole' and namespace-uri()='urn:hl7-org:v3'][1]" .
+_:192b91adf1c7960dae550fe7c881ceec bridge:arrivedAs <ni:///sha-256;LdCRCJyD209oG-LAnKrWwzUqdpMc09wV0n8-0IotsYU> ;
+	oa:hasSelector _:f0ffdcad567903d2275a065e6b5002b1 .
+<urn:uuid:89de9ab6-24a5-85ba-be2a-679e2890b9ee> a cascade:ClinicalNoteOrDocument .
+<ni:///sha-256;D8RmCVA9kzvhHBRUhAtlV5KUFzGkRYE53U1Hlo-Z76c> prov:specializationOf <urn:uuid:89de9ab6-24a5-85ba-be2a-679e2890b9ee> ;
+	cascade:patient <urn:uuid:0de4921b-84d0-84da-afeb-1e546a42af37> .
+_:e7818f957d0f08b790f7ad3dbbade994 a oa:XPathSelector ;
+	rdf:value "/*[local-name()='ClinicalDocument' and namespace-uri()='urn:hl7-org:v3']/*[local-name()='component' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='structuredBody' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='component' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='section' and namespace-uri()='urn:hl7-org:v3'][1]" .
+_:8619d3b92f64ac92bdbaed1fa5095c88 bridge:arrivedAs <ni:///sha-256;D8RmCVA9kzvhHBRUhAtlV5KUFzGkRYE53U1Hlo-Z76c> ;
+	oa:hasSelector _:e7818f957d0f08b790f7ad3dbbade994 .
+_:192b91adf1c7960dae550fe7c881ceec oa:hasSource <ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> ;
+	prov:wasDerivedFrom <ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> ;
+	prov:wasGeneratedBy _:1ea44a1c30aca2bb4d182fb677318e9b .
+_:dc5f37ad52f4aa9c63402ace92ad4b40 oa:hasSource <ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> ;
+	prov:wasDerivedFrom <ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> ;
+	prov:wasGeneratedBy _:1ea44a1c30aca2bb4d182fb677318e9b .
+_:8619d3b92f64ac92bdbaed1fa5095c88 oa:hasSource <ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> ;
+	prov:wasDerivedFrom <ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> ;
+	prov:wasGeneratedBy _:1ea44a1c30aca2bb4d182fb677318e9b .
+_:1ea44a1c30aca2bb4d182fb677318e9b <http://www.w3.org/2000/01/rdf-schema#label> "C-CDA download" ;
+	prov:startedAtTime "2026-11-02T09:00:00Z"^^xsd:dateTime .
+<ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> cascade:sourceFormatVersion "2015-08-01" ;
+	a prov:Entity .
+_:1ea44a1c30aca2bb4d182fb677318e9b a prov:Activity ;
+	prov:used <ni:///sha-256;XX_otIK-72MAnMk4LkQUYtw7Cpc5juEP3oRscdehsok> ;
+	prov:qualifiedAssociation _:fb4b42f4beaa0c4c4d18254406b831e1 .
+_:fb4b42f4beaa0c4c4d18254406b831e1 prov:hadPlan _:f84be1f4f46b127f165f897a5e0fbc6a .
+_:f84be1f4f46b127f165f897a5e0fbc6a a prov:Plan ;
+	<http://www.w3.org/2000/01/rdf-schema#label> "ccda" ;
+	<http://purl.org/pav/version> "0.1.0" .
+_:fb4b42f4beaa0c4c4d18254406b831e1 prov:agent _:bce4e02289971768232cf138d1bf8335 .
+_:bce4e02289971768232cf138d1bf8335 a prov:SoftwareAgent ;
+	<http://www.w3.org/2000/01/rdf-schema#label> "Cascade Bridge for Rust" ;
+	<http://purl.org/pav/version> "0.1.0" .

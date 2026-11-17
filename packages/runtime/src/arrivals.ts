@@ -922,13 +922,6 @@ export class Revisions {
   }
 }
 
-function inVersion(term: Term, version: NamedNode): boolean {
-  return (
-    term.termType === "NamedNode" &&
-    (term.value === version.value || term.value.startsWith(`${version.value}#`))
-  );
-}
-
 /** Refuses a graph holding a statement about no record, version, arrival, document or import (A14). */
 function refuseUnaccounted(graph: Graph, document: NamedNode, where: string) {
   if (graph.match(document, TYPE, iri(`${PROV}Entity`)).length === 0)
@@ -947,8 +940,7 @@ function refuseUnaccounted(graph: Graph, document: NamedNode, where: string) {
   }
   for (const version of graph.subjects(SPECIALIZATION_OF)) {
     if (version.termType !== "NamedNode") continue;
-    scanned(graph.triples.length);
-    add(graph.triples.filter(([s]) => inVersion(s, version)));
+    add(graph.inName(version.value));
     for (const record of graph.objects(version, SPECIALIZATION_OF))
       add(graph.match(record));
   }
@@ -1006,13 +998,12 @@ function arrivals(
           : undefined;
       const retrievedByWriter =
         pullSource === "" ? reached?.retrieved : undefined;
-      scanned(graph.triples.length);
       return {
         record,
         place: recordPlace(layout, graph, record, where).place,
         recordTriples: graph.match(record),
         version,
-        versionTriples: graph.triples.filter(([s]) => inVersion(s, version)),
+        versionTriples: graph.inName(version.value),
         statements: revisionStatements(graph, arrival),
         at: at.value,
         observedAsOf,
