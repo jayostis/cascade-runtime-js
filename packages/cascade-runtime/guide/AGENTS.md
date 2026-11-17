@@ -362,6 +362,9 @@ async function search(word) {
 - `record/What each version says`: each version's statements.
 - `record/What needs review`: records whose current state no source change time
   decided, with the state shown, one not shown and why; one Before fixes each.
+- `record/Where each record a statement names is now`: for each record a
+  statement names, in one entry, spread over several, hidden or not in the pod,
+  with what its entry grew by and the statements merged into it.
 - `record/Which entry shows it`: the entry each record is in.
 - `record/Which judgments name it`: the judgments on each record.
 - `record/Why it is in no view`: why a hidden record is hidden.
