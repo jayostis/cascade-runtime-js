@@ -49,6 +49,7 @@
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
     "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js",
     "bench:import": "tsc -b packages/cascade-runtime && node --import ./packages/cascade-runtime/dist/test/offline.js packages/cascade-runtime/dist/test/import-bench.js",
+    "bench:restamp": "tsc -b packages/cascade-runtime && node --import ./packages/cascade-runtime/dist/test/offline.js packages/cascade-runtime/dist/test/restamp-bench.js",
     "story:pulls": "tsc -b && node packages/cascade-runtime/dist/test/story-pulls.js",
     "evals": "tsc -b packages/evals && node packages/evals/dist/src/cli.js",
     "evals:record": "tsc -b packages/evals && node packages/evals/dist/src/cli.js record-history",

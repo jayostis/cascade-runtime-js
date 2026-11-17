@@ -302,6 +302,57 @@ async function threeStatesOfOneRecord(
   });
 }
 
+const ADA_EXPORTS = [
+  "first-export",
+  "current-version-again",
+  "new-content",
+  "change-undone",
+  "no-source-version",
+  "no-source-version-again",
+] as const;
+
+/** Ada's exports imported in the order given, a day apart, and the paths of the documents' bytes the pod keeps. */
+async function adaStoredBytes(
+  order: readonly (typeof ADA_EXPORTS)[number][],
+): Promise<string[]> {
+  const files = await vocabulary();
+  const pod = await layout();
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:1b4e6a52-8c3f-4d71-9e0a-5f2c7d8b9a10",
+    steps: [
+      {
+        name: "pod",
+        when: "2026-01-01T09:00:00Z",
+        happened: { kind: "creation" },
+      },
+      ...order.map((name, index) => ({
+        name,
+        when: `2026-01-${String(index + 2).padStart(2, "0")}T10:00:00Z`,
+        happened: {
+          kind: "import" as const,
+          export: `downloads/${name}/apple_health_export`,
+          converted: `bridge/${name}`,
+        },
+      })),
+    ],
+  };
+  const done = await replay({
+    runtime: RUNTIME,
+    story,
+    source: files,
+    vocabulary: files,
+    folder: "runtime/scripted-input/ada",
+    title: "",
+    pod: new MemoryFiles(story.address),
+    newStore,
+    layout: pod,
+    importers: [appleHealthExport],
+  });
+  assert.equal(done.stopped, undefined);
+  return (await done.pod.list("")).filter((path) => pod.inStoredBytes(path));
+}
+
 /**
  * An adapter converts each document of an export into arrivals: one arrival is one state of one record, as its source
  * reported it. `CorePod.import()` files each arrival as a revision of its record, and writes nothing for a state the
@@ -395,6 +446,23 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
     it("refuses the import, as documents that disagree are refused when each wrote a revision, and writes nothing of it (A11, A14)", () => {
       assert.match(done.steps[2]?.refused ?? "", /disagree/);
       assert.deepEqual(done.steps[2]?.wrote, []);
+    });
+  });
+
+  describe("given Ada's six exports, which hold repeated states, imported forward and then in reverse", () => {
+    let forward: string[];
+    let reversed: string[];
+
+    before(async () => {
+      [forward, reversed] = await Promise.all([
+        adaStoredBytes(ADA_EXPORTS),
+        adaStoredBytes([...ADA_EXPORTS].reverse()),
+      ]);
+    });
+
+    it("keeps the same documents either way, whichever import first repeats a state another holds (A10)", () => {
+      assert.ok(forward.length > 0);
+      assert.deepEqual(reversed, forward);
     });
   });
 
