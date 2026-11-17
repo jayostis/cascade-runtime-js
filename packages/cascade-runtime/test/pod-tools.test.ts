@@ -1364,11 +1364,12 @@ describe("cascade-runtime/check, cascade-runtime/terms and cascade-runtime/tools
     });
   });
 
-  it("reaches no pod.js from any of them, so a page that imports one takes in neither the Pod, its store nor its wasm", () => {
+  it("reaches no pod.js, Oxigraph module or .wasm from any of them, so a page that imports one takes in neither the Pod, its store nor its wasm", () => {
+    const reaches = /(^|\/)pod\.js$|(^|\/)oxigraph\/|\.wasm$/;
     assert.deepEqual(
       Object.values(bundle.metafile.outputs).flatMap(({ entryPoint, inputs }) =>
         Object.keys(inputs)
-          .filter((it) => /(^|\/)pod\.js$/.test(it))
+          .filter((it) => reaches.test(it))
           .map((it) => `${entryPoint} reaches ${it}`),
       ),
       [],
