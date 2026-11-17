@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import vm from "node:vm";
 import { CorePod } from "../src/core-pod.js";
 import {
+  checkedKey,
   type DeriveKey,
   EncryptedFiles,
   type EncryptedFilesOptions,
   HEADER,
   madeNewPod,
   newHeader,
+  newPodKey,
   openHeader,
   SEALED_INDEX,
   SealedIndex,
@@ -24,6 +27,7 @@ import { argon2idOnce, podEncryptionVectors } from "./pod-encryption.js";
 import { layout, RUNTIME } from "./vocabulary.js";
 
 const SECRET = "abacus abdomen abdominal abide abiding zoom";
+const KEY = new Uint8Array(32).map((_, at) => (at * 73 + 41) % 256);
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const encoded = (value: string) => new TextEncoder().encode(value);
 
@@ -229,6 +233,177 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       const stated = JSON.parse(text(header)) as Record<string, unknown>;
       assert.equal(stated.version, "1.3");
       assert.equal(stated.resourceFormat, 3);
+    });
+  });
+
+  /** A key is 32 random bytes an app holds, so its wrap derives the wrapping key with HKDF, not Argon2id. */
+  describe("given a 32-byte key in place of a passphrase", () => {
+    it("writes a 1.4 header whose one wrap is a key wrap, and opens the pod with the key, deriving nothing with Argon2id", async () => {
+      const derive = fastDerive();
+      const made = await newHeader(KEY, derive);
+      const stated = JSON.parse(text(made.bytes)) as {
+        version: string;
+        resourceFormat: number;
+        wraps: Record<string, unknown>[];
+      };
+      assert.equal(stated.version, "1.4");
+      assert.equal(stated.resourceFormat, 3);
+      assert.deepEqual(
+        stated.wraps.map(({ by, kdf }) => [by, kdf]),
+        [["key", "hkdf-sha256"]],
+      );
+      const memory = new MemoryFiles("urn:test:pod/");
+      assert.ok(await madeNewPod(memory, made));
+      await new EncryptedFiles(memory, made.key, {
+        index: await SealedIndex.open(memory, made.key),
+      }).writeAll([["a.ttl", encoded("a")]]);
+      const key = await openHeader(made.bytes, KEY, derive);
+      const files = new EncryptedFiles(memory, key, {
+        index: await SealedIndex.open(memory, key),
+      });
+      assert.equal(text(await files.read("a.ttl")), "a");
+      assert.equal(derive.calls, 0);
+    });
+
+    it("throws Unopened, `incorrect secret`, deriving nothing, for another key, for a passphrase, and for a key given a passphrase's pod", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      const other = KEY.map((byte, at) => (at === 0 ? byte ^ 1 : byte));
+      const { header: words } = await sealedPod();
+      for (const [name, header, secret] of [
+        ["another key", bytes, other],
+        ["a passphrase", bytes, SECRET],
+        ["a key given a passphrase's pod", words, KEY],
+      ] as const)
+        assert.equal(
+          await outcomeOf(openHeader(header, secret, derive)),
+          "incorrect secret",
+          name,
+        );
+      assert.equal(derive.calls, 0);
+    });
+
+    it("throws Unopened, `malformed`, deriving nothing, for a key wrap in a header of version 1.3, alone or beside a passphrase wrap, and for one whose kdf is not hkdf-sha256", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      const keyed = JSON.parse(text(bytes)) as {
+        wraps: Record<string, unknown>[];
+      };
+      const { header: words } = await sealedPod();
+      const [passphrase] = (JSON.parse(text(words)) as { wraps: unknown[] })
+        .wraps;
+      for (const [name, version, wraps] of [
+        ["1.3, alone", "1.3", keyed.wraps],
+        ["1.3, beside a passphrase wrap", "1.3", [passphrase, ...keyed.wraps]],
+        [
+          "1.4, its kdf argon2id",
+          "1.4",
+          keyed.wraps.map((wrap) => ({ ...wrap, kdf: "argon2id" })),
+        ],
+      ] as const)
+        for (const secret of [KEY, SECRET])
+          assert.equal(
+            await outcomeOf(
+              openHeader(
+                encoded(JSON.stringify({ ...keyed, version, wraps })),
+                secret,
+                derive,
+              ),
+            ),
+            "malformed",
+            name,
+          );
+      assert.equal(derive.calls, 0);
+    });
+
+    it("throws a TypeError, deriving nothing, for a key that is not 32 random bytes", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      for (const [name, key] of [
+        ["31 bytes", KEY.subarray(1)],
+        ["33 bytes", new Uint8Array([...KEY, 1])],
+        ["a passphrase's UTF-8 bytes", encoded(SECRET.slice(0, 32))],
+        [
+          "a passphrase's UTF-8 bytes, a newline among them",
+          encoded("Correct horse battery staple 42\n"),
+        ],
+        [
+          "a non-ASCII passphrase's UTF-8 bytes",
+          encoded("née café crème brûlée okay!"),
+        ],
+        ["all zeros", new Uint8Array(32)],
+        ["four bytes repeated", new Uint8Array(32).map((_, at) => at % 4)],
+        ["an array of numbers", [...KEY]],
+      ] as const) {
+        await assert.rejects(
+          newHeader(key as Uint8Array, derive),
+          TypeError,
+          `newHeader: ${name}`,
+        );
+        await assert.rejects(
+          openHeader(bytes, key as Uint8Array, derive),
+          TypeError,
+          `openHeader: ${name}`,
+        );
+      }
+      assert.equal(derive.calls, 0);
+    });
+
+    it("accepts a key made in another realm, a Node `vm` context, as one it opens the pod with", async () => {
+      const derive = fastDerive();
+      const foreign = vm.runInNewContext("new Uint8Array(32)") as Uint8Array;
+      foreign.set(KEY);
+      assert.ok(!(foreign instanceof Uint8Array));
+      const { bytes } = await newHeader(foreign, derive);
+      assert.equal(derive.calls, 0);
+      await openHeader(bytes, KEY, derive);
+      await openHeader((await newHeader(KEY, derive)).bytes, foreign, derive);
+    });
+
+    it("throws Unopened, `malformed`, deriving nothing, for a 1.4 header that holds no key wrap, with a passphrase wrap or only a wrap of a kind it does not know", async () => {
+      const derive = fastDerive();
+      const { bytes } = await newHeader(KEY, derive);
+      const keyed = JSON.parse(text(bytes)) as {
+        wraps: Record<string, unknown>[];
+      };
+      const { header: words } = await sealedPod();
+      const [passphrase] = (JSON.parse(text(words)) as { wraps: unknown[] })
+        .wraps;
+      const [wrap] = keyed.wraps;
+      for (const [name, wraps] of [
+        ["a passphrase wrap", [passphrase]],
+        ["an unknown kind", [{ ...wrap, by: "device-keychain" }]],
+      ] as const)
+        for (const secret of [KEY, SECRET])
+          assert.equal(
+            await outcomeOf(
+              openHeader(
+                encoded(JSON.stringify({ ...keyed, version: "1.4", wraps })),
+                secret,
+                derive,
+              ),
+            ),
+            "malformed",
+            name,
+          );
+      assert.equal(derive.calls, 0);
+    });
+  });
+
+  describe("newPodKey()", () => {
+    it("returns 32 bytes `checkedKey` accepts, a different key each time", () => {
+      const key = newPodKey();
+      assert.equal(key.length, 32);
+      assert.equal(checkedKey(key), key);
+      assert.notDeepEqual(newPodKey(), key);
+    });
+
+    it("draws again when the bytes it drew are refused, and returns the first it draws that is accepted", () => {
+      const draws = [new Uint8Array(32), encoded("a".repeat(32)), KEY];
+      let drawn = 0;
+      const key = newPodKey((bytes) => bytes.set(draws[drawn++] as Uint8Array));
+      assert.deepEqual(key, KEY);
+      assert.equal(drawn, 3);
     });
   });
 

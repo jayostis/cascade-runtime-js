@@ -159,7 +159,7 @@ describe("Retitling a pod in a browser · openPod(), pod.retitle(), podTitle()",
         configured:
           "TypeError: configureRuntime does not take bogus: it takes base.",
         opened:
-          "TypeError: openPod does not take bogus: it takes title, from, secret.",
+          "TypeError: openPod does not take bogus: it takes title, from, secret, key.",
         imported:
           "TypeError: pod.import does not take aboutSubject: it was renamed claimProfiles in build-6979c2fc.",
       });

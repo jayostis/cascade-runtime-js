@@ -43,6 +43,7 @@ export * from "./changes.js";
 export * from "./connect/index.js";
 export * from "./tools.js";
 export {
+  newPodKey,
   Refusal,
   Unopened,
   type UnopenedOutcome,
@@ -168,13 +169,16 @@ export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
  * The pod in a folder on disk, given the tables of the folder it is in, or, with none, in memory, given the
  * package's starter copies; `options.title` is used only when the pod is new. With `options.secret`, a new pod is made
  * encrypted under it, and an encrypted pod opens with it, as typed or as `typedWords` cleans it; an encrypted pod that
- * does not open, or a secret given for a plaintext pod, throws `Unopened`.
+ * does not open, or a secret given for a plaintext pod, throws `Unopened`. An app that holds a key of its own, 32
+ * random bytes in a `Uint8Array`, gives it as `options.key` in place of a secret: the pod is sealed under it with no
+ * Argon2id, in a header of version 1.4, and opens with it alone. A key that is not 32 random bytes, a string among
+ * them, throws a TypeError, so that a passphrase is never taken for one.
  */
 export async function openPod(
   folder?: string,
-  options: { title?: string; secret?: string } = {},
+  options: { title?: string; secret?: string; key?: Uint8Array } = {},
 ): Promise<Pod> {
-  acceptOptions("openPod", options, { title: true, secret: true });
+  acceptOptions("openPod", options, { title: true, secret: true, key: true });
   const parts = await resolved();
   return openFolderPod(
     folder === undefined

@@ -1,4 +1,5 @@
 import {
+  checkedKey,
   type DeriveKey,
   type Files,
   madeNewPod,
@@ -7,6 +8,7 @@ import {
   type PodKey,
   readHeader,
   heldWhileMaking,
+  Refusal,
   Unopened,
 } from "@cascade-runtime/runtime";
 import { typedWords } from "./six-words.js";
@@ -23,6 +25,23 @@ export interface HeldPod {
   held(): Promise<boolean>;
 }
 
+/**
+ * The secret an opening was given: its `secret`, words or a passphrase, or its `key` as `checkedKey` takes it, which
+ * throws a TypeError for a key that is not 32 random bytes; a Refusal when it was given both.
+ */
+export function givenSecret(options: {
+  readonly secret?: string;
+  readonly key?: Uint8Array;
+}): string | Uint8Array | undefined {
+  const { secret, key } = options;
+  if (key === undefined) return secret;
+  if (secret !== undefined)
+    throw new Refusal(
+      "a pod opens with a secret or with a key, not both: give one",
+    );
+  return checkedKey(key);
+}
+
 /** How an opening waits for the header of another that is making the pod: how many times it looks, and how long between, in milliseconds; 100 and 50 unless given. */
 export interface HeaderWait {
   readonly looks?: number;
@@ -32,7 +51,8 @@ export interface HeaderWait {
 /**
  * The key the pod opens with: none for a pod opened without a secret and with no header. A pod with a header is read
  * first, so a malformed one is refused before any secret is asked for; then opened with the secret as given, and, when
- * that is an incorrect secret, with the secret cleaned as typed words are. A new pod given a secret is made encrypted,
+ * that is an incorrect secret, with the secret cleaned as typed words are; a secret that is a key (`checkedKey`) opens
+ * the pod's key wraps alone, and is never cleaned. A new pod given a secret is made encrypted,
  * its empty sealed index and then its header written before anything else (`madeNewPod`); an opening that loses that
  * race to another waits for the other's header. A folder with no header that holds only sealed indexes and the probe of a
  * layout proved (`heldWhileMaking`) is a pod being made, or one whose maker stopped between its writes, and holds no record: it waits as the loser does, and, no
@@ -40,7 +60,7 @@ export interface HeaderWait {
  */
 export async function podKey(
   found: HeldPod,
-  secret: string | undefined,
+  secret: string | Uint8Array | undefined,
   derive: DeriveKey,
   wait: HeaderWait = {},
 ): Promise<PodKey | undefined> {
@@ -79,7 +99,7 @@ async function headerAfter(
 
 async function openedWith(
   header: Uint8Array,
-  secret: string | undefined,
+  secret: string | Uint8Array | undefined,
   derive: DeriveKey,
 ): Promise<PodKey> {
   readHeader(header);
@@ -88,6 +108,7 @@ async function openedWith(
       "secret needed",
       "The pod is encrypted: it opens only with its secret.",
     );
+  if (typeof secret !== "string") return openHeader(header, secret, derive);
   try {
     return await openHeader(header, secret, derive);
   } catch (error) {

@@ -39,6 +39,7 @@
     "Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles",
     "Matching a 1.2 pod's sealing against known answers · newHeader(), openHeader(), EncryptedFiles",
     "Matching a 1.3 pod's sealing against known answers · SealedIndex.open(), EncryptedFiles",
+    "Matching a 1.4 pod's key wrap against known answers · newHeader(), openHeader(), SealedIndex.open()",
     "Keeping a pod's sealed files under keyed names · SealedIndex.open(), EncryptedFiles",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
     "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"

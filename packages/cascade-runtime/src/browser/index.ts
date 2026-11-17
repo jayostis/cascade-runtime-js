@@ -38,7 +38,7 @@ import {
 } from "@cascade-runtime/runtime/web";
 import { ANSWERS, Answers, DESCRIBED } from "../answers.js";
 import { LOOKUPS, type Lookups, lookupsOf, withLookups } from "../lookups.js";
-import { podKey, secretChecked } from "../encrypted.js";
+import { givenSecret, podKey, secretChecked } from "../encrypted.js";
 import { acceptOptions } from "../options.js";
 import {
   acceptAskOptions,
@@ -79,6 +79,7 @@ export * from "../changes.js";
 export * from "../connect/index.js";
 export * from "../tools.js";
 export {
+  newPodKey,
   Refusal,
   Unopened,
   type UnopenedOutcome,
@@ -828,15 +829,28 @@ function deleted(name: string, copying: unknown): Promise<void> {
  * with its address, subject, title and whether it was `titled` in `pod.json`, which `pod.retitle` rewrites. A pod whose `pod.json` is kept opens without the engine, and
  * answers a question by name from its kept answers until it first computes. With `options.secret`, a new pod is made
  * encrypted under it, its answers too, and an encrypted pod opens with it, as typed or as `typedWords` cleans it; an
- * encrypted pod that does not open, or a secret given for a plaintext pod, throws `Unopened`. A secret is refused with
- * `options.from` or with no name.
+ * encrypted pod that does not open, or a secret given for a plaintext pod, throws `Unopened`. An app that holds a key of
+ * its own, 32 random bytes in a `Uint8Array`, gives it as `options.key` in place of a secret: the pod is sealed under it
+ * with no Argon2id, in a header of version 1.4; a key that is not 32 random bytes throws a TypeError. A secret or a key
+ * is refused with `options.from` or with no name.
  */
 export async function openPod(
   name?: string,
-  options: { title?: string; from?: string; secret?: string } = {},
+  options: {
+    title?: string;
+    from?: string;
+    secret?: string;
+    key?: Uint8Array;
+  } = {},
 ): Promise<Pod> {
-  acceptOptions("openPod", options, { title: true, from: true, secret: true });
-  const { from, secret, ...rest } = options;
+  acceptOptions("openPod", options, {
+    title: true,
+    from: true,
+    secret: true,
+    key: true,
+  });
+  const { from, secret: words, key: appKey, ...rest } = options;
+  const secret = givenSecret({ secret: words, key: appKey });
   if (secret !== undefined && from !== undefined)
     throw new Refusal(
       "a published pod is copied in as it is published: copy it without a secret",
