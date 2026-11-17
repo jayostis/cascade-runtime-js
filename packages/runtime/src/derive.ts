@@ -1,3 +1,4 @@
+import { parseCrate } from "./crate.js";
 import { answersQuery, entries } from "./entries.js";
 import { type Files, readText, under } from "./files.js";
 import { timedAside } from "./probe.js";
@@ -58,9 +59,9 @@ export class Derivations {
   }
 
   static async of(vocabulary: Files): Promise<Derivations> {
-    const { "@graph": graph } = JSON.parse(
-      await readText(vocabulary, CRATE),
-    ) as { "@graph": readonly CrateEntity[] };
+    const { "@graph": graph } = parseCrate<{
+      "@graph": readonly CrateEntity[];
+    }>(await readText(vocabulary, CRATE));
     const positions = new Map(
       graph.flatMap(({ "@id": path, position }) =>
         path !== undefined && typeof position === "number"

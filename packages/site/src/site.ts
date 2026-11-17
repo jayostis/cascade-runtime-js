@@ -8,6 +8,7 @@ import {
   iri,
   type Layout,
   lenses,
+  parseCrate,
   QUERIES,
   type PodBuild,
   podDataset,
@@ -473,9 +474,9 @@ export interface PipelineSection {
 
 /** The pipeline's sections: the HowToSection entities the crate's root mentions, by position. */
 async function pipelineSections(vocabulary: Files): Promise<PipelineSection[]> {
-  const { "@graph": graph } = JSON.parse(await readText(vocabulary, CRATE)) as {
-    "@graph": readonly CrateEntity[];
-  };
+  const { "@graph": graph } = parseCrate<{ "@graph": readonly CrateEntity[] }>(
+    await readText(vocabulary, CRATE),
+  );
   const mentioned = new Set(
     graph
       .find((one) => one["@id"] === "./")
@@ -504,9 +505,9 @@ async function vocabularyLabels(
 }> {
   if (called === undefined)
     throw new Error(`the vocabulary has no question ${CALLED}`);
-  const { "@graph": graph } = JSON.parse(await readText(vocabulary, CRATE)) as {
-    "@graph": readonly CrateEntity[];
-  };
+  const { "@graph": graph } = parseCrate<{ "@graph": readonly CrateEntity[] }>(
+    await readText(vocabulary, CRATE),
+  );
   const ontologies = new Union(newStore());
   for (const { "@id": path, about } of graph) {
     if (

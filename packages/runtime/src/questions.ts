@@ -1,3 +1,4 @@
+import { parseCrate } from "./crate.js";
 import { LENSES, QUERIES } from "./derive.js";
 import { type Files, readText } from "./files.js";
 
@@ -33,9 +34,9 @@ async function declaredLists(
     "csvw:name"?: string;
     "csvw:separator"?: string;
   }
-  const { "@graph": graph } = JSON.parse(new TextDecoder().decode(bytes)) as {
-    "@graph": readonly Entity[];
-  };
+  const { "@graph": graph } = parseCrate<{ "@graph": readonly Entity[] }>(
+    new TextDecoder().decode(bytes),
+  );
   const byId = new Map(
     graph.flatMap((entity) =>
       entity["@id"] === undefined ? [] : [[entity["@id"], entity] as const],
