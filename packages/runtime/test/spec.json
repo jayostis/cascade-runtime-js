@@ -799,7 +799,8 @@
     "Tripwire: a code system's IRI stem typed into code",
     "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs",
     "The Bridge package a run from a checkout uses · findBridgePackage()",
-    "Picking the Bridge package for a CI run · pickBuild(), latestBuild(), keptPick(), runOf(), readerOf()"
+    "Picking the Bridge package for a CI run · pickBuild(), latestBuild(), keptPick(), runOf(), readerOf()",
+    "The Bridge build a release publishes · releasedBuild()"
   ],
   "randomOrder": [
     "arrivals.test.ts",

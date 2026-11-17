@@ -14,6 +14,7 @@ import { git } from "./git.js";
 
 /** The tag of the release cascade-bridge-rs publishes for every commit of its main and every head of a pull request from itself. */
 export const BUILD = "build-";
+const PACKAGE = "cascade-bridge.tgz";
 const HISTORY = 100;
 
 /**
@@ -390,11 +391,15 @@ async function got(
     },
   });
   if (!response.ok)
-    throw new Error(
-      `${url} answered ${response.status} ${response.statusText}`,
+    throw Object.assign(
+      new Error(`${url} answered ${response.status} ${response.statusText}`),
+      { status: response.status },
     );
   return response;
 }
+
+const notFound = (error: unknown): boolean =>
+  (error as { status?: number } | null)?.status === 404;
 
 /** The files of an npm package tarball, by their paths inside its `package/` folder. */
 export function untar(gzipped: Uint8Array): Map<string, Uint8Array> {
@@ -444,23 +449,45 @@ export async function releasedBuild(
   const tag = `${BUILD}${commit}`;
   const folder = absolute(cache, tag);
   if ((await recorded(folder)) === commit) return folder;
-  const { assets } = (await (
-    await got(
-      `${apiOf(process.env)}/repos${new URL(repository).pathname}/releases/tags/${tag}`,
-      true,
-    )
-  ).json()) as { assets: Asset[] };
-  const tarball = assets.find((asset) => asset.name.endsWith(".tgz"));
-  if (tarball === undefined)
-    throw new Error(`the release ${tag} of ${repository} holds no package`);
-  const bytes = new Uint8Array(
-    await (await got(tarball.browser_download_url, false)).arrayBuffer(),
+  const repo = pathOf(repository);
+  // A plain download is not the API, so it needs no token and has no hourly limit.
+  // A release made before the fixed name has none, and its package is found through the API.
+  // A refusal (403 or 429) falls back to the API only for a run with a token, which the API accepts where the plain
+  // download did not; with none, the API would refuse too, so the refusal is what is reported.
+  const fixed = await got(
+    `${new URL(repository).origin}/${repo}/releases/download/${tag}/${PACKAGE}`,
+    false,
+  ).then(
+    (response) => response,
+    (error: unknown) => {
+      const status = (error as { status?: number } | null)?.status;
+      if (notFound(error)) return undefined;
+      if ((status === 403 || status === 429) && tokenOf(process.env))
+        return undefined;
+      throw error;
+    },
   );
-  const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-  if (tarball.digest && tarball.digest !== digest)
-    throw new Error(
-      `${tarball.browser_download_url} is ${digest}, where the release says ${tarball.digest}`,
+  let bytes: Uint8Array;
+  if (fixed !== undefined) bytes = new Uint8Array(await fixed.arrayBuffer());
+  else {
+    const { assets } = (await (
+      await got(
+        `${apiOf(process.env)}/repos/${repo}/releases/tags/${tag}`,
+        true,
+      )
+    ).json()) as { assets: Asset[] };
+    const tarball = assets.find((asset) => asset.name.endsWith(".tgz"));
+    if (tarball === undefined)
+      throw new Error(`the release ${tag} of ${repository} holds no package`);
+    bytes = new Uint8Array(
+      await (await got(tarball.browser_download_url, false)).arrayBuffer(),
     );
+    const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+    if (tarball.digest && tarball.digest !== digest)
+      throw new Error(
+        `${tarball.browser_download_url} is ${digest}, where the release says ${tarball.digest}`,
+      );
+  }
   await mkdir(dirname(folder), { recursive: true });
   const partial = await mkdtemp(`${folder}.partial-`);
   for (const [path, file] of untar(bytes)) {
