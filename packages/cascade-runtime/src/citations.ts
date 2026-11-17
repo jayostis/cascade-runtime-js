@@ -506,6 +506,7 @@ const SAID_BY = /^S\d+(?:,S\d+)*(?: |$)/;
 const PER_SOURCE = new Set([
   "statuses",
   "narrativeTexts",
+  "reasons",
   "record",
   "otherRecord",
 ]);
@@ -1350,6 +1351,9 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
   "allergyCategory",
   "wasAttributedTo",
   "authorizingPrescription",
+  "reasonCondition",
+  "reasonCode",
+  "reasonCodeInOtherSystem",
   "acmgClassification",
   "subjectVariant",
   "RO_0002351",

@@ -314,8 +314,12 @@ a column is a list, read it as its array. `ask` with a query of your own has no 
   record, its reaction texts, their codes in parentheses, and its severity, so a
   record other than the lead is read as much as the lead), how many records its
   `?entry` joins (`?records`), and `?sources`.
-- `pod/My active conditions`: conditions whose status is active and not ruled out,
-  with the sources of each.
+- `pod/My active conditions`: conditions whose status is active and not ruled out
+  (`?condition`, `?conditionCode`, `?onset`), with the medicines, procedures and
+  vaccinations a source says were given for it (`?entriesForIt`, "<entry>, <name>",
+  or the entry alone when it has no name, a list, none when no record names it
+  as a reason, never a medicine its source marked entered in error), how many
+  records its `?entry` joins (`?records`), and the `?sources` of each.
 - `pod/My condition history`: every condition whatever its status (`?condition`,
   `?conditionCode`, `?status`, `?verificationStatus`, `?onset`, `?abated`).
   `?status` is `ruled out` when its source refuted it, whatever its clinical
@@ -323,11 +327,23 @@ a column is a list, read it as its array. `ask` with a query of your own has no 
   otherwise it is the clinical status. `?verificationStatus` is as the source
   writes it. `?statuses` gives each record's own status, so a later record that
   rules out what an earlier one confirmed, or confirms what one ruled out, says
-  both; `?records` is how many records its `?entry` joins, and `?sources`.
+  both; `?entriesForIt` lists the medicines, procedures and vaccinations a source
+  says were given for it, as in `pod/My active conditions`; `?records` is how many records its `?entry` joins, and `?sources`.
 - `pod/My active medications`: medications whose status is active
   (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
   `?statuses`, each record's own status and the day it ended, so a medication
-  one hospital stopped and another still lists says both, `?dosages`, each record that states a dosage, "<record> <text>", a list (none when no record states one), `?narrativeTexts`, the text each record's source wrote for it, such as a stop reason, in the same form, and `?sources`. One
+  one hospital stopped and another still lists says both, `?dosages`, each record
+  that states a dosage, "<record> <text>", a list (none when no record states
+  one), `?narrativeTexts`, the text each record's source wrote for it, such as a
+  stop reason, in the same form, `?reasons`, what each record says the
+  medication was given for, a list (none when no record says), each as
+  "<record> for <what>". A name or a code may itself hold ", ", " for " and " in
+  ", so the text after "for" never tells which form it is; the first word does.
+  A handle (such as `Cbbbbbbbb`) followed by "," is a condition entry and its
+  name; a handle alone is a condition entry with no name; a code alone
+  (`snomed:195967001`, or a system's IRI followed by the code) is a code in a
+  listed system; a system's IRI, a space, then text is a code in another
+  system. And `?sources`. One
   whose status was taken from a record that stopped it is only in
   `pod/My medication history`.
 - `pod/My genetic variants`: variants, a row for each code an entry states
@@ -348,7 +364,7 @@ a column is a list, read it as its array. `ask` with a query of your own has no 
   stopped, paused, unknown or entered in error), which says whether the
   medication is still taken; `?records` is how many records its `?entry` joins;
   `?statuses` gives each record's own status and end, as in
-  `pod/My active medications`, `?dosages` the dosage each record states, `?narrativeTexts` the text each record's source wrote for it, such as a stop reason, and `?sources` each record's source.
+  `pod/My active medications`, `?dosages` the dosage each record states, `?narrativeTexts` the text each record's source wrote for it, such as a stop reason, `?reasons` what each record says the medication was given for, as in `pod/My active medications`, and `?sources` each record's source.
 - `pod/My procedures`: procedures, newest first (`?performed`, `?procedure`,
   `?procedureCode`, `?status`, `?records`, `?entry`), with the text each record's
   source wrote for it, such as the finding beside a screening

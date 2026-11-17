@@ -603,6 +603,29 @@ describe("Checking what a reply says a pod lacks · checkAbsence()", () => {
         stillBacked,
       );
     });
+
+    it("ignores a source's short name where it only marks which source gave a reason a medication was taken for", () => {
+      const calls = ran([
+        {
+          question: "pod/My active medications",
+          total: 1,
+          offset: 0,
+          shown: 1,
+          text: "id\tmedication\treasons\nM0000cafe1\tAlbuterol\tS2 for C0000cafe2, Asthma",
+        },
+      ]);
+      assert.deepEqual(
+        check(
+          {
+            what: "S2",
+            coverage: "every medication",
+            match: { terms: ["S2"] },
+          },
+          calls,
+        ),
+        stillBacked,
+      );
+    });
   });
 
   describe("given a compact read of several pages", () => {
@@ -1259,6 +1282,36 @@ describe("Checking a citation of a view entry · checkCitation(), podRowsSource(
         "a LOINC code with SNOMED as its system",
         { cite: { entry: LDL }, code: "snomed:13457-7" },
         otherwise("code snomed:13457-7"),
+      ],
+    ]);
+  });
+
+  it("holds no code of a reason as the code of the medication it was given for", async () => {
+    const forAsthma = rowsOf({
+      e: [
+        {
+          field: `${NS}rxNormCode`,
+          value: "https://ns.cascadeprotocol.org/codes/rxnorm/745679",
+        },
+        { field: `${NS}reasonCode`, value: "http://snomed.info/id/195967001" },
+        { field: `${NS}reasonCodeInOtherSystem`, value: "J45" },
+      ],
+    });
+    await assertHolds(forAsthma, [
+      [
+        "the medication's own code",
+        { cite: { entry: "e" }, code: "rxnorm:745679" },
+        true,
+      ],
+      [
+        "the reason's code",
+        { cite: { entry: "e" }, code: "snomed:195967001" },
+        false,
+      ],
+      [
+        "the reason's code in another system",
+        { cite: { entry: "e" }, code: "J45" },
+        false,
       ],
     ]);
   });
