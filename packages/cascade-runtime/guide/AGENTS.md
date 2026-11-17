@@ -55,7 +55,7 @@ which an app writes itself: `pickExport()` returns the folder they chose,
 `askPerson(question, shown)` their yes or no, `showPerson(shown)` tells them.
 
 ```js
-import { openPod } from "cascade-runtime";
+import { openPod, ownerAbout } from "cascade-runtime";
 const pod = await openPod("pods/mine", { title: "My records" });
 ```
 
@@ -100,8 +100,6 @@ async function recordsBy(question, by) {
   return (key) =>
     rows.filter((row) => row[by] === key).map((row) => row.record);
 }
-
-import { ownerAbout } from "cascade-runtime";
 
 async function bringIn(folder, { claim = true, ...options } = {}) {
   const sources = await pod.look(folder).catch(async (error) => {

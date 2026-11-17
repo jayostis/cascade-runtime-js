@@ -192,14 +192,15 @@ async function nameTaken(
 /**
  * Why `judgment`, which states a basis, breaks the vocabulary's machine-basis shape (`cascade:MachineBasisShape`): a
  * basis a software agent states is attributed to a person. Nothing when it conforms. The shape runs over the judgment
- * and the types the pod holds of its `authors`, so an author left untyped in the Turtle is the person the pod says.
+ * and the types the pod holds of its authors that are IRIs, so an author left untyped in the Turtle is the person the pod
+ * says; a blank-node author has its types in the judgment's own triples, and a literal one has none. It runs that one
+ * shape alone, over those triples and the vocabulary's subclass statements.
  */
 async function basisRefused(
-  shapes: () => Promise<Pick<Shapes, "results">>,
+  shapes: () => Promise<Pick<Shapes, "resultsOf">>,
   stated: Pick<CorePod, "select">,
   triples: readonly Triple[],
   judgment: string,
-  authors: readonly string[],
 ): Promise<string | undefined> {
   if (
     !triples.some(
@@ -207,6 +208,17 @@ async function basisRefused(
     )
   )
     return undefined;
+  const authors = [
+    ...new Set(
+      triples.flatMap(([s, p, o]) =>
+        s.value === judgment &&
+        p.value === `${PROV}wasAttributedTo` &&
+        o.termType === "NamedNode"
+          ? [o.value]
+          : [],
+      ),
+    ),
+  ];
   const held: Triple[] = [];
   if (authors.length > 0) {
     const { rows } = await stated.select(`SELECT ?agent ?type WHERE {
@@ -219,7 +231,11 @@ async function basisRefused(
         held.push([iri(agent.value), iri(`${RDF}type`), iri(type.value)]);
     }
   }
-  const refused = (await (await shapes()).results([...triples, ...held])).find(
+  const refused = (
+    await (
+      await shapes()
+    ).resultsOf(`${CASCADE}MachineBasisShape`, [...triples, ...held])
+  ).find(
     ({ focusNode, sourceShape }) =>
       focusNode.value === judgment &&
       sourceShape.value === `${CASCADE}MachineBasisShape`,
@@ -246,7 +262,7 @@ export async function judgmentFiled(
   triples: readonly Triple[],
   views: string,
   stated: Pick<CorePod, "select">,
-  shapes: () => Promise<Pick<Shapes, "results">>,
+  shapes: () => Promise<Pick<Shapes, "resultsOf">>,
   kinds: () => Promise<ReadonlySet<string>>,
 ): Promise<{ refused: string } | { triples: Triple[]; changed: boolean }> {
   const subjectsOf = (predicate: string, object?: string): string[] =>
@@ -275,13 +291,7 @@ export async function judgmentFiled(
     triples.flatMap(([s, p, o]) =>
       s.value === judgment && p.value === predicate ? [o.value] : [],
     );
-  const unfit = await basisRefused(
-    shapes,
-    stated,
-    triples,
-    judgment,
-    of(`${PROV}wasAttributedTo`),
-  );
+  const unfit = await basisRefused(shapes, stated, triples, judgment);
   if (unfit !== undefined) return { refused: unfit };
   const kept = triples.filter(
     ([s, p]) => !(s.value === judgment && p.value === `${PROV}wasDerivedFrom`),

@@ -15,6 +15,7 @@ import type { Store, StoreFactory } from "./store.js";
 
 const ONTOLOGIES = "ontologies/";
 const SHAPES = ".shapes.ttl";
+const SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
 
 function term(value: Term): RDFJS.Quad_Object {
   switch (value.termType) {
@@ -50,12 +51,15 @@ export type ShapeResult = SparqlResult;
 /** The vocabulary's shapes, and its terms, which a graph is read with so that a subclass's instances are its class's. */
 export class Shapes {
   #termsStore: Promise<Store> | undefined;
+  #subclassTriples: readonly Triple[] | undefined;
+  readonly #validators = new Map<string, SHACLValidator>();
 
   private constructor(
     readonly validator: SHACLValidator,
     readonly sparql: readonly SparqlConstraint[],
     readonly terms: readonly Triple[],
     readonly newStore: StoreFactory,
+    readonly shapeTriples: readonly Triple[],
   ) {}
 
   static async read(
@@ -80,6 +84,7 @@ export class Shapes {
       constraints,
       terms,
       newStore,
+      rest,
     );
   }
 
@@ -91,14 +96,7 @@ export class Shapes {
     );
     const results: ShapeResult[] = report.results
       .filter(({ focusNode }) => described.has(written(fromRdfjs(focusNode))))
-      .map((result) => ({
-        focusNode: fromRdfjs(result.focusNode),
-        path: result.path ? fromRdfjs(result.path) : undefined,
-        severity: iri(result.severity.value),
-        sourceShape: fromRdfjs(result.sourceShape),
-        sourceConstraintComponent: iri(result.sourceConstraintComponent.value),
-        message: result.message.map(({ value }) => value),
-      }));
+      .map(shapeResult);
     return [
       ...results,
       ...(await runSparqlConstraints(
@@ -110,6 +108,54 @@ export class Shapes {
     ];
   }
 
+  /**
+   * Each result the one shape `shape` gives about a node the triples describe, over the triples and the vocabulary's
+   * subclass statements alone: what `results` gives for that shape, without the validator running every other shape
+   * over every term. A shape that names another shape is read with it.
+   */
+  async resultsOf(
+    shape: string,
+    triples: readonly Triple[],
+  ): Promise<ShapeResult[]> {
+    const described = new Set(triples.map(([s]) => written(s)));
+    const validator = this.#validatorOf(shape);
+    const report = await validator.validate(
+      dataset([...triples, ...this.#subclasses]),
+    );
+    const results: ShapeResult[] = report.results
+      .filter(({ focusNode }) => described.has(written(fromRdfjs(focusNode))))
+      .map(shapeResult);
+    const own = this.sparql.filter(({ shape: named }) => named.value === shape);
+    return [
+      ...results,
+      ...(own.length === 0
+        ? []
+        : await runSparqlConstraints(
+            own,
+            triples,
+            this.terms,
+            () => (this.#termsStore ??= termsStore(this.terms, this.newStore)),
+          )),
+    ];
+  }
+
+  #validatorOf(shape: string): SHACLValidator {
+    let validator = this.#validators.get(shape);
+    if (validator === undefined) {
+      validator = new SHACLValidator(
+        dataset(closure(this.shapeTriples, shape)),
+      );
+      this.#validators.set(shape, validator);
+    }
+    return validator;
+  }
+
+  get #subclasses(): readonly Triple[] {
+    return (this.#subclassTriples ??= this.terms.filter(
+      ([, p]) => p.value === SUBCLASS_OF,
+    ));
+  }
+
   /** Each result, as a line naming its focus node, its path and its message. */
   async resultLines(triples: readonly Triple[]): Promise<string[]> {
     return (await this.results(triples))
@@ -119,6 +165,43 @@ export class Shapes {
       )
       .sort();
   }
+}
+
+function shapeResult(
+  result: Awaited<ReturnType<SHACLValidator["validate"]>>["results"][number],
+): ShapeResult {
+  return {
+    focusNode: fromRdfjs(result.focusNode),
+    path: result.path ? fromRdfjs(result.path) : undefined,
+    severity: iri(result.severity.value),
+    sourceShape: fromRdfjs(result.sourceShape),
+    sourceConstraintComponent: iri(result.sourceConstraintComponent.value),
+    message: result.message.map(({ value }) => value),
+  };
+}
+
+/** The triples of the shape `root`, and of every blank node and shape it names, which stand alone as a shapes graph. */
+function closure(all: readonly Triple[], root: string): Triple[] {
+  const bySubject = new Map<string, Triple[]>();
+  for (const triple of all) {
+    const key = written(triple[0]);
+    const held = bySubject.get(key);
+    if (held === undefined) bySubject.set(key, [triple]);
+    else held.push(triple);
+  }
+  const taken: Triple[] = [];
+  const seen = new Set<string>();
+  const queue = [written(iri(root))];
+  for (let key = queue.pop(); key !== undefined; key = queue.pop()) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    for (const triple of bySubject.get(key) ?? []) {
+      taken.push(triple);
+      const object = triple[2];
+      if (object.termType !== "Literal") queue.push(written(object));
+    }
+  }
+  return taken;
 }
 
 function dataset(triples: readonly Triple[]): RDFJS.DatasetCore {

@@ -122,18 +122,21 @@ async function readTableTerms(
   };
 }
 
-const labelsRead = new WeakMap<Files, Promise<ReadonlyMap<string, string>>>();
+const labelsRead = new Map<string, Promise<ReadonlyMap<string, string>>>();
 
-/** The skos:prefLabel in English of each left-out reason the vocabulary gives (`cascade:LeftOutReasons`), by its IRI; read once for the vocabulary. */
+/**
+ * The skos:prefLabel in English of each left-out reason the vocabulary gives (`cascade:LeftOutReasons`), by its IRI;
+ * read once for the vocabulary at an address, however many `Files` open it.
+ */
 export function reasonLabels(
   vocabulary: Files,
   newStore: StoreFactory,
 ): Promise<ReadonlyMap<string, string>> {
-  let read = labelsRead.get(vocabulary);
+  let read = labelsRead.get(vocabulary.iri);
   if (read === undefined) {
     read = readReasonLabels(vocabulary, newStore);
-    read.catch(() => labelsRead.delete(vocabulary));
-    labelsRead.set(vocabulary, read);
+    read.catch(() => labelsRead.delete(vocabulary.iri));
+    labelsRead.set(vocabulary.iri, read);
   }
   return read;
 }

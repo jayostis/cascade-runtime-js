@@ -1685,6 +1685,33 @@ describe("Recording the owner's judgment · pod.judge()", () => {
         );
     });
 
+    /** An About by `BASES[0]` whose author is written as `author`, with `more` stated beside it. */
+    const authored = (author: string, more = ""): string =>
+      `${PREFIXES}
+<urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:About ;
+    cascade:subject <${owned.subject}> ; cascade:basis cascade:SameDemographics ; prov:hadMember <${profile}> ;
+    prov:wasAttributedTo ${author} .${more}`;
+
+    it("files a machine basis by a software agent that is a blank node the judgment types", async () => {
+      assert.equal(
+        (await owned.judge(authored("[ a prov:SoftwareAgent ]"))).refused,
+        undefined,
+      );
+    });
+
+    it("refuses a machine basis by an author that is a blank node with no type or a literal, with the shape's message", async () => {
+      const held = await filesIn(join(pods, "judged"));
+      for (const author of ["[ ]", '"the portal"', "[ a prov:Person ]"])
+        await assert.rejects(
+          owned.judge(authored(author)),
+          (error: Error) =>
+            error.message.includes("typed prov:SoftwareAgent") &&
+            error.message.includes("cascade:OwnerStatement"),
+          author,
+        );
+      assert.deepEqual(await filesIn(join(pods, "judged")), held);
+    });
+
     it("says each machine basis, and that a person's About has the basis cascade:OwnerStatement", async () => {
       await assert.rejects(
         owned.judge(machines("RelatedPersonConnection", [])),
