@@ -124,6 +124,24 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
     });
   });
 
+  describe("given a pull of 200 resources imported onto a pod that holds another hospital's", () => {
+    let second: Measured;
+
+    before(async () => {
+      second = await importBench(200, { second: true });
+    });
+
+    it("imports it, with nothing refused", () => {
+      assert.equal(second.refused, undefined);
+      assert.ok(second.wrote > 0);
+    });
+
+    it("binds the records of the run into the comparisons' text, the path a first import never takes", () => {
+      assert.ok((second.counts["matcher.queriesRun"] ?? 0) > 0);
+      assert.ok((second.counts["matcher.boundRecords"] ?? 0) > 0);
+    });
+  });
+
   describe("given a pull of 200 resources, as a Bundle", () => {
     it("holds exactly the deliberate repeats of a code and day, a count for each kind", () => {
       assert.deepEqual(matchingPairs(bundleOf(200)), {

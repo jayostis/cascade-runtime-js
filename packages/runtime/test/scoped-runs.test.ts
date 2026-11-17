@@ -4,15 +4,18 @@ import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import { featureStory } from "../src/conformance.js";
 import { featuresOf, readFeature } from "../src/features.js";
-import { MemoryFiles } from "../src/files.js";
+import { MemoryFiles, relative } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { importersNamed } from "../src/importers.js";
 import { MATCHER, readEveryRecord } from "../src/matcher.js";
+import { documentName } from "../src/names.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { localVocabulary, readConfig } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
+import { probing } from "../src/probe.js";
 import { iri } from "../src/rdf.js";
+import { References } from "../src/references.js";
 import { Replay, type ReplayOptions, titleOf } from "../src/replay.js";
 import type { Step } from "../src/story.js";
 import { layout, ROOT, RUNTIME, vocabulary } from "./vocabulary.js";
@@ -327,7 +330,123 @@ describe("Running the matcher on a step's records alone · CorePod.match(), read
         assert.deepEqual(scoped, every, name);
     });
   });
+
+  describe("given a first import and a comparison that returns a reference series as its `?record`", () => {
+    it("is evaluated unbound and keeps no row whose `?record` the run did not begin", async () => {
+      const { seen, refused } = await seriesAsRecordRun();
+      assert.equal(refused, undefined);
+      assert.equal(seen.counts.get("matcher.queriesRun"), 1);
+      assert.equal(seen.counts.get("matcher.boundRecords"), undefined);
+      assert.equal(seen.counts.get(`matcher.rule:${CASCADE}SameCode.rows`), 0);
+    });
+  });
 });
+
+const SERIES_AS_RECORD = `PREFIX cascade: <${CASCADE}>
+PREFIX prov: <${PROV}>
+SELECT DISTINCT ?record ?other ?origin WHERE {
+  ?origin prov:specializationOf ?record .
+  ?record a cascade:ReferenceSeries .
+  ?other a cascade:Subject .
+}`;
+
+/**
+ * Dev's first entry, in the stories of the matcher's feature, matched by a rule list of one rule whose comparison
+ * returns a reference series as `?record`, with a version of its table as `?origin`: a thing the run's count of
+ * records leaves out and `over()` adds to the matcher's view, so no row of it is a record the run began. The rule
+ * list and its table are written here and the comparison is served beside the vocabulary's own; the run is probed.
+ */
+async function seriesAsRecordRun(): Promise<{
+  seen: Awaited<ReturnType<typeof probing>>["seen"];
+  refused: string | undefined;
+}> {
+  const text = (content: string): Uint8Array =>
+    new TextEncoder().encode(content);
+  const [files, laidOut, config] = await Promise.all([
+    vocabulary(),
+    layout(),
+    readConfig(ROOT),
+  ]);
+  const query = text(SERIES_AS_RECORD);
+  const rules = "urn:uuid:7d3f0c52-1b8e-4a46-9c0d-2e5a8b6f4d11";
+  const rulesVersion = "urn:uuid:3a9e5b17-6c24-4d80-8f13-b0c7d2e9a456";
+  const ingredients = "urn:uuid:5c1e8a47-9d02-4f63-b7a8-1e4d6c0f2b93";
+  const ingredientsVersion = "urn:uuid:0e6b4d28-3f91-4a7c-8c5d-9b2a7e1f6d40";
+  const tables = new MemoryFiles("https://tables.example/");
+  await tables.write(
+    "references.ttl",
+    text(`@prefix cascade: <${CASCADE}> .
+@prefix pav: <http://purl.org/pav/> .
+@prefix prov: <${PROV}> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<${rules}> a cascade:ReferenceSeries ; rdfs:label "Matcher rules" ; cascade:defaultTableVersion <${rulesVersion}> .
+<${rulesVersion}> a prov:Entity ; prov:specializationOf <${rules}> ; pav:version "1" .
+<${ingredients}> a cascade:ReferenceSeries ; rdfs:label "Ingredients" ; cascade:tableKind cascade:SubstanceIngredients ; cascade:defaultTableVersion <${ingredientsVersion}> .
+<${ingredientsVersion}> a prov:Entity ; prov:specializationOf <${ingredients}> ; pav:version "1" .
+`),
+  );
+  await tables.write(
+    `${rulesVersion.slice("urn:uuid:".length)}.ttl`,
+    text(`@prefix cascade: <${CASCADE}> .
+[] a cascade:RuleListRow ;
+  cascade:matcherRule cascade:SameCodeRule ;
+  cascade:justifiedAs cascade:SameCode ;
+  cascade:appliesToClass cascade:AllergyOrIntolerance ;
+  cascade:tableKind cascade:SubstanceIngredients ;
+  cascade:queryPath "matcher/series-as-record.rq" ;
+  cascade:queryHash <${await documentName(query)}> .
+`),
+  );
+  await tables.write(
+    `${ingredientsVersion.slice("urn:uuid:".length)}.ttl`,
+    text(
+      "<urn:example:ingredient> <http://www.w3.org/2000/01/rdf-schema#label> 'x' .",
+    ),
+  );
+  const { person, steps } = await featureStory(
+    files,
+    "runtime/matcher.feature",
+    newStore,
+    {
+      example:
+        "two allergies with one code are the same by code, and one with another code joins neither",
+    },
+  );
+  const [entry, run] = steps.slice(1, 3) as [Step, Step];
+  assert.equal(entry.happened.kind, "entry");
+  assert.deepEqual(run.happened, { kind: "matcher", takes: entry.name });
+  const replay = new Replay({
+    story: { address: person.address, subject: person.subject, steps },
+    source: files,
+    vocabulary: {
+      iri: files.iri,
+      read: async (path) =>
+        relative(files, path) === "queries/matcher/series-as-record.rq"
+          ? query
+          : files.read(path),
+      write: (path, bytes) => files.write(path, bytes),
+      list: (folder) => files.list(folder),
+    },
+    folder: person.folder,
+    title: "",
+    pod: new MemoryFiles(person.address),
+    layout: laidOut,
+    newStore,
+    runtime: RUNTIME,
+    importers: importersNamed(config.importers),
+    references: () => References.of(tables, "", newStore),
+  });
+  await replay.perform(steps[0] as Step);
+  await replay.perform(entry);
+  const { seen } = await probing(() => replay.perform(run));
+  const replayed = replay.replayed();
+  return {
+    seen,
+    refused:
+      replayed.stopped?.why ??
+      replayed.steps.find((one) => one.refused !== undefined)?.refused,
+  };
+}
 
 /**
  * What the matcher filed in `files`, one line each: a Same as its rule's name and its members, and a finding for
