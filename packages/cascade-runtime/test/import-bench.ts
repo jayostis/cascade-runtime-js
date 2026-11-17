@@ -19,11 +19,23 @@ import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
  * It imports as the app does, with `claimProfiles`, so the matcher compares the records, then reads once.
  *
  * Run it as `npm run bench:import -- 200 1000`: it prints a table per size, and `--json <file>` writes the numbers.
+ * With `--second` it imports one hospital's pull, then a second hospital's onto the same pod, and reports the second
+ * import alone: the same records from another FHIR base and source, so each has a same-code, same-day twin in the pod
+ * and the matcher binds the run's records into its comparisons, the path a first import never takes.
  */
 
 const RULE = "matcher.rule:";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
-const FHIR_BASE = "https://fhir.bench.invalid/r4";
+const HOSPITALS = {
+  first: {
+    fhirBase: "https://fhir.bench.invalid/r4",
+    source: "Bench Hospital",
+  },
+  second: {
+    fhirBase: "https://fhir.second.invalid/r4",
+    source: "Second Hospital",
+  },
+} as const;
 const PATIENT = "bench-patient";
 const LOINC = [
   ["2823-3", "Potassium", "mmol/L"],
@@ -77,7 +89,6 @@ export const HOT_SPOTS = {
     "incremental.boundValues.calls",
     "incremental.boundValues.iris",
     "incremental.boundValues.batches",
-    "matcher.boundRecords",
   ],
 } as const;
 
@@ -214,23 +225,28 @@ function resource(index: number, repeats: boolean): object {
 /** A pull of `total` resources, saved as the folder `pull`; `repeats: false` (for tests) leaves out the deliberate repeats. */
 export function syntheticPull(
   total: number,
-  options: { readonly repeats?: boolean | undefined } = {},
+  options: {
+    readonly repeats?: boolean | undefined;
+    /** The hospital that holds them: the same records from another FHIR base and source are another hospital's. */
+    readonly hospital?: keyof typeof HOSPITALS | undefined;
+  } = {},
 ): ReadonlyMap<string, Uint8Array> {
+  const { fhirBase, source } = HOSPITALS[options.hospital ?? "first"];
   const entry = Array.from({ length: total }, (_, index) => {
     const one = resource(index, options.repeats ?? true) as {
       resourceType: string;
       id: string;
     };
     return {
-      fullUrl: `${FHIR_BASE}/${one.resourceType}/${one.id}`,
+      fullUrl: `${fhirBase}/${one.resourceType}/${one.id}`,
       resource: one,
     };
   });
   return pullFiles(
     {
-      fhirBase: FHIR_BASE,
+      fhirBase,
       patient: PATIENT,
-      source: "Bench Hospital",
+      source,
       retrievedAt: "2026-11-01T09:00:00Z",
       bundle: { resourceType: "Bundle", type: "collection", entry },
     },
@@ -254,11 +270,22 @@ function round(ms: number): number {
   return Math.round(ms * 10) / 10;
 }
 
-/** The import of a synthetic pull of `resources`, then the first read and one more, measured. */
-export async function importBench(resources: number): Promise<Measured> {
-  const pull = syntheticPull(resources);
+/**
+ * The import of a synthetic pull of `resources`, then the first read and one more, measured; with `second`, the
+ * import of the second hospital's pull onto a pod that already holds the first's, which is measured and the first not.
+ */
+export async function importBench(
+  resources: number,
+  options: { readonly second?: boolean } = {},
+): Promise<Measured> {
+  const second = options.second ?? false;
+  const pull = syntheticPull(resources, {
+    hospital: second ? "second" : "first",
+  });
   const pod = await openPod();
   try {
+    if (second)
+      await pod.import(syntheticPull(resources), { claimProfiles: true });
     const marks: { name: string; at: number }[] = [];
     let started = 0;
     const { result, seen } = await probing(async () => {
@@ -352,14 +379,14 @@ async function main(args: string[]): Promise<void> {
     .map(Number);
   if (sizes.length === 0) {
     process.stderr.write(
-      "usage: import-bench.js <resources>... [--json <file>]\n",
+      "usage: import-bench.js [--second] <resources>... [--json <file>]\n",
     );
     process.exitCode = 2;
     return;
   }
   const runs: Measured[] = [];
   for (const size of sizes) {
-    const run = await importBench(size);
+    const run = await importBench(size, { second: args.includes("--second") });
     runs.push(run);
     process.stdout.write(`${tableOf(run)}\n\n`);
   }
