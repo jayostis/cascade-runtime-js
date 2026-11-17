@@ -8,7 +8,7 @@ import { StoryTime } from "./ids.js";
 import type { Files } from "./files.js";
 import type { Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
-import { ntriples, RDF } from "./rdf.js";
+import { ntriples, RDF, type Triple } from "./rdf.js";
 import { References } from "./references.js";
 import {
   documentsShown,
@@ -125,14 +125,20 @@ const PROV_TERMS = "http://www.w3.org/ns/prov#";
 /**
  * A person's judgment or retraction as filing it through `pod.judge` makes it (N16): for a verdict that says something
  * of its members' versions, with the document each member was shown from, and none the story states; or the reason it
- * is refused, for replacing or retracting a judgment a machine made.
+ * is refused, for replacing or retracting a judgment a machine made. A file that is no Turtle is left to the pod's own
+ * refusal.
  */
 async function judgmentFiled(
   pod: CorePod,
   story: StorySide,
   judgment: StepFile,
 ): Promise<StepFile | string> {
-  const triples = await story.newStore().parse(judgment.bytes, judgment.base);
+  let triples: Triple[];
+  try {
+    triples = await story.newStore().parse(judgment.bytes, judgment.base);
+  } catch {
+    return judgment;
+  }
   const subjectsOf = (predicate: string, object?: string): string[] =>
     triples.flatMap(([s, p, o]) =>
       p.value === predicate && (object === undefined || o.value === object)
