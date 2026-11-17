@@ -867,7 +867,7 @@
     "The launcher check, when the launcher itself is down",
     "The launcher check, when the launcher responds",
     "The launcher check, when the runtime's failure is not one the launcher's silence explains",
-    "cascade-runtime/tools in a browser bundle",
+    "cascade-runtime/check, cascade-runtime/terms and cascade-runtime/tools in a browser bundle",
     "Row files kept between builds of the package",
     "Starter copies of the reference tables, as the package is built with them",
     "Transpiling before the tests · scripts/transpile.mjs",
