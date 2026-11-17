@@ -219,6 +219,9 @@ export async function builtAt(
   commit: string,
   how: string,
 ): Promise<Picked> {
+  // A build already downloaded into `at` was published: no need to ask the remote.
+  if ((await recorded(absolute(at, `${BUILD}${commit}`))) === commit)
+    return { commit, how };
   await mkdir(at, { recursive: true });
   const tag = `refs/tags/${BUILD}${commit}`;
   if ((await git(at, "ls-remote", repository, tag)).includes(tag))
@@ -328,13 +331,30 @@ export async function pickBuild(
 export function pickedBuild(repository: string, at: string): Promise<Picked> {
   let found = picked.get(repository);
   if (found === undefined) {
-    found = keptPick(repository, at, runOf());
+    const pin = pinned(repository);
+    found = pin ? Promise.resolve(pin) : keptPick(repository, at, runOf());
     picked.set(repository, found);
   }
   return found;
 }
 
 const picked = new Map<string, Promise<Picked>>();
+
+/** The environment variable that names a build of a repository to read, `<repository URL>@<commit>`, with no look at the remote. */
+export const PIN = "CASCADE_BRIDGE_PIN";
+
+/** The build `CASCADE_BRIDGE_PIN` names, when it names one of `repository`: the tests pin the one in their cache, so none reads the network. */
+function pinned(
+  repository: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Picked | undefined {
+  const at = (env[PIN] ?? "").lastIndexOf("@");
+  if (at < 0 || env[PIN]?.slice(0, at) !== repository) return undefined;
+  return {
+    commit: (env[PIN] ?? "").slice(at + 1),
+    how: `the build ${PIN} pins`,
+  };
+}
 
 /** The pick kept in `at` for this run's attempt and `repository`, otherwise {@link pickBuild}'s, kept there. */
 export async function keptPick(
