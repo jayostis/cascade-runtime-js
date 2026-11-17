@@ -3,6 +3,7 @@
 // each member was shown from, never a version. Shared by the pod and by the run that performs a model's proposal as a step.
 import {
   type CorePod,
+  FILE_STEM,
   fileStem,
   judgmentFiled,
   type IdsAndTime,
@@ -26,7 +27,7 @@ const STARTED_AT = `${PROV}startedAtTime`;
 
 /** What files a judgment: the pod's step, what reads it, and the name and the time a new judgment is given. */
 export interface Judging {
-  readonly core: Pick<CorePod, "judge" | "select">;
+  readonly core: Pick<CorePod, "judge" | "select" | "selectStated">;
   readonly newStore: StoreFactory;
   /** The pod's address, which the judgment's Turtle is parsed against. */
   readonly address: string;
@@ -65,7 +66,8 @@ function datedLiteral(term: Term): Term {
     (minute ?? 0) > 59 ||
     (second ?? 0) > 59 ||
     (offsetHour ?? 0) > 14 ||
-    (offsetMinute ?? 0) > 59
+    (offsetMinute ?? 0) > 59 ||
+    ((offsetHour ?? 0) === 14 && (offsetMinute ?? 0) > 0)
   )
     throw new Error(
       `the judgment states a time that is no xsd:dateTime: ${term.value}`,
@@ -73,10 +75,10 @@ function datedLiteral(term: Term): Term {
   return term;
 }
 
-/** Whether the pod can name a file after `name`: a `urn:uuid:` or an `ni:` IRI, whose stem is hex digits and hyphens. */
+/** Whether the pod can name a file after `name`: an IRI whose stem is the layout's, a lowercase UUID or a SHA-256 in lowercase hex. */
 function placed(name: string): boolean {
   try {
-    return /^[0-9a-f-]+$/i.test(fileStem(name));
+    return FILE_STEM.test(fileStem(name));
   } catch {
     return false;
   }
@@ -124,7 +126,7 @@ async function prepared(
   const name = given === THIS_JUDGMENT ? time.newId() : given;
   if (!placed(name))
     throw new Error(
-      `the judgment's name ${name} is no urn:uuid: IRI: the app names it with a urn:uuid: it minted, or with <${THIS_JUDGMENT}> to have the pod name it`,
+      `the judgment's name ${name} is no lowercase urn:uuid: IRI: the app names it with a lowercase urn:uuid: it minted, or with <${THIS_JUDGMENT}> to have the pod name it`,
     );
   const judgment = iri(name);
   const [at, ...more] = stated.filter(
@@ -155,7 +157,9 @@ async function prepared(
             p.value === STARTED_AT)
         ),
     );
-  const filed = await judgmentFiled(core, named, views);
+  const filed = await judgmentFiled(core, named, views, {
+    select: (query) => core.selectStated(query),
+  });
   if ("refused" in filed) throw new Error(filed.refused);
   return {
     name,

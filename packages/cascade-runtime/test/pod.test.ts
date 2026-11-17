@@ -1358,6 +1358,10 @@ describe("Recording the owner's judgment · pod.judge()", () => {
         "https://app.example/j/1",
         "urn:example:j1",
         "ni:///sha-256;!!",
+        "urn:uuid:abc",
+        "urn:uuid:B2F6C8E1-4D3A-4F5B-9C7E-1A2B3C4D5E6F",
+        "urn:uuid:--------",
+        "ni:///sha-256;AAAA",
       ]) {
         const turtle = byAnother(unplaceable);
         await assert.rejects(owned.judge(turtle), /urn:uuid:/, unplaceable);
@@ -1434,6 +1438,16 @@ describe("Recording the owner's judgment · pod.judge()", () => {
         [
           "the hour 24",
           byAnother(free, dateTime("2026-03-04T24:00:00Z")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "an offset past +14:00",
+          byAnother(free, dateTime("2026-03-04T07:00:00+14:30")),
+          /no xsd:dateTime/,
+        ],
+        [
+          "an offset past -14:00",
+          byAnother(free, dateTime("2026-03-04T07:00:00-14:01")),
           /no xsd:dateTime/,
         ],
         [

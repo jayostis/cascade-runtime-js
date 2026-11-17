@@ -122,11 +122,14 @@ async function nameTaken(
  * something of its members' versions, for a member that is a finding; else its triples with the document each member was
  * shown from, and none the input states for the judgment itself. A member the pod does not hold is kept: it names no
  * document, and a restore or a rebuild may bring it back. `changed` is false when those are the triples it was given.
+ * `stated` reads the pod's files alone, what a name is taken by, so that a judgment with nothing to read the matcher's
+ * view for builds none.
  */
 export async function judgmentFiled(
   read: Pick<CorePod, "select">,
   triples: readonly Triple[],
   views: string,
+  stated: Pick<CorePod, "select">,
 ): Promise<{ refused: string } | { triples: Triple[]; changed: boolean }> {
   const subjectsOf = (predicate: string, object?: string): string[] =>
     triples.flatMap(([s, p, o]) =>
@@ -138,7 +141,7 @@ export async function judgmentFiled(
   const [retracting] = subjectsOf(`${PROV}invalidated`);
   const name = judged ?? retracting;
   if (name !== undefined) {
-    const taken = await nameTaken(read, name, judged === undefined);
+    const taken = await nameTaken(stated, name, judged === undefined);
     if (taken !== undefined) return { refused: taken };
   }
   for (const subject of new Set([

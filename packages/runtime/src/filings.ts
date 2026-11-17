@@ -1,6 +1,7 @@
 import type { CorePod } from "./core-pod.js";
 import { iri, ntriples, RDF, type Term, type Triple, written } from "./rdf.js";
 import type { References } from "./references.js";
+import { podRows } from "./matcher.js";
 import { judgmentFiled } from "./shown.js";
 import {
   parseStepFile,
@@ -81,6 +82,7 @@ export async function fileJudgment(
     read,
     graph.triples,
     context.address + context.layout.viewsFolder,
+    { select: (query) => podRows(context, query) },
   );
   if ("refused" in filed) throw new Refusal(filed.refused);
   const path = placement.path(one.value);
