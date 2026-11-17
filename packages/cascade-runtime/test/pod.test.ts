@@ -23,6 +23,7 @@ import {
   type FolderPack,
   HEADER,
   iri,
+  isBridgeError,
   Layout,
   madeNewPod,
   MATCHER,
@@ -637,6 +638,46 @@ describe("Importing a health export · pod.import()", () => {
     it("skips the matcher, which a later `pod.match()` runs", () => {
       assert.equal(imported.matched, undefined);
       assert.equal(matched.refused, undefined);
+    });
+  });
+
+  describe("with `timeBudgetSeconds` or `memoryBudgetMiB`, the limits of a conversion", () => {
+    for (const [name, budget] of [
+      ["timeBudgetSeconds", { timeBudgetSeconds: 1e-9 }],
+      ["memoryBudgetMiB", { memoryBudgetMiB: 1 }],
+    ] as const)
+      it(`rejects with the Bridge's budget error when \`${name}\` is smaller than the conversion needs, writing nothing`, async () => {
+        const at = join(pods, `budget-${name}`);
+        const small = await openPodWith(kept, at);
+        try {
+          const held = await filesIn(at);
+          await assert.rejects(
+            small.import(exported("x-e2"), { match: false, ...budget }),
+            (error) =>
+              isBridgeError(error) &&
+              error.kind === "bridge" &&
+              /budget/.test(error.message),
+          );
+          assert.deepEqual(await filesIn(at), held);
+        } finally {
+          await small.close();
+        }
+      });
+
+    it("converts the export as without them when the budgets are the Bridge's own defaults", async () => {
+      const at = join(pods, "budget-default");
+      const roomy = await openPodWith(kept, at);
+      try {
+        const done = await roomy.import(exported("x-e2"), {
+          match: false,
+          timeBudgetSeconds: 120,
+          memoryBudgetMiB: 1024,
+        });
+        assert.equal(done.refused, undefined);
+        assert.ok(done.wrote.length > 0);
+      } finally {
+        await roomy.close();
+      }
     });
   });
 
