@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { Worker } from "node:worker_threads";
-import type { Bridge } from "../bridge.js";
+import type { Bridge, LoadedAdapter } from "../bridge.js";
 import type { Followed } from "../config.js";
 import { type Loaded, loadAdapters } from "../load-adapter.js";
 import { counted } from "../probe.js";
@@ -16,6 +16,7 @@ import {
   type CompiledBridge,
   type Spawn,
   Waiting,
+  WasmBridge,
 } from "../wasm-bridge.js";
 import {
   BUILD,
@@ -28,6 +29,7 @@ import { checkout as gitState } from "./git.js";
 import { FolderFiles } from "./folder-files.js";
 import type { Components } from "./components.js";
 import {
+  checkoutStamp,
   optionsKey,
   type Resolved,
   type ResolverOptions,
@@ -104,7 +106,11 @@ export async function findBridgePackage(
   options: ResolverOptions,
   repository: string = BRIDGE_REPOSITORY,
 ): Promise<BridgePackageFound> {
-  const key = JSON.stringify([optionsKey(options), repository]);
+  const key = JSON.stringify([
+    optionsKey(options),
+    repository,
+    await localStamps(options, repository),
+  ]);
   let found = foundPackages.get(key);
   if (found === undefined) {
     const said: string[] = [];
@@ -123,7 +129,28 @@ export async function findBridgePackage(
   return located;
 }
 
-/** Found once per process for each set of options, as git and the sources of a checkout are read once. */
+/** The state of each checkout a package is looked for in: its commit and index (see {@link checkoutStamp}) and its build. */
+async function localStamps(
+  options: ResolverOptions,
+  repository: string,
+): Promise<string[]> {
+  const checkouts = [
+    siblingIn(options.siblingsIn, PACKAGE),
+    options.folders?.get(repository),
+  ];
+  return Promise.all(
+    checkouts.map(async (checkout) =>
+      checkout === undefined
+        ? ""
+        : `${await checkoutStamp(checkout)} ${await buildStamp(join(checkout, "package", "dist"))}`,
+    ),
+  );
+}
+
+/**
+ * Found once per process for each set of options, as git and the sources of a checkout are read once; again when a
+ * checkout's state, as {@link localStamps} reads it, has changed.
+ */
 const foundPackages = new Map<
   string,
   Promise<{ located: BridgePackageFound; said: string[] }>
@@ -184,17 +211,19 @@ async function findBridgePackageNow(
 /** The release of cascade-bridge-rs at the commit {@link pickedBuild} picks for this run, downloaded under `cache`. */
 export function releasedBridgePackage(
   cache: string,
+  repository: string = BRIDGE_REPOSITORY,
 ): Promise<BridgePackageFound> {
-  let found = released.get(cache);
+  const key = JSON.stringify([cache, repository]);
+  let found = released.get(key);
   if (found === undefined) {
     const at = join(cache, PACKAGE);
-    const pending = pickedBuild(BRIDGE_REPOSITORY, at).then((picked) =>
-      releasedAt(BRIDGE_REPOSITORY, picked, at),
+    const pending = pickedBuild(repository, at).then((picked) =>
+      releasedAt(repository, picked, at),
     );
     found = pending;
-    released.set(cache, pending);
+    released.set(key, pending);
     pending.catch(() => {
-      if (released.get(cache) === pending) released.delete(cache);
+      if (released.get(key) === pending) released.delete(key);
     });
   }
   return found;
@@ -232,17 +261,42 @@ export async function bundledBridge(
   return { source: "packed", folder, ...built, release };
 }
 
-const compiled = new Map<string, Promise<CompiledBridge>>();
+async function stampOf(path: string): Promise<string> {
+  const found = await stat(path).catch(() => undefined);
+  return found === undefined ? "-" : `${found.size}:${found.mtimeMs}`;
+}
 
-/** The package's module, compiled once per process for each folder. */
-export function compiledBridge(folder: string): Promise<CompiledBridge> {
-  let found = compiled.get(folder);
+/** The size and time of change of the files of a build: what changes when the Bridge is built again into the folder. */
+async function buildStamp(folder: string): Promise<string> {
+  return (
+    await Promise.all([
+      stampOf(join(folder, WASM)),
+      stampOf(join(folder, GLUE)),
+      stampOf(join(folder, "package.json")),
+    ])
+  ).join(" ");
+}
+
+const compiled = new Map<string, Promise<CompiledBridge>>();
+const builtKeys = new Map<string, string>();
+
+/** The package's module, compiled once per process for each folder and build of it. */
+export async function compiledBridge(folder: string): Promise<CompiledBridge> {
+  const key = `${folder} ${await buildStamp(folder)}`;
+  let found = compiled.get(key);
   if (found === undefined) {
+    // One build of a folder is kept: the one it was before is let go.
+    const before = builtKeys.get(folder);
+    if (before !== undefined) compiled.delete(before);
+    builtKeys.set(folder, key);
     found = readFile(join(folder, WASM)).then(async (bytes) => ({
       glue: pathToFileURL(join(folder, GLUE)).href,
       module: await WebAssembly.compile(bytes),
     }));
-    compiled.set(folder, found);
+    compiled.set(key, found);
+    found.catch(() => {
+      if (compiled.get(key) === found) compiled.delete(key);
+    });
   }
   return found;
 }
@@ -286,6 +340,8 @@ export function inWorker(bridge: CompiledBridge): Spawn {
 
 export interface ConfiguredAdapter extends Loaded {
   readonly resolved: Resolved;
+  /** Held by every pod of the process that opened it: its `free()` lets go of nothing, the process's own does. */
+  readonly shared?: true;
 }
 
 /**
@@ -315,21 +371,16 @@ export async function loadConfiguredAdapters(
   });
 }
 
-/** Each file's path, size and time of last change, as one digest: what changes when a file under the folder does. */
+/** Each file the adapter is given under the folder, as {@link FolderFiles} lists them (a link is none, as it is none there), with its size and time of change, as one digest. */
 async function signature(
   folder: string,
   only?: readonly string[],
 ): Promise<string> {
   const paths =
     only ??
-    (await readdir(folder, { recursive: true, withFileTypes: true }))
-      .filter(
-        (entry) =>
-          !entry.isDirectory() && !entry.parentPath.split(sep).includes(".git"),
-      )
-      .map((entry) =>
-        join(entry.parentPath, entry.name).slice(folder.length + 1),
-      );
+    (await new FolderFiles(folder).list("")).filter(
+      (path) => path !== ".git" && !path.startsWith(".git/"),
+    );
   const lines = await Promise.all(
     paths.map(async (path) => {
       const found = await stat(join(folder, path)).catch(() => undefined);
@@ -339,96 +390,257 @@ async function signature(
   return createHash("sha256").update(lines.sort().join("\n")).digest("hex");
 }
 
+/** The most instances of one adapter a process runs: a second starts only while the first is busy. */
+const INSTANCES = 2;
+
+interface Member {
+  loaded: Promise<LoadedAdapter>;
+  busy: number;
+}
+
+/**
+ * One adapter in up to {@link INSTANCES} instances, each in a worker of its own, so that a document that takes long or
+ * faults holds up or ends only the instance it is on. A call goes to an idle instance, else starts the second, else
+ * waits on the one with fewer calls. A retired pool lets go of each instance as its calls end.
+ */
+class Pool {
+  readonly #members: Member[] = [];
+  #retired = false;
+  readonly adapter: LoadedAdapter;
+
+  constructor(
+    first: LoadedAdapter,
+    readonly more: () => Promise<LoadedAdapter>,
+  ) {
+    this.#members.push({ loaded: Promise.resolve(first), busy: 0 });
+    this.adapter = {
+      accepts: (document) => this.#run((on) => on.accepts(document)),
+      convert: (document, options) =>
+        this.#run((on) => on.convert(document, options)),
+      free: () => Promise.resolve(),
+    };
+  }
+
+  #pick(): Member {
+    const idle = this.#members.find(({ busy }) => busy === 0);
+    if (idle !== undefined) return idle;
+    if (this.#members.length < INSTANCES) {
+      const member: Member = {
+        busy: 0,
+        loaded: this.more().catch(() => {
+          this.#members.splice(this.#members.indexOf(member), 1);
+          const [first] = this.#members;
+          if (first === undefined) throw new Error("no instance is left");
+          return first.loaded;
+        }),
+      };
+      this.#members.push(member);
+      return member;
+    }
+    return this.#members.reduce((one, other) =>
+      other.busy < one.busy ? other : one,
+    );
+  }
+
+  async #run<T>(call: (on: LoadedAdapter) => Promise<T>): Promise<T> {
+    const member = this.#pick();
+    member.busy += 1;
+    try {
+      return await call(await member.loaded);
+    } finally {
+      member.busy -= 1;
+      if (this.#retired && member.busy === 0) this.#let(member);
+    }
+  }
+
+  #let(member: Member): void {
+    void member.loaded.then((on) => on.free()).catch(() => undefined);
+  }
+
+  /** Lets go of every instance now idle, and of the others as their calls end; a call after this starts its instance again and ends it once more. */
+  retire(): void {
+    this.#retired = true;
+    for (const member of this.#members)
+      if (member.busy === 0) this.#let(member);
+  }
+}
+
 interface Shared {
   readonly loaded: Loaded;
-  /** The vocabulary files the adapter was given, as they were. */
+  readonly pool: Pool;
+  /** The adapter's files as they were when it was loaded. */
+  readonly signature: string;
+  /** The vocabulary the adapter was given, resolved through the components of the pod that loaded it, as it was. */
   readonly vocabulary?: {
+    readonly repository: string;
+    readonly iri: string;
     readonly folder: string;
     readonly files: readonly string[];
     readonly signature: string;
   };
 }
 
-const shared = new Map<string, Promise<Shared>>();
+/** One live entry for each adapter folder of each build of the Bridge: a newer one retires the one it replaces. */
+const shared = new Map<string, { loading: Promise<Shared>; folder: string }>();
+
+/** Ends the workers of every shared adapter, or of those loaded from `folder`; the next load starts them again. */
+export async function endSharedAdapters(folder?: string): Promise<void> {
+  for (const [slot, entry] of [...shared]) {
+    if (folder !== undefined && entry.folder !== folder) continue;
+    shared.delete(slot);
+    await entry.loading.then(
+      ({ pool }) => pool.retire(),
+      () => undefined,
+    );
+  }
+}
 
 /**
- * {@link loadConfiguredAdapters}, with each adapter loaded once per process into the Bridge of the first caller and
- * shared by every later one, as the same folders of the same Bridge build give the same adapter: a pod that closes lets
- * go of nothing, and the worker holding them stays out of the way of the process ending. An adapter's folder or its
- * vocabulary files that changed on disk (by path, size and time of change) are loaded again.
+ * {@link loadConfiguredAdapters}, with each adapter loaded once per process and shared by every later caller, as the
+ * same folders of the same Bridge build give the same adapter: a pod that closes lets go of nothing, and the workers
+ * holding them stay out of the way of the process ending. What the adapter was given is looked at again on every call,
+ * as the caller's own components resolve it (the adapter's folder, and the vocabulary it names) and as it is on disk (by
+ * each file's path, size and time of change, and the build of the Bridge); what differs loads again, and the adapter it
+ * replaces is ended. A run says which version of each it used on every call.
  */
 export async function loadSharedAdapters(
   bridgeFolder: string,
-  bridge: Bridge,
+  bridge: WasmBridge,
   adapters: readonly Followed[],
   components: Components,
 ): Promise<ConfiguredAdapter[]> {
+  const build = await buildStamp(bridgeFolder);
   const out: ConfiguredAdapter[] = [];
   for (const followed of adapters) {
     const resolved = await components.resolve(followed);
-    const key = [
-      bridgeFolder,
-      resolved.iri,
-      resolved.folder,
+    const slot = [bridgeFolder, build, resolved.iri, resolved.folder].join(" ");
+    const found = await sharedAt(
+      slot,
       await signature(resolved.folder),
-    ].join(" ");
-    let entry = shared.get(key);
-    if (entry !== undefined) {
-      const found = await entry.catch(() => undefined);
-      const vocabulary = found?.vocabulary;
-      if (
-        found === undefined ||
-        (vocabulary !== undefined &&
-          (await signature(vocabulary.folder, vocabulary.files)) !==
-            vocabulary.signature)
-      ) {
-        if (shared.get(key) === entry) shared.delete(key);
-        entry = undefined;
-      }
-    }
-    if (entry === undefined) {
-      const loading = loadFirst(bridge, followed, components);
-      entry = loading;
-      shared.set(key, loading);
-      loading.catch(() => {
-        if (shared.get(key) === loading) shared.delete(key);
-      });
-    }
-    const { loaded } = await entry;
-    out.push({
-      ...loaded,
-      adapter: { ...loaded.adapter, free: () => Promise.resolve() },
       resolved,
+      followed,
+      bridge.spawn,
+      components,
+    );
+    out.push({
+      ...found.loaded,
+      adapter: found.pool.adapter,
+      resolved,
+      shared: true,
     });
   }
   return out;
 }
 
-async function loadFirst(
-  bridge: Bridge,
+/** The live entry of the slot if it matches what this caller sees, otherwise a new one in its place. */
+async function sharedAt(
+  slot: string,
+  files: string,
+  resolved: Resolved,
   followed: Followed,
+  spawn: Spawn,
   components: Components,
 ): Promise<Shared> {
+  for (;;) {
+    const entry = shared.get(slot);
+    if (entry !== undefined) {
+      const found = await entry.loading.catch(() => undefined);
+      const vocabulary =
+        found?.vocabulary === undefined
+          ? undefined
+          : await components.resolve({
+              repository: found.vocabulary.repository,
+            });
+      const same =
+        found !== undefined &&
+        found.signature === files &&
+        (found.vocabulary === undefined ||
+          (vocabulary?.iri === found.vocabulary.iri &&
+            vocabulary.folder === found.vocabulary.folder &&
+            (await signature(vocabulary.folder, found.vocabulary.files)) ===
+              found.vocabulary.signature));
+      // Another caller may have replaced it while this one looked: this one looks at that one instead.
+      if (shared.get(slot) !== entry) continue;
+      if (same) return found;
+      found?.pool.retire();
+    }
+    const loading = loadFirst(spawn, followed, resolved, components, files);
+    shared.set(slot, { loading, folder: resolved.folder });
+    loading.catch(() => {
+      if (shared.get(slot)?.loading === loading) shared.delete(slot);
+    });
+    return loading;
+  }
+}
+
+/**
+ * The adapter described and, when a call first needs it, loaded in an instance of its own. Each repository is resolved
+ * once, into `known`, so another instance of the same adapter reads what the first did.
+ */
+async function loadOne(
+  spawn: Spawn,
+  followed: Followed,
+  components: Components,
+  known: Map<string, Resolved>,
+): Promise<{ loaded: Loaded; vocabularyAt?: Resolved }> {
   let vocabularyAt: Resolved | undefined;
-  const [loaded] = await loadAdapters(bridge, [followed], async (each) => {
-    const resolved = await components.resolve(each);
-    if (each !== followed) vocabularyAt = resolved;
-    return {
-      iri: resolved.iri,
-      files: new FolderFiles(resolved.folder, resolved.iri),
-      whole: true,
-    };
-  });
-  if (loaded === undefined) throw new Error("no adapter was loaded");
-  const files = loaded.description.vocabulary?.files ?? [];
+  const bridge = new WasmBridge(spawn);
+  try {
+    const [loaded] = await loadAdapters(bridge, [followed], async (each) => {
+      let resolved = known.get(each.repository);
+      if (resolved === undefined) {
+        resolved = await components.resolve(each);
+        known.set(each.repository, resolved);
+      }
+      if (each !== followed) vocabularyAt = resolved;
+      return {
+        iri: resolved.iri,
+        files: new FolderFiles(resolved.folder, resolved.iri),
+        whole: true,
+      };
+    });
+    if (loaded === undefined) throw new Error("no adapter was loaded");
+    return { loaded, ...(vocabularyAt && { vocabularyAt }) };
+  } finally {
+    bridge.close();
+  }
+}
+
+async function loadFirst(
+  spawn: Spawn,
+  followed: Followed,
+  resolved: Resolved,
+  components: Components,
+  files: string,
+): Promise<Shared> {
+  const known = new Map([[followed.repository, resolved]]);
+  const { loaded, vocabularyAt } = await loadOne(
+    spawn,
+    followed,
+    components,
+    known,
+  );
+  const given = loaded.description.vocabulary?.files ?? [];
+  const repository = loaded.description.vocabulary?.repository;
   return {
     loaded,
-    ...(vocabularyAt !== undefined && {
-      vocabulary: {
-        folder: vocabularyAt.folder,
-        files,
-        signature: await signature(vocabularyAt.folder, files),
-      },
-    }),
+    // The files were signed before the adapter reads them, when its first call needs them: a file edited between the
+    // two is read at its new content under the old signature, and the next call loads it again, which errs safe.
+    signature: files,
+    pool: new Pool(
+      loaded.adapter,
+      async () =>
+        (await loadOne(spawn, followed, components, known)).loaded.adapter,
+    ),
+    ...(vocabularyAt !== undefined &&
+      repository !== undefined && {
+        vocabulary: {
+          repository,
+          iri: vocabularyAt.iri,
+          folder: vocabularyAt.folder,
+          files: given,
+          signature: await signature(vocabularyAt.folder, given),
+        },
+      }),
   };
 }

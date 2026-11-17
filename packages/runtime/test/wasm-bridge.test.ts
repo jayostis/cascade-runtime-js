@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
-import { cp, mkdtemp, rm, utimes } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import {
   type AdaptersOf,
@@ -25,9 +33,12 @@ import { probing } from "../src/probe.js";
 import { PERFORMERS } from "../src/replay.js";
 import { CASCADE } from "../src/step.js";
 import { checkouts, type Components } from "../src/node/components.js";
+import { findBridgePackage, releasedBridgePackage } from "../src/node/wasm.js";
+import { resolve as resolveComponent } from "../src/node/resolver.js";
 import type { Followed } from "../src/config.js";
 import {
   compiledBridge,
+  endSharedAdapters,
   inWorker,
   loadConfiguredAdapters,
   loadSharedAdapters,
@@ -372,33 +383,115 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
     };
     let bridgeFolder: string;
     let spawn: Spawn;
+    let expected: Saved;
+    const made: string[] = [];
+    let later = Date.now() + 3_600_000;
 
     before(async () => {
       bridgeFolder = (await components.bridge()).folder;
       spawn = inWorker(compiled);
+      expected = await saved("e2", "AllergyIntolerance-alg-pcn-1");
     });
 
-    /** What a load of the adapters over `from` and a first call on each of them started. */
-    async function started(from: Components) {
+    after(async () => {
+      for (const folder of made) {
+        await endSharedAdapters(folder);
+        await rm(folder, { recursive: true, force: true });
+      }
+    });
+
+    /** What loads of the adapters over each of `froms` at once, and a first call on each of them, started. */
+    async function startedAll(
+      froms: readonly Components[],
+      on: Spawn = spawn,
+      call = true,
+    ) {
       const { seen } = await probing(async () => {
-        const bridge = new WasmBridge(spawn);
-        const configured = await loadSharedAdapters(
-          bridgeFolder,
-          bridge,
-          from.config.adapters,
-          from,
+        await Promise.all(
+          froms.map(async (from) => {
+            const bridge = new WasmBridge(on);
+            const configured = await loadSharedAdapters(
+              bridgeFolder,
+              bridge,
+              from.config.adapters,
+              from,
+            );
+            for (const { adapter } of configured) {
+              if (call) await adapter.accepts(nothing).catch(() => undefined);
+              await adapter.free();
+            }
+            bridge.close();
+          }),
         );
-        for (const { adapter } of configured) {
-          await adapter.accepts(nothing).catch(() => undefined);
-          await adapter.free();
-        }
-        bridge.close();
       });
       return {
         workers: seen.counts.get("bridge.workers") ?? 0,
         resolved: seen.counts.get("components.resolved") ?? 0,
       };
     }
+
+    const started = (from: Components, on?: Spawn) => startedAll([from], on);
+
+    /** A folder of its own with the first adapter's files, and the components that read the adapter from it. */
+    async function adapterCopy(): Promise<{
+      folder: string;
+      copied: Components;
+      first: Followed;
+    }> {
+      const folder = await mkdtemp(join(tmpdir(), "adapter-copy-"));
+      made.push(folder);
+      const [first] = components.config.adapters;
+      const original = await components.resolve(first as Followed);
+      await cp(original.folder, folder, { recursive: true });
+      const copied: Components = {
+        config: { ...components.config, adapters: [first as Followed] },
+        resolve: async (followed) =>
+          followed === first
+            ? { ...original, folder }
+            : components.resolve(followed),
+        bridge: () => components.bridge(),
+      };
+      return { folder, copied, first: first as Followed };
+    }
+
+    /** The same components, reading the vocabulary from a folder holding the files the adapter names, as they are. */
+    async function vocabularyCopy(
+      from: Components,
+      first: Followed,
+    ): Promise<{ folder: string; copied: Components; files: string[] }> {
+      const [one] = await loadSharedAdapters(
+        bridgeFolder,
+        new WasmBridge(spawn),
+        [first],
+        from,
+      );
+      const named = one?.description.vocabulary;
+      if (named?.repository === undefined)
+        throw new Error("the adapter names no vocabulary");
+      const at = await from.resolve({ repository: named.repository });
+      const folder = await mkdtemp(join(tmpdir(), "vocabulary-copy-"));
+      made.push(folder);
+      for (const file of named.files) {
+        await mkdir(dirname(join(folder, file)), { recursive: true });
+        await cp(join(at.folder, file), join(folder, file));
+      }
+      return {
+        folder,
+        files: [...named.files],
+        copied: {
+          ...from,
+          resolve: async (followed) =>
+            followed.repository === named.repository
+              ? { ...at, folder }
+              : from.resolve(followed),
+        },
+      };
+    }
+
+    const touch = async (path: string): Promise<void> => {
+      later += 60_000;
+      await utimes(path, new Date(later), new Date(later));
+    };
 
     it("starts no worker and resolves no component the second time", async () => {
       await started(components);
@@ -413,28 +506,189 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       });
     });
 
-    it("loads an adapter again when a file of its folder changed", async () => {
-      const folder = await mkdtemp(join(tmpdir(), "adapter-copy-"));
+    it("loads an adapter again for each change of what it was given, and for nothing else", async (t) => {
+      const { folder, copied, first } = await adapterCopy();
+      const vocabulary = await vocabularyCopy(copied, first);
+      const inside = join(folder, "ro-crate-metadata.json");
+      const changed = async (): Promise<boolean> =>
+        (await started(vocabulary.copied)).workers > 0;
+      assert.equal(await changed(), true, "the first load");
+      assert.equal(await changed(), false, "the second");
+
+      await touch(inside);
+      assert.equal(await changed(), true, "a file of its folder changed");
+      await writeFile(join(folder, "added.txt"), "more");
+      assert.equal(await changed(), true, "a file was added");
+      await rm(join(folder, "added.txt"));
+      assert.equal(await changed(), true, "a file was taken away");
+      await touch(join(vocabulary.folder, vocabulary.files[0] as string));
+      assert.equal(await changed(), true, "a vocabulary file changed");
+
+      const other = await vocabularyCopy(copied, first);
+      assert.equal(
+        (await started(other.copied)).workers > 0,
+        true,
+        "another folder of the vocabulary, the same files",
+      );
+      assert.equal(await changed(), true, "and back");
+
+      const outside = await mkdtemp(join(tmpdir(), "behind-a-link-"));
+      made.push(outside);
+      await writeFile(join(outside, "inside.txt"), "one");
       try {
-        const [first] = components.config.adapters;
-        const original = await components.resolve(first as Followed);
-        await cp(original.folder, folder, { recursive: true });
-        const copied: Components = {
-          config: { ...components.config, adapters: [first as Followed] },
-          resolve: async (followed) =>
-            followed === first
-              ? { ...original, folder }
-              : components.resolve(followed),
-          bridge: () => components.bridge(),
+        await symlink(outside, join(folder, "linked"), "junction");
+      } catch {
+        t.diagnostic("this system lets no link be made: the link is not tried");
+        return;
+      }
+      await changed();
+      await writeFile(join(outside, "inside.txt"), "another, longer");
+      assert.equal(
+        await changed(),
+        false,
+        "a folder behind a link, which the adapter is not given",
+      );
+    });
+
+    it("says which version of each it uses on every call, ends the adapter a change replaces, and starts one load for two calls at once", async () => {
+      const { folder, copied } = await adapterCopy();
+      const said: string[][] = [[], []];
+      for (const lines of said)
+        await started({
+          ...copied,
+          resolve: async (followed) => {
+            const resolved = await copied.resolve(followed);
+            lines.push(`${resolved.iri} ${resolved.folder}`);
+            return resolved;
+          },
+        });
+      assert.ok((said[0] as string[]).length >= 2);
+      assert.deepEqual(said[1], said[0]);
+
+      let live = 0;
+      const counting: Spawn = async () => {
+        const channel = await spawn();
+        live += 1;
+        let ended = false;
+        return {
+          call: (request, transfer) => channel.call(request, transfer),
+          end: () => {
+            if (!ended) live -= 1;
+            ended = true;
+            channel.end();
+          },
         };
-        assert.ok((await started(copied)).workers > 0);
-        assert.equal((await started(copied)).workers, 0);
-        const later = new Date(Date.now() + 60_000);
-        await utimes(join(folder, "ro-crate-metadata.json"), later, later);
-        assert.ok((await started(copied)).workers > 0);
+      };
+      await touch(join(folder, "ro-crate-metadata.json"));
+      await started(copied, counting);
+      const one = live;
+      await touch(join(folder, "ro-crate-metadata.json"));
+      await started(copied, counting);
+      for (let wait = 0; live !== one && wait < 100; wait += 1)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(live, one, "the adapter replaced is ended");
+
+      await touch(join(folder, "ro-crate-metadata.json"));
+      const once = (await startedAll([copied], spawn, false)).workers;
+      await touch(join(folder, "ro-crate-metadata.json"));
+      assert.equal(
+        (await startedAll([copied, copied], spawn, false)).workers,
+        once,
+      );
+    });
+
+    it("runs two documents of one adapter at once, each in an instance of its own", async () => {
+      const { copied } = await adapterCopy();
+      const bridge = new WasmBridge(spawn);
+      const [shared] = await loadSharedAdapters(
+        bridgeFolder,
+        bridge,
+        copied.config.adapters,
+        copied,
+      );
+      const adapter = (shared as { adapter: LoadedAdapter }).adapter;
+      const both = await Promise.all([
+        adapter.convert(expected.document),
+        adapter.convert(expected.document),
+      ]);
+      for (const conversion of both) same(expected, conversion);
+    });
+
+    it("does not fail a call on one instance for a fault on the other", async () => {
+      const { copied } = await adapterCopy();
+      const glue = new URL("./trapping-bridge.js", import.meta.url);
+      glue.searchParams.set("real", compiled.glue);
+      const trapping = inWorker({ glue: glue.href, module: compiled.module });
+      const bridge = new WasmBridge(trapping);
+      const [shared] = await loadSharedAdapters(
+        bridgeFolder,
+        bridge,
+        copied.config.adapters,
+        copied,
+      );
+      const adapter = (shared as { adapter: LoadedAdapter }).adapter;
+      await Promise.all([
+        adapter.convert(expected.document),
+        adapter.convert(expected.document),
+      ]);
+      const fine = adapter.convert(expected.document);
+      const trapped = adapter.convert(await standIn(expected.document, "trap"));
+      await assert.rejects(
+        trapped,
+        (error) => isBridgeError(error) && error.kind === "bridge",
+      );
+      same(expected, await fine);
+    });
+  });
+
+  describe("given a build of the Bridge written again into its folder", () => {
+    it("compiles the module again", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "bridge-build-"));
+      try {
+        const built = (await components.bridge()).folder;
+        for (const file of ["cascade_bridge_bg.wasm", "cascade_bridge.js"])
+          await cp(join(built, file), join(folder, file));
+        const one = await compiledBridge(folder);
+        assert.equal(await compiledBridge(folder), one);
+        const later = new Date(Date.now() + 120_000);
+        await utimes(join(folder, "cascade_bridge_bg.wasm"), later, later);
+        assert.notEqual(await compiledBridge(folder), one);
       } finally {
         await rm(folder, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe("given a resolution that fails", () => {
+    const cache = join(tmpdir(), "no-such-cache");
+    const missing = "file:///no/such/repository.git";
+
+    it("keeps no rejection of a component's resolution", async () => {
+      const options = { siblingsIn: [], cache };
+      const { seen } = await probing(async () => {
+        for (let attempt = 0; attempt < 2; attempt += 1)
+          await resolveComponent({ repository: missing }, options).catch(
+            () => undefined,
+          );
+      });
+      assert.equal(seen.counts.get("components.resolved"), 2);
+    });
+
+    it("keeps no rejection of a search for the Bridge's package", async () => {
+      const options = { siblingsIn: [], cache };
+      const { seen } = await probing(async () => {
+        for (let attempt = 0; attempt < 2; attempt += 1)
+          await findBridgePackage(options, missing).catch(() => undefined);
+      });
+      assert.equal(seen.counts.get("bridge.package.found"), 2);
+    });
+
+    it("keeps no rejection of the release it downloads", async () => {
+      const one = releasedBridgePackage(cache, missing);
+      await assert.rejects(one);
+      const two = releasedBridgePackage(cache, missing);
+      await assert.rejects(two);
+      assert.notEqual(one, two);
     });
   });
 
