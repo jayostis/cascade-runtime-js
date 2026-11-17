@@ -659,10 +659,35 @@ describe("Importing a health export · pod.import()", () => {
               /budget/.test(error.message),
           );
           assert.deepEqual(await filesIn(at), held);
+          const after = await small.import(exported("x-e2"), { match: false });
+          assert.equal(after.refused, undefined, "the next import");
+          assert.ok(after.wrote.length > 0);
         } finally {
           await small.close();
         }
       });
+
+    it("rejects a budget that is not a positive number of seconds, or a whole number of MiB from 1 to 3072, naming the option", async () => {
+      const at = join(pods, "budget-invalid");
+      const refusing = await openPodWith(kept, at);
+      try {
+        for (const [name, budget] of [
+          ["zero seconds", { timeBudgetSeconds: 0 }],
+          ["negative seconds", { timeBudgetSeconds: -1 }],
+          ["seconds that are not a number", { timeBudgetSeconds: Number.NaN }],
+          ["zero MiB", { memoryBudgetMiB: 0 }],
+          ["a fraction of a MiB", { memoryBudgetMiB: 1.5 }],
+          ["more MiB than a heap holds", { memoryBudgetMiB: 4096 }],
+        ] as const)
+          await assert.rejects(
+            refusing.import(exported("x-e2"), { match: false, ...budget }),
+            /options\.(timeBudgetSeconds|memoryBudgetMiB) is not/,
+            name,
+          );
+      } finally {
+        await refusing.close();
+      }
+    });
 
     it("converts the export as without them when the budgets are the Bridge's own defaults", async () => {
       const at = join(pods, "budget-default");

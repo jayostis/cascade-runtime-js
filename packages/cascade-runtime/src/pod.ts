@@ -7,6 +7,7 @@ import {
   type Files,
   type Head,
   type Importer,
+  type ConvertBudget,
   type ImportProgress,
   type IndexEntry,
   type Layout,
@@ -73,7 +74,12 @@ function sorted(counts: Map<string, number>): Record<string, number> {
 
 export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
 
-export interface ImportOptions {
+/**
+ * `timeBudgetSeconds` and `memoryBudgetMiB` hold each document's conversion to the seconds and the heap, in whole MiB
+ * from 1 to 3072, they name; a conversion that passes either rejects the import with a `BridgeError` of kind `bridge`
+ * and the import files nothing. Left out, the Bridge's own apply: 120 seconds and 1024 MiB.
+ */
+export interface ImportOptions extends ConvertBudget {
   /** Claims each profile of the import that no counting About ties to the subject, with an About for it, for the owner. */
   readonly claimProfiles?: boolean;
   /** Runs the matcher on the import; on unless false. */
@@ -88,6 +94,8 @@ export function acceptImportOptions(options: ImportOptions): void {
     claimProfiles: true,
     match: true,
     onProgress: true,
+    timeBudgetSeconds: true,
+    memoryBudgetMiB: true,
   });
 }
 
@@ -875,12 +883,16 @@ class OpenPod implements Pod {
         claimedProfiles: [],
         unclaimedProfiles: [],
       };
-    const { onProgress } = options;
+    const { onProgress, timeBudgetSeconds, memoryBudgetMiB } = options;
     const filed = await this.#core.import(
       found.files,
       found.name,
       async () => (await this.#loadedBridge()).adapters,
       onProgress,
+      {
+        ...(timeBudgetSeconds !== undefined && { timeBudgetSeconds }),
+        ...(memoryBudgetMiB !== undefined && { memoryBudgetMiB }),
+      },
     );
     const activity = filed.activity;
     if (filed.refused !== undefined || activity === undefined)

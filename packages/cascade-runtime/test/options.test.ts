@@ -140,7 +140,7 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
       ])
         assert.match(
           await refusedWith(() => pod.import("x", options as never)),
-          /^pod\.import does not take (toString|constructor|__proto__): it takes claimProfiles, match, onProgress\.$/,
+          /^pod\.import does not take (toString|constructor|__proto__): it takes claimProfiles, match, onProgress, timeBudgetSeconds, memoryBudgetMiB\.$/,
         );
     });
   });
@@ -160,7 +160,7 @@ describe("Refusing an option a call does not know · import(), openPod(), connec
         await refusedWith(() =>
           pod.import("x", { aboutSubject: true, bogus: 1 } as never),
         ),
-        "pod.import does not take aboutSubject: it was renamed claimProfiles in build-6979c2fc. pod.import does not take bogus: it takes claimProfiles, match, onProgress.",
+        "pod.import does not take aboutSubject: it was renamed claimProfiles in build-6979c2fc. pod.import does not take bogus: it takes claimProfiles, match, onProgress, timeBudgetSeconds, memoryBudgetMiB.",
       );
     });
   });
