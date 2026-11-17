@@ -10,6 +10,7 @@ import {
   type Pod,
   type Pull,
   pullFiles,
+  type Row,
   type ExportSource,
 } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
@@ -34,7 +35,7 @@ describe("Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()", 
   let north: Pull;
   let looked: readonly ExportSource[];
   let imported: Done[];
-  let conditions: Record<string, string>[];
+  let conditions: Row[];
   let again: Done;
   let pod: Pod;
   let folder: string;

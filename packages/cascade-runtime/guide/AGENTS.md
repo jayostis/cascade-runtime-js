@@ -261,6 +261,11 @@ async function search(word) {
 
 ### Questions
 
+A column a question's entry in the vocabulary's `ro-crate-metadata.json` declares in `listColumns` comes back as an
+array of strings, each value as the declaration's separator ends it (a "; " followed by a record's IRI where
+`followedBy` says so, since a value's own text may hold "; "); where this list says a column is joined by "; ", read
+that as its array. `ask` with a query of your own has no list columns.
+
 - `entry/What it shows`: each entry's fields and its members', each with the record it came from, the lead's first.
 - `entry/What needs review`: entries a person should look at, and why.
 - `entry/Where it came from`: each member's arrival, import and hospital.

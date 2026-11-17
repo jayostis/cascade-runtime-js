@@ -3,6 +3,7 @@
 // name, id, a clinical date of a kind, or words it quotes), and each is compared with that field of the cited record
 // only: never a reference range, an interpretation, an update time or a neighbouring record. No Node: the source of a
 // citation is a parameter, and the one that reads downloads from disk is `node/downloads.ts`.
+import type { Row } from "./pod.js";
 import { codeStems } from "./terms.js";
 
 /** Where a citation points: a line of a download, a FHIR resource in one, or a pod entry as a pod's rows name it. */
@@ -1356,6 +1357,10 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
 
 const MEMBER_PREFIX = /^(urn:uuid:\S+) /;
 
+/** A cell of a question's row as its parts: a list column's values, or the parts of a text a "; " ends. */
+const partsOf = (cell: string | readonly string[]): readonly string[] =>
+  typeof cell === "string" ? cell.split("; ") : cell;
+
 /** A value a pod holds of an entry or of the person: the kind of field it is, and the record that states it, if one does. */
 export interface Held {
   readonly kind: keyof Fields;
@@ -1388,10 +1393,10 @@ export function entryHeld(
 }
 
 /** What the person's row of `pod/The person this pod is about` holds: each part of a column is "<record> <value>". */
-export function personHeld(row: Readonly<Record<string, string>>): Held[] {
+export function personHeld(row: Row): Held[] {
   const held: Held[] = [];
-  for (const [column, text] of Object.entries(row))
-    for (const part of text.split("; ")) {
+  for (const [column, cell] of Object.entries(row))
+    for (const part of partsOf(cell)) {
       const value = part.replace(MEMBER_PREFIX, "");
       const record = MEMBER_PREFIX.exec(part)?.[1];
       if (value !== "")
@@ -1440,7 +1445,7 @@ export function podRowsSource(
   rowsOf: (
     entry: string,
   ) => Promise<readonly Readonly<Record<string, string>>[] | undefined>,
-  personRows?: () => Promise<readonly Readonly<Record<string, string>>[]>,
+  personRows?: () => Promise<readonly Row[]>,
 ): Source {
   return {
     async at(cite) {
@@ -1455,10 +1460,10 @@ export function podRowsSource(
           fields: fieldsOf(personHeld(who)),
           source: [
             ...new Set(
-              Object.values(who).flatMap((text) =>
-                text
-                  .split("; ")
-                  .flatMap((part) => MEMBER_PREFIX.exec(part)?.[1] ?? []),
+              Object.values(who).flatMap((cell) =>
+                partsOf(cell).flatMap(
+                  (part) => MEMBER_PREFIX.exec(part)?.[1] ?? [],
+                ),
               ),
             ),
           ],

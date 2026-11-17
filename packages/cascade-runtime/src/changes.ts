@@ -1,7 +1,7 @@
 import { Refusal } from "@cascade-runtime/runtime/refusal";
 import { checkInput, type InputSchema } from "./check.js";
 import { acceptOptions } from "./options.js";
-import type { Row } from "./pod.js";
+import { text, type Row } from "./pod.js";
 
 /** Fewer results than this on either side of a medication's day is never a change. */
 export const MINIMUM_RESULTS = 3;
@@ -148,11 +148,11 @@ function scoreOf(before: readonly Result[], after: readonly Result[]) {
 }
 
 function named(row: Row, wanted: string): boolean {
-  const code = row.code;
+  const code = text(row.code);
   return (
     code === wanted ||
     notationOf(code) === wanted ||
-    (row.medication ?? "").toLowerCase() === wanted.toLowerCase()
+    (text(row.medication) ?? "").toLowerCase() === wanted.toLowerCase()
   );
 }
 
@@ -164,19 +164,21 @@ function results(rows: readonly Row[]): {
   const byTest = new Map<string, Result[]>();
   const undated = new Map<string, Row[]>();
   for (const row of rows) {
-    if (row.code === undefined) continue;
-    const day = dayOf(row.performed);
+    const code = text(row.code);
+    if (code === undefined) continue;
+    const day = dayOf(text(row.performed));
     if (day === undefined) {
-      undated.set(row.code, [...(undated.get(row.code) ?? []), row]);
+      undated.set(code, [...(undated.get(code) ?? []), row]);
       continue;
     }
+    const written = text(row.value);
     const value =
-      row.value !== undefined && DECIMAL.test(row.value.trim())
-        ? Number(row.value)
+      written !== undefined && DECIMAL.test(written.trim())
+        ? Number(written)
         : undefined;
-    const group = byTest.get(row.code) ?? [];
-    group.push({ day, row, value, unit: row.unit ?? "" });
-    byTest.set(row.code, group);
+    const group = byTest.get(code) ?? [];
+    group.push({ day, row, value, unit: text(row.unit) ?? "" });
+    byTest.set(code, group);
   }
   for (const group of byTest.values()) group.sort(byDay);
   return { byTest, undated };
@@ -228,21 +230,21 @@ function pair(
     : sideAfter.mean > sideBefore.mean
       ? "up"
       : "down";
-  const notation = notationOf(event.row.code);
+  const notation = notationOf(text(event.row.code));
   const testNotation = notationOf(test);
-  const name = event.row.medication ?? "";
+  const name = text(event.row.medication) ?? "";
   const label = notation ?? name;
-  const testName = series.find(({ row }) => row.test)?.row.test;
+  const testName = text(series.find(({ row }) => text(row.test))?.row.test);
   const change: LabChange = {
     key: `${event.kind === "after start" ? "start" : "stop"}:${label}:${testNotation ?? test}`,
     kind: event.kind,
     medication: {
       name,
-      ...(event.row.code ? { code: event.row.code } : {}),
+      ...(text(event.row.code) ? { code: text(event.row.code) } : {}),
       ...(notation ? { notation } : {}),
       date: event.day,
       dateIs: event.dateIs,
-      entry: event.row.entry ?? "",
+      entry: text(event.row.entry) ?? "",
     },
     test: {
       code: test,
@@ -273,9 +275,9 @@ function pair(
 
 /** A medication's place in time: its start of use, else the day its prescription was written, and which it is. */
 function placeOf(row: Row): { day: string; dateIs: DateIs } | undefined {
-  const started = dayOf(row.started);
+  const started = dayOf(text(row.started));
   if (started) return { day: started, dateIs: "start of use" };
-  const written = dayOf(row.written);
+  const written = dayOf(text(row.written));
   return written ? { day: written, dateIs: "prescription written" } : undefined;
 }
 
@@ -290,9 +292,9 @@ function therapies(medications: readonly Row[]) {
     { row: Row; started?: { day: string; dateIs: DateIs }; ended?: string }
   >();
   for (const row of medications) {
-    const label = notationOf(row.code) ?? row.medication ?? "";
+    const label = notationOf(text(row.code)) ?? text(row.medication) ?? "";
     const started = placeOf(row);
-    const ended = dayOf(row.ended);
+    const ended = dayOf(text(row.ended));
     const kept = byDrug.get(label);
     if (kept === undefined) {
       byDrug.set(label, {
@@ -450,7 +452,7 @@ export function labSeriesIn(labs: readonly Row[], test: string): LabSeries {
   if (code === undefined) throw new Refusal(`no test ${test} in the pod`);
   const all = series.get(code)!;
   const notation = notationOf(code);
-  const name = all.find(({ row }) => row.test)?.row.test;
+  const name = text(all.find(({ row }) => text(row.test))?.row.test);
   return {
     test: {
       code,
@@ -463,7 +465,7 @@ export function labSeriesIn(labs: readonly Row[], test: string): LabSeries {
         date: day,
         value: value!,
         unit,
-        ...(row.entry ? { entry: row.entry } : {}),
+        ...(text(row.entry) ? { entry: text(row.entry) } : {}),
       })),
     left: {
       unparsed: all.filter(({ value }) => value === undefined).length,
@@ -496,16 +498,20 @@ export interface TimelineEntry {
 /** Each medication with its start, the day its prescription was written and its end, by start, else by that day. */
 export function timelineIn(medications: readonly Row[]): TimelineEntry[] {
   const timed = medications.map((row): TimelineEntry => {
-    const notation = notationOf(row.code);
+    const notation = notationOf(text(row.code));
     return {
-      name: row.medication ?? "",
-      ...(row.code ? { code: row.code } : {}),
+      name: text(row.medication) ?? "",
+      ...(text(row.code) ? { code: text(row.code) } : {}),
       ...(notation ? { notation } : {}),
-      ...(row.status ? { status: row.status } : {}),
-      ...(dayOf(row.started) ? { started: dayOf(row.started) } : {}),
-      ...(dayOf(row.written) ? { written: dayOf(row.written) } : {}),
-      ...(dayOf(row.ended) ? { ended: dayOf(row.ended) } : {}),
-      ...(row.entry ? { entry: row.entry } : {}),
+      ...(text(row.status) ? { status: text(row.status) } : {}),
+      ...(dayOf(text(row.started))
+        ? { started: dayOf(text(row.started)) }
+        : {}),
+      ...(dayOf(text(row.written))
+        ? { written: dayOf(text(row.written)) }
+        : {}),
+      ...(dayOf(text(row.ended)) ? { ended: dayOf(text(row.ended)) } : {}),
+      ...(text(row.entry) ? { entry: text(row.entry) } : {}),
     };
   });
   const place = (entry: TimelineEntry): string =>

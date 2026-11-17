@@ -56,6 +56,7 @@ import {
   type Parts,
   type Pod,
   type Row,
+  type TextRow,
 } from "../pod.js";
 import { IN_THIS_THREAD, type RowsWork } from "../rows.js";
 import type { RowsAnswer, RowsCall } from "./tables-worker.js";
@@ -71,7 +72,9 @@ export type {
   Opened,
   Pod,
   Row,
+  TextRow,
 } from "../pod.js";
+export { textRow } from "../pod.js";
 export * from "../changes.js";
 export * from "../connect/index.js";
 export * from "../tools.js";
@@ -683,6 +686,11 @@ class BrowserPod implements Pod {
     return (await this.#pod()).match(activity);
   }
 
+  ask(question: string, options?: { lens?: string }): Promise<Row[]>;
+  ask(
+    question: { query: string },
+    options?: { lens?: string },
+  ): Promise<TextRow[]>;
   async ask(
     question: string | { query: string },
     options: { lens?: string } = {},
@@ -696,7 +704,7 @@ class BrowserPod implements Pod {
     return (await this.#pod()).ask(question, options);
   }
 
-  async agreement(): Promise<Row[]> {
+  async agreement(): Promise<TextRow[]> {
     if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
     if (this.#opened === undefined) {
       const rows = await this.#kept?.agreement();
@@ -705,17 +713,17 @@ class BrowserPod implements Pod {
     return (await this.#pod()).agreement();
   }
 
-  async medicationClasses(): Promise<Row[]> {
+  async medicationClasses(): Promise<TextRow[]> {
     if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
     return (await this.#pod()).medicationClasses();
   }
 
-  async panelResults(panel: string): Promise<Row[]> {
+  async panelResults(panel: string): Promise<TextRow[]> {
     if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
     return (await this.#pod()).panelResults(panel);
   }
 
-  async joinedBy(): Promise<Row[]> {
+  async joinedBy(): Promise<TextRow[]> {
     if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
     return (await this.#pod()).joinedBy();
   }

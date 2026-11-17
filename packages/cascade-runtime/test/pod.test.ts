@@ -40,6 +40,7 @@ import {
   SEALED_INDEX,
   SealedIndex,
   type Triple,
+  valuesOf,
 } from "@cascade-runtime/runtime";
 import {
   checkouts,
@@ -71,7 +72,14 @@ import { answersBeside, resolved } from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
 import { samplesOf } from "../src/node/samples.js";
 // A browser's `openPod` reads published answers with `keptPod` and `withLookups`, which a Node test cannot call as a page does.
-import { keptPod, openPodWith, type Parts } from "../src/pod.js";
+import {
+  keptPod,
+  openPodWith,
+  type Parts,
+  type Row,
+  type TextRow,
+  textRow,
+} from "../src/pod.js";
 // The race of two openings is in `podKey`, which the public `openPod` does not let two callers reach at once.
 import { podKey } from "../src/encrypted.js";
 import { settled } from "./settled.js";
@@ -93,7 +101,7 @@ const UUID4 =
 const SESSION = "5c5734fb-433f-4ed1-8de7-1ad16d7d21cc";
 
 type Looked = Awaited<ReturnType<Pod["look"]>>;
-type Rows = Awaited<ReturnType<Pod["ask"]>>;
+type Rows = TextRow[];
 type Done = Awaited<ReturnType<Pod["enter"]>>;
 type Imported = Awaited<ReturnType<Pod["import"]>>;
 
@@ -228,11 +236,12 @@ async function entryFor(of: Pod, session?: string): Promise<string> {
 
 async function allergens(of: Pod): Promise<string[]> {
   return (await of.ask(QUESTION))
+    .map(textRow)
     .map(({ allergenName }) => allergenName ?? "")
     .sort();
 }
 
-function select(of: Pod, query: string): Promise<Rows> {
+function select(of: Pod, query: string): Promise<TextRow[]> {
   return of.ask({ query: `${PREFIXES}${query}` });
 }
 
@@ -397,7 +406,9 @@ describe("Opening a pod · openPod()", () => {
 
   it("gives an owner and files that all lie under its address", async () => {
     assert.ok(fresh.owner.startsWith(fresh.address));
-    const rows = await fresh.ask("pod/Which file states each thing");
+    const rows = (await fresh.ask("pod/Which file states each thing")).map(
+      textRow,
+    );
     assert.ok(rows.length > 0);
     for (const { file } of rows)
       assert.ok(file?.startsWith(fresh.address), `${file}`);
@@ -564,7 +575,7 @@ describe("Looking into an export before importing · pod.look()", () => {
 describe("Importing a health export · pod.import()", () => {
   let waiting: Pod;
   let imported: Imported;
-  let shown: Rows;
+  let shown: Row[];
   let afterClaim: string[];
   let matched: Done;
   let profile: string;
@@ -862,12 +873,41 @@ describe("Asking a pod questions · pod.ask()", () => {
     await alex.close();
   });
 
-  it("answers a named question with rows of plain strings", async () => {
+  it("answers a named question with a string for each column and an array of strings for each column the vocabulary declares a list", async () => {
     const rows = await alex.ask(QUESTION);
     assert.ok(rows.length > 0);
-    for (const row of rows)
+    for (const row of rows) {
       for (const [column, value] of Object.entries(row))
-        assert.equal(typeof value, "string", column);
+        if (column === "sources" || column === "reactionsByRecord") {
+          assert.ok(Array.isArray(value), column);
+          assert.ok(
+            value.length > 0 && value.every((each) => each.startsWith("urn:")),
+            `${column}: ${JSON.stringify(value)}`,
+          );
+        } else assert.equal(typeof value, "string", column);
+    }
+  });
+
+  it("gives a query of its own's columns as strings, whatever their names", async () => {
+    const [row] = await alex.ask({
+      query: `SELECT ("a; urn:b" AS ?sources) WHERE {}`,
+    });
+    assert.equal(row?.sources, "a; urn:b");
+  });
+
+  it("ends a list column's value only at the declared separator followed by the declared start, as a value's own text may hold the separator", () => {
+    const records = { column: "x", separator: "; ", followedBy: "urn:" };
+    assert.deepEqual(
+      valuesOf("urn:a 5 mg; as needed, daily; urn:b 10 mg", records),
+      ["urn:a 5 mg; as needed, daily", "urn:b 10 mg"],
+    );
+    assert.deepEqual(valuesOf("urn:a one", records), ["urn:a one"]);
+    assert.deepEqual(valuesOf("", records), []);
+    assert.deepEqual(valuesOf("H; L", { column: "x", separator: "; " }), [
+      "H",
+      "L",
+    ]);
+    assert.deepEqual(valuesOf("urn:a; ; urn:b", records), ["urn:a; ", "urn:b"]);
   });
 
   it("runs the app's own SELECT under the lens named, and returns none of the `export` lens's rows when none is named", async () => {
@@ -1198,7 +1238,7 @@ const NOT_BUILT = new Error("the pod was built");
 describe("Opening a pod again · openPod()", () => {
   let again: string;
   let made: { address: string; subject: string; owner: string };
-  let rows: Rows;
+  let rows: Row[];
 
   /** The parts that open a pod with a build that fails, so that an answer that is not kept shows it. */
   const unbuilt = (build: Partial<Parts["build"]> = {}): Parts => ({
@@ -1411,7 +1451,7 @@ describe("Opening a pod again · openPod()", () => {
       const at = join(pods, "retitled");
       await cp((await alexPod()).folder, at, { recursive: true });
       const first = await open(at);
-      let rows: Rows;
+      let rows: Row[];
       try {
         assert.equal(first.titled, false);
         rows = await first.ask(QUESTION);
@@ -2429,7 +2469,9 @@ describe("Publishing a pod for a browser · answersToPublish(), samplesToPublish
     }
     publishing = await partsOf(await checkouts(root));
     codes = (await alex.ask(QUESTION)).flatMap((row) =>
-      Object.values(row).filter((value) => value.startsWith("http")),
+      Object.values(row).flatMap((value) =>
+        typeof value === "string" && value.startsWith("http") ? [value] : [],
+      ),
     );
     published = await answersToPublish(publishing, podFiles, {
       name: "pod",
