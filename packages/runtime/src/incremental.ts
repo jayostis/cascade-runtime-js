@@ -173,12 +173,12 @@ export class KeptBuild {
     return this.#union;
   }
 
-  /** The views written. */
   /** The paths of the pod's files the build read. */
   get paths(): ReadonlySet<string> {
     return this.#loaded;
   }
 
+  /** The views written. */
   get held(): ReadonlySet<string> {
     return this.#held;
   }
