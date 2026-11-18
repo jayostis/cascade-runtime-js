@@ -1961,11 +1961,16 @@ export class CorePod {
     const digests = new Map<string, string>();
     for (const [path, digest] of Object.entries(header.built)) {
       const bytes = await pod.read(path);
-      if (bytes === undefined || hex(await fileDigest(bytes)) !== digest)
-        return undefined;
+      if (bytes === undefined) return undefined;
       files.set(path, bytes);
       digests.set(path, digest);
     }
+    const held = await timedAside("core-pod.builtDigests", async () => {
+      for (const [path, bytes] of files)
+        if (hex(await fileDigest(bytes)) !== digests.get(path)) return false;
+      return true;
+    });
+    if (!held) return undefined;
     const back = await KeptBuild.readBack(
       this.#rebuilding(build, incremental),
       state,
