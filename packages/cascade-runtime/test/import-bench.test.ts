@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { openPod } from "cascade-runtime";
 import { probing } from "@cascade-runtime/runtime/probe";
 import {
+  againstBudget,
   HOT_SPOTS,
   importBench,
   openBench,
@@ -13,11 +14,15 @@ import {
   profileOf,
   seriesBench,
   syntheticPull,
+  syntheticPulls,
   tableOf,
 } from "./import-bench.js";
 
 interface Entry {
   resourceType: string;
+  id: string;
+  result?: { reference: string }[];
+  context?: { related: { reference: string }[] };
   code?: { coding: { code: string }[] };
   vaccineCode?: { coding: { code: string }[] };
   medicationCodeableConcept?: { coding: { code: string }[] };
@@ -28,15 +33,33 @@ interface Entry {
   performedDateTime?: string;
 }
 
+/** The entries of each pull of `total` resources, as the Bundles hold them. */
+function entriesOf(total: number, repeats?: boolean): { resource: Entry }[][] {
+  return syntheticPulls(total, { repeats }).map(
+    (pull) =>
+      (
+        JSON.parse(new TextDecoder().decode(pull.get("pull/bundle.json"))) as {
+          entry: { resource: Entry }[];
+        }
+      ).entry,
+  );
+}
+
+/** The records of the pulls that stand for themselves, each once: every entry but the reports and notes made from laboratory results. */
 function bundleOf(
   total: number,
   repeats?: boolean,
 ): { entry: { resource: Entry }[] } {
-  return JSON.parse(
-    new TextDecoder().decode(
-      syntheticPull(total, { repeats }).get("pull/bundle.json"),
-    ),
-  ) as { entry: { resource: Entry }[] };
+  return {
+    entry: [
+      ...new Map(
+        entriesOf(total, repeats)
+          .flat()
+          .filter(({ resource }) => /^r[0-9]+$/.test(resource.id))
+          .map((one) => [one.resource.id, one]),
+      ).values(),
+    ],
+  };
 }
 
 /** For each kind with any, how many records repeat the code and day of an earlier record of that kind. */
@@ -125,6 +148,18 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       const bound = run.counts["matcher.boundRecords"] ?? 0;
       const taken = run.counts["matcher.takenRecords"] ?? 0;
       assert.ok(bound > 0 && bound < taken, `${bound} of ${taken} bound`);
+    });
+
+    it("times each layout view alone, so that the views' spans sum to no more than the build they are in", () => {
+      const ms = (name: string) =>
+        run.spans.find((span) => span.name === name)?.ms ?? 0;
+      const views = run.spans.filter(({ name }) =>
+        name.startsWith("build.query:"),
+      );
+      assert.ok(views.length > 0);
+      assert.ok(
+        views.reduce((all, { ms }) => all + ms, 0) <= ms("build.queried"),
+      );
     });
 
     it("counts the rows of each matcher rule that ran", () => {
@@ -272,7 +307,7 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         Condition: 2,
         Immunization: 2,
         MedicationRequest: 2,
-        Observation: 10,
+        Observation: 12,
         Procedure: 1,
       });
     });
@@ -308,22 +343,102 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
     });
   });
 
+  describe("given a budget of the time of each stage", () => {
+    it("finds a stage over its budget or missing from the run, and one within", () => {
+      const run = {
+        importMs: 90,
+        spans: [{ name: "pod.match", calls: 1, ms: 40 }],
+      } as Measured;
+      assert.deepEqual(
+        againstBudget(run, {
+          resources: 1,
+          stagesMs: { importMs: 100, "pod.match": 30, "pod.judge": 30 },
+        }).map(({ stage, within }) => [stage, within]),
+        [
+          ["importMs", true],
+          ["pod.match", false],
+          ["pod.judge", false],
+        ],
+      );
+    });
+  });
+
   describe("given a pull of no resources, one, and ten", () => {
     it("saves a Bundle of that many entries, each with an id of its own", () => {
       for (const total of [0, 1, 10]) {
-        const bundle = JSON.parse(
-          new TextDecoder().decode(
-            syntheticPull(total).get("pull/bundle.json"),
-          ),
-        ) as { entry: { resource: { id: string } }[] };
-        assert.equal(bundle.entry.length, total);
-        assert.equal(
-          new Set(bundle.entry.map((e) => e.resource.id)).size,
-          total,
-        );
+        const { entry } = bundleOf(total);
+        assert.equal(entry.length, total);
+        assert.equal(new Set(entry.map((e) => e.resource.id)).size, total);
       }
     });
   });
+
+  describe("given a pull of 1000 resources, which is two pulls", () => {
+    const [first, later] = entriesOf(1000) as [
+      { resource: Entry }[],
+      { resource: Entry }[],
+    ];
+    const ids = (entries: { resource: Entry }[]) =>
+      new Set(entries.map(({ resource }) => resource.id));
+
+    it("splits it into a first pull and a later one that begins again with the last cycle of the first", () => {
+      const shared = [...ids(first)].filter((id) => ids(later).has(id));
+      assert.ok(shared.filter((id) => /^r[0-9]+$/.test(id)).length === 20);
+      assert.equal(
+        new Set(
+          [...ids(first), ...ids(later)].filter((id) => /^r[0-9]+$/.test(id)),
+        ).size,
+        1000,
+      );
+    });
+
+    it("repeats a record only one earlier record has, in pairs and never in chains", () => {
+      const all = bundleOf(1000).entry.map(({ resource }) => resource);
+      const key = (r: Entry): string =>
+        JSON.stringify([
+          r.resourceType,
+          (r.code ?? r.vaccineCode ?? r.medicationCodeableConcept)?.coding[0]
+            ?.code,
+          (
+            r.effectiveDateTime ??
+            r.onsetDateTime ??
+            r.authoredOn ??
+            r.occurrenceDateTime ??
+            r.performedDateTime
+          )?.slice(0, 10),
+        ]);
+      const sizes = new Map<string, number>();
+      for (const r of all) sizes.set(key(r), (sizes.get(key(r)) ?? 0) + 1);
+      assert.equal(Math.max(...sizes.values()), 2);
+    });
+
+    it("makes reports of laboratory results and notes on others, each naming records that are in the pull", () => {
+      const all = [...first, ...later].map(({ resource }) => resource);
+      const held = ids(all.map((resource) => ({ resource })));
+      const reports = all.filter((r) => r.resourceType === "DiagnosticReport");
+      const notes = all.filter((r) => r.resourceType === "DocumentReference");
+      assert.ok(reports.length > 0 && notes.length > 0);
+      for (const r of reports)
+        for (const { reference } of r.result ?? [])
+          assert.ok(held.has(reference.replace("Observation/", "")), reference);
+      for (const r of notes)
+        for (const { reference } of r.context?.related ?? [])
+          assert.ok(held.has(reference.replace("Observation/", "")), reference);
+    });
+
+    it("writes the time of one cycle in three to the minute, as C-CDA does, and the rest to the second", () => {
+      const times = bundleOf(1000).entry.flatMap(({ resource }) =>
+        resource.effectiveDateTime === undefined
+          ? []
+          : [resource.effectiveDateTime],
+      );
+      assert.ok(times.some((t) => /T[0-9][0-9]:[0-9][0-9]Z$/.test(t)));
+      assert.ok(
+        times.some((t) => /T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/.test(t)),
+      );
+    });
+  });
+
   describe("given a series of two imports of 20 resources into one pod, and a pod of 20 opened again", () => {
     it("runs on from the records before it, so that the pulls share no id", () => {
       const ids = [0, 20].flatMap((from) =>
@@ -335,7 +450,8 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
           ) as { entry: { resource: { id: string } }[] }
         ).entry.map((e) => e.resource.id),
       );
-      assert.equal(new Set(ids).size, 40);
+      assert.equal(new Set(ids).size, ids.length);
+      assert.equal(ids.length, 42);
     });
 
     it("measures each import of the series, with nothing refused, and opens an encrypted pod again", async () => {
