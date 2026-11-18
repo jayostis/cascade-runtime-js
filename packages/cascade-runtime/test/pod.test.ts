@@ -49,6 +49,7 @@ import {
   headerIn,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { probing } from "@cascade-runtime/runtime/probe";
 import { pullFiles } from "../src/connect/index.js";
 import { shipped } from "../src/tables.js";
 import {
@@ -1697,6 +1698,13 @@ describe("Recording the owner's judgment · pod.judge()", () => {
         (await owned.judge(authored("[ a prov:SoftwareAgent ]"))).refused,
         undefined,
       );
+    });
+
+    it("checks the machine basis once for a judgment, not once to prepare it and again to file it", async () => {
+      const { seen } = await probing(() =>
+        owned.judge(authored("[ a prov:SoftwareAgent ]")),
+      );
+      assert.equal(seen.counts.get("shapes.machine-basis-check"), 1);
     });
 
     it("files a machine basis by an author only the vocabulary types: cascade:CascadeMatcher, or an agent the judgment types a cascade:Server", async () => {
