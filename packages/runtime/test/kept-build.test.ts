@@ -276,12 +276,14 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
     const SERIES = "urn:example:series";
     const FILED = "urn:uuid:5b0c6c1e-3f1d-4c8e-9a51-0d6f2b7a9c11";
     const UNFILED = "urn:uuid:5b0c6c1e-3f1d-4c8e-9a51-0d6f2b7a9c12";
+    const UNHELD = "urn:uuid:5b0c6c1e-3f1d-4c8e-9a51-0d6f2b7a9c13";
     let hashOf: (
       change: Partial<CorePodOptions>,
     ) => Promise<string | undefined>;
     let files: Record<string, string>;
     let laidOut: Layout;
     let tables: (versions: readonly string[]) => Promise<References>;
+    let base: CorePodOptions;
 
     before(async () => {
       const vocabularyFiles = await vocabulary();
@@ -311,9 +313,11 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         [laidOut.preferences]: "<#settings> a <urn:example:Settings> .\n",
         [laidOut.version(series, FILED)]:
           `<${FILED}> a <urn:example:Version> .\n`,
+        [laidOut.version(series, UNHELD)]:
+          `<${UNHELD}> a <urn:example:Version> .\n`,
         ".DS_Store": "junk",
       };
-      const base: CorePodOptions = {
+      base = {
         runtime: RUNTIME,
         pod: new MemoryFiles(ADDRESS),
         address: ADDRESS,
@@ -375,9 +379,14 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         ["the lens", { build: { ...build({}), lens: "export" } }, true],
         ["the pod's address", { address: "https://other.example/" }, true],
         [
-          "a version of a table the pod files arriving in the app's tables",
-          { references: () => tables([FILED, UNFILED]) },
+          "a version the pod files arriving in the app's tables",
+          { references: () => tables([FILED, UNHELD]) },
           true,
+        ],
+        [
+          "a version the pod does not file arriving in the app's tables",
+          { references: () => tables([FILED, UNFILED]) },
+          false,
         ],
         [
           "a table the pod files nothing of arriving in the app's tables",
@@ -468,6 +477,13 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         if (((await hashOf(change)) !== own) !== changes)
           found.push(`${what}: ${changes ? "same hash" : "another hash"}`);
       assert.deepEqual(found, []);
+    });
+
+    it("keeps nothing beside the pod in a fork of it, which stands over a copy of its files", async () => {
+      const pod = new CorePod({ ...base, pod: await podWith({}) });
+      assert.ok((await pod.buildInputsHash()) !== undefined);
+      const fork = await pod.fork(base.time);
+      assert.equal(await fork.buildInputsHash(), undefined);
     });
   });
 
