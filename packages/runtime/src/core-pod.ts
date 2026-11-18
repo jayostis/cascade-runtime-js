@@ -556,17 +556,15 @@ export class CorePod {
       this.#built === undefined
     ) {
       const stated = await podStated(pod, layout, union.store);
-      const back = await this.#writtenBuild(build, build.incremental, {
-        address,
-        at: stated.at ?? time.now(),
-        title,
-      });
+      union.store.free?.();
+      const state = this.#state(stated.at ?? time.now());
+      const back = await this.#writtenBuild(build, build.incremental, state);
       if (back !== undefined) {
-        union.store.free?.();
         this.#built = back.kept;
         this.#builtDigests = back.digests;
         return back.kept.union;
       }
+      return this.#builtForRead(build, build.incremental, state, stated);
     }
     await podFiles(pod, layout, address, union);
     if (build === undefined) {
@@ -1602,8 +1600,13 @@ export class CorePod {
     )
       return kept;
     return this.#held(DATASET + build.lens, async () => {
+      const back = await this.#writtenBuild(
+        build,
+        incremental,
+        this.#state(at),
+      );
       const whole =
-        (await this.#writtenBuild(build, incremental, this.#state(at))) ??
+        back ??
         (await timedAside("kept.whole", () =>
           KeptBuild.whole(
             this.#rebuilding(build, incremental),
@@ -1611,7 +1614,7 @@ export class CorePod {
           ),
         ));
       this.#built = whole.kept;
-      this.#builtDigests = "digests" in whole ? whole.digests : new Map();
+      this.#builtDigests = back?.digests ?? new Map<string, string>();
       this.#builtBefore = whole.files;
       return whole.kept.union;
     });
@@ -1912,6 +1915,53 @@ export class CorePod {
       { derived: kept.subarray(end + 1), files },
     );
     return { ...back, digests };
+  }
+
+  /**
+   * The pod built whole for a read, kept as the build the next step continues from and, once the pod closes, beside the
+   * pod (C8), so the next session reads it back. When the manifest names another hash than the build's, as after an
+   * upgrade, the read writes the files the build writes too, the manifest last, as a step would; it writes no file a step
+   * does not write, and a write that fails, as to a pod on a read-only disk, keeps nothing and answers all the same.
+   */
+  async #builtForRead(
+    build: PodBuildOption,
+    incremental: VocabularyBuild,
+    pod: PodState,
+    stated: { readonly inputsHash?: string },
+  ): Promise<Union> {
+    const { layout, address } = this.#options;
+    const inputsHash = await this.#inputsHash(build, incremental);
+    const state = {
+      ...pod,
+      ...(inputsHash === undefined ? {} : { inputsHash }),
+    };
+    const whole = await timedAside("kept.whole", () =>
+      KeptBuild.whole(this.#rebuilding(build, incremental), state),
+    );
+    this.#built = whole.kept;
+    const bytes = [...whole.files]
+      .map(
+        ([path, triples]) =>
+          [path, builtFileBytes(layout, address, path, triples)] as const,
+      )
+      .sort(
+        ([a], [b]) =>
+          Number(a === layout.manifest) - Number(b === layout.manifest),
+      );
+    const written =
+      stated.inputsHash === inputsHash ||
+      (await writeAll(this.#options.pod, bytes).then(
+        () => true,
+        () => false,
+      ));
+    if (written) {
+      this.#builtDigests = new Map();
+      for (const [path, made] of bytes)
+        this.#builtDigests.set(path, hex(await fileDigest(made)));
+      this.#toKeep = inputsHash;
+      if (stated.inputsHash !== inputsHash) this.#kept.delete(REVISION);
+    }
+    return whole.kept.union;
   }
 
   /**
