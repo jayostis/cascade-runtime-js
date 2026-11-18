@@ -126,7 +126,8 @@ export function nativeOxigraph(
 
 /**
  * The engine `CASCADE_OXIGRAPH` asks for: `wasm`; `native`, which throws where no native build loads; or, unset or
- * `auto`, the native build where it loads and the WebAssembly build elsewhere.
+ * `auto`, the native build where it loads and the WebAssembly build elsewhere: where looking for it throws too, as
+ * reading the cache does under Node's permission model.
  */
 export function chooseOxigraph(
   choice: string | undefined = process.env[OXIGRAPH_CHOICE],
@@ -141,7 +142,12 @@ export function chooseOxigraph(
       return engine;
     }
     case "auto": {
-      const engine = native();
+      let engine: OxigraphEngine | Error;
+      try {
+        engine = native();
+      } catch (error) {
+        engine = error instanceof Error ? error : new Error(String(error));
+      }
       return engine instanceof Error ? wasmOxigraph : engine;
     }
     default:
