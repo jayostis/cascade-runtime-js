@@ -1707,6 +1707,33 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       assert.equal(seen.counts.get("shapes.machine-basis-check"), 1);
     });
 
+    it("checks the machine basis again for a judgment of the same name that differs only in a subclass statement it states", async () => {
+      const name = "urn:uuid:0c7b2e48-91d5-4a3f-b6e2-48d1f0a97c35";
+      const host = "urn:uuid:5e1d9a73-2c46-4b08-8f35-a7d0c3b91e64";
+      const named = (more: string): string =>
+        authored(
+          `<${host}>`,
+          `
+<${host}> a prov:SoftwareAgent, <urn:example:KindOfAgent> .${more}`,
+        ).replaceAll("urn:cascade:this-judgment", name);
+      // The first files what the pod then holds of the host, so the second reads the same types the third will.
+      for (const again of ["first", "second"])
+        assert.equal(
+          (await owned.judge(named(""))).refused,
+          undefined,
+          `the kind is a software agent only, ${again}`,
+        );
+      await assert.rejects(
+        owned.judge(
+          named(
+            "\n<urn:example:KindOfAgent> <http://www.w3.org/2000/01/rdf-schema#subClassOf> prov:Person .",
+          ),
+        ),
+        (error: Error) => error.message.includes("software agent"),
+        "the kind this judgment says is a person",
+      );
+    });
+
     it("files a machine basis by an author only the vocabulary types: cascade:CascadeMatcher, or an agent the judgment types a cascade:Server", async () => {
       assert.equal(
         (await owned.judge(authored("cascade:CascadeMatcher"))).refused,
