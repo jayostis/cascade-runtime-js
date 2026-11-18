@@ -150,6 +150,30 @@ export class KeptLines {
   held: ReadonlySet<string> | undefined;
 }
 
+/** The `KeptLines` of each built file by its path, which hold only the paths a rebuild still builds. */
+export class KeptFiles {
+  readonly #of = new Map<string, KeptLines>();
+
+  get size(): number {
+    return this.#of.size;
+  }
+
+  of(path: string): KeptLines {
+    let found = this.#of.get(path);
+    if (found === undefined) {
+      found = new KeptLines();
+      this.#of.set(path, found);
+    }
+    return found;
+  }
+
+  /** Forgets the lines of each path not in `paths`: a file a rebuild no longer builds. */
+  keepOnly(paths: ReadonlySet<string>): void {
+    for (const path of [...this.#of.keys()])
+      if (!paths.has(path)) this.#of.delete(path);
+  }
+}
+
 /** The two sorted runs as one, in the order `sort()` gives. */
 function merged(a: readonly string[], b: readonly string[]): string[] {
   const out = new Array<string>(a.length + b.length);

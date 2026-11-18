@@ -18,6 +18,7 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { probing } from "../src/probe.js";
 import {
   iri,
+  KeptFiles,
   KeptLines,
   literal,
   ntriples,
@@ -963,6 +964,42 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       const returned = await lines(() => ntriples(back, kept));
       assert.deepEqual(returned.counts, { total: 10, written: 2, sorted: 2 });
       assert.deepEqual(returned.bytes, ntriples(back));
+    });
+
+    it("writes a blank node's line again as the bytes a write from nothing gives, whether the node is kept or replaced", async () => {
+      const kept = new KeptLines();
+      const node = {
+        termType: "BlankNode",
+        value: "b1",
+      } as unknown as Triple[0];
+      const other = {
+        termType: "BlankNode",
+        value: "b2",
+      } as unknown as Triple[0];
+      const about: Triple = [node, iri("urn:example:a"), literal("a")];
+      const rest = record(1);
+      const first = [...rest, about];
+      await lines(() => ntriples(first, kept));
+
+      const same = await lines(() => ntriples(first, kept));
+      assert.deepEqual(same.counts, { total: 5, written: 0, sorted: 0 });
+      assert.deepEqual(same.bytes, ntriples(first));
+
+      const renamed: Triple = [other, iri("urn:example:a"), literal("a")];
+      const second = [...rest, renamed];
+      const swapped = await lines(() => ntriples(second, kept));
+      assert.deepEqual(swapped.counts, { total: 5, written: 1, sorted: 1 });
+      assert.deepEqual(swapped.bytes, ntriples(second));
+    });
+
+    it("forgets the lines of a file a rebuild no longer builds", () => {
+      const files = new KeptFiles();
+      files.of("a.nt");
+      files.of("b.nt");
+      files.of("c.nt");
+      files.keepOnly(new Set(["a.nt", "c.nt", "d.nt"]));
+      assert.equal(files.size, 2);
+      assert.equal(files.of("b.nt").sorted, undefined);
     });
   });
 

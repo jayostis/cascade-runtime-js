@@ -49,7 +49,7 @@ import { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
 import { type Act, same, StepWrites } from "./pod.js";
 import {
   iri,
-  KeptLines,
+  KeptFiles,
   literal,
   ntriples,
   RDF,
@@ -162,7 +162,10 @@ export interface PodBuildOption {
   readonly incremental?: VocabularyBuild;
   /**
    * For tests: after each step rebuilt in part, builds the pod whole too, and throws where it differs from the build in
-   * part, or where a file written from the kept lines is not the bytes of one written from nothing, or from the build read back from what the step wrote and the derived state as it is kept beside the pod.
+   * part, or where a file written from the kept lines is not the bytes of one written from the same triples with nothing
+   * kept, or from the build read back from what the step wrote and the derived state as it is kept beside the pod. The
+   * file check compares only bytes of the same triples, so it cannot catch a write closure gone stale: one that reads
+   * what changed between rebuilds, which a fresh write would not carry over.
    */
   readonly verify?: boolean;
   /** The quads the matcher's views may remove from the kept build's store and add again before it is renewed. */
@@ -808,20 +811,11 @@ export class CorePod {
   }
 
   /** Each built file's lines by the triple each writes, kept while the build is: a step's rebuild hands back the triples that did not change as they were. */
-  #lines = new Map<string, KeptLines>();
-
-  #linesOf(path: string): KeptLines {
-    let found = this.#lines.get(path);
-    if (found === undefined) {
-      found = new KeptLines();
-      this.#lines.set(path, found);
-    }
-    return found;
-  }
+  #lines = new KeptFiles();
 
   /** Frees the build kept across steps; the next step builds whole. */
   #dropBuilt(): void {
-    this.#lines = new Map();
+    this.#lines = new KeptFiles();
     this.#built?.free();
     this.#built = undefined;
     this.#builtHash = undefined;
@@ -2218,6 +2212,7 @@ export class CorePod {
     );
     this.#built = whole.kept;
     this.#builtHash = inputsHash;
+    this.#lines = new KeptFiles();
     const bytes = [...whole.files]
       .map(
         ([path, triples]) =>
@@ -2424,6 +2419,7 @@ export class CorePod {
       }
       const { inputsHash } = state;
       const made = files;
+      this.#lines.keepOnly(new Set(made.keys()));
       const bytes = await timedAside("core-pod.rebuild.bytes", async () =>
         [...made]
           .map(
@@ -2435,7 +2431,7 @@ export class CorePod {
                   address,
                   path,
                   triples,
-                  this.#linesOf(path),
+                  this.#lines.of(path),
                 ),
               ] as const,
           )
