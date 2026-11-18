@@ -143,11 +143,25 @@ async function resolve(): Promise<ResolvedParts> {
   const { version } = JSON.parse(
     await readFile(join(PACKAGE, "package.json"), "utf8"),
   ) as { version: string };
-  const stored =
-    /-commit-[0-9a-f]+$/.test(version) &&
-    parts.local.resolved.uncommitted === 0;
-  return stored
-    ? { ...parts, answers: { runtime: version, at: answersBeside } }
+  return keptBeside(parts, version);
+}
+
+/**
+ * The parts with what a pod in a folder keeps beside it: its answers, when a packed build of the runtime at a commit
+ * computes them, and its build wherever the runtime (N7) and the components it runs are each at a commit, since the
+ * build's hash names the runtime by its IRI. A runtime with changes outside a commit keeps neither.
+ */
+export function keptBeside<
+  P extends {
+    readonly performer: string;
+    readonly local: { readonly resolved: { readonly uncommitted?: number } };
+  },
+>(parts: P, version: string): P & Pick<Parts, "answers" | "builtBeside"> {
+  const clean = parts.local.resolved.uncommitted === 0;
+  if (clean && /-commit-[0-9a-f]+$/.test(version))
+    return { ...parts, answers: { runtime: version, at: answersBeside } };
+  return clean && !parts.performer.includes("#")
+    ? { ...parts, builtBeside: answersBeside }
     : parts;
 }
 

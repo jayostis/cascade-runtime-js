@@ -2162,10 +2162,17 @@ describe("Opening a pod again · openPod()", () => {
   let made: { address: string; subject: string; owner: string };
   let rows: Row[];
 
-  /** The parts that open a pod with a build that fails, so that an answer that is not kept shows it. */
+  /** The parts that open a pod with a build that fails, whole or read back, so that an answer that is not kept shows it. */
   const unbuilt = (build: Partial<Parts["build"]> = {}): Parts => ({
     ...kept,
-    build: { ...kept.build, ...build, files: () => Promise.reject(NOT_BUILT) },
+    build: {
+      ...kept.build,
+      ...build,
+      files: () => Promise.reject(NOT_BUILT),
+      closing: () => {
+        throw NOT_BUILT;
+      },
+    },
   });
 
   async function opened<T>(
@@ -2292,6 +2299,7 @@ describe("Opening a pod again · openPod()", () => {
     const keepingNothing = (): Parts => {
       const parts: { -readonly [K in keyof Parts]: Parts[K] } = { ...kept };
       delete parts.answers;
+      delete parts.builtBeside;
       return parts;
     };
 

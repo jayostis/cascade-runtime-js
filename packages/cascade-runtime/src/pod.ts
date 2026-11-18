@@ -361,6 +361,8 @@ export interface Parts {
   folder(path: string, iri?: string): Folder;
   /** Where the answers of a pod in a folder are kept; none when nothing may be kept. */
   readonly answers?: AnswerStore;
+  /** Where the build of a pod in a folder is kept beside it when its answers are not; none when it may not be. */
+  readonly builtBeside?: (folder: string) => Files;
   /** The export or download at the path, as the files it is in and its name there, or why no path is read. */
   exportAt(path: string): Export | string;
   loadBridge(): Promise<LoadedBridge>;
@@ -1374,9 +1376,9 @@ async function subjectsFiled(
   return [...found];
 }
 
-/** The parts with every file of a pod's folder, read through its sealed index, and of its kept answers sealed under the key. */
+/** The parts with every file of a pod's folder, read through its sealed index, and of its kept answers and build sealed under the key. */
 function sealedParts(parts: Parts, index: SealedIndex): Parts {
-  const { answers } = parts;
+  const { answers, builtBeside } = parts;
   const { key } = index;
   return {
     ...parts,
@@ -1395,6 +1397,12 @@ function sealedParts(parts: Parts, index: SealedIndex): Parts {
             at: (folder) =>
               new EncryptedFiles(answers.at(folder), key, { kind: "answers" }),
           },
+        }),
+    ...(builtBeside === undefined
+      ? {}
+      : {
+          builtBeside: (folder) =>
+            new EncryptedFiles(builtBeside(folder), key, { kind: "answers" }),
         }),
   };
 }
@@ -1431,9 +1439,9 @@ export async function openPodWith(
         );
   const disk = folder === undefined ? undefined : parts.folder(folder);
   const beside =
-    folder === undefined || parts.answers === undefined
+    folder === undefined
       ? undefined
-      : parts.answers.at(folder);
+      : (parts.answers?.at(folder) ?? parts.builtBeside?.(folder));
   const answers =
     beside === undefined || parts.answers === undefined
       ? undefined
