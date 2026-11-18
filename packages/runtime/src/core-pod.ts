@@ -131,6 +131,17 @@ const BUILT_BESIDE = "build.trig";
 /** Where an earlier runtime kept the build's derived state alone, removed once a working copy is kept. */
 const DERIVED_BESIDE = "build.nt";
 
+/** What a working copy is kept under: the hash of what its build read and the digest of each file the build wrote. */
+function keptUnder(
+  inputsHash: string,
+  digests: Iterable<readonly [string, string]>,
+): string {
+  return JSON.stringify([
+    inputsHash,
+    [...digests].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  ]);
+}
+
 function hex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -533,8 +544,11 @@ export class CorePod {
   #pending: Pending | undefined;
   /** The hash of what the kept build read, when it was rebuilt since its working copy was last kept beside the pod. */
   #toKeep: string | undefined;
-  /** The hash of what the working copy beside the pod was built from, once this session read it back or kept it. */
-  #besideHash: string | undefined;
+  /**
+   * What the working copy beside the pod was kept under, once this session read it back or kept it: the hash of what it
+   * was built from and the digest of each file the build wrote.
+   */
+  #besideKept: string | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -697,10 +711,9 @@ export class CorePod {
     const inputsHash = this.#toKeep;
     const built = this.#built;
     if (inputsHash === undefined || built === undefined) return;
-    if (inputsHash !== this.#besideHash)
-      await timedAside("core-pod.keepBuild", () =>
-        this.#keepBeside(inputsHash, built),
-      );
+    await timedAside("core-pod.keepBuild", () =>
+      this.#keepBeside(inputsHash, built),
+    );
     if (this.#built === built) this.#toKeep = undefined;
   }
 
@@ -2117,7 +2130,7 @@ export class CorePod {
       back.kept.free();
       return undefined;
     }
-    this.#besideHash = inputsHash;
+    this.#besideKept = keptUnder(inputsHash, digests);
     return { ...back, digests };
   }
 
@@ -2272,6 +2285,8 @@ export class CorePod {
         if (digest === undefined) return;
         digests[file] = digest;
       }
+    const kept = keptUnder(inputsHash, Object.entries(digests));
+    if (kept === this.#besideKept) return;
     let store: Uint8Array;
     try {
       store = await timedAside("core-pod.keepBuild.dump", () =>
@@ -2288,14 +2303,14 @@ export class CorePod {
     const bytes = new Uint8Array(header.length + store.length);
     bytes.set(header);
     bytes.set(store, header.length);
-    const kept = await timedAside("core-pod.keepBuild.write", () =>
+    const written = await timedAside("core-pod.keepBuild.write", () =>
       besidePod.write(BUILT_BESIDE, bytes),
     ).then(
       () => true,
       () => false,
     );
-    if (!kept) return;
-    this.#besideHash = inputsHash;
+    if (!written) return;
+    this.#besideKept = kept;
     await besidePod.remove?.([DERIVED_BESIDE]).catch(() => undefined);
   }
 
