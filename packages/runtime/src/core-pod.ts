@@ -600,7 +600,7 @@ export class CorePod {
     }
     await podFiles(pod, layout, address, union);
     if (build === undefined) {
-      for (const path of layout.rebuilt.filter((path) => layout.isRdf(path))) {
+      for (const path of layout.rebuilt.filter((path) => layout.loads(path))) {
         const bytes = await pod.read(path);
         if (bytes !== undefined) await union.loadTurtle(bytes, address + path);
       }
@@ -1862,7 +1862,7 @@ export class CorePod {
     const { pod, layout } = this.#options;
     const rebuilt = new Set(layout.rebuilt);
     return (await pod.list("")).filter(
-      (path) => layout.isRdf(path) && !rebuilt.has(path),
+      (path) => layout.loads(path) && !rebuilt.has(path),
     );
   }
 
@@ -2103,7 +2103,7 @@ export class CorePod {
       return false;
     const rebuilt = new Set(layout.rebuilt);
     const listed = (await this.#unheld.list("")).filter(
-      (path) => layout.isRdf(path) && !rebuilt.has(path),
+      (path) => layout.loads(path) && !rebuilt.has(path),
     );
     const read = new Set(paths);
     return (
@@ -2188,7 +2188,7 @@ export class CorePod {
         const rebuilt = new Set(layout.rebuilt);
         const read = new Set(built.paths);
         for (const path of change.written)
-          if (layout.isRdf(path) && !rebuilt.has(path)) read.add(path);
+          if (layout.loads(path) && !rebuilt.has(path)) read.add(path);
         const given = (state = await stated([...read]));
         const stepping = built;
         files = await timedAside("kept.step", () =>

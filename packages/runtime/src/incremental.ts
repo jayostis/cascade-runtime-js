@@ -393,7 +393,7 @@ export class KeptBuild {
     const { layout, address, newStore } = rebuilding;
     const rebuilt = new Set(layout.rebuilt);
     const paths = (listed ?? (await rebuilding.pod.list(""))).filter(
-      (path) => layout.isRdf(path) && !rebuilt.has(path),
+      (path) => layout.loads(path) && !rebuilt.has(path),
     );
     const union = new Union(newStore());
     await timedAside("kept.whole.podFiles", () =>
@@ -630,7 +630,7 @@ export class KeptBuild {
     const clinicalFolders = this.#clinicalFolders;
     const partFolders = this.#partFolders;
     const fresh = [...new Set(change.written)].filter(
-      (path) => layout.isRdf(path) && !rebuilt.has(path),
+      (path) => layout.loads(path) && !rebuilt.has(path),
     );
     if (fresh.some((path) => this.#loaded.has(path))) return undefined;
     const clinicalPaths: string[] = [];

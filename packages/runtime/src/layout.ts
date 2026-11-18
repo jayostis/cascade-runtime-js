@@ -357,4 +357,17 @@ export class Layout {
   isRdf(path: string): boolean {
     return !path.startsWith(this.storedBytes.folder ?? "");
   }
+
+  /**
+   * Whether a build loads the file at the path: a `.ttl` file outside the stored documents' folder, or a file the layout
+   * gives by itself, as the settings. A `.DS_Store`, `._*`, `Thumbs.db`, an `.icloud` placeholder or a Solid `.acl` or
+   * `.meta` is neither loaded nor hashed.
+   */
+  loads(path: string): boolean {
+    return (
+      this.isRdf(path) &&
+      (path.endsWith(".ttl") ||
+        this.placements.some(({ file }) => file === path))
+    );
+  }
 }
