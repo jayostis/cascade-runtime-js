@@ -29,12 +29,12 @@ const newStore = (): OxigraphStore => new OxigraphStore();
  */
 describe("Reading reference tables from a folder · References.of(), References.rows(), tableTerms(), linesAbout()", () => {
   describe("References.rows(version)", () => {
-    const rules = "f32ebeea-4ed7-4da7-b08c-031dc619538e";
     const folder = "runtime/scripted-input/hana/tables/app/";
     let files: Awaited<ReturnType<typeof vocabulary>>;
     let empty: References;
     let shared: References;
     let story: MemoryFiles;
+    let rules: string;
 
     const ruleCount = async (rows: Promise<Triple[]>) =>
       new Graph(await rows).subjects(
@@ -59,6 +59,7 @@ describe("Reading reference tables from a folder · References.of(), References.
         (await files.read(`${folder}references.ttl`)) ?? new Uint8Array(),
       );
       shared = await references();
+      rules = shared.fallback(await shared.ruleList());
     });
 
     it("throws Refusal for a version whose name gives no file name", async () => {
@@ -71,7 +72,7 @@ describe("Reading reference tables from a folder · References.of(), References.
 
     it("throws Refusal, naming the folder, for a version the folder has no file of", async () => {
       await assert.rejects(
-        shared.rows(`urn:uuid:${rules.replace("f", "e")}`),
+        shared.rows("urn:uuid:0b6f2c1e-9d4a-4e7b-8c3f-5a1d2e6b7f90"),
         refusal(
           /runtime\/scripted-input\/hana\/tables\/app\/ holds no rows for/,
         ),
@@ -79,21 +80,20 @@ describe("Reading reference tables from a folder · References.of(), References.
     });
 
     it("returns a rule list version's rows from the vocabulary when the folder has no file of it", async () => {
-      assert.ok(
-        (await ruleCount((await references()).rows(`urn:uuid:${rules}`))) > 0,
-      );
+      assert.ok((await ruleCount((await references()).rows(rules))) > 0);
     });
 
     it("returns the folder's own file of that version when it has one", async () => {
       const own = new MemoryFiles(files.iri);
       for (const path of await story.list(""))
         await own.write(path, (await story.read(path)) ?? new Uint8Array());
-      await own.write(`${folder}${rules}.ttl`, new TextEncoder().encode(""));
+      await own.write(
+        `${folder}${rules.slice("urn:uuid:".length)}.ttl`,
+        new TextEncoder().encode(""),
+      );
       assert.equal(
         await ruleCount(
-          (await References.of(own, folder, newStore, files)).rows(
-            `urn:uuid:${rules}`,
-          ),
+          (await References.of(own, folder, newStore, files)).rows(rules),
         ),
         0,
       );
