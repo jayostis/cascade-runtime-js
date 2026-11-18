@@ -9,22 +9,42 @@ import {
   vocabularyDerive,
 } from "../src/build.js";
 import { CorePod, type CorePodOptions } from "../src/core-pod.js";
-import { dataset } from "../src/dataset.js";
+import { dataset, podFiles } from "../src/dataset.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { randomId } from "../src/ids.js";
 import { LAYOUT_FILE, LAYOUT_GRAPH, Layout } from "../src/layout.js";
-import { matcherView, podRows, runMatcher } from "../src/matcher.js";
+import { matcherView, runMatcher } from "../src/matcher.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, written } from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { StepWrites } from "../src/pod.js";
 import { type Perform, PERFORMERS, type Replayed } from "../src/replay.js";
 import { Refusal, type StepContext } from "../src/step.js";
-import { RestorableUnion, type Row, type Store } from "../src/store.js";
+import {
+  RestorableUnion,
+  type Row,
+  type Rows,
+  type Store,
+  Union,
+} from "../src/store.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const SYNC_RUN =
   "after both writers imported one export, the sync's run takes only the entry the other writer made";
+/** The rows of `query` over each RDF file of the pod but those the build writes, with nothing derived. */
+async function podRows(
+  context: Pick<StepContext, "layout" | "pod" | "address" | "newStore">,
+  query: string,
+): Promise<Rows> {
+  const union = new Union(context.newStore());
+  try {
+    await podFiles(context.pod, context.layout, context.address, union);
+    return await union.select(query);
+  } finally {
+    union.store.free?.();
+  }
+}
+
 const GRAPHS = "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }";
 
 /** Every quad of the matcher's view, each blank node one placeholder, sorted. */
