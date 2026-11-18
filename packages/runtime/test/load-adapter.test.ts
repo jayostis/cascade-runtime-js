@@ -134,35 +134,6 @@ describe("Loading an adapter into the Bridge · loadAdapter(), ofMediaType()", (
     });
   });
 
-  describe("given an adapter whose every file is at hand", () => {
-    const loads: Given[] = [];
-
-    before(async () => {
-      const vocabulary = new MemoryFiles("https://vocabulary.example/tree/a/");
-      await vocabulary.write("core.ttl", bytes("core"));
-      const { adapter } = await loadAdapter(
-        bridge(loads),
-        {
-          iri: "https://adapter.example/tree/c/",
-          files: await adapterFiles(),
-          whole: true,
-        },
-        () => Promise.resolve({ iri: vocabulary.iri, files: vocabulary }),
-      );
-      await adapter.accepts({ iri: "urn:document", bytes: bytes("{}") });
-    });
-
-    it("hands the Bridge every file of the adapter in one load, but none under `.git/`", () => {
-      assert.equal(loads.length, 1);
-      assert.deepEqual(loads[0]?.[0], [
-        "docs/format.md",
-        "in/detect.rq",
-        "ro-crate-metadata.json",
-        "schema/imported.xsd",
-      ]);
-    });
-  });
-
   describe("ofMediaType(loaded)", () => {
     const adapter = (sourceMediaType: string): Loaded => ({
       description: {

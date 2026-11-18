@@ -213,7 +213,7 @@ repository, and names the importers and the lens. For each, first match wins:
    fetched into `build/cache/`; the run prints the branch and the commit.
 
 A worktree looks for each sibling beside itself first, then beside the checkout
-it was made from. An adapter is given every file of its folder, and the
+it was made from. An adapter is given the files its description lists, and the
 vocabulary repository its `bridge:cascadeVocabularyRepository` names, resolved
 the same way.
 
