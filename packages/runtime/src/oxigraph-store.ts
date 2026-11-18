@@ -4,6 +4,7 @@ import { queried } from "./probe.js";
 import { parseResults } from "./sparql-results.js";
 import {
   type GraphFile,
+  type LoadFilesOptions,
   type LoadOptions,
   NotTurtle,
   type Rows,
@@ -421,7 +422,10 @@ export class OxigraphStore implements Store {
    * same inside a TriG graph block are read in one call, each in a block named by its graph, and each other file alone.
    * A call that fails is undone and its files read alone, so the file that is no Turtle is the one refused.
    */
-  async loadFiles(files: readonly GraphFile[]): Promise<void> {
+  async loadFiles(
+    files: readonly GraphFile[],
+    options: LoadFilesOptions = {},
+  ): Promise<void> {
     const blocks: GraphFile[] = [];
     const named = new Set<string>();
     let size = 0;

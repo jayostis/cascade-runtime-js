@@ -21,7 +21,12 @@ import { iri, type Triple } from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
 import type { StepFile } from "../src/step.js";
-import { type Dataset, type Rows, Union } from "../src/store.js";
+import {
+  type Dataset,
+  type LoadFilesOptions,
+  type Rows,
+  Union,
+} from "../src/store.js";
 import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
 import { copied } from "./cleo.js";
@@ -147,9 +152,15 @@ function opened(
   });
 }
 
-/** Stores that note each graph loaded into them, by `loadTurtle` or `loadFiles`. */
+/**
+ * Stores that note each graph loaded into them, by `loadTurtle` or `loadFiles`, and how many times each graph's Turtle
+ * was checked as it was loaded, over every store made.
+ */
 function countingStores() {
   let stores: Set<string>[] = [];
+  const checked = new Map<string, number>();
+  const check = (graph: string) =>
+    checked.set(graph, (checked.get(graph) ?? 0) + 1);
   class CountedStore extends OxigraphStore {
     readonly #loaded = new Set<string>();
 
@@ -163,18 +174,25 @@ function countingStores() {
       options: { readonly graph: string },
     ): Promise<void> {
       this.#loaded.add(options.graph);
+      check(options.graph);
       return super.loadTurtle(turtle, options);
     }
 
     override loadFiles(
       files: readonly { readonly graph: string; readonly turtle: Uint8Array }[],
+      options?: LoadFilesOptions,
     ): Promise<void> {
-      for (const { graph } of files) this.#loaded.add(graph);
-      return super.loadFiles(files);
+      for (const { graph } of files) {
+        this.#loaded.add(graph);
+        if (options?.parsedBefore !== true) check(graph);
+      }
+      return super.loadFiles(files, options);
     }
   }
   return {
     newStore: () => new CountedStore(),
+    /** How many times the graph's Turtle was checked as it was loaded, in any store made. */
+    checked: (graph: string) => checked.get(graph) ?? 0,
     /** How many stores made since the last `forget` loaded every one of the graphs. */
     loadedAll: (graphs: readonly string[]) =>
       stores.filter((loaded) => graphs.every((graph) => loaded.has(graph)))
@@ -679,18 +697,64 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.equal(loadedAll, 1);
     });
 
-    it("reads the pod's own files into one store for its stated reads and a judgment's filing, and into another for the build the judgment calls for", () => {
-      assert.equal(statedReads.filed, 2);
+    it("reads its stated reads and a judgment's filing from the build it keeps, loading the pod's records into no other store", () => {
+      assert.equal(statedReads.filed, 0);
     });
 
-    it("reads the pod's own files again for a stated read after a step, and finds what the step wrote", () => {
-      assert.equal(statedReads.after, 1);
+    it("reads a stated read after a step from the build it keeps, and finds what the step wrote", () => {
+      assert.equal(statedReads.after, 0);
       assert.deepEqual(statedReads.judgments, [0, 1]);
     });
 
     it("writes for its first entry session the files a build of the whole pod writes", async () => {
       await writtenAsBuiltWhole(entered, (path) =>
         Promise.resolve([...(wholeFiles.get(path) ?? [])]),
+      );
+    });
+  });
+
+  describe("given a step that enters a record into a pod whose build is kept across steps", () => {
+    /** For each record file the step wrote, the times its Turtle was checked as it was loaded into a store. */
+    let used: readonly { path: string; checked: number }[];
+
+    before(async () => {
+      const files = await countedCopy();
+      const counting = countingStores();
+      const stepping = opened(files, counting.newStore);
+      await stepping.refuse("a first step");
+      const owner = `${address}${layout.card}#me`;
+      const { wrote, refused } = await stepping.enter({
+        bytes: new TextEncoder().encode(`
+          <urn:uuid:${crypto.randomUUID()}> a <http://www.w3.org/ns/prov#Activity> ;
+            <http://www.w3.org/2000/01/rdf-schema#label> "an entry" ;
+            <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${owner}> ;
+              <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#PatientRole> ] .
+          <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
+          <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
+            <https://ns.cascadeprotocol.org/cascade#allergenName> "Latex" .`),
+        base: "urn:entry",
+        name: "an entry",
+      });
+      assert.equal(refused, undefined);
+      const records = layout.records(
+        "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
+      )?.folder;
+      used = wrote
+        .filter(
+          (path) =>
+            records !== undefined &&
+            path.startsWith(records) &&
+            layout.isRdf(path),
+        )
+        .map((path) => ({ path, checked: counting.checked(address + path) }));
+      stepping.close();
+    });
+
+    it("checks the Turtle of each record file it wrote once, loading it into the build it keeps and the scope of its rebuild", () => {
+      assert.ok(used.length > 0, "the step wrote a record's file");
+      assert.deepEqual(
+        used.filter(({ checked }) => checked !== 1),
+        [],
       );
     });
   });
@@ -843,6 +907,63 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       });
       assert.equal(counting?.rows.length, 1);
       assert.equal(rebuilds(files) - before, 2);
+    });
+
+    it("finds in a stated read the judgments whose steps left their rebuild, loading the pod's records into no other store", async () => {
+      const files = await countedCopy();
+      const counting = countingStores();
+      const stepped = opened(files, counting.newStore);
+      await stepped.refuse("a first step");
+      const before = rebuilds(files);
+      const records = (
+        await files.list(
+          layout.records(
+            "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
+          )?.folder ?? "",
+        )
+      )
+        .filter((path) => layout.isRdf(path))
+        .map((path) => address + path);
+      assert.ok(records.length > 0);
+      counting.forget();
+      const judged = (profile: string) =>
+        `${PREFIXES} SELECT ?judgment WHERE { ?judgment a cascade:Judgment ; prov:hadMember <${profile}> }`;
+      let found: number[] = [];
+      await stepped.deferring(async () => {
+        const none = await stepped.selectStated(judged(profiles[0] as string));
+        await stepped.judge(aboutJudgment(profiles[0] as string));
+        const one = await stepped.selectStated(judged(profiles[0] as string));
+        await stepped.judge(aboutJudgment(profiles[1] as string));
+        const other = await stepped.selectStated(judged(profiles[1] as string));
+        found = [none.rows.length, one.rows.length, other.rows.length];
+        assert.equal(rebuilds(files) - before, 0, "left to the end of the run");
+        assert.equal(counting.loadedAll(records), 0);
+      });
+      assert.deepEqual(found, [0, 1, 1]);
+      assert.equal(rebuilds(files) - before, 1);
+      const { kept, files: whole } = await KeptBuild.whole(
+        {
+          pod: files,
+          layout,
+          address,
+          newStore: () => new OxigraphStore(),
+          build: incremental,
+          lens: LENS,
+          samesStillJoined: () => Promise.resolve([]),
+        },
+        {
+          address,
+          at: (await podStated(files, layout, new OxigraphStore())).at ?? "",
+          title: "matching",
+          ...(stepped.head === undefined
+            ? {}
+            : { snapshot: stepped.head.snapshot }),
+        },
+      );
+      kept.free();
+      await writtenAsBuiltWhole(files, (path) =>
+        Promise.resolve([...(whole.get(path) ?? [])]),
+      );
     });
 
     it("rebuilds before it throws what the run threw, leaving the judgment counting for the next read", async () => {
