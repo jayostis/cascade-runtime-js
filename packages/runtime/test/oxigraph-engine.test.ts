@@ -34,6 +34,14 @@ describe("Choosing Oxigraph's native or WebAssembly build · chooseOxigraph(), n
     assert.throws(() => chooseOxigraph("native", none), /at \/nowhere/);
   });
 
+  it("uses the WebAssembly build where looking for the native one throws, as under Node's permission model", () => {
+    const denied = () => {
+      throw new Error("Access to this API has been restricted");
+    };
+    assert.equal(chooseOxigraph("auto", denied), wasmOxigraph);
+    assert.throws(() => chooseOxigraph("native", denied), /restricted/);
+  });
+
   it("refuses a value of CASCADE_OXIGRAPH other than native, wasm or auto", () => {
     assert.throws(() => chooseOxigraph("fast", same), /CASCADE_OXIGRAPH/);
   });
