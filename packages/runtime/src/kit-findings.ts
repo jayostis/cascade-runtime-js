@@ -10,7 +10,7 @@ import { iri, type Triple } from "./rdf.js";
 
 /** The name of the check a kit is held to beside those of `KIT_CHECKS`: its saved Bridge output is what the adapters make. */
 export const KIT_FINDINGS_CHECK =
-  "the Bridge's output for each import is the output the kit saves";
+  "the-bridge-output-is-the-output-the-kit-saves";
 
 /** What differs between the Bridge output each kit saves and what the configured adapters make of its imports. */
 export interface KitFindings {
