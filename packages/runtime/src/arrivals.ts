@@ -3,6 +3,7 @@ import {
   type AdaptersOf,
   type BridgeDocument,
   type ConvertBudget,
+  conversionBudget,
   isBridgeError,
   type LoadedAdapter,
 } from "./bridge.js";
@@ -1192,7 +1193,9 @@ export async function fileExport(
     );
     await onProgress?.({ part: "converting", done, of: documents.length });
     const conversion = await timedAside("arrivals.convert", () =>
-      refusing(found.path, () => adapter.convert(document, budget)),
+      refusing(found.path, () =>
+        adapter.convert(document, conversionBudget(budget, found.bytes.length)),
+      ),
     );
     const graph = await timedAside("arrivals.parseGraph", () =>
       parseGraph(conversion.graph, documentIri, newStore),
