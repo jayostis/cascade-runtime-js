@@ -456,7 +456,7 @@ async function seriesAsRecordRun(): Promise<{
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 <${rules}> a cascade:ReferenceSeries ; rdfs:label "Matcher rules" ; cascade:defaultTableVersion <${rulesVersion}> .
 <${rulesVersion}> a prov:Entity ; prov:specializationOf <${rules}> ; pav:version "1" .
-<${ingredients}> a cascade:ReferenceSeries ; rdfs:label "Ingredients" ; cascade:tableKind cascade:SubstanceIngredients ; cascade:defaultTableVersion <${ingredientsVersion}> .
+<${ingredients}> a cascade:ReferenceSeries ; rdfs:label "Ingredients" ; cascade:tableKind cascade:ProductIngredients ; cascade:defaultTableVersion <${ingredientsVersion}> .
 <${ingredientsVersion}> a prov:Entity ; prov:specializationOf <${ingredients}> ; pav:version "1" .
 `),
   );
@@ -467,7 +467,7 @@ async function seriesAsRecordRun(): Promise<{
   cascade:matcherRule cascade:SameCodeRule ;
   cascade:justifiedAs cascade:SameCode ;
   cascade:appliesToClass cascade:AllergyOrIntolerance ;
-  cascade:tableKind cascade:SubstanceIngredients ;
+  cascade:tableKind cascade:ProductIngredients ;
   cascade:queryPath "matcher/series-as-record.rq" ;
   cascade:queryHash <${await documentName(query)}> .
 `),

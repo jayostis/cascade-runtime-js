@@ -3,27 +3,13 @@
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-<urn:uuid:4b7e2c91-8d35-4f6a-a1c0-7e9d3b5f2a68> a cascade:ReferenceSeries ;
-    rdfs:label "Cascade matcher rules" ;
-    cascade:defaultTableVersion <urn:uuid:dc770437-08e4-4e42-83ef-3846d1fceb22> .
+<urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> a cascade:ReferenceSeries ;
+    rdfs:label "Matcher rules" ;
+    cascade:defaultTableVersion <urn:uuid:ae65e38f-9301-4831-b0b2-f54005d465e1> .
 
-<urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24> a prov:Entity ;
-    prov:specializationOf <urn:uuid:4b7e2c91-8d35-4f6a-a1c0-7e9d3b5f2a68> ;
-    pav:version "1" .
-
-<urn:uuid:dc770437-08e4-4e42-83ef-3846d1fceb22> a prov:Entity ;
-    prov:specializationOf <urn:uuid:4b7e2c91-8d35-4f6a-a1c0-7e9d3b5f2a68> ;
-    pav:version "2" ;
-    prov:wasRevisionOf <urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24> .
-
-<urn:uuid:2e8a6d14-7b9c-4f3e-9a52-6c1d8f4b7e30> a cascade:ReferenceSeries ;
-    rdfs:label "SNOMED CT to RxNorm ingredient map" ;
-    cascade:tableKind cascade:SubstanceIngredients ;
-    cascade:defaultTableVersion <ni:///sha-256;BlFQPte-nrzoZ-yIqrd9zVoP2vxyfSfIO5gxxymsZdA> .
-
-<ni:///sha-256;BlFQPte-nrzoZ-yIqrd9zVoP2vxyfSfIO5gxxymsZdA> a prov:Entity ;
-    prov:specializationOf <urn:uuid:2e8a6d14-7b9c-4f3e-9a52-6c1d8f4b7e30> ;
-    pav:version "1" .
+<urn:uuid:ae65e38f-9301-4831-b0b2-f54005d465e1> a prov:Entity ;
+    prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ;
+    pav:version "19" .
 
 <urn:uuid:6a1d4e83-9f2b-4c7a-8d36-5e8b2f1c9a47> a cascade:ReferenceSeries ;
     rdfs:label "CVX vaccine group table" ;

@@ -280,7 +280,7 @@ const series = (name: keyof typeof SERIES, kind: string): string =>
 const INDEX = `@prefix cascade: <${CASCADE}> . @prefix prov: <http://www.w3.org/ns/prov#> . @prefix pav: <http://purl.org/pav/> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 ${series("groups", "VaccineGroups")}
 ${series("names", "CodeNames")}
-${series("substances", "SubstanceIngredients")}`;
+${series("substances", "CodeConversions")}`;
 
 /** Three rows that map a vaccine each to a group, sorted N-Triples: found by their source. */
 const GROUP_ROWS = `${[140, 141, 150]
