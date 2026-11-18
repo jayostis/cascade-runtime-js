@@ -112,3 +112,10 @@ published query by its file.
 | `packages/cascade-runtime` | what an app imports, and the build that packs it               |
 | `packages/mcp`             | `cascade-mcp`, an MCP server on stdio over a folder of pods    |
 | `packages/evals`           | the eval harness: the pod against pasted records, judged blind |
+
+`native/oxigraph` is no package: it is Oxigraph's in-memory store built for Node
+in Rust, the same Oxigraph as the `oxigraph` package's WebAssembly, which the
+runtime uses in its place where it loads. The `oxigraph-native` workflow builds
+it for Linux x64, Windows x64 and macOS arm64 and x64, and a tag
+`oxigraph-native-v<version>` attaches each file to a pre-release, and the run's
+summary lists the sha256 of each.
