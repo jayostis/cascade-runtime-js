@@ -71,7 +71,7 @@ import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
 import { checkFolderSecret, openFolderPod } from "../src/node/folder-pod.js";
 import { answersToPublish, partsOf } from "../src/node/published.js";
-import { answersBeside, resolved } from "../src/node/resolved.js";
+import { answersBeside, keptBeside, resolved } from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
 import { samplesOf } from "../src/node/samples.js";
 // A browser's `openPod` reads published answers with `keptPod` and `withLookups`, which a Node test cannot call as a page does.
@@ -2548,6 +2548,55 @@ describe("Opening a pod again · openPod()", () => {
       );
       assert.notDeepEqual(after, wholeRows);
       assert.deepEqual(rows, after);
+    });
+  });
+
+  describe("where a pod's answers and its build are kept beside it · keptBeside()", () => {
+    it("keeps answers for a packed, committed runtime, and the build too wherever the runtime and its components are each at a commit", () => {
+      const COMMIT =
+        "https://github.com/jayostis/cascade-runtime-js/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
+      const rows: [string, string, string, number, [boolean, boolean]][] = [
+        [
+          "packed and committed",
+          "0.0.0-commit-abc123",
+          COMMIT,
+          0,
+          [true, true],
+        ],
+        ["a checkout at a commit", "0.0.0", COMMIT, 0, [false, true]],
+        [
+          "a checkout with changes",
+          "0.0.0",
+          `${COMMIT}#uncommitted`,
+          0,
+          [false, false],
+        ],
+        [
+          "a checkout no commit names",
+          "0.0.0",
+          "https://github.com/jayostis/cascade-runtime-js#unidentified",
+          0,
+          [false, false],
+        ],
+        ["components with changes", "0.0.0", COMMIT, 2, [false, false]],
+      ];
+      const found = rows.map(([what, version, performer, uncommitted]) => {
+        const parts = keptBeside(
+          { performer, local: { resolved: { uncommitted } } },
+          version,
+        );
+        return [
+          what,
+          [
+            parts.answers !== undefined,
+            (parts.answers?.at ?? parts.builtBeside) !== undefined,
+          ],
+        ];
+      });
+      assert.deepEqual(
+        found,
+        rows.map(([what, , , , kept]) => [what, kept]),
+      );
     });
   });
 
