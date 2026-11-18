@@ -2402,6 +2402,23 @@ describe("Opening a pod again · openPod()", () => {
       assert.deepEqual(rows, wholeRows);
     });
 
+    it("builds again when a view the build wrote no longer holds what it wrote", async () => {
+      const at = await copiedWithBuild(first, "view-edited");
+      const view = kept.layout.views.find(
+        ({ writtenBy }) => writtenBy === "views/conditions.rq",
+      )?.file;
+      assert.ok(view);
+      const file = join(at, ...view.split("/"));
+      assert.ok((await readFile(file)).length > 0, "the pod has no conditions");
+      await writeFile(file, "");
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.deepEqual(rows, wholeRows);
+    });
+
     it("builds again when the vocabulary's build queries changed", async () => {
       const at = await copiedWithBuild(first, "queries-changed");
       const { build } = kept;
