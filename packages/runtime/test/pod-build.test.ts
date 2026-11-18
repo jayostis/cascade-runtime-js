@@ -145,6 +145,44 @@ function opened(
   });
 }
 
+/** Stores that note each graph loaded into them, by `loadTurtle` or `loadFiles`. */
+function countingStores() {
+  let stores: Set<string>[] = [];
+  class CountedStore extends OxigraphStore {
+    readonly #loaded = new Set<string>();
+
+    constructor() {
+      super();
+      stores.push(this.#loaded);
+    }
+
+    override loadTurtle(
+      turtle: Uint8Array | string,
+      options: { readonly graph: string },
+    ): Promise<void> {
+      this.#loaded.add(options.graph);
+      return super.loadTurtle(turtle, options);
+    }
+
+    override loadFiles(
+      files: readonly { readonly graph: string; readonly turtle: Uint8Array }[],
+    ): Promise<void> {
+      for (const { graph } of files) this.#loaded.add(graph);
+      return super.loadFiles(files);
+    }
+  }
+  return {
+    newStore: () => new CountedStore(),
+    /** How many stores made since the last `forget` loaded every one of the graphs. */
+    loadedAll: (graphs: readonly string[]) =>
+      stores.filter((loaded) => graphs.every((graph) => loaded.has(graph)))
+        .length,
+    forget: () => {
+      stores = [];
+    },
+  };
+}
+
 /** The files of `pod` in a new `CountedFiles`, which has read nothing yet. */
 async function countedCopy(): Promise<CountedFiles> {
   const copy = new CountedFiles(pod.iri);
@@ -540,8 +578,10 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
     let refused: unknown;
     let records: string[];
     let loadedAll: number;
+    let loadedAllToJudge: number;
 
     before(async () => {
+      const counting = countingStores();
       const first = await countedCopy();
       const stepped = opened(first);
       await stepped.refuse("a first step");
@@ -558,24 +598,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       )
         .filter((path) => layout.isRdf(path))
         .map((path) => address + path);
-      const stores: Set<string>[] = [];
-      class CountedStore extends OxigraphStore {
-        readonly #loaded = new Set<string>();
-
-        constructor() {
-          super();
-          stores.push(this.#loaded);
-        }
-
-        override loadTurtle(
-          turtle: Uint8Array | string,
-          options: { readonly graph: string },
-        ): Promise<void> {
-          this.#loaded.add(options.graph);
-          return super.loadTurtle(turtle, options);
-        }
-      }
-      const entering = opened(entered, () => new CountedStore());
+      const entering = opened(entered, counting.newStore);
       const owner = `${address}${layout.card}#me`;
       ({ refused } = await entering.enter({
         bytes: new TextEncoder().encode(`
@@ -589,9 +612,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         base: "urn:entry",
         name: "an entry",
       }));
-      loadedAll = stores.filter((loaded) =>
-        records.every((graph) => loaded.has(graph)),
-      ).length;
+      loadedAll = counting.loadedAll(records);
       const stated = await podStated(entered, layout, new OxigraphStore());
       const { kept, files } = await KeptBuild.whole(
         {
@@ -612,6 +633,17 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       );
       kept.free();
       wholeFiles = files;
+
+      const judging = countingStores();
+      const judged = opened(await countedCopy(), judging.newStore);
+      await judged.dataset(LENS);
+      judging.forget();
+      const { refused: judgmentRefused } = await judged.judge(
+        aboutJudgment(profiles[0] as string),
+      );
+      assert.equal(judgmentRefused, undefined);
+      loadedAllToJudge = judging.loadedAll(records);
+      judged.close();
     });
 
     it("reads each file the pod held at most once over its first two steps", () => {
@@ -626,6 +658,10 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.equal(refused, undefined);
       assert.ok(records.length > 0);
       assert.equal(loadedAll, 1);
+    });
+
+    it("loads the records the pod held into one store, at most, to file a judgment on a pod it has read", () => {
+      assert.ok(loadedAllToJudge <= 1, `${loadedAllToJudge} stores`);
     });
 
     it("writes for its first entry session the files a build of the whole pod writes", async () => {
