@@ -26,8 +26,12 @@ import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
 import { ofMediaType } from "../src/load-adapter.js";
 import { importersNamed } from "../src/importers.js";
-import { kitImports } from "../src/kit-bridge.js";
-import { kitsOf } from "../src/kit.js";
+import {
+  type KitFindings,
+  KNOWN_SKIPPED,
+  kitFindings,
+  unvouchedFor,
+} from "../src/kit-findings.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { probing } from "../src/probe.js";
@@ -66,7 +70,7 @@ import {
   type Spawn,
   WasmBridge,
 } from "../src/wasm-bridge.js";
-import { notIsomorphic, triples } from "./graphs.js";
+import { notIsomorphic, triples } from "../src/graphs.js";
 import { layout, RUNTIME, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
 const ALEX = "conformance/alex-rivera/alex-rivera.feature";
@@ -180,119 +184,6 @@ async function standIn(
   return { ...document, iri: await documentName(bytes), bytes };
 }
 
-/**
- * What differs, by kit, step and stem, between the Bridge output a kit saved for each document its importers find in
- * an import step's download and what the configured adapters make of it: the first to accept it converts it, and
- * where the kit saved that no adapter accepts it, none does.
- */
-async function differences(): Promise<{
-  readonly differ: string[];
-  readonly skipped: string[];
-  readonly converted: number;
-  readonly unaccepted: number;
-  readonly acceptedUnaccepted: number;
-}> {
-  const files = await vocabulary();
-  const importers = importersNamed(components.config.importers);
-  const differ: string[] = [];
-  const skipped: string[] = [];
-  const seen = new Set<string>();
-  let converted = 0;
-  let unaccepted = 0;
-  let acceptedUnaccepted = 0;
-  for (const kit of await kitsOf(files)) {
-    const { story, folder } = await storyFrom(
-      `${kit}/${kit.slice(kit.lastIndexOf("/") + 1)}.feature`,
-    );
-    for (const {
-      step,
-      converted: saved,
-      failure,
-      documents,
-    } of await kitImports({
-      vocabulary: files,
-      folder,
-      steps: story.steps,
-      importers,
-      adaptersOf,
-    })) {
-      if (failure !== undefined) {
-        const count = (await files.list(`${saved}/`)).length;
-        if (count > 0)
-          differ.push(
-            `${kit} ${step.name}: its importer failed (${String(failure)}), but ${count} files are saved`,
-          );
-        else skipped.push(`${kit} ${step.name}`);
-        continue;
-      }
-      const wanted = new Set(
-        documents.flatMap(({ stem }) =>
-          ["graph.ttl", "findings.ttl", "unaccepted.txt"].map(
-            (name) => `${saved}/${stem}/${name}`,
-          ),
-        ),
-      );
-      for (const stray of await files.list(`${saved}/`))
-        if (!wanted.has(stray))
-          differ.push(
-            `${kit} ${step.name}: ${stray} is saved, but no document of the import has such a file`,
-          );
-      for (const {
-        stem,
-        path: documentPath,
-        iri: iriOf,
-        offered,
-        accepting,
-      } of documents) {
-        const at = `${saved}/${stem}/`;
-        const named = `${kit} ${step.name} ${stem}`;
-        const [graph, findings, refused] = await Promise.all([
-          files.read(`${at}graph.ttl`),
-          files.read(`${at}findings.ttl`),
-          files.read(`${at}unaccepted.txt`),
-        ]);
-        const known = `${kit} ${iriOf}`;
-        if (refused !== undefined) {
-          seen.add(known);
-          unaccepted++;
-          if (accepting !== undefined) acceptedUnaccepted++;
-          continue;
-        }
-        if (graph === undefined) {
-          if (!seen.has(known))
-            differ.push(`${named}: nothing is saved for it`);
-          continue;
-        }
-        seen.add(known);
-        converted++;
-        if (accepting === undefined) {
-          differ.push(`${named}: no adapter accepts it`);
-          continue;
-        }
-        const made = await accepting.convert(offered, EVERY_FINDING);
-        const path = `${files.iri}${documentPath}`;
-        const expectedFindings =
-          findings === undefined
-            ? []
-            : triples(findings, `${files.iri}${at}findings.ttl`).map(
-                ([s, p, o]): Triple =>
-                  o.termType === "NamedNode" && o.value === path
-                    ? [s, p, iri(iriOf)]
-                    : [s, p, o],
-              );
-        const why =
-          notIsomorphic(triples(graph), triples(made.graph)) ??
-          notIsomorphic(
-            expectedFindings,
-            triples(made.findings ?? new Uint8Array()),
-          );
-        if (why !== undefined) differ.push(`${named}: ${why}`);
-      }
-    }
-  }
-  return { differ, skipped, converted, unaccepted, acceptedUnaccepted };
-}
-
 /** A pod's files as one graph, but the imports' own, with each revision and the import that made it as blank nodes. */
 async function filed(pod: MemoryFiles): Promise<Triple[]> {
   const triples: Triple[] = [];
@@ -348,10 +239,14 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
   });
 
   describe("given every import of every kit", () => {
-    let found: Awaited<ReturnType<typeof differences>>;
+    let found: KitFindings;
 
     before(async () => {
-      found = await differences();
+      found = await kitFindings({
+        vocabulary: await vocabulary(),
+        importers: importersNamed(components.config.importers),
+        adaptersOf,
+      });
     });
 
     it("converts each document to a graph and conversion findings isomorphic to those the kit saves", () => {
@@ -365,7 +260,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
     });
 
     it("skips only an import whose export its importer cannot read and for which the kit saves nothing", () => {
-      assert.deepEqual(found.skipped, ["conformance/priya-natarajan E11"]);
+      assert.deepEqual(found.skipped, KNOWN_SKIPPED);
     });
   });
 
@@ -1044,6 +939,37 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       const [savedPod, live] = pods;
       assert.ok((savedPod?.length ?? 0) > 0);
       assert.equal(notIsomorphic(savedPod ?? [], live ?? []), undefined);
+    });
+  });
+
+  describe("given the check of a kit that would otherwise pass on nothing", () => {
+    it("names a skipped import that is not on the known list", () => {
+      assert.match(
+        unvouchedFor("conformance/someone", {
+          skipped: ["conformance/someone E1"],
+          converted: 3,
+        }).join("\n"),
+        /E1.*not a known skip/,
+      );
+    });
+
+    it("names a kit that converted nothing", () => {
+      assert.match(
+        unvouchedFor("conformance/someone", { skipped: [], converted: 0 }).join(
+          "\n",
+        ),
+        /converted nothing/,
+      );
+    });
+
+    it("passes a kit that converted something and skipped only what is known", () => {
+      assert.deepEqual(
+        unvouchedFor("conformance/priya-natarajan", {
+          skipped: KNOWN_SKIPPED,
+          converted: 5,
+        }),
+        [],
+      );
     });
   });
 });

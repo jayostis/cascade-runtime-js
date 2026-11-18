@@ -9,6 +9,7 @@ import { featureStory, runConformance } from "../src/conformance.js";
 import { featuresOf, readFeature } from "../src/features.js";
 import { MemoryFiles } from "../src/files.js";
 import { KIT_CHECKS, kitsOf } from "../src/kit.js";
+import { KIT_FINDINGS_CHECK } from "../src/kit-findings.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { PERFORMERS } from "../src/replay.js";
 import { Shapes } from "../src/shapes.js";
@@ -640,6 +641,11 @@ describe("Reporting a conformance run · npm run conformance -- --report <file>"
       for (const kit of kits)
         for (const check of Object.values(KIT_CHECKS))
           tested.set(`${files.iri}${kit}/#${check}`, check);
+      for (const kit of kits)
+        tested.set(
+          `${files.iri}${kit}/#${KIT_FINDINGS_CHECK}`,
+          KIT_FINDINGS_CHECK,
+        );
     }
 
     /** What a run of one feature file says on stderr, started with the full run so that the two are not one after the other. */

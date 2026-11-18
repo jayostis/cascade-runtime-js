@@ -20,7 +20,7 @@ import {
   runConformance,
   type TestedWith,
 } from "../conformance.js";
-import { repositoryName } from "../config.js";
+import { repositoryName, type RuntimeConfig } from "../config.js";
 import type { Proposer } from "../replay.js";
 import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
@@ -29,7 +29,8 @@ import { FolderFiles } from "./folder-files.js";
 import { featuresOf } from "../features.js";
 import { folderOf } from "../files.js";
 import { importersNamed } from "../importers.js";
-import { type Resolved, resolve } from "./resolver.js";
+import { type Resolved, type ResolverOptions, resolve } from "./resolver.js";
+import type { Components } from "./components.js";
 import {
   BRIDGE_REPOSITORY,
   compiledBridge,
@@ -49,6 +50,8 @@ import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 import { EVERY_FINDING } from "../bridge.js";
 import { kitImports } from "../kit-bridge.js";
+import { KIT_FINDINGS_CHECK, kitFindings } from "../kit-findings.js";
+import { kitsOf } from "../kit.js";
 import { ofMediaType } from "../load-adapter.js";
 import { WasmBridge } from "../wasm-bridge.js";
 import { checkouts } from "./components.js";
@@ -172,8 +175,59 @@ async function conformance(args: string[]): Promise<number> {
     await writeFile(values.assertions, JSON.stringify(assertions));
     return 0;
   }
-  await reported(assertions, report, vocabulary, adapters, bridge);
+  await reported(
+    values.feature === undefined
+      ? [
+          ...assertions,
+          ...(await kitFindingAssertions(
+            files,
+            config,
+            { ...options, folders },
+            bridge,
+          )),
+        ]
+      : assertions,
+    report,
+    vocabulary,
+    adapters,
+    bridge,
+  );
   return 0;
+}
+
+/**
+ * One assertion for each kit: that what the configured adapters make of each document its imports hand the Bridge is
+ * the output the kit saves, so a change to an adapter that changes its findings fails until the kit saves them again.
+ */
+async function kitFindingAssertions(
+  files: FolderFiles,
+  config: RuntimeConfig,
+  options: ResolverOptions,
+  found: Awaited<ReturnType<typeof findBridgePackage>>,
+): Promise<Assertion[]> {
+  const bridge = new WasmBridge(inWorker(await compiledBridge(found.folder)));
+  const configured = await loadConfiguredAdapters(bridge, config.adapters, {
+    resolve: (component) => resolve(component, options),
+  } as Components);
+  try {
+    const { differ } = await kitFindings({
+      vocabulary: files,
+      importers: importersNamed(config.importers),
+      adaptersOf: ofMediaType(configured),
+    });
+    return (await kitsOf(files)).map((kit): Assertion => {
+      const mine = differ.filter((line) => line.startsWith(`${kit} `));
+      return {
+        test: `${files.iri}${kit}/#${KIT_FINDINGS_CHECK}`,
+        name: KIT_FINDINGS_CHECK,
+        outcome: mine.length === 0 ? "passed" : "failed",
+        ...(mine.length === 0 ? {} : { why: mine.join("\n") }),
+      };
+    });
+  } finally {
+    for (const { adapter } of configured) await adapter.free();
+    bridge.close();
+  }
 }
 
 function jobsOf(given: string | undefined): number {
