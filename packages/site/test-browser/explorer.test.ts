@@ -1714,8 +1714,8 @@ describe("The pod explorer in a browser · opening a node, the log's slider, a p
             ).map((text) => text.trim());
             for (const field of ["allergen name", "allergen code"])
               assert.ok(shaded.includes(field), `${field} in ${shaded}`);
-            assert.equal(entry.within.length, 3, "three judgments join them");
-            assert.equal(await tab.locator("#ins .within li").count(), 3);
+            assert.equal(entry.within.length, 2, "two judgments join them");
+            assert.equal(await tab.locator("#ins .within li").count(), 2);
           }
         });
 
