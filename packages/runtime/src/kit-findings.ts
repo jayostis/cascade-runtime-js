@@ -12,6 +12,27 @@ import { iri, type Triple } from "./rdf.js";
 export const KIT_FINDINGS_CHECK =
   "the-bridge-output-is-the-output-the-kit-saves";
 
+/** The imports, by kit and step, whose export its importer cannot read and for which the kit saves nothing. */
+export const KNOWN_SKIPPED: readonly string[] = [
+  "conformance/priya-natarajan E11",
+];
+
+/** What holds a kit's check from passing on nothing: an import skipped that is not known, or no document converted. */
+export function unvouchedFor(
+  kit: string,
+  found: { readonly skipped: readonly string[]; readonly converted: number },
+): string[] {
+  return [
+    ...found.skipped
+      .filter((name) => !KNOWN_SKIPPED.includes(name))
+      .map(
+        (name) =>
+          `${name}: its importer failed and the kit saves nothing, which is not a known skip`,
+      ),
+    ...(found.converted === 0 ? [`${kit} converted nothing`] : []),
+  ];
+}
+
 /** What differs between the Bridge output each kit saves and what the configured adapters make of its imports. */
 export interface KitFindings {
   /** One line for each import whose output differs from the kit's, with the kit's name first. */
@@ -40,6 +61,8 @@ export async function kitFindings(options: {
   let unaccepted = 0;
   let acceptedUnaccepted = 0;
   for (const kit of await kitsOf(files)) {
+    const skippedBefore = skipped.length;
+    const convertedBefore = converted;
     const { person, steps } = await featureStory(
       files,
       `${kit}/${kit.slice(kit.lastIndexOf("/") + 1)}.feature`,
@@ -130,6 +153,12 @@ export async function kitFindings(options: {
         if (why !== undefined) differ.push(`${named}: ${why}`);
       }
     }
+    differ.push(
+      ...unvouchedFor(kit, {
+        skipped: skipped.slice(skippedBefore),
+        converted: converted - convertedBefore,
+      }).map((line) => (line.startsWith(kit) ? line : `${kit} ${line}`)),
+    );
   }
   return { differ, skipped, converted, unaccepted, acceptedUnaccepted };
 }
