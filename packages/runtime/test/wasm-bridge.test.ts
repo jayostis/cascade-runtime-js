@@ -941,35 +941,35 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       assert.equal(notIsomorphic(savedPod ?? [], live ?? []), undefined);
     });
   });
-});
 
-describe("Holding a kit to its imports · unvouchedFor()", () => {
-  it("names a skipped import that is not on the known list", () => {
-    assert.match(
-      unvouchedFor("conformance/someone", {
-        skipped: ["conformance/someone E1"],
-        converted: 3,
-      }).join("\n"),
-      /E1.*not a known skip/,
-    );
-  });
+  describe("given the check of a kit that would otherwise pass on nothing", () => {
+    it("names a skipped import that is not on the known list", () => {
+      assert.match(
+        unvouchedFor("conformance/someone", {
+          skipped: ["conformance/someone E1"],
+          converted: 3,
+        }).join("\n"),
+        /E1.*not a known skip/,
+      );
+    });
 
-  it("names a kit that converted nothing", () => {
-    assert.match(
-      unvouchedFor("conformance/someone", { skipped: [], converted: 0 }).join(
-        "\n",
-      ),
-      /converted nothing/,
-    );
-  });
+    it("names a kit that converted nothing", () => {
+      assert.match(
+        unvouchedFor("conformance/someone", { skipped: [], converted: 0 }).join(
+          "\n",
+        ),
+        /converted nothing/,
+      );
+    });
 
-  it("passes a kit that converted something and skipped only what is known", () => {
-    assert.deepEqual(
-      unvouchedFor("conformance/priya-natarajan", {
-        skipped: KNOWN_SKIPPED,
-        converted: 5,
-      }),
-      [],
-    );
+    it("passes a kit that converted something and skipped only what is known", () => {
+      assert.deepEqual(
+        unvouchedFor("conformance/priya-natarajan", {
+          skipped: KNOWN_SKIPPED,
+          converted: 5,
+        }),
+        [],
+      );
+    });
   });
 });
