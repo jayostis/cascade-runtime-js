@@ -232,6 +232,7 @@ export function localCheckout(
 }
 
 const resolutions = new Map<string, Promise<Resolved>>();
+const resolutionKeys = new Map<string, string>();
 
 /**
  * The folder a component is read from, first match wins: a sibling checkout as it is on disk; a folder handed in;
@@ -244,13 +245,17 @@ export async function resolve(
   options: ResolverOptions,
 ): Promise<Resolved> {
   const local = localCheckout(component, options);
+  const identity = JSON.stringify([component, optionsKey(options)]);
   const key = JSON.stringify([
-    component,
-    optionsKey(options),
+    identity,
     local === undefined ? "" : await checkoutStamp(local),
   ]);
   let found = resolutions.get(key);
   if (found === undefined) {
+    // One resolution of a component under these options is kept: the one it was before is let go.
+    const before = resolutionKeys.get(identity);
+    if (before !== undefined) resolutions.delete(before);
+    resolutionKeys.set(identity, key);
     found = resolveNow(component, options);
     resolutions.set(key, found);
     found.catch(() => {
