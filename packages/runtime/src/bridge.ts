@@ -75,8 +75,19 @@ export interface Description {
 export interface ConvertBudget {
   /** The heap, in whole MiB, up to the Bridge's own cap. The Bridge's default is 1024. */
   readonly memoryBudgetMiB?: number;
-  /** The seconds, a positive number. The Bridge's default is 120. */
+  /** The seconds, a positive number. Left out, `conversionBudget` gives one by the document's size. */
   readonly timeBudgetSeconds?: number;
+}
+
+/** The budget a conversion of a document of `bytes` is held to: the one given, its time by the size when it gives none. */
+export function conversionBudget(
+  budget: ConvertBudget,
+  bytes: number,
+): ConvertBudget {
+  return {
+    timeBudgetSeconds: Math.max(120, (4 * bytes) / 1_000_000),
+    ...budget,
+  };
 }
 
 export interface ConvertOptions extends ConvertBudget {

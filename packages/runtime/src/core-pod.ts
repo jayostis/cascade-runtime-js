@@ -598,7 +598,9 @@ export class CorePod {
       }
       return this.#builtForRead(build, build.incremental, state, stated, paths);
     }
-    await podFiles(pod, layout, address, union);
+    await timedAside("core-pod.filled.podFiles", () =>
+      podFiles(pod, layout, address, union),
+    );
     if (build === undefined) {
       for (const path of layout.rebuilt.filter((path) => layout.loads(path))) {
         const bytes = await pod.read(path);
@@ -1233,7 +1235,9 @@ export class CorePod {
         const { pod, layout, address, newStore } = this.#options;
         const union = new Union(newStore());
         try {
-          await podFiles(pod, layout, address, union);
+          await timedAside("core-pod.selectStated.podFiles", () =>
+            podFiles(pod, layout, address, union),
+          );
         } catch (error) {
           union.store.free?.();
           throw error;

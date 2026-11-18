@@ -472,7 +472,9 @@ export async function matcherView(
 ): Promise<Union> {
   return timed("matcher.view", async () => {
     const union = new Union(context.newStore());
-    await podFiles(context.pod, context.layout, context.address, union);
+    await timedAside("matcher.view.podFiles", () =>
+      podFiles(context.pod, context.layout, context.address, union),
+    );
     await (
       await derivationsOf(context.vocabulary)
     ).derive(union, LENS, samesStillJoined);

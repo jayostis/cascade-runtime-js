@@ -2,6 +2,7 @@ import type { Derive, VocabularyBuild } from "./build.js";
 import type { DerivedStep, SamesStillJoined } from "./derive.js";
 import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
+import { counted } from "./probe.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
 import type { Replayed } from "./replay.js";
 import { type Dataset, NotTurtle, type Store, Union } from "./store.js";
@@ -202,6 +203,8 @@ export async function podFiles(
   const paths = listed.filter(
     (path) => layout.loads(path) && !rebuilt.has(path),
   );
+  counted("podFiles.calls");
+  counted("podFiles.files", paths.length);
   const read: (Uint8Array | undefined)[] = [];
   for (let start = 0; start < paths.length; start += READ_AT_ONCE)
     read.push(

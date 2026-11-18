@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
 import {
+  conversionBudget,
   type DeriveKey,
   EncryptedFiles,
   type Files,
@@ -942,6 +943,32 @@ describe("Importing a health export · pod.import()", () => {
       } finally {
         await small.close();
       }
+    });
+  });
+
+  describe("with no `timeBudgetSeconds`, the time a conversion may take by the size of its document", () => {
+    it("holds each conversion to 120 seconds or 4 seconds a megabyte of the document, the more of the two, and to the Bridge's own heap; a budget given is kept", () => {
+      const MB = 1_000_000;
+      assert.deepEqual(
+        [
+          [0, {}],
+          [30 * MB, {}],
+          [30 * MB + 1, {}],
+          [100 * MB, {}],
+          [100 * MB, { memoryBudgetMiB: 2048 }],
+          [100 * MB, { timeBudgetSeconds: 5 }],
+        ].map(([bytes, given]) =>
+          conversionBudget(given as object, bytes as number),
+        ),
+        [
+          { timeBudgetSeconds: 120 },
+          { timeBudgetSeconds: 120 },
+          { timeBudgetSeconds: 120.000004 },
+          { timeBudgetSeconds: 400 },
+          { timeBudgetSeconds: 400, memoryBudgetMiB: 2048 },
+          { timeBudgetSeconds: 5 },
+        ],
+      );
     });
   });
 
