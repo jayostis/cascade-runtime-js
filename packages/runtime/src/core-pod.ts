@@ -49,6 +49,7 @@ import { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
 import { type Act, same, StepWrites } from "./pod.js";
 import {
   iri,
+  KeptLines,
   literal,
   ntriples,
   RDF,
@@ -776,7 +777,22 @@ export class CorePod {
   }
 
   /** Frees the build kept across steps; the next step builds whole. */
+  /** Each built file's lines by the triple each writes, kept while the build is: a step's rebuild hands back the triples that did not change as they were. */
+  #lines = new Map<string, KeptLines>();
+
+  #linesOf(path: string): KeptLines | undefined {
+    // Prototype (proto/incremental-views): CASCADE_PROTO_LINES=0 turns the memo off, for interleaved before/after runs.
+    if (process.env["CASCADE_PROTO_LINES"] === "0") return undefined;
+    let found = this.#lines.get(path);
+    if (found === undefined) {
+      found = new KeptLines();
+      this.#lines.set(path, found);
+    }
+    return found;
+  }
+
   #dropBuilt(): void {
+    this.#lines = new Map();
     this.#built?.free();
     this.#built = undefined;
     this.#builtDigests = new Map();
@@ -2235,7 +2251,16 @@ export class CorePod {
         [...made]
           .map(
             ([path, triples]) =>
-              [path, builtFileBytes(layout, address, path, triples)] as const,
+              [
+                path,
+                builtFileBytes(
+                  layout,
+                  address,
+                  path,
+                  triples,
+                  this.#linesOf(path),
+                ),
+              ] as const,
           )
           .sort(
             ([a], [b]) =>
@@ -2245,6 +2270,22 @@ export class CorePod {
       await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
       for (const [path, written] of bytes)
         this.#builtDigests.set(path, hex(await fileDigest(written)));
+      if (build.verify === true)
+        for (const [path, written] of bytes) {
+          const fresh = builtFileBytes(
+            layout,
+            address,
+            path,
+            made.get(path) ?? [],
+          );
+          if (
+            fresh.length !== written.length ||
+            fresh.some((byte, at) => byte !== written[at])
+          )
+            throw new Error(
+              `${path} as written from the kept lines differs from it written afresh`,
+            );
+        }
       if (verifying !== undefined)
         await this.#verified(rebuilding, state, verifying);
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
