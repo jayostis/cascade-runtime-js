@@ -150,6 +150,8 @@ export class KeptBuild {
   #globalDerived: Set<string>;
   /** Every judgment and every retraction the scope holds. */
   readonly #judging = new Set<string>();
+  /** What finds the indexes below from the union, for a build read back, until the first step runs it. */
+  #indexing: (() => Promise<void>) | undefined;
   /** The files every record's state reads, held across steps; made when a step first needs it. */
   #scope: Union | undefined;
   readonly #scopeLoaded = new Set<string>();
@@ -169,6 +171,23 @@ export class KeptBuild {
 
   get union(): Union {
     return this.#union;
+  }
+
+  /** The paths of the pod's files the build read. */
+  get paths(): ReadonlySet<string> {
+    return this.#loaded;
+  }
+
+  /** The views written. */
+  get held(): ReadonlySet<string> {
+    return this.#held;
+  }
+
+  /** The lens's derived state. */
+  derived(): Promise<Triple[]> {
+    return this.#union.construct(
+      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${this.#derived}> { ?s ?p ?o } }`,
+    );
   }
 
   /**
@@ -295,37 +314,141 @@ export class KeptBuild {
   static async whole(
     rebuilding: Rebuilding,
     pod: PodState,
+    paths?: readonly string[],
   ): Promise<{
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }> {
-    const { layout, address, newStore, build, lens, samesStillJoined } =
-      rebuilding;
+    const { address, build, lens, samesStillJoined } = rebuilding;
+    return KeptBuild.#made(
+      rebuilding,
+      pod,
+      async (union) => ({
+        derived: await timedAside("kept.whole.derive", () =>
+          build.derivations.derive(union, lens, samesStillJoined),
+        ),
+        ...(await build.queried(union, address)),
+      }),
+      paths,
+    );
+  }
+
+  /**
+   * The pod's files, the layout, and the lens's derived state and the files a build wrote, read back as they were
+   * written rather than derived and built (C8): the derived state as N-Triples, each file the build's queries write by
+   * its path, the views among them those written. What a step rebuilds in part from is found from them only when the
+   * first step comes, so a read pays nothing for it; the files to write are the type index and the manifest alone.
+   */
+  static async readBack(
+    rebuilding: Rebuilding,
+    pod: PodState,
+    written: {
+      readonly derived: Uint8Array;
+      readonly files: ReadonlyMap<string, Uint8Array>;
+      /** The paths of the pod's files to load, as the caller listed them; otherwise listed here. */
+      readonly paths?: readonly string[];
+    },
+  ): Promise<{
+    kept: KeptBuild;
+    files: ReadonlyMap<string, readonly Triple[]>;
+  }> {
+    const { layout, address, lens } = rebuilding;
+    return timedAside("kept.readBack", () =>
+      KeptBuild.#made(
+        rebuilding,
+        pod,
+        async (union) => {
+          await union.loadTurtle(written.derived, DERIVED + lens);
+          for (const [path, bytes] of written.files)
+            await union.loadTurtle(bytes, address + path);
+          const views = new Set(layout.views.map(({ file }) => file));
+          return {
+            read: [...written.files.keys()],
+            held: new Set(
+              [...written.files.keys()].filter((path) => views.has(path)),
+            ),
+          };
+        },
+        written.paths,
+      ),
+    );
+  }
+
+  static async #made(
+    rebuilding: Rebuilding,
+    pod: PodState,
+    build: (union: Union) => Promise<
+      | {
+          readonly derived: readonly DerivedStep[];
+          readonly files: ReadonlyMap<string, readonly Triple[]>;
+          readonly held: ReadonlySet<string>;
+        }
+      | { readonly read: readonly string[]; readonly held: ReadonlySet<string> }
+    >,
+    listed?: readonly string[],
+  ): Promise<{
+    kept: KeptBuild;
+    files: ReadonlyMap<string, readonly Triple[]>;
+  }> {
+    const { layout, address, newStore } = rebuilding;
     const rebuilt = new Set(layout.rebuilt);
-    const paths = (await rebuilding.pod.list("")).filter(
-      (path) => layout.isRdf(path) && !rebuilt.has(path),
+    const paths = (listed ?? (await rebuilding.pod.list(""))).filter(
+      (path) => layout.loads(path) && !rebuilt.has(path),
     );
     const union = new Union(newStore());
     await timedAside("kept.whole.podFiles", () =>
       podFiles(rebuilding.pod, layout, address, union, paths),
     );
-    const derived = await timedAside("kept.whole.derive", () =>
-      build.derivations.derive(union, lens, samesStillJoined),
-    );
-    const { files, held } = await build.queried(union, address);
-    const all = new Map(files);
-    for (const [path, triples] of build.closing(pod, held)) {
+    const made = await build(union);
+    const { held } = made;
+    const all = new Map("files" in made ? made.files : []);
+    for (const [path, triples] of rebuilding.build.closing(pod, held)) {
       all.set(path, triples);
       await union.add(triples, address + path);
     }
     await addLayout(union, layout, address);
     const kept = new KeptBuild(rebuilding, union, new Set(paths), held);
-    kept.#index(files);
-    const owned = await timedAside("kept.whole.recordsAndTheirs", () =>
-      kept.#recordsAndTheirs(),
-    );
-    kept.#globalDerived = KeptBuild.#global(derived, owned);
+    const indexed = async (): Promise<void> => {
+      kept.#index(
+        "files" in made ? made.files : await kept.#graphsOf(made.read),
+      );
+      const owned = await timedAside("kept.whole.recordsAndTheirs", () =>
+        kept.#recordsAndTheirs(),
+      );
+      kept.#globalDerived = KeptBuild.#global(
+        "derived" in made
+          ? made.derived
+          : [{ path: kept.#derived, added: await kept.derived() }],
+        owned,
+      );
+    };
+    if ("files" in made) await indexed();
+    else kept.#indexing = indexed;
     return { kept, files: all };
+  }
+
+  /** Each of the build's files at the path, as the union holds it. */
+  async #graphsOf(
+    paths: readonly string[],
+  ): Promise<Map<string, readonly Triple[]>> {
+    const { address } = this.#rebuilding;
+    const found = new Map<string, readonly Triple[]>();
+    for (const path of paths)
+      found.set(
+        path,
+        await this.#union.construct(
+          `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${address + path}> { ?s ?p ?o } }`,
+        ),
+      );
+    return found;
+  }
+
+  /** Finds what a step rebuilds in part from, when the build was read back and no step has found it yet. */
+  async #ready(): Promise<void> {
+    const indexing = this.#indexing;
+    if (indexing === undefined) return;
+    this.#indexing = undefined;
+    await timedAside("kept.readBack.index", indexing);
   }
 
   #index(files: ReadonlyMap<string, readonly Triple[]>): void {
@@ -408,12 +531,13 @@ export class KeptBuild {
 
   /**
    * Throws where this build and the whole one differ: in the derived state, or in a file the build writes, as the
-   * union holds it or as it would be written.
+   * union holds it or as it would be written. The whole one is the caller's to free.
    */
   async verify(whole: {
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }): Promise<void> {
+    await this.#ready();
     const { address, layout } = this.#rebuilding;
     const graphOf = async (union: Union, graph: string) =>
       described(
@@ -476,7 +600,6 @@ export class KeptBuild {
       if (writing !== undefined)
         compare(`${path} as written`, described(writing), described(triples));
     }
-    whole.kept.free();
     if (differences.length > 0)
       throw new Error(
         `the build in part differs from the build whole:\n${differences.join("\n")}`,
@@ -501,12 +624,13 @@ export class KeptBuild {
     pod: PodState,
   ): Promise<ReadonlyMap<string, readonly Triple[]> | undefined> {
     if (change.everything) return undefined;
+    await this.#ready();
     const { layout, address } = this.#rebuilding;
     const rebuilt = new Set(layout.rebuilt);
     const clinicalFolders = this.#clinicalFolders;
     const partFolders = this.#partFolders;
     const fresh = [...new Set(change.written)].filter(
-      (path) => layout.isRdf(path) && !rebuilt.has(path),
+      (path) => layout.loads(path) && !rebuilt.has(path),
     );
     if (fresh.some((path) => this.#loaded.has(path))) return undefined;
     const clinicalPaths: string[] = [];

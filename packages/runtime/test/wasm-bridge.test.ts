@@ -9,7 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { after, before, describe, it } from "node:test";
 import {
   type AdaptersOf,
@@ -33,7 +33,13 @@ import { probing } from "../src/probe.js";
 import { PERFORMERS } from "../src/replay.js";
 import { CASCADE } from "../src/step.js";
 import { checkouts, type Components } from "../src/node/components.js";
-import { findBridgePackage, releasedBridgePackage } from "../src/node/wasm.js";
+import { FolderFiles } from "../src/node/folder-files.js";
+import {
+  findBridgePackage,
+  releasedBridgePackage,
+  stamping,
+  unchanged,
+} from "../src/node/wasm.js";
 import { resolve as resolveComponent } from "../src/node/resolver.js";
 import type { Followed } from "../src/config.js";
 import {
@@ -444,7 +450,15 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       made.push(folder);
       const [first] = components.config.adapters;
       const original = await components.resolve(first as Followed);
-      await cp(original.folder, folder, { recursive: true });
+      // A load reads the files the description lists; the .git, the fixtures and the bench are megabytes no test here needs.
+      await cp(original.folder, folder, {
+        recursive: true,
+        filter: (from) =>
+          !from
+            .slice(original.folder.length)
+            .split(sep)
+            .some((part) => [".git", "fixtures", "bench"].includes(part)),
+      });
       const copied: Components = {
         config: { ...components.config, adapters: [first as Followed] },
         resolve: async (followed) =>
@@ -508,6 +522,67 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       });
     });
 
+    it("reads, to load an adapter, only the files its description lists and the vocabulary files it names", async () => {
+      const { folder, copied } = await adapterCopy();
+      await mkdir(join(folder, "unlisted"), { recursive: true });
+      await writeFile(join(folder, "unlisted", "never-read.bin"), "x");
+      const { seen, result } = await probing(async () => {
+        const bridge = new WasmBridge(spawn);
+        const [one] = await loadSharedAdapters(
+          bridgeFolder,
+          bridge,
+          copied.config.adapters,
+          copied,
+        );
+        await one?.adapter.accepts(nothing).catch(() => undefined);
+        bridge.close();
+        return one?.description;
+      });
+      assert.ok(result);
+      assert.equal(
+        seen.counts.get("adapter.files.read"),
+        result.loadFiles.length + (result.vocabulary?.files.length ?? 0),
+      );
+      assert.ok(
+        result.loadFiles.length <
+          (await new FolderFiles(folder).list("")).length,
+        "the folder holds files the description does not list",
+      );
+    });
+
+    it("stamps each file before it is read, one read after the load among them, and notices an edit after the read", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "stamped-"));
+      made.push(folder);
+      await writeFile(join(folder, "metadata.json"), "one");
+      await writeFile(join(folder, "later.xsd"), "one");
+      const stamps = new Map();
+      const files = stamping(folder, "https://example.test/", stamps);
+      await files.read("metadata.json");
+      assert.equal(await unchanged(stamps), true);
+      await writeFile(join(folder, "later.xsd"), "edited before its read");
+      await files.read("later.xsd");
+      assert.equal(
+        await unchanged(stamps),
+        true,
+        "a file read late is stamped as it was before that read",
+      );
+      await writeFile(
+        join(folder, "later.xsd"),
+        "edited after its read, longer",
+      );
+      assert.equal(await unchanged(stamps), false, "the late file is signed");
+      await writeFile(join(folder, "later.xsd"), "edited before its read");
+      await writeFile(
+        join(folder, "metadata.json"),
+        "edited after the read, longer",
+      );
+      assert.equal(
+        await unchanged(stamps),
+        false,
+        "the metadata read first is signed too",
+      );
+    });
+
     it("loads an adapter again for each change of what it was given, and for nothing else", async (t) => {
       const { folder, copied, first } = await adapterCopy();
       const vocabulary = await vocabularyCopy(copied, first);
@@ -520,9 +595,23 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       await touch(inside);
       assert.equal(await changed(), true, "a file of its folder changed");
       await writeFile(join(folder, "added.txt"), "more");
-      assert.equal(await changed(), true, "a file was added");
+      assert.equal(
+        await changed(),
+        false,
+        "a file no description lists was added",
+      );
       await rm(join(folder, "added.txt"));
-      assert.equal(await changed(), true, "a file was taken away");
+      assert.equal(await changed(), false, "and taken away");
+      const listed = (await new FolderFiles(folder).list("in/")).find((path) =>
+        path.endsWith(".rq"),
+      );
+      assert.ok(listed, "a query under in/, which the description lists");
+      await touch(join(folder, listed));
+      assert.equal(
+        await changed(),
+        true,
+        "a file its description lists changed",
+      );
       await touch(join(vocabulary.folder, vocabulary.files[0] as string));
       assert.equal(await changed(), true, "a vocabulary file changed");
 

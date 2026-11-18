@@ -32,8 +32,10 @@ export interface PodState {
   readonly at: string;
   /** None for a pod that was never titled: its manifest then holds no `dct:title`. */
   readonly title: string | undefined;
-  /** The writer's last snapshot, which the manifest's build used: a view is stale when the writer's is another. */
+  /** The writer's last snapshot, which the manifest's build used. */
   readonly snapshot?: string;
+  /** The hash of everything the build read, which the manifest names when a runtime may read the build back (C8). */
+  readonly inputsHash?: string;
 }
 
 /** Adds the lens's derived state, and the files built from it, to a union holding a pod; returns those files. */
@@ -174,6 +176,7 @@ export function manifest(
   title: string | undefined,
   at: string,
   snapshot?: string,
+  inputsHash?: string,
 ): Triple[] {
   const manifest = iri(`${file}#manifest`);
   const activity = blank("activity");
@@ -192,6 +195,15 @@ export function manifest(
     ...(snapshot === undefined
       ? []
       : [[activity, iri(`${PROV}used`), iri(snapshot)] as Triple]),
+    ...(inputsHash === undefined
+      ? []
+      : [
+          [
+            activity,
+            iri(`${CASCADE}buildInputsHash`),
+            literal(inputsHash),
+          ] as Triple,
+        ]),
     [agent, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
     [agent, iri(`${RDFS}label`), literal(RUNTIME)],
   ];
@@ -343,6 +355,7 @@ export async function vocabularyBuild(
           pod.title,
           pod.at,
           pod.snapshot,
+          pod.inputsHash,
         ),
       ],
     ]);

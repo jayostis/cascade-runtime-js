@@ -1,6 +1,7 @@
 import type { CorePod } from "./core-pod.js";
+import { counted } from "./probe.js";
 import { iri, RDF, type Triple, written } from "./rdf.js";
-import type { Shapes } from "./shapes.js";
+import type { ShapeResult, Shapes } from "./shapes.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -189,6 +190,42 @@ async function nameTaken(
     : undefined;
 }
 
+/** The predicates the machine-basis shape reads of a judgment, subclass statements included for its `sh:class`; the rest of what it states cannot change its answer. */
+const BASIS_READS = new Set([
+  RDF + "type",
+  "http://www.w3.org/2000/01/rdf-schema#subClassOf",
+  `${CASCADE}basis`,
+  `${PROV}wasAttributedTo`,
+]);
+
+/** What the machine-basis shape last answered, by the shapes asked and the statements it reads: a judgment is checked to prepare it and again to file it, and nothing else asks again. */
+const basisChecked = new WeakMap<
+  object,
+  { key: string; results: readonly ShapeResult[] }
+>();
+
+async function basisResults(
+  shapes: Pick<Shapes, "resultsOf">,
+  judgment: string,
+  triples: readonly Triple[],
+): Promise<ShapeResult[]> {
+  const key = JSON.stringify([
+    judgment,
+    triples
+      .filter(([, p]) => BASIS_READS.has(p.value))
+      .map((triple) => triple.map(written).join(" "))
+      .sort(),
+  ]);
+  const held = basisChecked.get(shapes);
+  if (held?.key === key) return [...held.results];
+  counted("shapes.machine-basis-check");
+  const results = await shapes.resultsOf(`${CASCADE}MachineBasisShape`, [
+    ...triples,
+  ]);
+  basisChecked.set(shapes, { key, results: [...results] });
+  return results;
+}
+
 /**
  * Why `judgment`, which states a basis, breaks the vocabulary's machine-basis shape (`cascade:MachineBasisShape`): a
  * basis a software agent states is attributed to a person. Nothing when it conforms. The shape runs over the judgment
@@ -232,9 +269,7 @@ async function basisRefused(
     }
   }
   const refused = (
-    await (
-      await shapes()
-    ).resultsOf(`${CASCADE}MachineBasisShape`, [...triples, ...held])
+    await basisResults(await shapes(), judgment, [...triples, ...held])
   ).find(
     ({ focusNode, sourceShape }) =>
       focusNode.value === judgment &&

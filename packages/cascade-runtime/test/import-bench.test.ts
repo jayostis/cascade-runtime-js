@@ -191,10 +191,11 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.ok(reopened.wrote > 0);
     });
 
-    it("builds the pod whole once, the build the import's rebuilds continue from, and derives no matcher view of it apart, as the read before the import would", () => {
+    it("reads the build the first import wrote back once, rather than building the pod whole, as the build the import's rebuilds continue from, and derives no matcher view of it apart", () => {
       const calls = (name: string) =>
         reopened.spans.find((span) => span.name === name)?.calls ?? 0;
-      assert.equal(calls("kept.whole"), 1);
+      assert.equal(calls("kept.readBack"), 1);
+      assert.equal(calls("kept.whole"), 0);
       assert.equal(calls("matcher.view"), 0);
     });
 
@@ -209,6 +210,7 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
   describe("given a pod holding one hospital's pull, closed and opened again, whose next import is refused before the good one", () => {
     /** The good import onto the reopened pod, after `refusals` imports of a file no importer reads. */
     async function importedAfter(refusals: number) {
+      // A pod opened again is built whole, or read back where its build is kept beside it: either is its one build.
       const folder = await mkdtemp(join(tmpdir(), "import-refused-"));
       try {
         let pod = await openPod(folder);
@@ -233,7 +235,9 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
           return {
             refused: result.refused,
             wrote: result.wrote.length,
-            builtWhole: seen.spans.get("kept.whole")?.calls ?? 0,
+            built:
+              (seen.spans.get("kept.whole")?.calls ?? 0) +
+              (seen.spans.get("kept.readBack")?.calls ?? 0),
             rows: await pod.ask("record/Which entry shows it"),
           };
         } finally {
@@ -249,8 +253,8 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       const refused = await importedAfter(2);
       assert.equal(control.refused, undefined);
       assert.equal(refused.refused, undefined);
-      assert.equal(control.builtWhole, 1);
-      assert.equal(refused.builtWhole, 0, "built by the refused import's read");
+      assert.equal(control.built, 1);
+      assert.equal(refused.built, 0, "built by the refused import's read");
       assert.ok(control.rows.length > 0);
       assert.equal(refused.wrote, control.wrote);
       assert.equal(refused.rows.length, control.rows.length);

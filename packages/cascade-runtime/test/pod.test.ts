@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import {
+  appendFile,
   cp,
   mkdir,
   mkdtemp,
@@ -11,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
@@ -49,6 +50,7 @@ import {
   headerIn,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { probing } from "@cascade-runtime/runtime/probe";
 import { pullFiles } from "../src/connect/index.js";
 import { shipped } from "../src/tables.js";
 import {
@@ -69,7 +71,12 @@ import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
 import { checkFolderSecret, openFolderPod } from "../src/node/folder-pod.js";
 import { answersToPublish, partsOf } from "../src/node/published.js";
-import { answersBeside, resolved } from "../src/node/resolved.js";
+import {
+  answersBeside,
+  builtCode,
+  keptBeside,
+  resolved,
+} from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
 import { samplesOf } from "../src/node/samples.js";
 // A browser's `openPod` reads published answers with `keptPod` and `withLookups`, which a Node test cannot call as a page does.
@@ -176,6 +183,17 @@ async function filesIn(at: string): Promise<string[]> {
     .filter((entry) => entry.isFile())
     .map((entry) => join(entry.parentPath, entry.name))
     .sort();
+}
+
+/** Every file the folder holds, with its bytes and its modification time. */
+async function heldIn(at: string): Promise<Map<string, [string, number]>> {
+  const held = new Map<string, [string, number]>();
+  for (const path of await filesIn(at))
+    held.set(path, [
+      (await readFile(path)).toString("base64"),
+      (await stat(path)).mtimeMs,
+    ]);
+  return held;
 }
 
 /** A judgment as the guide's template writes it: by the owner, as the patient. */
@@ -1699,6 +1717,40 @@ describe("Recording the owner's judgment · pod.judge()", () => {
       );
     });
 
+    it("checks the machine basis once for a judgment, not once to prepare it and again to file it", async () => {
+      const { seen } = await probing(() =>
+        owned.judge(authored("[ a prov:SoftwareAgent ]")),
+      );
+      assert.equal(seen.counts.get("shapes.machine-basis-check"), 1);
+    });
+
+    it("checks the machine basis again for a judgment of the same name that differs only in a subclass statement it states", async () => {
+      const name = "urn:uuid:0c7b2e48-91d5-4a3f-b6e2-48d1f0a97c35";
+      const host = "urn:uuid:5e1d9a73-2c46-4b08-8f35-a7d0c3b91e64";
+      const named = (more: string): string =>
+        authored(
+          `<${host}>`,
+          `
+<${host}> a prov:SoftwareAgent, <urn:example:KindOfAgent> .${more}`,
+        ).replaceAll("urn:cascade:this-judgment", name);
+      // The first files what the pod then holds of the host, so the second reads the same types the third will.
+      for (const again of ["first", "second"])
+        assert.equal(
+          (await owned.judge(named(""))).refused,
+          undefined,
+          `the kind is a software agent only, ${again}`,
+        );
+      await assert.rejects(
+        owned.judge(
+          named(
+            "\n<urn:example:KindOfAgent> <http://www.w3.org/2000/01/rdf-schema#subClassOf> prov:Person .",
+          ),
+        ),
+        (error: Error) => error.message.includes("software agent"),
+        "the kind this judgment says is a person",
+      );
+    });
+
     it("files a machine basis by an author only the vocabulary types: cascade:CascadeMatcher, or an agent the judgment types a cascade:Server", async () => {
       assert.equal(
         (await owned.judge(authored("cascade:CascadeMatcher"))).refused,
@@ -2160,10 +2212,17 @@ describe("Opening a pod again · openPod()", () => {
   let made: { address: string; subject: string; owner: string };
   let rows: Row[];
 
-  /** The parts that open a pod with a build that fails, so that an answer that is not kept shows it. */
+  /** The parts that open a pod with a build that fails, whole or read back, so that an answer that is not kept shows it. */
   const unbuilt = (build: Partial<Parts["build"]> = {}): Parts => ({
     ...kept,
-    build: { ...kept.build, ...build, files: () => Promise.reject(NOT_BUILT) },
+    build: {
+      ...kept.build,
+      ...build,
+      files: () => Promise.reject(NOT_BUILT),
+      closing: () => {
+        throw NOT_BUILT;
+      },
+    },
   });
 
   async function opened<T>(
@@ -2272,6 +2331,546 @@ describe("Opening a pod again · openPod()", () => {
       await opened(unwritable, again, async (pod) => {
         assert.deepEqual(await pod.ask(QUESTION), rows);
       });
+    });
+  });
+
+  describe("given a pod an import built and closed in an earlier session", () => {
+    const ASKED = [
+      "pod/My active medications",
+      "pod/My active allergies",
+      "pod/My condition history",
+      "pod/My immunizations",
+    ];
+    const DERIVING = /^(derive\.step:|build\.queried$|kept\.whole$)/;
+    let first: string;
+    let wholeRows: Row[][];
+
+    /** The parts that keep nothing beside the pod, so every read builds it whole. */
+    const keepingNothing = (): Parts => {
+      const parts: { -readonly [K in keyof Parts]: Parts[K] } = { ...kept };
+      delete parts.answers;
+      delete parts.builtBeside;
+      return parts;
+    };
+
+    /** The pod in the folder opened with the parts, each question asked, and the spans the asking took. */
+    async function asked(parts: Parts, at: string) {
+      return opened(parts, at, async (pod) => {
+        const { result, seen } = await probing(async () => {
+          const rows: Row[][] = [];
+          for (const question of ASKED) rows.push(await pod.ask(question));
+          return rows;
+        });
+        return { rows: result, spans: [...seen.spans.keys()] };
+      });
+    }
+
+    /** A copy of the folder and what is kept beside it but its kept answers, which would answer without a build. */
+    async function copiedWithBuild(from: string, name: string) {
+      const to = join(pods, name);
+      await cp(from, to, { recursive: true });
+      await cp(
+        join(pods, ".answers", basename(from)),
+        join(pods, ".answers", name),
+        { recursive: true },
+      );
+      await rm(join(pods, ".answers", name, "answers.json"), { force: true });
+      return to;
+    }
+
+    before(async () => {
+      first = join(pods, "built-before");
+      const pod = await openPodWith(kept, first);
+      try {
+        await pod.import(exported("x-e2"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      } finally {
+        await pod.close();
+      }
+      wholeRows = (await asked(keepingNothing(), first)).rows;
+    });
+
+    it("reads the build back instead of deriving and building every view, and answers as a build whole does", async () => {
+      const at = await copiedWithBuild(first, "read-back");
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(
+        spans.filter((span) => DERIVING.test(span)),
+        [],
+      );
+      assert.ok(wholeRows.some((answered) => answered.length > 0));
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("reads a sealed pod's build back, kept sealed beside it", async () => {
+      const at = join(pods, "sealed-read-back");
+      const parts = { ...kept, derive: fastDerive() };
+      const made = await openFolderPod(parts, at, { secret: WORDS });
+      try {
+        await made.import(exported("x-e2"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      } finally {
+        await made.close();
+      }
+      const reopened = await openFolderPod(parts, at, { secret: WORDS });
+      try {
+        const { result, seen } = await probing(() =>
+          reopened.ask("pod/My active allergies"),
+        );
+        const spans = [...seen.spans.keys()];
+        assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+        assert.deepEqual(
+          spans.filter((span) => DERIVING.test(span)),
+          [],
+        );
+        const whole = await openFolderPod(
+          { ...keepingNothing(), derive: fastDerive() },
+          at,
+          { secret: WORDS },
+        );
+        try {
+          const rows = await whole.ask("pod/My active allergies");
+          assert.ok(rows.length > 0);
+          assert.deepEqual(result, rows);
+        } finally {
+          await whole.close();
+        }
+      } finally {
+        await reopened.close();
+      }
+      for (const file of await filesIn(
+        join(pods, ".answers", "sealed-read-back"),
+      ))
+        assert.ok(
+          !(await readFile(file, "latin1")).includes("ns.cascadeprotocol.org"),
+          `${file} is not sealed`,
+        );
+    });
+
+    it("builds a sealed pod again when its manifest names another hash, writes the build, and the next session reads it back", async () => {
+      const at = join(pods, "sealed-another-hash");
+      const parts = { ...kept, derive: fastDerive() };
+      const made = await openFolderPod(parts, at, { secret: WORDS });
+      try {
+        await made.import(exported("x-e2"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      } finally {
+        await made.close();
+      }
+      const { build } = parts;
+      const changed = {
+        ...parts,
+        build: { ...build, queries: [...build.queries, "# changed"] },
+      };
+      const session = async (question: string, using: Parts = changed) => {
+        const pod = await openFolderPod(using, at, { secret: WORDS });
+        try {
+          const { result, seen } = await probing(() => pod.ask(question));
+          return { rows: result, spans: [...seen.spans.keys()] };
+        } finally {
+          await pod.close();
+        }
+      };
+      const rebuilt = await session("pod/My active medications");
+      assert.ok(
+        rebuilt.spans.some((span) => DERIVING.test(span)),
+        rebuilt.spans.join(", "),
+      );
+      const back = await session("pod/My active allergies");
+      assert.ok(back.spans.includes("kept.readBack"), back.spans.join(", "));
+      assert.deepEqual(
+        back.spans.filter((span) => DERIVING.test(span)),
+        [],
+      );
+      const whole = await session("pod/My active allergies", {
+        ...keepingNothing(),
+        derive: fastDerive(),
+      });
+      assert.ok(whole.rows.length > 0);
+      assert.deepEqual(back.rows, whole.rows);
+    });
+
+    it("builds again when a file the build read changed in place", async () => {
+      const at = await copiedWithBuild(first, "card-changed");
+      await appendFile(join(at, ...kept.layout.card.split("/")), "# changed\n");
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("builds again when a view the build wrote no longer holds what it wrote, writes that view again, and the next session reads it back", async () => {
+      const at = await copiedWithBuild(first, "view-edited");
+      const view = kept.layout.views.find(
+        ({ writtenBy }) => writtenBy === "views/conditions.rq",
+      )?.file;
+      assert.ok(view);
+      const file = join(at, ...view.split("/"));
+      const held = await readFile(file);
+      assert.ok(held.length > 0, "the pod has no conditions");
+      await writeFile(file, "");
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.deepEqual(rows, wholeRows);
+      assert.deepEqual(
+        await readFile(file),
+        held,
+        "the view was not written again",
+      );
+      await rm(join(pods, ".answers", "view-edited", "answers.json"));
+      const again = await asked(kept, at);
+      assert.ok(again.spans.includes("kept.readBack"), again.spans.join(", "));
+      assert.deepEqual(again.rows, wholeRows);
+    });
+
+    it("builds again when what is kept beside the pod was kept under another hash than the manifest names, as when a process stops before it closes the pod", async () => {
+      const at = await copiedWithBuild(first, "kept-under-another");
+      const file = join(pods, ".answers", "kept-under-another", "build.nt");
+      const bytes = await readFile(file, "utf8");
+      const end = bytes.indexOf("\n");
+      const header = JSON.parse(bytes.slice(2, end)) as { inputsHash: string };
+      header.inputsHash = "0".repeat(header.inputsHash.length);
+      await writeFile(file, `# ${JSON.stringify(header)}${bytes.slice(end)}`);
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("builds again when the vocabulary's build queries changed", async () => {
+      const at = await copiedWithBuild(first, "queries-changed");
+      const { build } = kept;
+      const { spans } = await asked(
+        {
+          ...kept,
+          build: { ...build, queries: [...build.queries, "# changed"] },
+        },
+        at,
+      );
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+    });
+
+    it("keeps the build a read made whole when the manifest named its hash and nothing was kept beside it, and the next session reads it back", async () => {
+      const at = await copiedWithBuild(first, "beside-lost");
+      await rm(join(pods, ".answers", "beside-lost", "build.nt"));
+      const manifest = await readFile(
+        join(at, ...kept.layout.manifest.split("/")),
+      );
+      const built = await asked(kept, at);
+      assert.ok(
+        built.spans.some((span) => DERIVING.test(span)),
+        built.spans.join(", "),
+      );
+      assert.deepEqual(
+        await readFile(join(at, ...kept.layout.manifest.split("/"))),
+        manifest,
+        "a read rewrote a manifest that named its hash",
+      );
+      await rm(join(pods, ".answers", "beside-lost", "answers.json"));
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("leaves every file of the pod as it was, views included, when only the build kept beside it was lost", async () => {
+      const at = await copiedWithBuild(first, "beside-lost-untouched");
+      await rm(join(pods, ".answers", "beside-lost-untouched", "build.nt"));
+      const before = await heldIn(at);
+      assert.ok(before.size > 0);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const built = await asked(kept, at);
+      assert.ok(
+        built.spans.some((span) => DERIVING.test(span)),
+        built.spans.join(", "),
+      );
+      assert.deepEqual(await heldIn(at), before);
+    });
+
+    it("writes the build a read made whole again when the manifest named another hash, and the next session reads it back", async () => {
+      const at = await copiedWithBuild(first, "hash-changed");
+      const { build } = kept;
+      const changed: Parts = {
+        ...kept,
+        build: { ...build, queries: [...build.queries, "# changed"] },
+      };
+      const built = await asked(changed, at);
+      assert.ok(
+        built.spans.some((span) => DERIVING.test(span)),
+        built.spans.join(", "),
+      );
+      const unbuilding: Parts = {
+        ...changed,
+        build: {
+          ...changed.build,
+          closing: () => {
+            throw NOT_BUILT;
+          },
+        },
+      };
+      const answeredFromKept = await opened(unbuilding, at, async (pod) => {
+        const rows: Row[][] = [];
+        for (const question of ASKED) rows.push(await pod.ask(question));
+        return rows;
+      });
+      assert.deepEqual(
+        answeredFromKept,
+        built.rows,
+        "the answers kept as the read wrote the build, under the pod's revision",
+      );
+      await rm(join(pods, ".answers", "hash-changed", "answers.json"));
+      const { rows, spans } = await asked(changed, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("answers when the manifest named another hash and the pod cannot be written", async () => {
+      const at = await copiedWithBuild(first, "read-only");
+      const { build } = kept;
+      const refused = () => Promise.reject(new Error("read-only"));
+      const readOnly: Parts = {
+        ...kept,
+        build: { ...build, queries: [...build.queries, "# changed"] },
+        folder: (path, iri) => {
+          const folder = kept.folder(path, iri);
+          return {
+            ...folder,
+            files: new Proxy(folder.files, {
+              get: (files, name) => {
+                if (name === "write" || name === "writeAll") return refused;
+                const value = Reflect.get(files, name, files) as unknown;
+                return typeof value === "function" ? value.bind(files) : value;
+              },
+            }),
+          };
+        },
+      };
+      const { rows } = await asked(readOnly, at);
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("writes nothing when another session's step lands between what the read listed and its write, and answers all the same", async () => {
+      const { build } = kept;
+      const manifestIn = (at: string) =>
+        join(at, ...kept.layout.manifest.split("/"));
+      const landings: [string, (at: string) => Promise<void>][] = [
+        ["file", (at) => writeFile(join(at, "landed.ttl"), "")],
+        [
+          "manifest",
+          (at) => appendFile(manifestIn(at), "# another session's step\n"),
+        ],
+      ];
+      const found: string[] = [];
+      for (const [what, land] of landings) {
+        const at = await copiedWithBuild(first, `landed-${what}`);
+        let landed: Buffer | undefined;
+        const landing: Parts = {
+          ...kept,
+          build: {
+            ...build,
+            queries: [...build.queries, "# changed"],
+            queried: async (...args: Parameters<typeof build.queried>) => {
+              if (landed === undefined) {
+                await land(at);
+                landed = await readFile(manifestIn(at));
+              }
+              return build.queried(...args);
+            },
+          },
+        };
+        const { rows } = await asked(landing, at);
+        assert.deepEqual(rows, wholeRows, what);
+        assert.ok(landed !== undefined, what);
+        if (!(await readFile(manifestIn(at))).equals(landed))
+          found.push(`${what}: the read wrote its manifest over the step's`);
+      }
+      assert.deepEqual(found, []);
+    });
+
+    it("rebuilds a step in part from the build it read back, and the next session reads back what that step wrote, answering as a build whole does", async () => {
+      const at = await copiedWithBuild(first, "stepped");
+      const claimProfiles = [await profileOf("J1"), await profileOf("J2")];
+      await opened(kept, at, async (pod) => {
+        const { seen } = await probing(() =>
+          pod.import(exported("x-e4"), { claimProfiles }),
+        );
+        const spans = [...seen.spans.keys()];
+        assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+        assert.ok(!spans.includes("kept.whole"), spans.join(", "));
+      });
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(rows, (await asked(keepingNothing(), at)).rows);
+      assert.notDeepEqual(rows, wholeRows);
+    });
+
+    it("builds again when a step wrote its records and stopped before its views", async () => {
+      const at = await copiedWithBuild(first, "torn");
+      const before = new Map<string, Buffer | undefined>();
+      for (const path of kept.layout.rebuilt)
+        before.set(
+          path,
+          await readFile(join(at, ...path.split("/"))).catch(() => undefined),
+        );
+      const beside = join(pods, ".answers", "torn");
+      const besideBefore = join(pods, "torn-beside-before");
+      await cp(beside, besideBefore, { recursive: true });
+      await opened(kept, at, async (pod) => {
+        await pod.import(exported("x-e4"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      });
+      const after = (await asked(keepingNothing(), at)).rows;
+      for (const [path, bytes] of before) {
+        const file = join(at, ...path.split("/"));
+        if (bytes === undefined) await rm(file, { force: true });
+        else await writeFile(file, bytes);
+      }
+      await rm(beside, { recursive: true, force: true });
+      await cp(besideBefore, beside, { recursive: true });
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.notDeepEqual(after, wholeRows);
+      assert.deepEqual(rows, after);
+    });
+  });
+
+  describe("given a runtime packed, or run from a checkout · keptBeside()", () => {
+    it("keeps answers for a packed, committed runtime, and the build too wherever the runtime and its components are each at a commit, a checkout's under its built code", async () => {
+      const COMMIT =
+        "https://github.com/jayostis/cascade-runtime-js/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
+      const rows: [
+        string,
+        string,
+        string,
+        number,
+        [boolean, boolean, string | undefined],
+      ][] = [
+        [
+          "packed and committed",
+          "0.0.0-commit-abc123",
+          COMMIT,
+          0,
+          [true, true, undefined],
+        ],
+        ["a checkout at a commit", "0.0.0", COMMIT, 0, [false, true, "built"]],
+        [
+          "a checkout with changes",
+          "0.0.0",
+          `${COMMIT}#uncommitted`,
+          0,
+          [false, false, undefined],
+        ],
+        [
+          "a checkout no commit names",
+          "0.0.0",
+          "https://github.com/jayostis/cascade-runtime-js#unidentified",
+          0,
+          [false, false, undefined],
+        ],
+        [
+          "components with changes",
+          "0.0.0",
+          COMMIT,
+          2,
+          [false, false, undefined],
+        ],
+      ];
+      const found = [];
+      for (const [what, version, performer, uncommitted] of rows) {
+        const parts = await keptBeside(
+          { performer, local: { resolved: { uncommitted } } },
+          version,
+          () => Promise.resolve("built"),
+        );
+        found.push([
+          what,
+          [
+            parts.answers !== undefined,
+            (parts.answers?.at ?? parts.builtBeside) !== undefined,
+            parts.builtCode,
+          ],
+        ]);
+      }
+      assert.deepEqual(
+        found,
+        rows.map(([what, , , , kept]) => [what, kept]),
+      );
+    });
+
+    it("names a checkout's built code by the bytes of what runs, so code built at another commit than the checkout's keeps its build apart", async () => {
+      const root = await mkdtemp(join(tmpdir(), "built-code-"));
+      try {
+        const files: Record<string, string> = {
+          "cascade-runtime/package.json": JSON.stringify({
+            name: "cascade-runtime",
+            dependencies: { "@cascade-runtime/runtime": "0.0.0" },
+          }),
+          "cascade-runtime/dist/src/index.js": "export {};\n",
+          "runtime/package.json": JSON.stringify({
+            name: "@cascade-runtime/runtime",
+          }),
+          "runtime/dist/src/core-pod.js": "export const at = 1;\n",
+          "runtime/dist/src/core-pod.js.map": "{}",
+          "site/package.json": JSON.stringify({
+            name: "@cascade-runtime/site",
+          }),
+          "site/dist/src/page.js": "export {};\n",
+        };
+        const put = async (path: string, text: string) => {
+          await mkdir(dirname(join(root, path)), { recursive: true });
+          await writeFile(join(root, path), text);
+        };
+        for (const [path, text] of Object.entries(files)) await put(path, text);
+        const code = () => builtCode(join(root, "cascade-runtime"));
+        const own = await code();
+        const rows: [string, string, string, boolean][] = [
+          [
+            "a file of a package it runs",
+            "runtime/dist/src/core-pod.js",
+            "export const at = 2;\n",
+            true,
+          ],
+          [
+            "a file of its own package",
+            "cascade-runtime/dist/src/index.js",
+            "export const at = 3;\n",
+            true,
+          ],
+          ["a source map", "runtime/dist/src/core-pod.js.map", "{ }", false],
+          [
+            "a package it does not run",
+            "site/dist/src/page.js",
+            "export const at = 4;\n",
+            false,
+          ],
+        ];
+        const found: string[] = [];
+        for (const [what, path, text, changes] of rows) {
+          await put(path, text);
+          if (((await code()) !== own) !== changes)
+            found.push(`${what}: ${changes ? "same" : "another"} digest`);
+          await put(path, files[path] ?? "");
+        }
+        assert.deepEqual(found, []);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     });
   });
 

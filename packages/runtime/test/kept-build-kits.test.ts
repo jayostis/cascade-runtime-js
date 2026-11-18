@@ -25,7 +25,9 @@ async function kits(): Promise<string[]> {
 describe("Keeping one build of a pod across steps · CorePodOptions.build, CorePod.select()", () => {
   /**
    * `build.verify` (`PodBuildOption.verify`) makes a pod that rebuilt a step in part build itself whole as well, and
-   * throw where the two differ: in a graph of derived state, or in a file the build writes. A replay that does not throw
+   * read its build back from the files the step wrote and the derived state as kept beside a pod (blank nodes and all,
+   * through N-Triples), and throw where either differs from the whole one: in a graph of derived state, or in a file the
+   * build writes. A replay that does not throw
    * is one in which they never differed. Each kit's story is replayed once, with a count of the steps that were
    * rebuilt in part.
    */
@@ -58,7 +60,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       }
     });
 
-    it("leaves, after each step rebuilt in part, the derived state and the built files of a pod built whole", () => {
+    it("leaves, after each step rebuilt in part and once read back, the derived state and the built files of a pod built whole", () => {
       assert.ok(replays.length > 0, "no kit was replayed");
       assert.deepEqual(
         replays

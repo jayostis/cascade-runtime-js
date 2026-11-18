@@ -642,8 +642,22 @@ describe("Reporting a conformance run · npm run conformance -- --report <file>"
           tested.set(`${files.iri}${kit}/#${check}`, check);
     }
 
+    /** What a run of one feature file says on stderr, started with the full run so that the two are not one after the other. */
+    let toolsListed: string;
+
+    async function listTools(): Promise<void> {
+      ({ stderr: toolsListed } = await promisify(execFile)(process.execPath, [
+        CLI,
+        "conformance",
+        "--feature",
+        "runtime/consent.feature",
+        "--report",
+        join(await mkdtemp(join(tmpdir(), "conformance-")), "earl.nt"),
+      ]));
+    }
+
     before(async () => {
-      await Promise.all([readReport(), readTested()]);
+      await Promise.all([readReport(), readTested(), listTools()]);
     });
 
     it("holds one assertion for each example of every feature file and each check of every kit, and no other", () => {
@@ -662,17 +676,12 @@ describe("Reporting a conformance run · npm run conformance -- --report <file>"
       }
     });
 
-    it("lists the tools of `cascade-runtime/tools` to the run, for the examples that read them", async () => {
-      const { stderr } = await promisify(execFile)(process.execPath, [
-        CLI,
-        "conformance",
-        "--feature",
-        "runtime/consent.feature",
-        "--report",
-        join(await mkdtemp(join(tmpdir(), "conformance-")), "earl.nt"),
-      ]);
-      const listed = /the run lists (\d+) tools/.exec(stderr);
-      assert.ok(Number(listed?.[1]) > 0, `the run listed no tools: ${stderr}`);
+    it("lists the tools of `cascade-runtime/tools` to the run, for the examples that read them", () => {
+      const listed = /the run lists (\d+) tools/.exec(toolsListed);
+      assert.ok(
+        Number(listed?.[1]) > 0,
+        `the run listed no tools: ${toolsListed}`,
+      );
     });
 
     it("names the commit of the vocabulary it ran", async () => {

@@ -361,6 +361,10 @@ export interface Parts {
   folder(path: string, iri?: string): Folder;
   /** Where the answers of a pod in a folder are kept; none when nothing may be kept. */
   readonly answers?: AnswerStore;
+  /** Where the build of a pod in a folder is kept beside it when its answers are not; none when it may not be. */
+  readonly builtBeside?: (folder: string) => Files;
+  /** What the code that runs is, by its bytes, where the performer does not name it exactly; a kept build names it. */
+  readonly builtCode?: string;
   /** The export or download at the path, as the files it is in and its name there, or why no path is read. */
   exportAt(path: string): Export | string;
   loadBridge(): Promise<LoadedBridge>;
@@ -833,6 +837,7 @@ class OpenPod implements Pod {
   close(): Promise<void> {
     return this.#next(async () => {
       this.#closed = true;
+      await this.#core.keepBuild().catch(() => undefined);
       this.#core.close();
       const bridge = this.#bridge;
       this.#bridge = undefined;
@@ -1303,7 +1308,8 @@ class OpenPod implements Pod {
 
 /**
  * The core over the pod's files. `writer`, given for a pod kept in a folder, holds the head the app's tables store kept
- * for it, and each new head is kept there; a pod in memory keeps none.
+ * for it, and each new head is kept there, and `beside` where its build is kept beside it with its answers; a pod in
+ * memory keeps none.
  */
 function coreOver(
   parts: Parts,
@@ -1313,6 +1319,7 @@ function coreOver(
   subject: string,
   title: string | undefined,
   writer?: { readonly head: Head | undefined },
+  beside?: Files,
 ): CorePod {
   const { build } = parts;
   return new CorePod({
@@ -1331,6 +1338,8 @@ function coreOver(
       ? {}
       : { keepHead: (kept: Head) => parts.tables.keepHead(address, kept) }),
     references: () => Promise.resolve(references),
+    ...(beside === undefined ? {} : { besidePod: beside }),
+    ...(parts.builtCode === undefined ? {} : { builtCode: parts.builtCode }),
     build: {
       lens: parts.lens,
       derive: async (store, lens, pod, samesStillJoined) => {
@@ -1352,7 +1361,7 @@ async function subjectsFiled(
   const { file, folder } = layout.place(`${CASCADE}Subject`);
   const paths = file === undefined ? await files.list(folder ?? "") : [file];
   const found = new Set<string>();
-  for (const path of paths.filter((path) => layout.isRdf(path))) {
+  for (const path of paths.filter((path) => layout.loads(path))) {
     const bytes = await files.read(path);
     if (bytes === undefined) continue;
     let triples: readonly Triple[];
@@ -1370,9 +1379,9 @@ async function subjectsFiled(
   return [...found];
 }
 
-/** The parts with every file of a pod's folder, read through its sealed index, and of its kept answers sealed under the key. */
+/** The parts with every file of a pod's folder, read through its sealed index, and of its kept answers and build sealed under the key. */
 function sealedParts(parts: Parts, index: SealedIndex): Parts {
-  const { answers } = parts;
+  const { answers, builtBeside } = parts;
   const { key } = index;
   return {
     ...parts,
@@ -1391,6 +1400,12 @@ function sealedParts(parts: Parts, index: SealedIndex): Parts {
             at: (folder) =>
               new EncryptedFiles(answers.at(folder), key, { kind: "answers" }),
           },
+        }),
+    ...(builtBeside === undefined
+      ? {}
+      : {
+          builtBeside: (folder) =>
+            new EncryptedFiles(builtBeside(folder), key, { kind: "answers" }),
         }),
   };
 }
@@ -1426,10 +1441,14 @@ export async function openPodWith(
             })),
         );
   const disk = folder === undefined ? undefined : parts.folder(folder);
-  const answers =
-    folder === undefined || parts.answers === undefined
+  const beside =
+    folder === undefined
       ? undefined
-      : new Answers(parts.answers.at(folder), parts.answers.runtime);
+      : (parts.answers?.at(folder) ?? parts.builtBeside?.(folder));
+  const answers =
+    beside === undefined || parts.answers === undefined
+      ? undefined
+      : new Answers(beside, parts.answers.runtime);
   const card =
     disk === undefined ? undefined : await disk.files.read(parts.layout.card);
   const references = await parts.tables.references();
@@ -1454,6 +1473,7 @@ export async function openPodWith(
       subject,
       title,
       folder === undefined ? undefined : { head: undefined },
+      beside,
     );
     const created = await core.create();
     if (created.refused !== undefined)
@@ -1498,9 +1518,16 @@ export async function openPodWith(
     titled: title !== undefined,
   });
   const files = parts.folder(folder, address).files;
-  const core = coreOver(parts, references, files, address, subject, title, {
-    head: await parts.tables.headOf(address),
-  });
+  const core = coreOver(
+    parts,
+    references,
+    files,
+    address,
+    subject,
+    title,
+    { head: await parts.tables.headOf(address) },
+    beside,
+  );
   return new OpenPod(
     parts,
     core,

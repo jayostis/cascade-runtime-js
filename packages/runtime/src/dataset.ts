@@ -10,6 +10,8 @@ export const STEPS_GRAPH = "urn:cascade:steps";
 export const STEP = "urn:cascade:step:";
 const GENERATED = "http://www.w3.org/ns/prov#generated";
 const USED = "http://www.w3.org/ns/prov#used";
+const BUILD_INPUTS_HASH =
+  "https://ns.cascadeprotocol.org/cascade#buildInputsHash";
 const STORAGE = "http://www.w3.org/ns/pim/space#storage";
 const DCT = "http://purl.org/dc/terms/";
 /** The files `podFiles` reads at once: a pod of many revisions read all at once runs out of file descriptors. */
@@ -49,7 +51,7 @@ export async function built(
   derive?: Derive,
   samesStillJoined?: SamesStillJoined,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
-  for (const path of files.filter((path) => layout.isRdf(path))) {
+  for (const path of files.filter((path) => layout.loads(path))) {
     const bytes = await pod.read(path);
     if (bytes === undefined)
       throw new Error(`${address}${path} was written and is gone`);
@@ -158,6 +160,8 @@ export interface PodStated {
   readonly title?: string;
   readonly at?: string;
   readonly snapshot?: string;
+  /** The hash of what the manifest's build read (C8). */
+  readonly inputsHash?: string;
 }
 
 export async function podStated(
@@ -172,11 +176,13 @@ export async function podStated(
   const title = valueOf(manifest, `${DCT}title`)?.value;
   const at = valueOf(manifest, `${DCT}created`)?.value;
   const snapshot = valueOf(manifest, USED)?.value;
+  const inputsHash = valueOf(manifest, BUILD_INPUTS_HASH)?.value;
   return {
     address: storage.value,
     ...(title === undefined ? {} : { title }),
     ...(at === undefined ? {} : { at }),
     ...(snapshot === undefined ? {} : { snapshot }),
+    ...(inputsHash === undefined ? {} : { inputsHash }),
   };
 }
 
@@ -194,7 +200,7 @@ export async function podFiles(
   const rebuilt = new Set(layout.rebuilt);
   const listed = held ?? (await pod.list(""));
   const paths = listed.filter(
-    (path) => layout.isRdf(path) && !rebuilt.has(path),
+    (path) => layout.loads(path) && !rebuilt.has(path),
   );
   const read: (Uint8Array | undefined)[] = [];
   for (let start = 0; start < paths.length; start += READ_AT_ONCE)
