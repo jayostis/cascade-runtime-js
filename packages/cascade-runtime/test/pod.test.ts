@@ -66,7 +66,6 @@ import {
   Unopened,
 } from "cascade-runtime";
 import { kitDownload, kitStory, replayKit } from "cascade-runtime/fixtures";
-import { probing } from "@cascade-runtime/runtime/probe";
 import { Answers } from "../src/answers.js";
 import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
