@@ -497,6 +497,8 @@ async function copied(pod: Files): Promise<Files> {
  */
 export class CorePod {
   #options: CorePodOptions;
+  /** The pod's files as given, read past what `HeldFiles` holds of them. */
+  readonly #unheld: Files;
   #references: Promise<References> | undefined;
   #readShapes: Promise<Shapes> | undefined;
   /** What is built of the pod as it stands, by what it is; a step drops it all. */
@@ -533,6 +535,7 @@ export class CorePod {
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
+    this.#unheld = options.pod;
     this.#keptMatcherJudgments = new KeptMatcherJudgments(options);
     this.#head = options.head;
   }
@@ -2055,10 +2058,19 @@ export class CorePod {
         ([a], [b]) =>
           Number(a === layout.manifest) - Number(b === layout.manifest),
       );
-    const written = await writeAll(this.#options.pod, bytes).then(
-      () => true,
-      () => false,
-    );
+    const files = this.#options.pod;
+    const differing: (readonly [string, Uint8Array])[] = [];
+    for (const [path, made] of bytes) {
+      const held = await files.read(path);
+      if (held === undefined || !same(held, made)) differing.push([path, made]);
+    }
+    const written =
+      differing.length === 0 ||
+      ((await this.#unchangedSince(paths)) &&
+        (await writeAll(files, differing).then(
+          () => true,
+          () => false,
+        )));
     if (written) {
       this.#builtDigests = new Map();
       for (const [path, made] of bytes)
@@ -2066,6 +2078,31 @@ export class CorePod {
       this.#toKeep = inputsHash;
     }
     return whole.kept.union;
+  }
+
+  /**
+   * Whether the pod, read past what is held of it, still holds the manifest the read was built under and lists the paths
+   * it read: no other session's step landed since, whose files and manifest a read's write would go over. No lock is
+   * taken, so this narrows the race rather than closing it.
+   */
+  async #unchangedSince(paths: readonly string[]): Promise<boolean> {
+    const { pod, layout } = this.#options;
+    const held = await pod.read(layout.manifest);
+    const now = await this.#unheld.read(layout.manifest);
+    if (
+      held === undefined
+        ? now !== undefined
+        : now === undefined || !same(held, now)
+    )
+      return false;
+    const rebuilt = new Set(layout.rebuilt);
+    const listed = (await this.#unheld.list("")).filter(
+      (path) => layout.isRdf(path) && !rebuilt.has(path),
+    );
+    const read = new Set(paths);
+    return (
+      listed.length === read.size && listed.every((path) => read.has(path))
+    );
   }
 
   /**
