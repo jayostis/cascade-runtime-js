@@ -11,7 +11,9 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "3", default-features = false, features = ["napi8"] }
 napi-derive = "3"
-oxigraph = { version = "=0.5.11", default-features = false }
+# The features the oxigraph package's WebAssembly build is built with, so both answer every query alike.
+oxigraph = { version = "=0.5.11", default-features = false, features = ["rdf-12"] }
+spargeo = "=0.5.6"
 
 [build-dependencies]
 napi-build = "2"

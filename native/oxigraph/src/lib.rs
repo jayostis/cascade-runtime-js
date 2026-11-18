@@ -6,13 +6,14 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use oxigraph::io::{RdfFormat, RdfParser, RdfSerializer};
 use oxigraph::model::{
-    BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, TermRef,
+    BaseDirection, BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, TermRef,
 };
 use oxigraph::sparql::results::{QueryResultsFormat, QueryResultsSerializer};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 
 const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 const RDF_LANG_STRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
+const RDF_DIR_LANG_STRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#dirLangString";
 
 fn failed(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
@@ -30,12 +31,14 @@ pub struct JsNamedNode {
     pub value: String,
 }
 
-/// An RDF/JS term: a NamedNode, BlankNode, Literal or DefaultGraph.
+/// An RDF/JS term: a NamedNode, BlankNode, Literal or DefaultGraph. A literal's direction is RDF 1.2's, as the
+/// WebAssembly build gives it: `ltr`, `rtl`, or empty.
 #[napi(object)]
 pub struct JsTerm {
     pub term_type: String,
     pub value: String,
     pub language: Option<String>,
+    pub direction: Option<String>,
     pub datatype: Option<JsNamedNode>,
 }
 
@@ -65,15 +68,32 @@ fn read(term: &JsTerm) -> Result<Read> {
                 .datatype
                 .as_ref()
                 .map(|datatype| datatype.value.as_str());
+            let direction = match term.direction.as_deref().unwrap_or_default() {
+                "" => None,
+                "ltr" => Some(BaseDirection::Ltr),
+                "rtl" => Some(BaseDirection::Rtl),
+                other => return Err(failed(format!("Invalid direction: {other}"))),
+            };
             match (datatype, language) {
+                (None | Some(RDF_DIR_LANG_STRING), Some(language)) if direction.is_some() => {
+                    Literal::new_directional_language_tagged_literal(
+                        &term.value,
+                        language,
+                        direction.unwrap_or(BaseDirection::Ltr),
+                    )
+                    .map_err(failed)?
+                    .into()
+                }
                 (None | Some(RDF_LANG_STRING), Some(language)) => {
                     Literal::new_language_tagged_literal(&term.value, language)
                         .map_err(failed)?
                         .into()
                 }
                 (None | Some(XSD_STRING), None) => Literal::new_simple_literal(&term.value).into(),
-                (Some(RDF_LANG_STRING), None) => {
-                    return Err(failed("a literal of rdf:langString has a language"));
+                (Some(RDF_LANG_STRING | RDF_DIR_LANG_STRING), _) => {
+                    return Err(failed(
+                        "a literal of rdf:langString has a language, and of rdf:dirLangString a direction too",
+                    ));
                 }
                 (Some(datatype), _) => Literal::new_typed_literal(
                     &term.value,
@@ -137,24 +157,34 @@ fn plain(term_type: &str, value: &str) -> JsTerm {
         term_type: term_type.into(),
         value: value.into(),
         language: None,
+        direction: None,
         datatype: None,
     }
 }
 
-fn term_of(term: TermRef<'_>) -> JsTerm {
-    match term {
+fn term_of(term: TermRef<'_>) -> Result<JsTerm> {
+    Ok(match term {
         TermRef::NamedNode(node) => plain("NamedNode", node.as_str()),
         TermRef::BlankNode(node) => plain("BlankNode", node.as_str()),
         TermRef::Literal(literal) => JsTerm {
             term_type: "Literal".into(),
             value: literal.value().into(),
             language: Some(literal.language().unwrap_or_default().into()),
+            direction: Some(
+                match literal.direction() {
+                    Some(BaseDirection::Ltr) => "ltr",
+                    Some(BaseDirection::Rtl) => "rtl",
+                    None => "",
+                }
+                .into(),
+            ),
             datatype: Some(JsNamedNode {
                 term_type: "NamedNode".into(),
                 value: literal.datatype().as_str().into(),
             }),
         },
-    }
+        TermRef::Triple(_) => return Err(failed("an RDF 1.2 triple term is not given here")),
+    })
 }
 
 fn graph_of(graph: &GraphName) -> JsTerm {
@@ -165,13 +195,22 @@ fn graph_of(graph: &GraphName) -> JsTerm {
     }
 }
 
-fn quad_of(quad: &Quad) -> JsQuad {
-    JsQuad {
-        subject: term_of(quad.subject.as_ref().into()),
-        predicate: term_of(quad.predicate.as_ref().into()),
-        object: term_of(quad.object.as_ref()),
+fn quad_of(quad: &Quad) -> Result<JsQuad> {
+    Ok(JsQuad {
+        subject: term_of(quad.subject.as_ref().into())?,
+        predicate: term_of(quad.predicate.as_ref().into())?,
+        object: term_of(quad.object.as_ref())?,
         graph: Some(graph_of(&quad.graph_name)),
+    })
+}
+
+/// The evaluator with GeoSPARQL's functions, as the WebAssembly build's.
+fn evaluator() -> SparqlEvaluator {
+    let mut evaluator = SparqlEvaluator::new();
+    for (name, implementation) in spargeo::GEOSPARQL_EXTENSION_FUNCTIONS {
+        evaluator = evaluator.with_custom_function(name.into(), implementation);
     }
+    evaluator
 }
 
 fn rdf_format(format: &str) -> Result<RdfFormat> {
@@ -232,7 +271,7 @@ fn bytes(data: &Either<String, Uint8Array>) -> &[u8] {
 pub fn parse(data: Either<String, Uint8Array>, options: ParseOptions) -> Result<Vec<JsQuad>> {
     parser(&options)?
         .for_slice(bytes(&data))
-        .map(|quad| quad.map(|quad| quad_of(&quad)).map_err(failed))
+        .map(|quad| quad_of(&quad.map_err(failed)?))
         .collect()
 }
 
@@ -320,7 +359,7 @@ impl Store {
                 object.as_ref().map(Into::into),
                 graph.as_ref().map(Into::into),
             )
-            .map(|quad| quad.map(|quad| quad_of(&quad)).map_err(failed))
+            .map(|quad| quad_of(&quad.map_err(failed)?))
             .collect()
     }
 
@@ -339,7 +378,7 @@ impl Store {
         query: String,
         options: Option<QueryOptions>,
     ) -> Result<Either<bool, String>> {
-        let mut prepared = SparqlEvaluator::new().parse_query(&query).map_err(failed)?;
+        let mut prepared = evaluator().parse_query(&query).map_err(failed)?;
         let mut format = None;
         if let Some(options) = options {
             if options.use_default_graph_as_union.unwrap_or(false) {
@@ -394,7 +433,7 @@ impl Store {
 
     #[napi]
     pub fn update(&self, update: String) -> Result<()> {
-        SparqlEvaluator::new()
+        evaluator()
             .parse_update(&update)
             .map_err(failed)?
             .on_store(self.held()?)
