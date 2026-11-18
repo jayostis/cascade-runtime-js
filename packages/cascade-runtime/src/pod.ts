@@ -1361,7 +1361,7 @@ async function subjectsFiled(
   const { file, folder } = layout.place(`${CASCADE}Subject`);
   const paths = file === undefined ? await files.list(folder ?? "") : [file];
   const found = new Set<string>();
-  for (const path of paths.filter((path) => layout.isRdf(path))) {
+  for (const path of paths.filter((path) => layout.loads(path))) {
     const bytes = await files.read(path);
     if (bytes === undefined) continue;
     let triples: readonly Triple[];

@@ -185,6 +185,17 @@ async function filesIn(at: string): Promise<string[]> {
     .sort();
 }
 
+/** Every file the folder holds, with its bytes and its modification time. */
+async function heldIn(at: string): Promise<Map<string, [string, number]>> {
+  const held = new Map<string, [string, number]>();
+  for (const path of await filesIn(at))
+    held.set(path, [
+      (await readFile(path)).toString("base64"),
+      (await stat(path)).mtimeMs,
+    ]);
+  return held;
+}
+
 /** A judgment as the guide's template writes it: by the owner, as the patient. */
 function judgment(
   by: Pod,
@@ -2572,6 +2583,20 @@ describe("Opening a pod again · openPod()", () => {
       const { rows, spans } = await asked(kept, at);
       assert.ok(spans.includes("kept.readBack"), spans.join(", "));
       assert.deepEqual(rows, wholeRows);
+    });
+
+    it("leaves every file of the pod as it was, views included, when only the build kept beside it was lost", async () => {
+      const at = await copiedWithBuild(first, "beside-lost-untouched");
+      await rm(join(pods, ".answers", "beside-lost-untouched", "build.nt"));
+      const before = await heldIn(at);
+      assert.ok(before.size > 0);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const built = await asked(kept, at);
+      assert.ok(
+        built.spans.some((span) => DERIVING.test(span)),
+        built.spans.join(", "),
+      );
+      assert.deepEqual(await heldIn(at), before);
     });
 
     it("writes the build a read made whole again when the manifest named another hash, and the next session reads it back", async () => {

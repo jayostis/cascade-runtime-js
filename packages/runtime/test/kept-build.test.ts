@@ -500,18 +500,18 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           true,
         ],
         [
-          "the bytes of a file the build loads that the layout does not name, a .DS_Store",
+          "the bytes of a file that is not RDF the layout reads, a .DS_Store",
           { pod: await podWith({ ".DS_Store": "other junk" }) },
-          true,
+          false,
         ],
         [
-          "the bytes of a file placed by hand beside the layout's, a Solid .acl",
+          "the bytes of a Solid .acl, which is not a .ttl",
           {
             pod: await podWith({
               "profile/.acl": "<#owner> a <urn:example:Other> .\n",
             }),
           },
-          true,
+          false,
         ],
         [
           "a file in the stored documents' folder that names no document",

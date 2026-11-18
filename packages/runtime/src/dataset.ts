@@ -51,7 +51,7 @@ export async function built(
   derive?: Derive,
   samesStillJoined?: SamesStillJoined,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
-  for (const path of files.filter((path) => layout.isRdf(path))) {
+  for (const path of files.filter((path) => layout.loads(path))) {
     const bytes = await pod.read(path);
     if (bytes === undefined)
       throw new Error(`${address}${path} was written and is gone`);
@@ -200,7 +200,7 @@ export async function podFiles(
   const rebuilt = new Set(layout.rebuilt);
   const listed = held ?? (await pod.list(""));
   const paths = listed.filter(
-    (path) => layout.isRdf(path) && !rebuilt.has(path),
+    (path) => layout.loads(path) && !rebuilt.has(path),
   );
   const read: (Uint8Array | undefined)[] = [];
   for (let start = 0; start < paths.length; start += READ_AT_ONCE)
