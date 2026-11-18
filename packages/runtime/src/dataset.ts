@@ -4,7 +4,7 @@ import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
 import type { Replayed } from "./replay.js";
-import { type Dataset, type Store, Union } from "./store.js";
+import { type Dataset, NotTurtle, type Store, Union } from "./store.js";
 
 export const STEPS_GRAPH = "urn:cascade:steps";
 export const STEP = "urn:cascade:step:";
@@ -209,16 +209,19 @@ export async function podFiles(
         paths.slice(start, start + READ_AT_ONCE).map((path) => pod.read(path)),
       )),
     );
-  for (const [index, path] of paths.entries()) {
+  const files = paths.map((path, index) => {
     const bytes = read[index];
     if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
-    try {
-      await union.loadTurtle(bytes, address + path);
-    } catch (error) {
-      throw new Error(`${pod.iri}${path} is no Turtle: ${String(error)}`, {
-        cause: error,
-      });
-    }
+    return { graph: address + path, turtle: bytes };
+  });
+  try {
+    await union.loadFiles(files);
+  } catch (error) {
+    if (!(error instanceof NotTurtle)) throw error;
+    const path = error.graph.slice(address.length);
+    throw new Error(`${pod.iri}${path} is no Turtle: ${String(error.cause)}`, {
+      cause: error,
+    });
   }
   return listed;
 }

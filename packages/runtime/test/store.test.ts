@@ -355,13 +355,19 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
       assert.ok(loads <= files.length - 50 + 1, `${loads} loads`);
     });
 
-    it("refuses a file that is no Turtle alone, naming its graph, and lets no file write into another's graph", async () => {
+    it("refuses a file that is no Turtle alone, naming its graph, the files before it loaded once, and lets no file write into another's graph", async () => {
       const plain = {
         graph: "urn:plain",
         turtle: encoded("<urn:a> <urn:p> 1 ."),
       };
       const refusals = [
         [{ graph: "urn:unended", turtle: encoded("<urn:a> <urn:p> 2") }],
+        [
+          {
+            graph: "urn:four-terms",
+            turtle: encoded("<urn:a> <urn:p> <urn:b> <urn:c> ."),
+          },
+        ],
         [
           {
             graph: "urn:breaks-out",
@@ -385,8 +391,13 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
           (error: unknown) =>
             error instanceof NotTurtle && error.graph === bad[0].graph,
         );
-        assert.ok(
-          (await quadsOf(store)).every((quad) => !quad.includes("urn:stolen")),
+        const quads = await quadsOf(store);
+        assert.ok(quads.every((quad) => !quad.includes("urn:stolen")));
+        assert.deepEqual(
+          quads.filter((quad) => quad.endsWith("<urn:plain>")),
+          [
+            `<urn:a> <urn:p> "1"^^<http://www.w3.org/2001/XMLSchema#integer> <urn:plain>`,
+          ],
         );
       }
     });
