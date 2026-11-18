@@ -579,9 +579,7 @@ async function joinsNow(): Promise<string[]> {
  */
 describe("Binding records to VALUES blocks · inBlocks()", () => {
   it("makes no block, and counts none, of no records", async () => {
-    const { result, seen } = await probing(() =>
-      Promise.resolve(inBlocks([])),
-    );
+    const { result, seen } = await probing(() => Promise.resolve(inBlocks([])));
     assert.deepEqual(result, []);
     assert.equal(seen.counts.get("matcher.valuesBlocks") ?? 0, 0);
   });
