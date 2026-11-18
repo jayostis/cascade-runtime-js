@@ -34,7 +34,12 @@ import { PERFORMERS } from "../src/replay.js";
 import { CASCADE } from "../src/step.js";
 import { checkouts, type Components } from "../src/node/components.js";
 import { FolderFiles } from "../src/node/folder-files.js";
-import { findBridgePackage, releasedBridgePackage } from "../src/node/wasm.js";
+import {
+  findBridgePackage,
+  releasedBridgePackage,
+  stamping,
+  unchanged,
+} from "../src/node/wasm.js";
 import { resolve as resolveComponent } from "../src/node/resolver.js";
 import type { Followed } from "../src/config.js";
 import {
@@ -542,6 +547,39 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
         result.loadFiles.length <
           (await new FolderFiles(folder).list("")).length,
         "the folder holds files the description does not list",
+      );
+    });
+
+    it("stamps each file before it is read, one read after the load among them, and notices an edit after the read", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "stamped-"));
+      made.push(folder);
+      await writeFile(join(folder, "metadata.json"), "one");
+      await writeFile(join(folder, "later.xsd"), "one");
+      const stamps = new Map();
+      const files = stamping(folder, "https://example.test/", stamps);
+      await files.read("metadata.json");
+      assert.equal(await unchanged(stamps), true);
+      await writeFile(join(folder, "later.xsd"), "edited before its read");
+      await files.read("later.xsd");
+      assert.equal(
+        await unchanged(stamps),
+        true,
+        "a file read late is stamped as it was before that read",
+      );
+      await writeFile(
+        join(folder, "later.xsd"),
+        "edited after its read, longer",
+      );
+      assert.equal(await unchanged(stamps), false, "the late file is signed");
+      await writeFile(join(folder, "later.xsd"), "edited before its read");
+      await writeFile(
+        join(folder, "metadata.json"),
+        "edited after the read, longer",
+      );
+      assert.equal(
+        await unchanged(stamps),
+        false,
+        "the metadata read first is signed too",
       );
     });
 

@@ -375,18 +375,48 @@ export async function loadConfiguredAdapters(
   });
 }
 
-/** Each of the files, under the folder, with its size and time of change, as one digest. */
-async function signature(
+/** A file's size and time of change, or that it is absent. */
+async function stamp(folder: string, path: string): Promise<string> {
+  const found = await stat(join(folder, path)).catch(() => undefined);
+  return `${found?.size}:${found?.mtimeMs}`;
+}
+
+/**
+ * The folder's files, each stamped just before it is first read, so a file edited after the read differs from its stamp;
+ * the stamps grow as the load reads more, such as a file the Bridge reported missing.
+ */
+export type Stamps = Map<
+  string,
+  { folder: string; path: string; stamp: string }
+>;
+
+export function stamping(
   folder: string,
-  paths: readonly string[],
-): Promise<string> {
-  const lines = await Promise.all(
-    paths.map(async (path) => {
-      const found = await stat(join(folder, path)).catch(() => undefined);
-      return `${path}:${found?.size}:${found?.mtimeMs}`;
-    }),
+  iri: string,
+  stamps: Stamps,
+): FolderFiles {
+  const files = new FolderFiles(folder, iri);
+  const read = files.read.bind(files);
+  files.read = async (pathOrIri) => {
+    const path = pathOrIri.startsWith(iri)
+      ? pathOrIri.slice(iri.length)
+      : pathOrIri;
+    const key = `${folder} ${path}`;
+    if (!stamps.has(key))
+      stamps.set(key, { folder, path, stamp: await stamp(folder, path) });
+    return read(pathOrIri);
+  };
+  return files;
+}
+
+export async function unchanged(stamps: Stamps): Promise<boolean> {
+  const each = await Promise.all(
+    [...stamps.values()].map(
+      async ({ folder, path, stamp: was }) =>
+        (await stamp(folder, path)) === was,
+    ),
   );
-  return createHash("sha256").update(lines.sort().join("\n")).digest("hex");
+  return each.every(Boolean);
 }
 
 /** The most instances of one adapter a process runs: a second starts only while the first is busy. */
@@ -509,16 +539,13 @@ interface Shared {
   readonly build: string;
   readonly iri: string;
   readonly pool: Pool;
-  /** The files its description lists, and the signature of them as they were when it was loaded. */
-  readonly signed: readonly string[];
-  readonly signature: string;
+  /** Each file the adapter and its vocabulary were given, as it was before it was read. */
+  readonly stamps: Stamps;
   /** The vocabulary the adapter was given, resolved through the components of the pod that loaded it, as it was. */
   readonly vocabulary?: {
     readonly repository: string;
     readonly iri: string;
     readonly folder: string;
-    readonly files: readonly string[];
-    readonly signature: string;
   };
 }
 
@@ -638,12 +665,10 @@ async function sharedAt(
         found !== undefined &&
         found.build === build &&
         found.iri === resolved.iri &&
-        found.signature === (await signature(resolved.folder, found.signed)) &&
         (found.vocabulary === undefined ||
           (vocabulary?.iri === found.vocabulary.iri &&
-            vocabulary.folder === found.vocabulary.folder &&
-            (await signature(vocabulary.folder, found.vocabulary.files)) ===
-              found.vocabulary.signature));
+            vocabulary.folder === found.vocabulary.folder)) &&
+        (await unchanged(found.stamps));
       // Another caller may have replaced it while this one looked: this one looks at that one instead.
       if (shared.get(slot) !== entry) continue;
       if (same) {
@@ -691,6 +716,7 @@ async function loadOne(
   followed: Followed,
   components: Components,
   known: Map<string, Resolved>,
+  stamps: Stamps,
 ): Promise<{ loaded: Loaded; vocabularyAt?: Resolved }> {
   let vocabularyAt: Resolved | undefined;
   const bridge = new WasmBridge(spawn);
@@ -704,7 +730,7 @@ async function loadOne(
       if (each !== followed) vocabularyAt = resolved;
       return {
         iri: resolved.iri,
-        files: new FolderFiles(resolved.folder, resolved.iri),
+        files: stamping(resolved.folder, resolved.iri, stamps),
       };
     });
     if (loaded === undefined) throw new Error("no adapter was loaded");
@@ -722,29 +748,27 @@ async function loadFirst(
   build: string,
 ): Promise<Shared> {
   const known = new Map([[followed.repository, resolved]]);
+  const stamps: Stamps = new Map();
   const { loaded, vocabularyAt } = await loadOne(
     spawn,
     followed,
     components,
     known,
+    stamps,
   );
-  const signed = [
-    ...new Set([...loaded.description.loadFiles, "ro-crate-metadata.json"]),
-  ];
-  const given = loaded.description.vocabulary?.files ?? [];
   const repository = loaded.description.vocabulary?.repository;
   return {
     loaded,
     build,
     iri: resolved.iri,
-    // The files were signed before the adapter reads them, when its first call needs them: a file edited between the
-    // two is read at its new content under the old signature, and the next call loads it again, which errs safe.
-    signed,
-    signature: await signature(resolved.folder, signed),
+    // Each file is stamped before it is read, the metadata that was described and the files read when a call first
+    // needs them alike: one edited after its read differs from its stamp, and the next call loads it again.
+    stamps,
     pool: new Pool(
       loaded.adapter,
       async () =>
-        (await loadOne(spawn, followed, components, known)).loaded.adapter,
+        (await loadOne(spawn, followed, components, known, stamps)).loaded
+          .adapter,
     ),
     ...(vocabularyAt !== undefined &&
       repository !== undefined && {
@@ -752,8 +776,6 @@ async function loadFirst(
           repository,
           iri: vocabularyAt.iri,
           folder: vocabularyAt.folder,
-          files: given,
-          signature: await signature(vocabularyAt.folder, given),
         },
       }),
   };
