@@ -8,6 +8,7 @@ import { References } from "../src/references.js";
 import { deriveWith, vocabularyBuild } from "../src/build.js";
 import { replay } from "../src/replay.js";
 import { randomId } from "../src/ids.js";
+import { probing } from "../src/probe.js";
 import { ntriples } from "../src/rdf.js";
 import { CASCADE } from "../src/step.js";
 import {
@@ -486,45 +487,80 @@ describe("Opening a pod with tables other than the ones it was matched with · C
   });
 
   describe("given a build kept beside the pod, and tables that newly hold a version the pod names only in its series' file", () => {
-    it("answers, once opened with those tables, as the pod built whole with them does", async () => {
-      const rows: [number, string][] = [[90011, "NM_000249.3:c.2042C>T"]];
-      const older = await variantTables([[V1, rows]]);
-      const newer = await variantTables([
+    const vocabularyBuilt = async () => {
+      const vocabularyFiles = await vocabulary();
+      const laidOut = await layout();
+      return {
+        vocabularyFiles,
+        laidOut,
+        incremental: await vocabularyBuild(vocabularyFiles, laidOut),
+      };
+    };
+    const address = "https://pod.example/";
+    const subject = "urn:uuid:c1643cc9-f0c4-447e-8b47-ecc71130d83b";
+    const rows: [number, string][] = [[90011, "NM_000249.3:c.2042C>T"]];
+    const JOINED = `SELECT ?judgment ?version WHERE { GRAPH ?g { ?judgment <${CASCADE}membersJoinedByCurrentTableVersion> ?version } }`;
+    let built: Awaited<ReturnType<typeof vocabularyBuilt>>;
+    let older: References;
+    let newer: References;
+    let files: MemoryFiles;
+    let beside: MemoryFiles;
+    let whole: string[];
+    let tick = Date.parse("2026-07-01T09:00:00Z");
+
+    /** A copy of the files. */
+    async function copied(from: MemoryFiles): Promise<MemoryFiles> {
+      const to = new MemoryFiles(from.iri);
+      for (const path of await from.list(""))
+        await to.write(path, (await from.read(path)) ?? new Uint8Array());
+      return to;
+    }
+
+    /** Ivo's pod over the files, read with the tables, its build kept in `besidePod`. */
+    const podWith = (
+      pod: MemoryFiles,
+      tables: References,
+      besidePod: MemoryFiles,
+    ) =>
+      new CorePod({
+        runtime: RUNTIME,
+        pod,
+        address,
+        subject,
+        title: "",
+        vocabulary: built.vocabularyFiles,
+        layout: built.laidOut,
+        newStore,
+        time: {
+          newId: randomId,
+          now: () => new Date((tick += 60_000)).toISOString(),
+        },
+        importers: [],
+        references: () => Promise.resolve(tables),
+        besidePod,
+        build: {
+          lens: "everyday",
+          derive: deriveWith(built.incremental),
+          incremental: built.incremental,
+        },
+      });
+
+    /** The Sames the pod's build says the current version still joins. */
+    const answered = async (pod: CorePod) =>
+      (await (await pod.dataset("everyday")).select(JOINED)).rows.map(
+        (row) => `${row.get("judgment")?.value} ${row.get("version")?.value}`,
+      );
+
+    before(async () => {
+      built = await vocabularyBuilt();
+      older = await variantTables([[V1, rows]]);
+      newer = await variantTables([
         [V1, rows],
         [V2, rows],
       ]);
-      const vocabularyFiles = await vocabulary();
-      const laidOut = await layout();
-      const incremental = await vocabularyBuild(vocabularyFiles, laidOut);
-      const address = "https://pod.example/";
-      const subject = "urn:uuid:c1643cc9-f0c4-447e-8b47-ecc71130d83b";
-      const files = new MemoryFiles(address);
-      let tick = Date.parse("2026-07-01T09:00:00Z");
-      const podWith = (tables: References, besidePod: MemoryFiles) =>
-        new CorePod({
-          runtime: RUNTIME,
-          pod: files,
-          address,
-          subject,
-          title: "",
-          vocabulary: vocabularyFiles,
-          layout: laidOut,
-          newStore,
-          time: {
-            newId: randomId,
-            now: () => new Date((tick += 60_000)).toISOString(),
-          },
-          importers: [],
-          references: () => Promise.resolve(tables),
-          besidePod,
-          build: {
-            lens: "everyday",
-            derive: deriveWith(incremental),
-            incremental,
-          },
-        });
-      const beside = new MemoryFiles("urn:example:beside/");
-      const first = podWith(older, beside);
+      files = new MemoryFiles(address);
+      beside = new MemoryFiles("urn:example:beside/");
+      const first = podWith(files, older, beside);
       await first.create();
       await first.open(older);
       const variant = (n: number) =>
@@ -547,7 +583,9 @@ ${variant(1)}`),
         [SAME_VARIATION],
       );
       first.close();
-      const series = laidOut.place(`${CASCADE}ReferenceSeries`).path(VARIANTS);
+      const series = built.laidOut
+        .place(`${CASCADE}ReferenceSeries`)
+        .path(VARIANTS);
       await files.write(
         series,
         new TextEncoder().encode(
@@ -556,25 +594,75 @@ ${variant(1)}`),
 `,
         ),
       );
-      const kept = podWith(older, beside);
+      const kept = podWith(files, older, beside);
       await kept.open(older);
       await kept.keepBuild();
       kept.close();
-      const JOINED = `SELECT ?judgment ?version WHERE { GRAPH ?g { ?judgment <${CASCADE}membersJoinedByCurrentTableVersion> ?version } }`;
-      const answered = async (pod: CorePod) =>
-        (await (await pod.dataset("everyday")).select(JOINED)).rows.map(
-          (row) => `${row.get("judgment")?.value} ${row.get("version")?.value}`,
-        );
-      const reopened = podWith(newer, beside);
+      whole = await answered(
+        podWith(
+          await copied(files),
+          newer,
+          new MemoryFiles("urn:example:nothing-beside/"),
+        ),
+      );
+    });
+
+    it("answers, once opened with those tables in a later session, as the pod built whole with them does", async () => {
+      const reopened = podWith(
+        await copied(files),
+        newer,
+        await copied(beside),
+      );
       const wrote = (await reopened.open(newer)).wrote;
       const read = await answered(reopened);
       reopened.close();
-      const whole = await answered(
-        podWith(newer, new MemoryFiles("urn:example:nothing-beside/")),
-      );
       assert.deepEqual(wrote, []);
       assert.equal(whole.length, 1);
       assert.deepEqual(read, whole);
+    });
+
+    it("builds whole at an open with those tables in the session that built it with the older ones, though the open writes nothing", async () => {
+      const pod = podWith(
+        await copied(files),
+        older,
+        new MemoryFiles("urn:example:own-beside/"),
+      );
+      await pod.open(older);
+      const { result, seen } = await probing(async () => {
+        const wrote = (await pod.open(newer)).wrote;
+        return { wrote, read: await answered(pod) };
+      });
+      pod.close();
+      assert.deepEqual(result.wrote, []);
+      assert.ok(
+        seen.spans.has("kept.whole"),
+        [...seen.spans.keys()].join(", "),
+      );
+      assert.deepEqual(result.read, whole);
+    });
+
+    it("builds whole at an open whose matcher run writes, as one adopting a newer version", async () => {
+      const pod = podWith(
+        await copied(files),
+        older,
+        new MemoryFiles("urn:example:own-beside/"),
+      );
+      await pod.open(older);
+      const { result, seen } = await probing(async () =>
+        pod.open(
+          await variantTables([
+            [V1, rows],
+            [V2, rows],
+            [V3, rows],
+          ]),
+        ),
+      );
+      pod.close();
+      assert.ok(result.wrote.length > 0);
+      assert.ok(
+        seen.spans.has("kept.whole"),
+        [...seen.spans.keys()].join(", "),
+      );
     });
   });
 

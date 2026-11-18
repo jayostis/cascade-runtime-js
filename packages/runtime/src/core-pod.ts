@@ -1362,7 +1362,7 @@ export class CorePod {
     this.#built = back.kept;
     this.#builtHash = back.inputsHash;
     this.#builtDigests = back.digests;
-    this.#builtBefore = back.files;
+    if (this.#performing) this.#builtBefore = back.files;
     this.#kept.set(DATASET + build.lens, Promise.resolve(back.kept.union));
     return back.kept.union;
   }
@@ -1724,7 +1724,8 @@ export class CorePod {
           ),
         ));
       this.#built = whole.kept;
-      this.#builtHash = back?.inputsHash;
+      this.#builtHash =
+        back?.inputsHash ?? (await this.#inputsHash(build, incremental, paths));
       this.#builtDigests = back?.digests ?? new Map<string, string>();
       this.#builtBefore = whole.files;
       return whole.kept.union;
@@ -2060,7 +2061,34 @@ export class CorePod {
       state,
       { derived: kept.subarray(end + 1), files, paths },
     );
+    if (!(await this.#hashCovers(back.kept.union, paths))) {
+      back.kept.free();
+      return undefined;
+    }
     return { ...back, digests, inputsHash };
+  }
+
+  /**
+   * Whether the inputs hash over the paths covers what a build of them read of the tables: it hashes the tables' index
+   * of each version filed where the layout gives it, and a build reads the tables for each current version of a series
+   * the union names, which a file elsewhere may state.
+   */
+  async #hashCovers(union: Union, paths: readonly string[]): Promise<boolean> {
+    const { layout } = this.#options;
+    const listed = new Set(paths);
+    const series = layout.place(`${CASCADE}ReferenceSeries`);
+    const { rows } = await union.select(
+      `SELECT DISTINCT ?version WHERE { ?series a <${CASCADE}ReferenceSeries> ; <http://purl.org/pav/hasCurrentVersion> ?version }`,
+    );
+    return rows.every((row) => {
+      try {
+        return listed.has(
+          layout.version(series, row.get("version")?.value ?? ""),
+        );
+      } catch {
+        return false;
+      }
+    });
   }
 
   /** The hash the manifest names, read before anything is hashed: a pod built before builds were kept names none. */
@@ -2257,7 +2285,8 @@ export class CorePod {
           change.everything === true &&
           change.written.length === 0 &&
           given.inputsHash !== undefined &&
-          given.inputsHash === this.#builtHash
+          given.inputsHash === this.#builtHash &&
+          (await this.#hashCovers(stepping.union, [...read]))
             ? { written: [] }
             : change;
         files = await timedAside("kept.step", () =>
