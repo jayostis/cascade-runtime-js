@@ -697,8 +697,8 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.equal(loadedAll, 1);
     });
 
-    it("reads its stated reads and a judgment's filing from the build it keeps, loading the pod's records into no other store", () => {
-      assert.equal(statedReads.filed, 0);
+    it("reads the pod's own files into one store for its stated reads and a judgment's filing before it keeps a build, and into another for the build the judgment calls for", () => {
+      assert.equal(statedReads.filed, 2);
     });
 
     it("reads a stated read after a step from the build it keeps, and finds what the step wrote", () => {

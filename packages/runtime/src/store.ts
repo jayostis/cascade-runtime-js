@@ -117,9 +117,14 @@ export class Union implements Dataset {
   }
 
   /** Loads each file into its graph, as `Store.loadFiles` does; the graphs of the files loaded join the union. */
-  async loadFiles(files: readonly GraphFile[]): Promise<void> {
+  async loadFiles(
+    files: readonly GraphFile[],
+    options?: LoadFilesOptions,
+  ): Promise<void> {
     try {
-      await timedAside("union.loadFiles", () => this.store.loadFiles(files));
+      await timedAside("union.loadFiles", () =>
+        this.store.loadFiles(files, options),
+      );
     } catch (error) {
       const failed = files.findIndex(
         ({ graph }) => error instanceof NotTurtle && graph === error.graph,
@@ -217,9 +222,12 @@ export class RestorableUnion extends Union {
     await super.loadTurtle(turtle, graph);
   }
 
-  override async loadFiles(files: readonly GraphFile[]): Promise<void> {
+  override async loadFiles(
+    files: readonly GraphFile[],
+    options?: LoadFilesOptions,
+  ): Promise<void> {
     for (const { graph } of files) await this.#keep(graph);
-    await super.loadFiles(files);
+    await super.loadFiles(files, options);
   }
 
   override async add(triples: Iterable<Triple>, graph: string): Promise<void> {

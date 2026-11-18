@@ -166,6 +166,10 @@ export class KeptBuild {
   /** The files every record's state reads, held across steps; made when a step first needs it. */
   #scope: Union | undefined;
   readonly #scopeLoaded = new Set<string>();
+  /** The files the union holds that steps which left their rebuild wrote, loaded for a stated read before their step. */
+  readonly #ahead = new Set<string>();
+  /** Whether a file loaded ahead was written again, or failed to load, so that the next step is rebuilt whole. */
+  #aheadStale = false;
 
   private constructor(
     rebuilding: Rebuilding,
@@ -214,6 +218,47 @@ export class KeptBuild {
   /** The paths of the pod's files the build read. */
   get paths(): ReadonlySet<string> {
     return this.#loaded;
+  }
+
+  /**
+   * The pod's files as the pod holds them, the union of their graphs in this build's store: those the build read, and
+   * `written`, which steps that left their rebuild wrote since. Those are loaded into the union now, as their step
+   * would load them, and that step loads them no more. Undefined, loading nothing, when one of them is a file the build
+   * read, which the union holds as it was, or when `load` is false and one is not loaded yet.
+   */
+  async stated(
+    written: readonly string[],
+    load: boolean,
+  ): Promise<Union | undefined> {
+    if (this.#aheadStale) return undefined;
+    const { pod, layout, address } = this.#rebuilding;
+    const rebuilt = new Set(layout.rebuilt);
+    const fresh = [...new Set(written)].filter(
+      (path) =>
+        layout.loads(path) && !rebuilt.has(path) && !this.#ahead.has(path),
+    );
+    if (fresh.some((path) => this.#loaded.has(path))) return undefined;
+    if (fresh.length > 0) {
+      if (!load) return undefined;
+      try {
+        await timedAside("kept.stated.podFiles", () =>
+          podFiles(pod, layout, address, this.union, fresh),
+        );
+      } catch {
+        this.#aheadStale = true;
+        return undefined;
+      }
+      for (const path of fresh) this.#ahead.add(path);
+    }
+    return new Union(
+      this.union.store,
+      [...this.#loaded, ...this.#ahead].map((path) => address + path),
+    );
+  }
+
+  /** Notes the files a step that left its rebuild wrote: one loaded ahead of it is stale, so the next step is rebuilt whole. */
+  rewritten(paths: readonly string[]): void {
+    if (paths.some((path) => this.#ahead.has(path))) this.#aheadStale = true;
   }
 
   /** The views written. */
@@ -567,7 +612,7 @@ export class KeptBuild {
     );
     const scope = new Union(newStore());
     await timedAside("kept.scoped.podFiles", () =>
-      podFiles(pod, layout, address, scope, paths),
+      podFiles(pod, layout, address, scope, paths, { parsedBefore: true }),
     );
     for (const path of paths) this.#scopeLoaded.add(path);
     await this.#learnJudging(scope, paths);
@@ -782,7 +827,13 @@ export class KeptBuild {
     const fresh = [...new Set(change.written)].filter(
       (path) => layout.loads(path) && !rebuilt.has(path),
     );
-    if (fresh.some((path) => this.#loaded.has(path))) return undefined;
+    const writing = new Set(fresh);
+    if (
+      this.#aheadStale ||
+      fresh.some((path) => this.#loaded.has(path)) ||
+      [...this.#ahead].some((path) => !writing.has(path))
+    )
+      return undefined;
     const clinicalPaths: string[] = [];
     const sharedPaths: string[] = [];
     const wholeRecords = this.#wholeRecordFolders(await this.#serversJoined());
@@ -799,12 +850,21 @@ export class KeptBuild {
     }
     const scope = await timedAside("kept.step.scoped", () => this.#scoped());
     await timedAside("kept.step.podFiles", async () => {
-      await podFiles(this.#rebuilding.pod, layout, address, this.#union, fresh);
+      await podFiles(
+        this.#rebuilding.pod,
+        layout,
+        address,
+        this.#union,
+        fresh.filter((path) => !this.#ahead.has(path)),
+      );
       for (const path of fresh) this.#loaded.add(path);
+      this.#ahead.clear();
       const newShared = sharedPaths.filter(
         (path) => !this.#scopeLoaded.has(path),
       );
-      await podFiles(this.#rebuilding.pod, layout, address, scope, newShared);
+      await podFiles(this.#rebuilding.pod, layout, address, scope, newShared, {
+        parsedBefore: true,
+      });
       for (const path of newShared) this.#scopeLoaded.add(path);
       await this.#learnJudging(scope, newShared);
     });
@@ -1150,7 +1210,9 @@ export class KeptBuild {
       this.#filesOf(read),
     );
     await timedAside("kept.rebuilt.podFiles", () =>
-      podFiles(this.#rebuilding.pod, layout, address, scope, paths),
+      podFiles(this.#rebuilding.pod, layout, address, scope, paths, {
+        parsedBefore: true,
+      }),
     );
     const touchesStale = await boundValues(
       union,

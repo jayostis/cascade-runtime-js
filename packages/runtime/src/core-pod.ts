@@ -1266,9 +1266,17 @@ export class CorePod {
 
   /**
    * The query's rows over the pod's RDF files but those the build writes, with nothing derived: the vocabulary is not
-   * read. The files are read into a store once, kept until the next step, which may change them.
+   * read. They are read from the build kept across steps, which loads the files of steps that left their rebuild ahead
+   * of it, unless the matcher's view is lent from it. Else the files are read into a store once, kept until the next
+   * step, which may change them.
    */
   async selectStated(query: string): Promise<Rows> {
+    const kept = await this.#built?.stated(
+      this.#pending?.change.written ?? [],
+      !this.#kept.has(MATCHER_VIEW),
+    );
+    if (kept !== undefined)
+      return timed("core-pod.selectStated", () => kept.select(query));
     for (;;) {
       const held = this.#held(STATED, async () => {
         const { pod, layout, address, newStore } = this.#options;
@@ -1709,6 +1717,7 @@ export class CorePod {
     }
     if (options.build === undefined) return performed;
     if (deferred && at !== undefined) {
+      this.#built?.rewritten(change.written);
       const before = this.#pending;
       this.#pending = {
         kinds: before?.kinds.includes(kind)

@@ -5,7 +5,13 @@ import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { counted } from "./probe.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
 import type { Replayed } from "./replay.js";
-import { type Dataset, NotTurtle, type Store, Union } from "./store.js";
+import {
+  type Dataset,
+  type LoadFilesOptions,
+  NotTurtle,
+  type Store,
+  Union,
+} from "./store.js";
 
 export const STEPS_GRAPH = "urn:cascade:steps";
 export const STEP = "urn:cascade:step:";
@@ -188,8 +194,8 @@ export async function podStated(
 }
 
 /**
- * Loads each RDF file of the pod but those the build writes into the union, named by the address plus its path;
- * returns every file the pod holds, as `held` lists them when given.
+ * Loads each RDF file of the pod but those the build writes into the union, named by the address plus its path, as
+ * `options` says; returns every file the pod holds, as `held` lists them when given.
  */
 export async function podFiles(
   pod: Files,
@@ -197,6 +203,7 @@ export async function podFiles(
   address: string,
   union: Union,
   held?: readonly string[],
+  options?: LoadFilesOptions,
 ): Promise<readonly string[]> {
   const rebuilt = new Set(layout.rebuilt);
   const listed = held ?? (await pod.list(""));
@@ -218,7 +225,7 @@ export async function podFiles(
     return { graph: address + path, turtle: bytes };
   });
   try {
-    await union.loadFiles(files);
+    await union.loadFiles(files, options);
   } catch (error) {
     if (!(error instanceof NotTurtle)) throw error;
     const path = error.graph.slice(address.length);
