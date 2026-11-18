@@ -114,6 +114,14 @@ export function keyed(
   query: string,
   variable: string,
   iris: readonly string[],
+  options: {
+    /**
+     * Also put the block in an OPTIONAL group that reads the key. Sound where the key is bound before the OPTIONAL, as it
+     * is in every keyed derivation; Oxigraph evaluates an OPTIONAL's group on its own and joins it after, so without the
+     * block the group reads the whole pod.
+     */
+    readonly intoOptional?: boolean;
+  } = {},
 ): string {
   const block = ` VALUES ?${variable} { ${iris.map((value) => `<${value}>`).join(" ")} } `;
   const at: number[] = [];
@@ -122,8 +130,11 @@ export function keyed(
     switch (group.kind) {
       case "template":
       case "values":
-      case "optional":
         return;
+      case "optional":
+        if (options.intoOptional !== true || !mentions(text, variable)) return;
+        at.push(group.open);
+        break;
       case "select":
         if (!projects(text, variable)) return;
         break;
