@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { Revisions } from "../src/arrivals.js";
-import { deriveWith, vocabularyBuild, vocabularyDerive } from "../src/build.js";
-import type { CorePod } from "../src/core-pod.js";
+import {
+  deriveWith,
+  type VocabularyBuild,
+  vocabularyBuild,
+  vocabularyDerive,
+} from "../src/build.js";
+import { CorePod, type CorePodOptions } from "../src/core-pod.js";
 import { dataset } from "../src/dataset.js";
 import { MemoryFiles } from "../src/files.js";
-import { LAYOUT_GRAPH } from "../src/layout.js";
+import { randomId } from "../src/ids.js";
+import { LAYOUT_FILE, LAYOUT_GRAPH, Layout } from "../src/layout.js";
 import { matcherView, runMatcher } from "../src/matcher.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, written } from "../src/rdf.js";
@@ -15,7 +21,7 @@ import { StepWrites } from "../src/pod.js";
 import { type Perform, PERFORMERS, type Replayed } from "../src/replay.js";
 import { Refusal, type StepContext } from "../src/step.js";
 import { RestorableUnion, type Row, type Store } from "../src/store.js";
-import { layout, replayed, vocabulary } from "./vocabulary.js";
+import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const SYNC_RUN =
   "after both writers imported one export, the sync's run takes only the entry the other writer made";
@@ -256,6 +262,212 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         assert.ok(step.copied.length > 0, step.name);
         assert.deepEqual(step.copied, step.read, step.name);
       }
+    });
+  });
+
+  /**
+   * The hash a manifest names (`cascade:buildInputsHash`) changes with each thing a build reads, and with nothing else:
+   * one row a thing, each a pod opened over its files with one input changed, its hash compared with the pod's own.
+   */
+  describe("given a pod whose build is kept beside it · CorePod.buildInputsHash()", () => {
+    const ADDRESS = "https://pod.example/";
+    const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+    const PROV = "http://www.w3.org/ns/prov#";
+    const SERIES = "urn:example:series";
+    const FILED = "urn:uuid:5b0c6c1e-3f1d-4c8e-9a51-0d6f2b7a9c11";
+    const UNFILED = "urn:uuid:5b0c6c1e-3f1d-4c8e-9a51-0d6f2b7a9c12";
+    let hashOf: (
+      change: Partial<CorePodOptions>,
+    ) => Promise<string | undefined>;
+    let files: Record<string, string>;
+    let laidOut: Layout;
+    let tables: (versions: readonly string[]) => Promise<References>;
+
+    before(async () => {
+      const vocabularyFiles = await vocabulary();
+      laidOut = await layout();
+      const incremental = await vocabularyBuild(vocabularyFiles, laidOut);
+      const newStore = () => new OxigraphStore();
+      tables = (versions) => {
+        const index = new MemoryFiles("urn:example:tables/");
+        return index
+          .write(
+            "references.ttl",
+            new TextEncoder().encode(
+              `<${SERIES}> a <${CASCADE}ReferenceSeries> .\n` +
+                versions
+                  .map(
+                    (version) =>
+                      `<${version}> <${PROV}specializationOf> <${SERIES}> .\n`,
+                  )
+                  .join(""),
+            ),
+          )
+          .then(() => References.of(index, "", newStore));
+      };
+      const series = laidOut.place(`${CASCADE}ReferenceSeries`);
+      files = {
+        [laidOut.card]: "<#me> a <http://xmlns.com/foaf/0.1/Person> .\n",
+        [laidOut.preferences]: "<#settings> a <urn:example:Settings> .\n",
+        [laidOut.version(series, FILED)]:
+          `<${FILED}> a <urn:example:Version> .\n`,
+        ".DS_Store": "junk",
+      };
+      const base: CorePodOptions = {
+        runtime: RUNTIME,
+        pod: new MemoryFiles(ADDRESS),
+        address: ADDRESS,
+        subject: "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53",
+        title: "",
+        vocabulary: vocabularyFiles,
+        layout: laidOut,
+        newStore,
+        time: { newId: randomId, now: () => "2026-02-01T08:00:00Z" },
+        importers: [],
+        references: () => tables([FILED]),
+        besidePod: new MemoryFiles("urn:example:beside/"),
+        build: {
+          lens: "everyday",
+          derive: () => Promise.reject(new Error("not built")),
+          incremental,
+        },
+      };
+      hashOf = async (change) =>
+        new CorePod({
+          ...base,
+          pod: await podWith({}),
+          ...change,
+        }).buildInputsHash();
+    });
+
+    /** The pod's files with those given put in. */
+    async function podWith(
+      changed: Record<string, string>,
+    ): Promise<MemoryFiles> {
+      const pod = new MemoryFiles(ADDRESS);
+      for (const [path, text] of Object.entries({ ...files, ...changed }))
+        await pod.write(path, new TextEncoder().encode(text));
+      return pod;
+    }
+
+    it("changes with each thing a build reads, and with nothing else", async () => {
+      const own = await hashOf({});
+      assert.ok(own !== undefined);
+      const incremental = await vocabularyBuild(await vocabulary(), laidOut);
+      const { derivations } = incremental;
+      const changedLayout = new MemoryFiles("urn:example:vocabulary/");
+      await changedLayout.write(
+        LAYOUT_FILE,
+        new TextEncoder().encode(`${laidOut.turtle}\n# changed\n`),
+      );
+      const otherLayout = await Layout.read(
+        changedLayout,
+        () => new OxigraphStore(),
+      );
+      const build = (over: Partial<VocabularyBuild>) => ({
+        lens: "everyday",
+        derive: () => Promise.reject(new Error("not built")),
+        incremental: { ...incremental, ...over },
+      });
+      const rows: [string, Partial<CorePodOptions>, boolean][] = [
+        ["nothing changed", {}, false],
+        ["the runtime", { runtime: `${RUNTIME}#other` }, true],
+        ["the lens", { build: { ...build({}), lens: "export" } }, true],
+        ["the pod's address", { address: "https://other.example/" }, true],
+        [
+          "a version of a table the pod files arriving in the app's tables",
+          { references: () => tables([FILED, UNFILED]) },
+          true,
+        ],
+        [
+          "a table the pod files nothing of arriving in the app's tables",
+          {
+            references: async () => {
+              const index = new MemoryFiles("urn:example:other-tables/");
+              await index.write(
+                "references.ttl",
+                new TextEncoder().encode(
+                  `<${SERIES}> a <${CASCADE}ReferenceSeries> .\n<${FILED}> <${PROV}specializationOf> <${SERIES}> .\n<urn:example:other-1> <${PROV}specializationOf> <urn:example:other> .\n`,
+                ),
+              );
+              return References.of(index, "", () => new OxigraphStore());
+            },
+          },
+          false,
+        ],
+        [
+          "a derivation's text",
+          {
+            build: build({
+              derivations: Object.assign(Object.create(derivations), {
+                for: (lens: string) => [
+                  ...derivations.for(lens),
+                  {
+                    path: "queries/derivations/changed.rq",
+                    query: "# changed",
+                  },
+                ],
+              }) as typeof derivations,
+            }),
+          },
+          true,
+        ],
+        [
+          "the build's queries",
+          { build: build({ queries: [...incremental.queries, "# changed"] }) },
+          true,
+        ],
+        ["the layout", { layout: otherLayout }, true],
+        [
+          "the settings",
+          {
+            pod: await podWith({
+              [laidOut.preferences]: "<#settings> a <urn:example:Other> .\n",
+            }),
+          },
+          true,
+        ],
+        [
+          "the profile card",
+          {
+            pod: await podWith({
+              [laidOut.card]: "<#me> a <urn:example:Other> .\n",
+            }),
+          },
+          true,
+        ],
+        [
+          "a file of the snapshot set arriving with no step",
+          {
+            pod: await podWith({
+              [laidOut.version(
+                laidOut.place(`${CASCADE}ReferenceSeries`),
+                UNFILED,
+              )]: `<${UNFILED}> a <urn:example:Version> .\n`,
+            }),
+          },
+          true,
+        ],
+        [
+          "the bytes of a file no build reads, a .DS_Store",
+          { pod: await podWith({ ".DS_Store": "other junk" }) },
+          false,
+        ],
+        [
+          "a file in the stored documents' folder that names no document",
+          {
+            pod: await podWith({
+              [`${laidOut.storedBytes.folder ?? ""}.DS_Store`]: "junk",
+            }),
+          },
+          false,
+        ],
+      ];
+      const found: string[] = [];
+      for (const [what, change, changes] of rows)
+        if (((await hashOf(change)) !== own) !== changes)
+          found.push(`${what}: ${changes ? "same hash" : "another hash"}`);
+      assert.deepEqual(found, []);
     });
   });
 

@@ -637,6 +637,18 @@ export class CorePod {
   }
 
   /**
+   * The hash of what a build of the pod as it stands reads (C8), which the manifest names once the pod is built; none
+   * when the pod keeps no build beside it.
+   */
+  async buildInputsHash(): Promise<string | undefined> {
+    await this.#settle();
+    const { build } = this.#options;
+    return build?.incremental === undefined
+      ? undefined
+      : this.#inputsHash(build, build.incremental);
+  }
+
+  /**
    * Keeps the build's derived state beside the pod, when it was rebuilt since it was last kept, so the pod opened again
    * reads its build back (C8): once, before `close`, rather than at every step. Left unkept, as when the process stops
    * first, the manifest names a hash the derived state beside the pod does not, and the pod is built whole when next
