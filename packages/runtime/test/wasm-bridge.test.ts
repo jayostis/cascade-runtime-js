@@ -33,6 +33,7 @@ import { probing } from "../src/probe.js";
 import { PERFORMERS } from "../src/replay.js";
 import { CASCADE } from "../src/step.js";
 import { checkouts, type Components } from "../src/node/components.js";
+import { FolderFiles } from "../src/node/folder-files.js";
 import { findBridgePackage, releasedBridgePackage } from "../src/node/wasm.js";
 import { resolve as resolveComponent } from "../src/node/resolver.js";
 import type { Followed } from "../src/config.js";
@@ -66,6 +67,8 @@ const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const TYPE = `${RDF}type`;
 const REVISION = `${CASCADE}Revision`;
 const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
+/** Set by the nightly workflow: every import of every kit, not one document for each adapter. */
+const FULL_SWEEP = process.env.CASCADE_FULL_SWEEP === "1";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 let compiled: CompiledBridge;
@@ -187,6 +190,7 @@ async function differences(): Promise<{
   const differ: string[] = [];
   const skipped: string[] = [];
   const seen = new Set<string>();
+  const proven = new Set<LoadedAdapter>();
   let converted = 0;
   let unaccepted = 0;
   let acceptedUnaccepted = 0;
@@ -254,11 +258,15 @@ async function differences(): Promise<{
           continue;
         }
         seen.add(known);
-        converted++;
         if (accepting === undefined) {
+          converted++;
           differ.push(`${named}: no adapter accepts it`);
           continue;
         }
+        // Unless the nightly sweep, the first document each adapter accepts proves its load and conversion.
+        if (!FULL_SWEEP && proven.has(accepting)) continue;
+        proven.add(accepting);
+        converted++;
         const made = await accepting.convert(offered);
         const path = `${files.iri}${documentPath}`;
         const expectedFindings =
@@ -343,7 +351,11 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
 
     it("converts each document to a graph and conversion findings isomorphic to those the kit saves", () => {
       assert.deepEqual(found.differ, []);
-      assert.equal(found.converted, 48);
+      assert.equal(
+        found.converted,
+        FULL_SWEEP ? 48 : everyAdapter.length,
+        "one document for each adapter, every one in the nightly sweep",
+      );
     });
 
     it("has no adapter accept the document the kit saves as unaccepted", () => {
@@ -508,6 +520,34 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       });
     });
 
+    it("reads, to load an adapter, only the files its description lists and the vocabulary files it names", async () => {
+      const { folder, copied } = await adapterCopy();
+      await mkdir(join(folder, "unlisted"), { recursive: true });
+      await writeFile(join(folder, "unlisted", "never-read.bin"), "x");
+      const { seen, result } = await probing(async () => {
+        const bridge = new WasmBridge(spawn);
+        const [one] = await loadSharedAdapters(
+          bridgeFolder,
+          bridge,
+          copied.config.adapters,
+          copied,
+        );
+        await one?.adapter.accepts(nothing).catch(() => undefined);
+        bridge.close();
+        return one?.description;
+      });
+      assert.ok(result);
+      assert.equal(
+        seen.counts.get("adapter.files.read"),
+        result.loadFiles.length + (result.vocabulary?.files.length ?? 0),
+      );
+      assert.ok(
+        result.loadFiles.length <
+          (await new FolderFiles(folder).list("")).length,
+        "the folder holds files the description does not list",
+      );
+    });
+
     it("loads an adapter again for each change of what it was given, and for nothing else", async (t) => {
       const { folder, copied, first } = await adapterCopy();
       const vocabulary = await vocabularyCopy(copied, first);
@@ -520,9 +560,23 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       await touch(inside);
       assert.equal(await changed(), true, "a file of its folder changed");
       await writeFile(join(folder, "added.txt"), "more");
-      assert.equal(await changed(), true, "a file was added");
+      assert.equal(
+        await changed(),
+        false,
+        "a file no description lists was added",
+      );
       await rm(join(folder, "added.txt"));
-      assert.equal(await changed(), true, "a file was taken away");
+      assert.equal(await changed(), false, "and taken away");
+      const listed = (await new FolderFiles(folder).list("in/")).find((path) =>
+        path.endsWith(".rq"),
+      );
+      assert.ok(listed, "a query under in/, which the description lists");
+      await rm(join(folder, listed));
+      assert.equal(
+        await changed(),
+        true,
+        "a file its description lists was taken away",
+      );
       await touch(join(vocabulary.folder, vocabulary.files[0] as string));
       assert.equal(await changed(), true, "a vocabulary file changed");
 
