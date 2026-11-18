@@ -497,6 +497,8 @@ export class CorePod {
   #built: KeptBuild | undefined;
   /** The files of the build made whole for the step in progress before it wrote, written with the step's rebuild. */
   #builtBefore: ReadonlyMap<string, readonly Triple[]> | undefined;
+  /** The SHA-256, in hex, of each file the kept build wrote, as written or as read back. */
+  #builtDigests = new Map<string, string>();
   /** What each act file of the pod read or written so far holds of the chain, by path. */
   readonly #chain = new Map<string, ActFile>();
   /** What the act files the step in progress writes hold of the chain, by path, learnt once they are written. */
@@ -562,6 +564,7 @@ export class CorePod {
       if (back !== undefined) {
         union.store.free?.();
         this.#built = back.kept;
+        this.#builtDigests = back.digests;
         return back.kept.union;
       }
     }
@@ -734,6 +737,7 @@ export class CorePod {
   #dropBuilt(): void {
     this.#built?.free();
     this.#built = undefined;
+    this.#builtDigests = new Map();
     this.#toKeep = undefined;
     this.#movedInBuilt = 0;
   }
@@ -1607,6 +1611,7 @@ export class CorePod {
           ),
         ));
       this.#built = whole.kept;
+      this.#builtDigests = "digests" in whole ? whole.digests : new Map();
       this.#builtBefore = whole.files;
       return whole.kept.union;
     });
@@ -1847,14 +1852,18 @@ export class CorePod {
   /**
    * The build the pod's files and what is kept beside it hold, read back, when the manifest names the hash of what a
    * build of the pod as it stands reads, and the derived state kept beside it was kept under that hash with every file
-   * it names still held; otherwise none, and the pod is built.
+   * it names still holding the bytes it was kept with; otherwise none, and the pod is built.
    */
   async #writtenBuild(
     build: PodBuildOption,
     incremental: VocabularyBuild,
     state: PodState,
   ): Promise<
-    | { kept: KeptBuild; files: ReadonlyMap<string, readonly Triple[]> }
+    | {
+        kept: KeptBuild;
+        files: ReadonlyMap<string, readonly Triple[]>;
+        digests: Map<string, string>;
+      }
     | undefined
   > {
     const { pod, layout, besidePod, newStore } = this.#options;
@@ -1881,36 +1890,48 @@ export class CorePod {
     } catch {
       return undefined;
     }
-    if (header.inputsHash !== inputsHash || !Array.isArray(header.built))
+    if (
+      header.inputsHash !== inputsHash ||
+      typeof header.built !== "object" ||
+      header.built === null ||
+      Array.isArray(header.built)
+    )
       return undefined;
     const files = new Map<string, Uint8Array>();
-    for (const path of header.built as unknown[]) {
-      if (typeof path !== "string") return undefined;
+    const digests = new Map<string, string>();
+    for (const [path, digest] of Object.entries(header.built)) {
       const bytes = await pod.read(path);
-      if (bytes === undefined) return undefined;
+      if (bytes === undefined || hex(await fileDigest(bytes)) !== digest)
+        return undefined;
       files.set(path, bytes);
+      digests.set(path, digest);
     }
-    return KeptBuild.readBack(this.#rebuilding(build, incremental), state, {
-      derived: kept.subarray(end + 1),
-      files,
-    });
+    const back = await KeptBuild.readBack(
+      this.#rebuilding(build, incremental),
+      state,
+      { derived: kept.subarray(end + 1), files },
+    );
+    return { ...back, digests };
   }
 
   /**
-   * Keeps the build's derived state beside the pod under the hash of what it read, naming the files of the pod its
-   * queries wrote; a failure keeps nothing, and the pod is built whole when next opened.
+   * Keeps the build's derived state beside the pod under the hash of what it read, naming each file of the pod its
+   * queries wrote with the SHA-256 of the bytes written there; a failure keeps nothing, and so does a build that does
+   * not know those bytes, and the pod is built whole when next opened.
    */
   async #keepBeside(inputsHash: string, built: KeptBuild): Promise<void> {
     const { besidePod, layout } = this.#options;
     if (besidePod === undefined) return;
     const views = new Set(layout.views.map(({ file }) => file));
+    const digests: Record<string, string> = {};
+    for (const file of layout.built.flatMap(({ file }) => file ?? []))
+      if (!views.has(file) || built.held.has(file)) {
+        const digest = this.#builtDigests.get(file);
+        if (digest === undefined) return;
+        digests[file] = digest;
+      }
     const header = new TextEncoder().encode(
-      `# ${JSON.stringify({
-        inputsHash,
-        built: layout.built
-          .flatMap(({ file }) => file ?? [])
-          .filter((file) => !views.has(file) || built.held.has(file)),
-      })}\n`,
+      `# ${JSON.stringify({ inputsHash, built: digests })}\n`,
     );
     const derived = ntriples(await built.derived());
     const bytes = new Uint8Array(header.length + derived.length);
@@ -1961,6 +1982,8 @@ export class CorePod {
           ),
       );
       await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
+      for (const [path, written] of bytes)
+        this.#builtDigests.set(path, hex(await fileDigest(written)));
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
       this.#toKeep = inputsHash;
       return;
