@@ -51,7 +51,6 @@ import {
   iri,
   KeptFiles,
   literal,
-  ntriples,
   RDF,
   type Triple,
   written,
