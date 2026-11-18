@@ -1,9 +1,11 @@
 import "./offline.js";
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { openPod, type Pod, pullFiles } from "cascade-runtime";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import { openPod, type Pod, pullFiles, tablesBeside } from "cascade-runtime";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
@@ -41,7 +43,8 @@ import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
  * With `--series 20` it makes twenty imports in a row into one pod on disk, each a new pull of the same patient (the
  * days run on from the last, so the records accumulate and the repeats still give the matcher work), measured as one
  * import is, to show whether an import costs by the pod or by the import. With `--reopen-read` it imports each size
- * into a pod on disk, closes it, and times `openPod`, the first read and a second; `--secret` makes the pod encrypted.
+ * into a pod on disk, closes it, and times `openPod`, the first read and a second in a process of its own, as an app's
+ * next session opens the pod; `--secret` makes the pod encrypted.
  */
 
 const RULE = "matcher.rule:";
@@ -406,7 +409,11 @@ export interface Opened {
   readonly records: number;
   readonly encrypted: boolean;
   readonly importMs: number;
+  /** The process that opened the pod, one of its own. */
+  readonly pid: number;
   readonly openMs: number;
+  /** The spans and counts of the open alone. */
+  readonly opening: Pick<Measured, "spans" | "counts">;
   readonly firstReadMs: number;
   /** The spans and counts of the first read alone, the views it rebuilt among them. */
   readonly firstRead: Pick<Measured, "spans" | "counts">;
@@ -416,6 +423,9 @@ export interface Opened {
 }
 
 const SECRET = "t-shirt abacus yo-yo zoom drop-down felt-tip";
+/** The argument that has the bench open, in the process it starts, the pod at the path after it. */
+const OPENED_AT = "--opened-at";
+const run = promisify(execFile);
 const FIRST_READ = "pod/My active conditions";
 
 function rss(): number {
@@ -465,10 +475,19 @@ export async function profileOf(
   }
 }
 
-/** The pod in the folder as a packed runtime opens it, keeping its answers and its build beside it. */
+/** A folder for a pod, in a folder of its own that the app's tables are kept in beside it; the caller removes that folder. */
+async function benchFolder(): Promise<string> {
+  return join(await mkdtemp(join(tmpdir(), "import-bench-")), "pod");
+}
+
+/** The pod in the folder as a packed runtime opens it, keeping its answers and its build beside it, and its app's tables beside the folder. */
 async function openPacked(folder: string): Promise<Pod> {
   return openPodWith(
-    { ...(await resolved()), answers: { runtime: "bench", at: answersBeside } },
+    {
+      ...(await resolved()),
+      answers: { runtime: "bench", at: answersBeside },
+      tables: await tablesBeside(dirname(folder)),
+    },
     folder,
   );
 }
@@ -487,9 +506,7 @@ export async function importBench(
   const pulls = syntheticPulls(resources, {
     hospital: second ? "second" : "first",
   });
-  const folder = reopen
-    ? await mkdtemp(join(tmpdir(), "import-bench-"))
-    : undefined;
+  const folder = reopen ? await benchFolder() : undefined;
   const claiming = await profileOf(second ? "second" : "first");
   let pod = folder === undefined ? await openPod() : await openPacked(folder);
   try {
@@ -503,7 +520,7 @@ export async function importBench(
   } finally {
     await pod.close();
     if (folder !== undefined)
-      await rm(folder, { recursive: true, force: true });
+      await rm(dirname(folder), { recursive: true, force: true });
   }
 }
 
@@ -581,7 +598,7 @@ export async function seriesBench(
   resources: number,
   imports: number,
 ): Promise<readonly Measured[]> {
-  const folder = await mkdtemp(join(tmpdir(), "import-bench-"));
+  const folder = await benchFolder();
   const claiming = await profileOf("first");
   const pod = await openPod(folder);
   try {
@@ -603,54 +620,78 @@ export async function seriesBench(
     return runs;
   } finally {
     await pod.close();
-    await rm(folder, { recursive: true, force: true });
+    await rm(dirname(folder), { recursive: true, force: true });
   }
 }
 
-/** A pod on disk given `records` in one import, closed and opened again: `openPod`, the first read and a second, timed. */
+/**
+ * A pod on disk given `records` in one import and closed; then, in a process of its own as an app's next session is,
+ * `openPod`, the first read and a second, timed.
+ */
 export async function openBench(
   records: number,
   encrypted: boolean,
 ): Promise<Opened> {
-  const folder = await mkdtemp(join(tmpdir(), "import-bench-"));
-  const options = encrypted ? { secret: SECRET } : {};
+  const folder = await benchFolder();
   const claiming = await profileOf("first");
   try {
-    let pod = await openPod(folder, options);
+    const pod = await openPod(folder, encrypted ? { secret: SECRET } : {});
     const importing = performance.now();
     await importAll(pod, syntheticPulls(records), claiming);
     const importMs = round(performance.now() - importing);
     await pod.close();
-    const { result, peakMb } = await sampling(async () => {
-      const opening = performance.now();
-      pod = await openPod(folder, options);
-      const openMs = round(performance.now() - opening);
-      const rssAfterOpenMb = rss();
-      const timeOf = async (): Promise<number> => {
-        const at = performance.now();
-        await pod.ask(FIRST_READ);
-        return round(performance.now() - at);
-      };
-      const { result: firstReadMs, seen } = await probing(timeOf);
-      return {
-        openMs,
-        rssAfterOpenMb,
-        firstReadMs,
-        firstRead: tabulated(seen),
-        secondReadMs: await timeOf(),
-      };
-    });
+    const child = await run(
+      process.execPath,
+      [
+        ...process.execArgv,
+        fileURLToPath(import.meta.url),
+        OPENED_AT,
+        folder,
+        ...(encrypted ? ["--secret"] : []),
+      ],
+      { maxBuffer: 1 << 26 },
+    );
+    const opened = JSON.parse(child.stdout) as Omit<
+      Opened,
+      "records" | "encrypted" | "importMs"
+    >;
+    return { records, encrypted, importMs, ...opened };
+  } finally {
+    await rm(dirname(folder), { recursive: true, force: true });
+  }
+}
+
+/** What `openBench` times, in the process this runs in: the pod in the folder opened, read once, and read again. */
+async function openedHere(
+  folder: string,
+  encrypted: boolean,
+): Promise<Omit<Opened, "records" | "encrypted" | "importMs">> {
+  const { result, peakMb } = await sampling(async () => {
+    const opening = performance.now();
+    const { result: pod, seen: openSeen } = await probing(() =>
+      openPod(folder, encrypted ? { secret: SECRET } : {}),
+    );
+    const openMs = round(performance.now() - opening);
+    const rssAfterOpenMb = rss();
+    const timeOf = async (): Promise<number> => {
+      const at = performance.now();
+      await pod.ask(FIRST_READ);
+      return round(performance.now() - at);
+    };
+    const { result: firstReadMs, seen } = await probing(timeOf);
+    const secondReadMs = await timeOf();
     await pod.close();
     return {
-      records,
-      encrypted,
-      importMs,
-      ...result,
-      peakRssMb: peakMb,
+      pid: process.pid,
+      openMs,
+      opening: tabulated(openSeen),
+      rssAfterOpenMb,
+      firstReadMs,
+      firstRead: tabulated(seen),
+      secondReadMs,
     };
-  } finally {
-    await rm(folder, { recursive: true, force: true });
-  }
+  });
+  return { ...result, peakRssMb: peakMb };
 }
 
 /**
@@ -658,7 +699,7 @@ export async function openBench(
  * and one more, measured, the import not.
  */
 export async function reopenedReadBench(resources: number): Promise<Measured> {
-  const folder = await mkdtemp(join(tmpdir(), "import-bench-"));
+  const folder = await benchFolder();
   let pod = await openPacked(folder);
   try {
     const started = performance.now();
@@ -686,7 +727,7 @@ export async function reopenedReadBench(resources: number): Promise<Measured> {
     };
   } finally {
     await pod.close();
-    await rm(folder, { recursive: true, force: true });
+    await rm(dirname(folder), { recursive: true, force: true });
   }
 }
 
@@ -821,6 +862,14 @@ async function checkBudget(
 }
 
 async function main(args: string[]): Promise<void> {
+  const opening = args.indexOf(OPENED_AT);
+  const openedAt = opening === -1 ? undefined : args[opening + 1];
+  if (openedAt !== undefined) {
+    process.stdout.write(
+      JSON.stringify(await openedHere(openedAt, args.includes("--secret"))),
+    );
+    return;
+  }
   const at = args.indexOf("--json");
   const json = at === -1 ? undefined : args[at + 1];
   const series = args.indexOf("--series");

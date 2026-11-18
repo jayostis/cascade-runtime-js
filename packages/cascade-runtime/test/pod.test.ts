@@ -2431,6 +2431,32 @@ describe("Opening a pod again · openPod()", () => {
       assert.deepEqual(rows, wholeRows);
     });
 
+    it("opens it, with tables that never opened it, by reading the build back: no derivation, no build and no matcher's view of its own, and answers as a build whole does", async () => {
+      const at = await copiedWithBuild(first, "opened-fresh");
+      const fresh: Parts = {
+        ...kept,
+        tables: (await resolved()).tablesIn(join(pods, ".tables-fresh")),
+      };
+      const { result, seen } = await probing(async () => {
+        const pod = await openPodWith(fresh, at);
+        try {
+          const rows: Row[][] = [];
+          for (const question of ASKED) rows.push(await pod.ask(question));
+          return rows;
+        } finally {
+          await pod.close();
+        }
+      });
+      const spans = [...seen.spans.keys()];
+      assert.ok(spans.includes("core-pod.step.perform"), spans.join(", "));
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(
+        spans.filter((span) => DERIVING.test(span) || span === "matcher.view"),
+        [],
+      );
+      assert.deepEqual(result, wholeRows);
+    });
+
     it("reads a sealed pod's build back, kept sealed beside it", async () => {
       const at = join(pods, "sealed-read-back");
       const parts = { ...kept, derive: fastDerive() };

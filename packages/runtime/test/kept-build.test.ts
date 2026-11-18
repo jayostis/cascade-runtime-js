@@ -434,7 +434,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
               await index.write(
                 "references.ttl",
                 new TextEncoder().encode(
-                  `<${SERIES}> a <${CASCADE}ReferenceSeries> ; <http://purl.org/pav/hasCurrentVersion> <${UNFILED}> .
+                  `<${SERIES}> a <${CASCADE}ReferenceSeries> ; <${CASCADE}defaultTableVersion> <${UNFILED}> .
 <${FILED}> <${PROV}specializationOf> <${SERIES}> .
 <${UNFILED}> <${PROV}specializationOf> <${SERIES}> .
 `,
@@ -444,6 +444,24 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
             },
           },
           false,
+        ],
+        [
+          "a series' kind changing in the app's tables, with no new version",
+          {
+            references: async () => {
+              const index = new MemoryFiles("urn:example:rekinded-tables/");
+              await index.write(
+                "references.ttl",
+                new TextEncoder().encode(
+                  `<${SERIES}> a <${CASCADE}ReferenceSeries> ; <${CASCADE}tableKind> <${CASCADE}SubstanceIngredients> .
+<${FILED}> <${PROV}specializationOf> <${SERIES}> .
+`,
+                ),
+              );
+              return References.of(index, "", () => new OxigraphStore());
+            },
+          },
+          true,
         ],
         [
           "a version the pod does not file arriving in the app's tables",

@@ -492,7 +492,7 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.equal(ids.length, 42);
     });
 
-    it("measures each import of the series, with nothing refused, and opens an encrypted pod again", async () => {
+    it("measures each import of the series, with nothing refused, and opens an encrypted pod again in a process of its own", async () => {
       const series = await seriesBench(20, 2);
       assert.equal(series.length, 2);
       for (const run of series) {
@@ -501,6 +501,7 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       }
       const opened = await openBench(20, true);
       assert.ok(opened.openMs > 0 && opened.firstReadMs > 0);
+      assert.notEqual(opened.pid, process.pid);
     });
   });
 });

@@ -128,8 +128,10 @@ function opened(
   files: MemoryFiles,
   newStore: () => OxigraphStore = () => new OxigraphStore(),
   over: { address: string; subject: string } = { address, subject },
+  besidePod?: MemoryFiles,
 ): CorePod {
   return new CorePod({
+    ...(besidePod === undefined ? {} : { besidePod }),
     runtime: RUNTIME,
     pod: files,
     address: over.address,
@@ -752,6 +754,22 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       for (const profile of profiles)
         assert.ok(profilesOf(second.result).includes(profile), profile);
       reopened.close();
+    });
+
+    it("reads a pod whose manifest names no build's hash, opened to keep its build beside it, though the tables cannot load", async () => {
+      const files = await countedCopy();
+      const filed = opened(files);
+      await filed.judge(aboutJudgment(profiles[0] as string));
+      filed.close();
+      const reopened = opened(
+        files,
+        undefined,
+        undefined,
+        new MemoryFiles("urn:example:beside/"),
+      );
+      const kept = await reopened.selectKept(tied());
+      reopened.close();
+      assert.ok(profilesOf(kept).includes(profiles[0] as string));
     });
 
     it("finds the profiles the matcher's view finds, the read the import's claim was made over before it read the kept build", async () => {
