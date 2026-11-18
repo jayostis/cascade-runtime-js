@@ -296,6 +296,84 @@ describe("Finding the vocabulary and adapters a run uses · resolve(), siblingsO
     });
   });
 
+  describe("given a sibling the compatibility tooling merged a pull request's head into", () => {
+    let sibling: string;
+    let start: string;
+    let pullHead: string;
+    let merge: string;
+
+    before(async () => {
+      const siblings = join(root, "merged-siblings");
+      sibling = join(siblings, "cascade-vocabulary");
+      start = await repositoryAt(sibling);
+      const as = (email: string) => [
+        "-c",
+        "user.name=test",
+        "-c",
+        `user.email=${email}`,
+      ];
+      await git(sibling, "checkout", "--quiet", "-b", "pull");
+      await writeFile(join(sibling, "pull.md"), "the pull request\n");
+      await git(sibling, "add", ".");
+      await git(
+        sibling,
+        ...as("test@example.org"),
+        "commit",
+        "--quiet",
+        "-m",
+        "pull",
+      );
+      pullHead = (await git(sibling, "rev-parse", "HEAD")).trim();
+      await git(sibling, "checkout", "--quiet", "main");
+      await writeFile(join(sibling, "main.md"), "main moved\n");
+      await git(sibling, "add", ".");
+      await git(
+        sibling,
+        ...as("test@example.org"),
+        "commit",
+        "--quiet",
+        "-m",
+        "main",
+      );
+      await git(
+        sibling,
+        ...as("compatibility@invalid"),
+        "merge",
+        "--quiet",
+        "--no-ff",
+        "--no-edit",
+        pullHead,
+      );
+      merge = (await git(sibling, "rev-parse", "HEAD")).trim();
+    });
+
+    it("names the pull request's head, not the merge commit no server holds", async () => {
+      assert.notEqual(merge, pullHead);
+      assert.equal((await checkout(sibling))?.commit, pullHead);
+    });
+
+    it("keeps HEAD for a merge anyone else made", async () => {
+      await git(sibling, "reset", "--quiet", "--hard", "HEAD^");
+      await git(
+        sibling,
+        "-c",
+        "user.name=test",
+        "-c",
+        "user.email=test@example.org",
+        "merge",
+        "--quiet",
+        "--no-ff",
+        "--no-edit",
+        pullHead,
+      );
+      assert.equal(
+        (await checkout(sibling))?.commit,
+        (await git(sibling, "rev-parse", "HEAD")).trim(),
+      );
+      assert.notEqual(start, pullHead);
+    });
+  });
+
   describe("siblingsOf(root)", () => {
     let checkouts: string;
     let main: string;
