@@ -174,6 +174,11 @@ export class KeptBuild {
   }
 
   /** The views written. */
+  /** The paths of the pod's files the build read. */
+  get paths(): ReadonlySet<string> {
+    return this.#loaded;
+  }
+
   get held(): ReadonlySet<string> {
     return this.#held;
   }
@@ -309,17 +314,23 @@ export class KeptBuild {
   static async whole(
     rebuilding: Rebuilding,
     pod: PodState,
+    paths?: readonly string[],
   ): Promise<{
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }> {
     const { address, build, lens, samesStillJoined } = rebuilding;
-    return KeptBuild.#made(rebuilding, pod, async (union) => ({
-      derived: await timedAside("kept.whole.derive", () =>
-        build.derivations.derive(union, lens, samesStillJoined),
-      ),
-      ...(await build.queried(union, address)),
-    }));
+    return KeptBuild.#made(
+      rebuilding,
+      pod,
+      async (union) => ({
+        derived: await timedAside("kept.whole.derive", () =>
+          build.derivations.derive(union, lens, samesStillJoined),
+        ),
+        ...(await build.queried(union, address)),
+      }),
+      paths,
+    );
   }
 
   /**
@@ -334,6 +345,8 @@ export class KeptBuild {
     written: {
       readonly derived: Uint8Array;
       readonly files: ReadonlyMap<string, Uint8Array>;
+      /** The paths of the pod's files to load, as the caller listed them; otherwise listed here. */
+      readonly paths?: readonly string[];
     },
   ): Promise<{
     kept: KeptBuild;
@@ -341,18 +354,23 @@ export class KeptBuild {
   }> {
     const { layout, address, lens } = rebuilding;
     return timedAside("kept.readBack", () =>
-      KeptBuild.#made(rebuilding, pod, async (union) => {
-        await union.loadTurtle(written.derived, DERIVED + lens);
-        for (const [path, bytes] of written.files)
-          await union.loadTurtle(bytes, address + path);
-        const views = new Set(layout.views.map(({ file }) => file));
-        return {
-          read: [...written.files.keys()],
-          held: new Set(
-            [...written.files.keys()].filter((path) => views.has(path)),
-          ),
-        };
-      }),
+      KeptBuild.#made(
+        rebuilding,
+        pod,
+        async (union) => {
+          await union.loadTurtle(written.derived, DERIVED + lens);
+          for (const [path, bytes] of written.files)
+            await union.loadTurtle(bytes, address + path);
+          const views = new Set(layout.views.map(({ file }) => file));
+          return {
+            read: [...written.files.keys()],
+            held: new Set(
+              [...written.files.keys()].filter((path) => views.has(path)),
+            ),
+          };
+        },
+        written.paths,
+      ),
     );
   }
 
@@ -367,13 +385,14 @@ export class KeptBuild {
         }
       | { readonly read: readonly string[]; readonly held: ReadonlySet<string> }
     >,
+    listed?: readonly string[],
   ): Promise<{
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }> {
     const { layout, address, newStore } = rebuilding;
     const rebuilt = new Set(layout.rebuilt);
-    const paths = (await rebuilding.pod.list("")).filter(
+    const paths = (listed ?? (await rebuilding.pod.list(""))).filter(
       (path) => layout.isRdf(path) && !rebuilt.has(path),
     );
     const union = new Union(newStore());

@@ -80,7 +80,6 @@ const MATCHER_VIEW = "matcher view";
 const COMPACT_AFTER_MOVED = 2_000_000;
 const REVISION = "revision";
 const KEPT = "kept";
-const INPUTS = "inputs";
 
 export interface CorePodOptions {
   /** The pod's files, named by its address. */
@@ -502,6 +501,8 @@ export class CorePod {
   #builtBefore: ReadonlyMap<string, readonly Triple[]> | undefined;
   /** The SHA-256, in hex, of each file the kept build wrote, as written or as read back. */
   #builtDigests = new Map<string, string>();
+  /** The hash of what every build of the pod reads whatever its files: the runtime, the lens, the address and the vocabulary's texts. */
+  #builtWith: Promise<string> | undefined;
   /** What each act file of the pod read or written so far holds of the chain, by path. */
   readonly #chain = new Map<string, ActFile>();
   /** What the act files the step in progress writes hold of the chain, by path, learnt once they are written. */
@@ -561,13 +562,20 @@ export class CorePod {
       const stated = await podStated(pod, layout, union.store);
       union.store.free?.();
       const state = this.#state(stated.at ?? time.now());
-      const back = await this.#writtenBuild(build, build.incremental, state);
+      const paths = await this.#readPaths();
+      const back = await this.#writtenBuild(
+        build,
+        build.incremental,
+        state,
+        stated.inputsHash,
+        paths,
+      );
       if (back !== undefined) {
         this.#built = back.kept;
         this.#builtDigests = back.digests;
         return back.kept.union;
       }
-      return this.#builtForRead(build, build.incremental, state, stated);
+      return this.#builtForRead(build, build.incremental, state, stated, paths);
     }
     await podFiles(pod, layout, address, union);
     if (build === undefined) {
@@ -645,7 +653,7 @@ export class CorePod {
     const { build } = this.#options;
     return build?.incremental === undefined
       ? undefined
-      : this.#inputsHash(build, build.incremental);
+      : this.#inputsHash(build, build.incremental, await this.#readPaths());
   }
 
   /**
@@ -1615,10 +1623,13 @@ export class CorePod {
     )
       return kept;
     return this.#held(DATASET + build.lens, async () => {
+      const paths = await this.#readPaths();
       const back = await this.#writtenBuild(
         build,
         incremental,
         this.#state(at),
+        await this.#namedHash(),
+        paths,
       );
       const whole =
         back ??
@@ -1626,6 +1637,7 @@ export class CorePod {
           KeptBuild.whole(
             this.#rebuilding(build, incremental),
             this.#state(at),
+            paths,
           ),
         ));
       this.#built = whole.kept;
@@ -1820,51 +1832,83 @@ export class CorePod {
     return fileDigest(bytes);
   }
 
+  /** The paths of the pod's files a build reads: every RDF file but those the build writes. */
+  async #readPaths(): Promise<string[]> {
+    const { pod, layout } = this.#options;
+    const rebuilt = new Set(layout.rebuilt);
+    return (await pod.list("")).filter(
+      (path) => layout.isRdf(path) && !rebuilt.has(path),
+    );
+  }
+
   /**
-   * The hash of everything a build of the pod as it stands reads (C8): the runtime, the lens, the pod's address, the
-   * path of each of its files but those the build writes, the bytes of each of them that changes in place, the tables'
-   * index, and the texts of the lens's derivations, the layout and the build's queries. A file of the set is named by
-   * what it holds (N9), so its path stands for its bytes. None without a place beside the pod to keep the build in.
+   * The hash of everything a build of the pod's files at the paths reads (C8): the runtime, the lens, the pod's address,
+   * the texts of the lens's derivations, the layout and the build's queries; each path; the bytes of each file the layout
+   * gives by itself, which changes in place, as the card and the settings; and what the tables' index states of each
+   * version the pod files and of its series. A file of the set is named by what it holds (N9), so its path stands for its
+   * bytes; a version's rows never change. None without a place beside the pod to keep the build in.
    */
-  #inputsHash(
+  async #inputsHash(
     build: PodBuildOption,
     incremental: VocabularyBuild,
+    read: readonly string[],
   ): Promise<string | undefined> {
     const { pod, layout, address, runtime, besidePod } = this.#options;
-    if (besidePod === undefined) return Promise.resolve(undefined);
-    return this.#held(INPUTS, () =>
-      timedAside("core-pod.inputsHash", async () => {
-        const rebuilt = new Set(layout.rebuilt);
-        const paths = (await pod.list(""))
-          .filter((path) => !rebuilt.has(path))
-          .sort();
-        const inPlace: string[] = [];
-        for (const path of paths)
-          if (!layout.inSnapshotSet(path)) {
-            const bytes = await pod.read(path);
-            inPlace.push(
-              path,
-              bytes === undefined ? "" : hex(await fileDigest(bytes)),
-            );
-          }
-        const tables = (await this.#tables()).index
-          .match()
-          .map((triple) => triple.map(written).join(" "))
-          .sort();
-        const read = JSON.stringify([
-          runtime,
-          build.lens,
-          address,
-          paths,
-          inPlace,
-          tables,
-          incremental.derivations.for(build.lens).map(({ query }) => query),
-          layout.turtle,
-          incremental.queries,
-        ]);
-        return hex(await fileDigest(new TextEncoder().encode(read)));
-      }),
-    );
+    if (besidePod === undefined) return undefined;
+    return timedAside("core-pod.inputsHash", async () => {
+      this.#builtWith ??= fileDigest(
+        new TextEncoder().encode(
+          JSON.stringify([
+            runtime,
+            build.lens,
+            address,
+            incremental.derivations.for(build.lens).map(({ query }) => query),
+            layout.turtle,
+            incremental.queries,
+          ]),
+        ),
+      ).then(hex);
+      const paths = [...read].sort();
+      const byItself = new Set(
+        layout.placements.flatMap(({ file }) => file ?? []),
+      );
+      const inPlace: string[] = [];
+      for (const path of paths)
+        if (byItself.has(path)) {
+          const bytes = await pod.read(path);
+          inPlace.push(
+            path,
+            bytes === undefined ? "" : hex(await fileDigest(bytes)),
+          );
+        }
+      const { index } = await this.#tables();
+      const listed = new Set(paths);
+      const series = layout.place(`${CASCADE}ReferenceSeries`);
+      const described = new Set<string>();
+      for (const [version, , of] of index.match(
+        undefined,
+        `${PROV}specializationOf`,
+      )) {
+        let path: string;
+        try {
+          path = layout.version(series, version.value);
+        } catch {
+          continue;
+        }
+        if (listed.has(path)) described.add(version.value).add(of.value);
+      }
+      const tables = [...described]
+        .flatMap((thing) => index.match(iri(thing)))
+        .map((triple) => triple.map(written).join(" "))
+        .sort();
+      const all = JSON.stringify([
+        await this.#builtWith,
+        paths,
+        inPlace,
+        tables,
+      ]);
+      return hex(await fileDigest(new TextEncoder().encode(all)));
+    });
   }
 
   /**
@@ -1876,6 +1920,8 @@ export class CorePod {
     build: PodBuildOption,
     incremental: VocabularyBuild,
     state: PodState,
+    named: string | undefined,
+    paths: readonly string[],
   ): Promise<
     | {
         kept: KeptBuild;
@@ -1884,17 +1930,9 @@ export class CorePod {
       }
     | undefined
   > {
-    const { pod, layout, besidePod, newStore } = this.#options;
-    if (besidePod === undefined) return undefined;
-    const inputsHash = await this.#inputsHash(build, incremental);
-    if (inputsHash === undefined) return undefined;
-    const store = newStore();
-    let named: string | undefined;
-    try {
-      named = (await podStated(pod, layout, store)).inputsHash;
-    } finally {
-      store.free?.();
-    }
+    const { pod, besidePod } = this.#options;
+    if (besidePod === undefined || named === undefined) return undefined;
+    const inputsHash = await this.#inputsHash(build, incremental, paths);
     if (named !== inputsHash) return undefined;
     const kept = await besidePod.read(BUILT_BESIDE).catch(() => undefined);
     if (kept === undefined) return undefined;
@@ -1927,9 +1965,20 @@ export class CorePod {
     const back = await KeptBuild.readBack(
       this.#rebuilding(build, incremental),
       state,
-      { derived: kept.subarray(end + 1), files },
+      { derived: kept.subarray(end + 1), files, paths },
     );
     return { ...back, digests };
+  }
+
+  /** The hash the manifest names, read before anything is hashed: a pod built before builds were kept names none. */
+  async #namedHash(): Promise<string | undefined> {
+    const { pod, layout, newStore } = this.#options;
+    const store = newStore();
+    try {
+      return (await podStated(pod, layout, store)).inputsHash;
+    } finally {
+      store.free?.();
+    }
   }
 
   /**
@@ -1943,15 +1992,16 @@ export class CorePod {
     incremental: VocabularyBuild,
     pod: PodState,
     stated: { readonly inputsHash?: string },
+    paths: readonly string[],
   ): Promise<Union> {
     const { layout, address } = this.#options;
-    const inputsHash = await this.#inputsHash(build, incremental);
+    const inputsHash = await this.#inputsHash(build, incremental, paths);
     const state = {
       ...pod,
       ...(inputsHash === undefined ? {} : { inputsHash }),
     };
     const whole = await timedAside("kept.whole", () =>
-      KeptBuild.whole(this.#rebuilding(build, incremental), state),
+      KeptBuild.whole(this.#rebuilding(build, incremental), state, paths),
     );
     this.#built = whole.kept;
     const bytes = [...whole.files]
@@ -2040,30 +2090,46 @@ export class CorePod {
   ): Promise<void> {
     const { pod, layout, address, title, newStore } = this.#options;
     if (build.incremental !== undefined && at !== undefined) {
-      const inputsHash = await this.#inputsHash(build, build.incremental);
-      const state = {
-        ...this.#state(at),
-        ...(inputsHash === undefined ? {} : { inputsHash }),
+      const { incremental } = build;
+      const stated = async (paths: readonly string[]) => {
+        const inputsHash = await this.#inputsHash(build, incremental, paths);
+        return {
+          ...this.#state(at),
+          ...(inputsHash === undefined ? {} : { inputsHash }),
+        };
       };
-      const rebuilding = this.#rebuilding(build, build.incremental);
+      const rebuilding = this.#rebuilding(build, incremental);
       let built = this.#built;
-      let files = await timedAside("kept.step", async () =>
-        built?.step(change, state),
-      );
+      let state: PodState | undefined;
+      let files: ReadonlyMap<string, readonly Triple[]> | undefined;
+      if (built !== undefined) {
+        const rebuilt = new Set(layout.rebuilt);
+        const read = new Set(built.paths);
+        for (const path of change.written)
+          if (layout.isRdf(path) && !rebuilt.has(path)) read.add(path);
+        const given = (state = await stated([...read]));
+        const stepping = built;
+        files = await timedAside("kept.step", () =>
+          stepping.step(change, given),
+        );
+      }
       if (files !== undefined && this.#builtBefore !== undefined)
         files = new Map([...this.#builtBefore, ...files]);
       const verifying =
         built !== undefined && files !== undefined && build.verify === true
           ? built
           : undefined;
-      if (built === undefined || files === undefined) {
+      if (built === undefined || files === undefined || state === undefined) {
         this.#dropBuilt();
+        const paths = await this.#readPaths();
+        const given = (state = await stated(paths));
         const whole = await timedAside("kept.whole", () =>
-          KeptBuild.whole(rebuilding, state),
+          KeptBuild.whole(rebuilding, given, paths),
         );
         built = this.#built = whole.kept;
         files = whole.files;
       }
+      const { inputsHash } = state;
       const made = files;
       const bytes = await timedAside("core-pod.rebuild.bytes", async () =>
         [...made]
