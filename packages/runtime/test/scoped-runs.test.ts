@@ -7,7 +7,12 @@ import { featuresOf, readFeature } from "../src/features.js";
 import { MemoryFiles, relative } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { importersNamed } from "../src/importers.js";
-import { MATCHER, readEveryRecord, recordsInOneBlock } from "../src/matcher.js";
+import {
+  inBlocks,
+  MATCHER,
+  readEveryRecord,
+  recordsInOneBlock,
+} from "../src/matcher.js";
 import { documentName } from "../src/names.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
@@ -572,6 +577,29 @@ async function joinsNow(): Promise<string[]> {
  * @rule runtime/matcher.feature M1
  * @rule runtime/matcher.feature M4a
  */
+describe("Binding records to VALUES blocks · inBlocks()", () => {
+  it("makes no block, and counts none, of no records", async () => {
+    const { result, seen } = await probing(() =>
+      Promise.resolve(inBlocks([])),
+    );
+    assert.deepEqual(result, []);
+    assert.equal(seen.counts.get("matcher.valuesBlocks") ?? 0, 0);
+  });
+
+  it("splits records into blocks of at most the size it is given, in order", async () => {
+    recordsInOneBlock(2);
+    try {
+      const { result, seen } = await probing(() =>
+        Promise.resolve(inBlocks(["a", "b", "c"])),
+      );
+      assert.deepEqual(result, [["a", "b"], ["c"]]);
+      assert.equal(seen.counts.get("matcher.valuesBlocks"), 2);
+    } finally {
+      recordsInOneBlock();
+    }
+  });
+});
+
 describe("Holding the matcher's joins to those of today · CorePod.match()", () => {
   describe("given each run that takes records in the stories of the feature files, and each kit's whole story", () => {
     it("files the Sames and the findings of `joins.golden.txt`, each as it is, no line missing, extra or twice", async () => {
