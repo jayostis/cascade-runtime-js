@@ -2513,12 +2513,29 @@ describe("Opening a pod again · openPod()", () => {
       assert.deepEqual(again.rows, wholeRows);
     });
 
+    it("writes nothing at close, neither the working copy nor a file of the pod, after a session that opened from the working copy and changed nothing", async () => {
+      const at = await copiedWithBuild(first, "restored-unwritten");
+      const copy = join(pods, ".answers", "restored-unwritten", BUILT_BESIDE);
+      const before = await heldIn(at);
+      const copyBefore = (await stat(copy)).mtimeMs;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const { spans } = await asked(kept, at);
+      assert.ok(spans.includes("kept.readBack.restore"), spans.join(", "));
+      assert.equal((await stat(copy)).mtimeMs, copyBefore);
+      assert.deepEqual(await heldIn(at), before);
+    });
+
     it("builds again when a byte of the working copy kept beside it changed", async () => {
       const at = await copiedWithBuild(first, "copy-changed");
       const file = join(pods, ".answers", "copy-changed", BUILT_BESIDE);
       const bytes = await readFile(file);
-      const at1 = bytes.indexOf('"', bytes.indexOf(0x0a) + 1) + 1;
-      assert.ok(at1 > 0, "the working copy holds no literal");
+      const block = bytes.indexOf(
+        "{\n",
+        bytes.indexOf(0x0a, bytes.indexOf(0x0a) + 1) + 1,
+      );
+      assert.ok(block > 0, "the working copy holds no graph");
+      const at1 = bytes.indexOf('"', block) + 1;
+      assert.ok(at1 > 0, "the working copy's triples hold no literal");
       bytes[at1] = bytes[at1] === 0x41 ? 0x42 : 0x41;
       await writeFile(file, bytes);
       const { rows, spans } = await asked(kept, at);
