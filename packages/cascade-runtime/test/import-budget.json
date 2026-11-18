@@ -1,16 +1,16 @@
 {
   "resources": 1000,
   "stagesMs": {
-    "importMs": 600000,
-    "read.first": 600000,
-    "arrivals.convert": 600000,
-    "pod.judge": 600000,
-    "pod.match": 600000,
-    "core-pod.step.rebuild:import+judge": 600000,
-    "core-pod.step.rebuild:import": 600000,
-    "core-pod.step.rebuild:match": 600000,
-    "kept.rebuilt.derive": 600000,
-    "build.queried": 600000,
-    "matcher.of": 600000
+    "importMs": 9500,
+    "read.first": 300,
+    "arrivals.convert": 3200,
+    "pod.judge": 500,
+    "pod.match": 4500,
+    "core-pod.step.rebuild:import+judge": 1500,
+    "core-pod.step.rebuild:import": 1100,
+    "core-pod.step.rebuild:match": 800,
+    "kept.rebuilt.derive": 1000,
+    "build.queried": 800,
+    "matcher.of": 1000
   }
 }
