@@ -520,7 +520,7 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       assert.equal(grown.refused, undefined);
     });
 
-    it("lends the matcher its view of the larger pod moving no more quads than of the empty one: the views the build writes stay out of the store across the import's steps, rather than moved out and back for each", () => {
+    it("lends the matcher its view of the larger pod moving no more quads than of the empty one: the views the build writes stay out of the store across the import's steps, rather than moved out and back for each; a read before the import and after it, as an app reads, moves them out and back once, which grows with the pod", () => {
       const moved = (run: Measured) => run.counts["view.quadsMoved"] ?? 0;
       assert.ok(
         moved(grown) <= moved(empty),

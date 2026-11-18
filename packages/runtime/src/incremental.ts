@@ -6,7 +6,7 @@ import type { Files } from "./files.js";
 import { LAYOUT_GRAPH, type Layout } from "./layout.js";
 import { counted, timed, timedAside } from "./probe.js";
 import { type Term, type Triple, written } from "./rdf.js";
-import { type StoreFactory, Union } from "./store.js";
+import { type Store, type StoreFactory, Union } from "./store.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -180,8 +180,35 @@ export class KeptBuild {
     this.#globalDerived = new Set();
   }
 
+  /**
+   * The union, whole: throws while the files the build writes and the layout are lent out, so that nothing outside a
+   * step reads, writes or keeps the pod without them; `unionWhole()` puts them back first.
+   */
   get union(): Union {
+    if (this.#builtOut)
+      throw new Error(
+        "the files the build writes are out of the kept build's union; read it with unionWhole()",
+      );
     return this.#union;
+  }
+
+  /** The union with the files the build writes and the layout put back in it, if they were lent out. */
+  async unionWhole(): Promise<Union> {
+    await this.withBuilt();
+    return this.#union;
+  }
+
+  /**
+   * The union as it stands, without the files the build writes and the layout while they are lent out: for the pod to
+   * keep and lend it, never to read it whole.
+   */
+  get unionAsItStands(): Union {
+    return this.#union;
+  }
+
+  /** The store the union is in. */
+  get store(): Store {
+    return this.#union.store;
   }
 
   /** The paths of the pod's files the build read. */
@@ -253,7 +280,7 @@ export class KeptBuild {
   }
 
   #serversJoined(): Promise<boolean> {
-    return this.union.ask(
+    return this.#union.ask(
       `${PREFIXES}ASK { ?one a cascade:Server ; cascade:currentlySame ?two . ?two a cascade:Server }`,
     );
   }
@@ -305,9 +332,9 @@ export class KeptBuild {
       }
       return found;
     };
-    const now = currentOf(await this.union.construct(current.query));
+    const now = currentOf(await this.#union.construct(current.query));
     const before = currentOf(
-      await this.union.construct(
+      await this.#union.construct(
         `${PREFIXES}CONSTRUCT { ?series pav:hasCurrentVersion ?version } WHERE { GRAPH <${this.#derived}> { ?series pav:hasCurrentVersion ?version } ?series a cascade:ReferenceSeries }`,
       ),
     );
@@ -501,7 +528,7 @@ export class KeptBuild {
    * triple a file states already, such as a judgment's file typing a record.
    */
   async #recordsAndTheirs(): Promise<Set<string>> {
-    const { rows } = await this.union.select(
+    const { rows } = await this.#union.select(
       `${PREFIXES}SELECT ?owned WHERE { { ?owned a cascade:Record } UNION { ?owned prov:specializationOf|cascade:revisionOf ?record . ?record a cascade:Record } }`,
     );
     return new Set(rows.flatMap((row) => row.get("owned")?.value ?? []));
@@ -614,7 +641,7 @@ export class KeptBuild {
             ].join("\n"),
         );
     };
-    const keptGraphs = await graphsOf(this.union);
+    const keptGraphs = await graphsOf(this.#union);
     const builtGraphs = await graphsOf(whole.kept.union);
     const listed = (graphs: ReadonlySet<string>) =>
       new Map([...graphs].map((graph) => [graph, 1]));
@@ -627,7 +654,7 @@ export class KeptBuild {
           graph === this.#derived
             ? "the derived state"
             : `${graph} in the union`,
-          await graphOf(this.union, graph),
+          await graphOf(this.#union, graph),
           await graphOf(whole.kept.union, graph),
         );
     for (const [path, triples] of whole.files) {
@@ -693,12 +720,12 @@ export class KeptBuild {
     this.#layoutOut = await this.#union.construct(
       `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${LAYOUT_GRAPH}> { ?s ?p ?o } }`,
     );
+    this.#builtOut = true;
     for (const graph of [
       ...layout.rebuilt.map((path) => address + path),
       LAYOUT_GRAPH,
     ])
       if (this.#union.graphs.has(graph)) await this.#union.drop(graph);
-    this.#builtOut = true;
     counted("view.quadsMoved", moved);
     return moved;
   }
@@ -731,7 +758,7 @@ export class KeptBuild {
 
   /** Frees what the build holds in the store's memory. */
   free(): void {
-    for (const union of [this.union, this.#scope])
+    for (const union of [this.#union, this.#scope])
       (union?.store as { free?: () => void } | undefined)?.free?.();
     this.#scope = undefined;
   }
@@ -772,7 +799,7 @@ export class KeptBuild {
     }
     const scope = await timedAside("kept.step.scoped", () => this.#scoped());
     await timedAside("kept.step.podFiles", async () => {
-      await podFiles(this.#rebuilding.pod, layout, address, this.union, fresh);
+      await podFiles(this.#rebuilding.pod, layout, address, this.#union, fresh);
       for (const path of fresh) this.#loaded.add(path);
       const newShared = sharedPaths.filter(
         (path) => !this.#scopeLoaded.has(path),
@@ -841,7 +868,7 @@ export class KeptBuild {
     const heldIn = async (things: Iterable<string>, pattern: string) => {
       const found = new Set<string>();
       for (const batch of batches([...new Set(things)])) {
-        const { rows } = await this.union.select(
+        const { rows } = await this.#union.select(
           `SELECT DISTINCT ?thing ?graph WHERE { VALUES ?thing { ${values(batch)} } GRAPH ?graph { ${pattern} } }`,
         );
         for (const row of rows) {
@@ -854,7 +881,7 @@ export class KeptBuild {
       return found;
     };
     const things = await boundValues(
-      this.union,
+      this.#union,
       written,
       `GRAPH ?bound { ?found ?p ?o }`,
     );
@@ -893,7 +920,7 @@ export class KeptBuild {
     | undefined
   > {
     const { address } = this.#rebuilding;
-    const union = this.union;
+    const union = this.#union;
     const clinical = new Set(clinicalPaths);
     const found =
       filesOf !== undefined
@@ -967,7 +994,7 @@ export class KeptBuild {
    * versions.
    */
   async #closed(start: ReadonlySet<string>): Promise<Set<string>> {
-    const union = this.union;
+    const union = this.#union;
     const serversJoined = await this.#serversJoined();
     const same = await this.#currentlySame();
     const records = new Set(start);
@@ -1020,7 +1047,7 @@ export class KeptBuild {
    * union-find, where the path `(cascade:currentlySame|^cascade:currentlySame)*` walks the union from each thing.
    */
   async #currentlySame(): Promise<(thing: string) => readonly string[]> {
-    const { rows } = await this.union.select(
+    const { rows } = await this.#union.select(
       `${PREFIXES}SELECT ?one ?other WHERE { ?one cascade:currentlySame ?other }`,
     );
     const { root, joined } = unionFind(rows);
@@ -1048,7 +1075,7 @@ export class KeptBuild {
   async #filesOf(records: Iterable<string>): Promise<string[]> {
     const { address } = this.#rebuilding;
     const clinical = this.#clinicalFolders;
-    const graphs = await boundValues(this.union, records, [
+    const graphs = await boundValues(this.#union, records, [
       `GRAPH ?found { ?bound a ?kind }`,
       `GRAPH ?found { ?owned prov:specializationOf ?bound }`,
       `GRAPH ?found { ?owned cascade:revisionOf ?bound }`,
@@ -1070,7 +1097,7 @@ export class KeptBuild {
     pod: PodState,
   ): Promise<ReadonlyMap<string, readonly Triple[]>> {
     const { layout, address, build, lens, samesStillJoined } = this.#rebuilding;
-    const union = this.union;
+    const union = this.#union;
     const derivedGraph = this.#derived;
     const writtenGraphs = sharedPaths.map((path) => address + path);
 

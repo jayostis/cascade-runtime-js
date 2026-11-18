@@ -720,6 +720,7 @@ export class CorePod {
   async keepBuild(): Promise<void> {
     await this.#settle();
     await this.#putBackMatcherView();
+    await this.#withBuilt();
     const inputsHash = this.#toKeep;
     const built = this.#built;
     if (inputsHash === undefined || built === undefined) return;
@@ -831,7 +832,7 @@ export class CorePod {
   #release(): void {
     const kept = this.#kept;
     this.#kept = new Map();
-    const owned = this.#built?.union.store;
+    const owned = this.#built?.store;
     for (const held of kept.values())
       held.then(
         (union) => {
@@ -1356,13 +1357,14 @@ export class CorePod {
           : undefined;
       if (dataset === undefined)
         return matcherView(this.#options, this.#samesStillJoined());
-      if (dataset === this.#built?.union)
-        this.#movedInBuilt += await this.#built.withoutBuilt();
+      const built = this.#built;
+      const lent = built !== undefined && dataset === built.unionAsItStands;
+      if (lent) this.#movedInBuilt += await built.withoutBuilt();
       const rebuilt = new Set(layout.rebuilt.map((path) => address + path));
       const left = [...dataset.graphs].filter(
         (graph) => graph === LAYOUT_GRAPH || rebuilt.has(graph),
       );
-      if (this.#performing && dataset !== this.#built?.union) {
+      if (this.#performing && !lent) {
         this.#kept.delete(DATASET + MATCHER_LENS);
         for (const graph of left) await dataset.drop(graph);
         return dataset;
@@ -1441,7 +1443,7 @@ export class CorePod {
       this.#dropDatasets(view.store);
       throw error;
     }
-    if (view.store !== this.#built?.union.store) return;
+    if (view.store !== this.#built?.store) return;
     this.#movedInBuilt += view.moved;
     await this.#compactedIfMoved();
   }
@@ -1460,7 +1462,7 @@ export class CorePod {
    * in whole is read again by nothing.
    */
   #dropDatasets(store: Store): void {
-    const built = this.#built?.union.store;
+    const built = this.#built?.store;
     for (const [key, held] of [...this.#kept])
       if (key.startsWith(DATASET)) {
         this.#kept.delete(key);
@@ -1488,7 +1490,7 @@ export class CorePod {
     const built = this.#built;
     if (built === undefined) return;
     counted("core-pod.compactions");
-    const was = built.union;
+    const was = built.unionAsItStands;
     try {
       await timedAside("core-pod.compact", () => built.compact());
     } catch (error) {
@@ -1501,7 +1503,7 @@ export class CorePod {
         key.startsWith(DATASET) &&
         (await held.catch(() => undefined)) === was
       )
-        this.#kept.set(key, Promise.resolve(built.union));
+        this.#kept.set(key, Promise.resolve(built.unionAsItStands));
   }
 
   /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
@@ -2483,7 +2485,10 @@ export class CorePod {
         this.#movedInBuilt += built.moved();
         await this.#compactedIfMoved();
       }
-      this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
+      this.#kept.set(
+        DATASET + build.lens,
+        Promise.resolve(built.unionAsItStands),
+      );
       this.#builtHash = inputsHash;
       this.#toKeep = inputsHash;
       return;
