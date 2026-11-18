@@ -586,7 +586,7 @@ export class CorePod {
       union.store.free?.();
       const state = { address, at: stated.at ?? time.now(), title };
       const paths = await this.#readPaths();
-      const back = await this.#writtenBuild(
+      const { inputsHash, back } = await this.#writtenBuild(
         build,
         build.incremental,
         state,
@@ -596,10 +596,17 @@ export class CorePod {
       if (back !== undefined) {
         this.#built = back.kept;
         this.#builtDigests = back.digests;
-        this.#builtHash = back.inputsHash;
+        this.#builtHash = inputsHash;
         return back.kept.union;
       }
-      return this.#builtForRead(build, build.incremental, state, stated, paths);
+      return this.#builtForRead(
+        build,
+        build.incremental,
+        state,
+        stated,
+        paths,
+        inputsHash,
+      );
     }
     await timedAside("core-pod.filled.podFiles", () =>
       podFiles(pod, layout, address, union),
@@ -1351,7 +1358,7 @@ export class CorePod {
       this.#built !== undefined
     )
       return undefined;
-    const back = await this.#writtenBuild(
+    const { inputsHash, back } = await this.#writtenBuild(
       build,
       incremental,
       this.#state(time.now()),
@@ -1360,7 +1367,7 @@ export class CorePod {
     );
     if (back === undefined) return undefined;
     this.#built = back.kept;
-    this.#builtHash = back.inputsHash;
+    this.#builtHash = inputsHash;
     this.#builtDigests = back.digests;
     if (this.#performing) this.#builtBefore = back.files;
     this.#kept.set(DATASET + build.lens, Promise.resolve(back.kept.union));
@@ -1707,7 +1714,7 @@ export class CorePod {
       return kept;
     return this.#held(DATASET + build.lens, async () => {
       const paths = await this.#readPaths();
-      const back = await this.#writtenBuild(
+      const { inputsHash, back } = await this.#writtenBuild(
         build,
         incremental,
         this.#state(at),
@@ -1724,8 +1731,7 @@ export class CorePod {
           ),
         ));
       this.#built = whole.kept;
-      this.#builtHash =
-        back?.inputsHash ?? (await this.#inputsHash(build, incremental, paths));
+      this.#builtHash = inputsHash;
       this.#builtDigests = back?.digests ?? new Map<string, string>();
       this.#builtBefore = whole.files;
       return whole.kept.union;
@@ -1930,9 +1936,10 @@ export class CorePod {
    * The hash of everything a build of the pod's files at the paths reads (C8): the runtime, the lens, the pod's address,
    * the texts of the lens's derivations, the layout, the build's queries and the matcher's comparisons; each path; the
    * bytes of each file outside the snapshot set, which may change in place, as the card, the settings or a file placed by
-   * hand; and what the tables' index states of each version the pod files. A file of the set is named by what it holds
-   * (N9), so its path stands for its bytes; a version's rows never change, and a series' own triples, as its current
-   * version, are read from the pod's files, not the tables. None without a place beside the pod to keep the build in.
+   * hand; and what the tables' index states of each version the pod files and of its series, as its kind, but the version
+   * the series ships with. A file of the set is named by what it holds (N9), so its path stands for its bytes; a
+   * version's rows never change, and a series' current version is read from the pod's files, not the tables. None
+   * without a place beside the pod to keep the build in.
    */
   async #inputsHash(
     build: PodBuildOption,
@@ -1969,7 +1976,8 @@ export class CorePod {
             bytes === undefined ? "" : hex(await fileDigest(bytes)),
           );
         }
-      const { index } = await this.#tables();
+      const references = await this.#tables();
+      const { index } = references;
       const listed = new Set(paths);
       const series = layout.place(`${CASCADE}ReferenceSeries`);
       const described = new Set<string>();
@@ -1983,10 +1991,13 @@ export class CorePod {
         } catch {
           continue;
         }
-        if (listed.has(path)) described.add(version.value);
+        if (!listed.has(path)) continue;
+        described.add(version.value);
+        const of = references.seriesOf(version.value);
+        if (of !== undefined) described.add(of);
       }
       const tables = [...described]
-        .flatMap((thing) => index.match(iri(thing)))
+        .flatMap((thing) => references.description(thing))
         .map((triple) => triple.map(written).join(" "))
         .sort();
       const all = JSON.stringify([
@@ -2002,7 +2013,8 @@ export class CorePod {
   /**
    * The build the pod's files and what is kept beside it hold, read back, when the manifest names the hash of what a
    * build of the pod as it stands reads, and the derived state kept beside it was kept under that hash with every file
-   * it names still holding the bytes it was kept with; otherwise none, and the pod is built.
+   * it names still holding the bytes it was kept with; otherwise none, and the pod is built. Beside it, the hash it was
+   * compared with; none when the manifest names none, which is not hashed, so the tables are read only when needed.
    */
   async #writtenBuild(
     build: PodBuildOption,
@@ -2010,19 +2022,46 @@ export class CorePod {
     state: PodState,
     named: string | undefined,
     paths: readonly string[],
+  ): Promise<{
+    inputsHash: string | undefined;
+    back:
+      | {
+          kept: KeptBuild;
+          files: ReadonlyMap<string, readonly Triple[]>;
+          digests: Map<string, string>;
+        }
+      | undefined;
+  }> {
+    const { besidePod } = this.#options;
+    if (besidePod === undefined || named === undefined)
+      return { inputsHash: undefined, back: undefined };
+    const inputsHash = await this.#inputsHash(build, incremental, paths);
+    return {
+      inputsHash,
+      back:
+        named === inputsHash
+          ? await this.#keptBack(build, incremental, state, inputsHash, paths)
+          : undefined,
+    };
+  }
+
+  /** The build kept beside the pod under the hash, read back, when it holds; otherwise none. */
+  async #keptBack(
+    build: PodBuildOption,
+    incremental: VocabularyBuild,
+    state: PodState,
+    inputsHash: string,
+    paths: readonly string[],
   ): Promise<
     | {
         kept: KeptBuild;
         files: ReadonlyMap<string, readonly Triple[]>;
         digests: Map<string, string>;
-        inputsHash: string;
       }
     | undefined
   > {
     const { pod, besidePod } = this.#options;
-    if (besidePod === undefined || named === undefined) return undefined;
-    const inputsHash = await this.#inputsHash(build, incremental, paths);
-    if (named !== inputsHash) return undefined;
+    if (besidePod === undefined) return undefined;
     const kept = await besidePod.read(BUILT_BESIDE).catch(() => undefined);
     if (kept === undefined) return undefined;
     const end = kept.indexOf(0x0a);
@@ -2065,7 +2104,7 @@ export class CorePod {
       back.kept.free();
       return undefined;
     }
-    return { ...back, digests, inputsHash };
+    return { ...back, digests };
   }
 
   /**
@@ -2116,9 +2155,11 @@ export class CorePod {
     pod: PodState,
     stated: PodStated,
     paths: readonly string[],
+    hashed?: string,
   ): Promise<Union> {
     const { layout, address } = this.#options;
-    const inputsHash = await this.#inputsHash(build, incremental, paths);
+    const inputsHash =
+      hashed ?? (await this.#inputsHash(build, incremental, paths));
     const state = {
       ...pod,
       ...(inputsHash === undefined ? {} : { inputsHash }),
