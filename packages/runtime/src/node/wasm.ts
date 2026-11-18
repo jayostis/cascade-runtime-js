@@ -350,7 +350,7 @@ export interface ConfiguredAdapter extends Loaded {
 }
 
 /**
- * Each adapter of cascade-runtime.json, resolved as the vocabulary is and loaded with every file of its folder, with
+ * Each adapter of cascade-runtime.json, resolved as the vocabulary is and loaded with the files its description lists, with
  * the vocabulary it reads, resolved the same way. The run says which version of each it used.
  */
 export async function loadConfiguredAdapters(
@@ -365,7 +365,6 @@ export async function loadConfiguredAdapters(
     return {
       iri: resolved.iri,
       files: new FolderFiles(resolved.folder, resolved.iri),
-      whole: true,
     };
   });
   return loaded.map((each, index) => {
@@ -376,16 +375,11 @@ export async function loadConfiguredAdapters(
   });
 }
 
-/** Each file the adapter is given under the folder, as {@link FolderFiles} lists them (a link is none, as it is none there), with its size and time of change, as one digest. */
+/** Each of the files, under the folder, with its size and time of change, as one digest. */
 async function signature(
   folder: string,
-  only?: readonly string[],
+  paths: readonly string[],
 ): Promise<string> {
-  const paths =
-    only ??
-    (await new FolderFiles(folder).list("")).filter(
-      (path) => path !== ".git" && !path.startsWith(".git/"),
-    );
   const lines = await Promise.all(
     paths.map(async (path) => {
       const found = await stat(join(folder, path)).catch(() => undefined);
@@ -515,7 +509,8 @@ interface Shared {
   readonly build: string;
   readonly iri: string;
   readonly pool: Pool;
-  /** The adapter's files as they were when it was loaded. */
+  /** The files its description lists, and the signature of them as they were when it was loaded. */
+  readonly signed: readonly string[];
   readonly signature: string;
   /** The vocabulary the adapter was given, resolved through the components of the pod that loaded it, as it was. */
   readonly vocabulary?: {
@@ -602,7 +597,6 @@ export async function loadSharedAdapters(
       `${base} ${vocabulary?.folder ?? ""}`,
       vocabulary,
       build,
-      await signature(resolved.folder),
       resolved,
       followed,
       bridge.spawn,
@@ -624,7 +618,6 @@ async function sharedAt(
   slot: string,
   vocabularyNow: Resolved | undefined,
   build: string,
-  files: string,
   resolved: Resolved,
   followed: Followed,
   spawn: Spawn,
@@ -645,7 +638,7 @@ async function sharedAt(
         found !== undefined &&
         found.build === build &&
         found.iri === resolved.iri &&
-        found.signature === files &&
+        found.signature === (await signature(resolved.folder, found.signed)) &&
         (found.vocabulary === undefined ||
           (vocabulary?.iri === found.vocabulary.iri &&
             vocabulary.folder === found.vocabulary.folder &&
@@ -661,14 +654,7 @@ async function sharedAt(
       }
       found?.pool.retire();
     }
-    const loading = loadFirst(
-      spawn,
-      followed,
-      resolved,
-      components,
-      files,
-      build,
-    );
+    const loading = loadFirst(spawn, followed, resolved, components, build);
     const live = { loading, folder: resolved.folder, base };
     shared.set(slot, live);
     keepRecent(base);
@@ -719,7 +705,6 @@ async function loadOne(
       return {
         iri: resolved.iri,
         files: new FolderFiles(resolved.folder, resolved.iri),
-        whole: true,
       };
     });
     if (loaded === undefined) throw new Error("no adapter was loaded");
@@ -734,7 +719,6 @@ async function loadFirst(
   followed: Followed,
   resolved: Resolved,
   components: Components,
-  files: string,
   build: string,
 ): Promise<Shared> {
   const known = new Map([[followed.repository, resolved]]);
@@ -744,6 +728,9 @@ async function loadFirst(
     components,
     known,
   );
+  const signed = [
+    ...new Set([...loaded.description.loadFiles, "ro-crate-metadata.json"]),
+  ];
   const given = loaded.description.vocabulary?.files ?? [];
   const repository = loaded.description.vocabulary?.repository;
   return {
@@ -752,7 +739,8 @@ async function loadFirst(
     iri: resolved.iri,
     // The files were signed before the adapter reads them, when its first call needs them: a file edited between the
     // two is read at its new content under the old signature, and the next call loads it again, which errs safe.
-    signature: files,
+    signed,
+    signature: await signature(resolved.folder, signed),
     pool: new Pool(
       loaded.adapter,
       async () =>

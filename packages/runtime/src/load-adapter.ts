@@ -9,6 +9,7 @@ import {
 } from "./bridge.js";
 import { type Followed, repositoryName } from "./config.js";
 import type { Files } from "./files.js";
+import { counted } from "./probe.js";
 
 const METADATA = "ro-crate-metadata.json";
 
@@ -16,11 +17,6 @@ const METADATA = "ro-crate-metadata.json";
 export interface Source {
   readonly iri: string;
   readonly files: Files;
-  /**
-   * Whether every file under it is at hand, as in a local or cached checkout. An adapter's are then all given, so a
-   * schema the adapter ships is read even where the description does not list it.
-   */
-  readonly whole?: boolean;
 }
 
 /** The vocabulary an adapter reads, by its `bridge:cascadeVocabularyRepository`, or none to load it without. */
@@ -43,7 +39,10 @@ async function read(
   paths: Iterable<string>,
 ): Promise<Map<string, Uint8Array>> {
   const read = await Promise.all(
-    [...paths].map(async (path) => [path, await files.read(path)] as const),
+    [...paths].map(async (path) => {
+      counted("adapter.files.read");
+      return [path, await files.read(path)] as const;
+    }),
   );
   return new Map(
     read.flatMap(([path, bytes]) =>
@@ -52,15 +51,9 @@ async function read(
   );
 }
 
-async function everyFile(files: Files): Promise<string[]> {
-  return (await files.list("")).filter(
-    (path) => path !== ".git" && !path.startsWith(".git/"),
-  );
-}
-
 /**
  * Loads an adapter as library.md has a host do it, when a call first needs it: describe it from its metadata alone,
- * give it the files the description lists (all its files, where it is `whole`) and the vocabulary files it lists, and,
+ * give it the files the description lists and the vocabulary files it lists, and,
  * whenever a call fails for a file missing from a map, fetch that file and load it again.
  */
 export async function loadAdapter(
@@ -81,9 +74,7 @@ export async function loadAdapter(
   type Maps = { adapter: Named; vocabulary?: Named };
   const reading = async (): Promise<Maps> => {
     const [adapter, vocabulary] = await Promise.all([
-      source.whole
-        ? everyFile(source.files).then((paths) => read(source.files, paths))
-        : read(source.files, description.loadFiles),
+      read(source.files, description.loadFiles),
       vocabularySource && read(vocabularySource.files, listed),
     ]);
     return {

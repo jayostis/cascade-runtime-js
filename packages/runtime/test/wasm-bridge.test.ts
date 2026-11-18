@@ -9,7 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { after, before, describe, it } from "node:test";
 import {
   type AdaptersOf,
@@ -67,8 +67,6 @@ const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const TYPE = `${RDF}type`;
 const REVISION = `${CASCADE}Revision`;
 const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
-/** Set by the nightly workflow: every import of every kit, not one document for each adapter. */
-const FULL_SWEEP = process.env.CASCADE_FULL_SWEEP === "1";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 let compiled: CompiledBridge;
@@ -190,7 +188,6 @@ async function differences(): Promise<{
   const differ: string[] = [];
   const skipped: string[] = [];
   const seen = new Set<string>();
-  const proven = new Set<LoadedAdapter>();
   let converted = 0;
   let unaccepted = 0;
   let acceptedUnaccepted = 0;
@@ -258,15 +255,11 @@ async function differences(): Promise<{
           continue;
         }
         seen.add(known);
+        converted++;
         if (accepting === undefined) {
-          converted++;
           differ.push(`${named}: no adapter accepts it`);
           continue;
         }
-        // Unless the nightly sweep, the first document each adapter accepts proves its load and conversion.
-        if (!FULL_SWEEP && proven.has(accepting)) continue;
-        proven.add(accepting);
-        converted++;
         const made = await accepting.convert(offered);
         const path = `${files.iri}${documentPath}`;
         const expectedFindings =
@@ -351,11 +344,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
 
     it("converts each document to a graph and conversion findings isomorphic to those the kit saves", () => {
       assert.deepEqual(found.differ, []);
-      assert.equal(
-        found.converted,
-        FULL_SWEEP ? 48 : everyAdapter.length,
-        "one document for each adapter, every one in the nightly sweep",
-      );
+      assert.equal(found.converted, 48);
     });
 
     it("has no adapter accept the document the kit saves as unaccepted", () => {
@@ -456,7 +445,15 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       made.push(folder);
       const [first] = components.config.adapters;
       const original = await components.resolve(first as Followed);
-      await cp(original.folder, folder, { recursive: true });
+      // A load reads the files the description lists; the .git, the fixtures and the bench are megabytes no test here needs.
+      await cp(original.folder, folder, {
+        recursive: true,
+        filter: (from) =>
+          !from
+            .slice(original.folder.length)
+            .split(sep)
+            .some((part) => [".git", "fixtures", "bench"].includes(part)),
+      });
       const copied: Components = {
         config: { ...components.config, adapters: [first as Followed] },
         resolve: async (followed) =>
@@ -571,11 +568,11 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
         path.endsWith(".rq"),
       );
       assert.ok(listed, "a query under in/, which the description lists");
-      await rm(join(folder, listed));
+      await touch(join(folder, listed));
       assert.equal(
         await changed(),
         true,
-        "a file its description lists was taken away",
+        "a file its description lists changed",
       );
       await touch(join(vocabulary.folder, vocabulary.files[0] as string));
       assert.equal(await changed(), true, "a vocabulary file changed");
