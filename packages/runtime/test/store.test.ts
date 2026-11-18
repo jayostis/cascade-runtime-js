@@ -292,6 +292,14 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
         "https://pod.example/sparql-prefix.ttl",
         "PREFIX ex: <urn:ex:>\nex:t ex:p 1 .",
       ],
+      [
+        "https://pod.example/dot-prefix.ttl",
+        "<urn:h> <urn:p> 3 .PREFIX dp: <urn:dp:>\ndp:u dp:p 4 .",
+      ],
+      [
+        "https://pod.example/dot-base.ttl",
+        "<urn:i> <urn:p> 5 .BASE <urn:base:>\n<y> <urn:p> 6 .",
+      ],
       ["https://pod.example/one-label.ttl", "<urn:b> <urn:p> _:x ."],
       ["https://pod.example/same-label.ttl", "<urn:c> <urn:p> _:x ."],
       ["https://pod.example/anonymous.ttl", "<urn:d> <urn:p> [ <urn:q> 1 ] ."],
@@ -353,6 +361,30 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
 
     it("parses the files of the shape a runtime writes in one load, and each other file alone", () => {
       assert.ok(loads <= files.length - 50 + 1, `${loads} loads`);
+    });
+
+    it("loads alone a file that has a directive right after a statement's dot, as `.PREFIX` or `.BASE`, with no failed block load first", async () => {
+      const load = oxigraph.Store.prototype.load;
+      let calls = 0;
+      oxigraph.Store.prototype.load = function (
+        ...args: Parameters<typeof load>
+      ) {
+        calls += 1;
+        return load.apply(this, args);
+      };
+      try {
+        for (const [graph, turtle] of files.filter(([graph]) =>
+          /dot-(prefix|base)/.test(graph),
+        )) {
+          calls = 0;
+          await new OxigraphStore().loadFiles([
+            { graph, turtle: encoded(turtle) },
+          ]);
+          assert.equal(calls, 1, graph);
+        }
+      } finally {
+        oxigraph.Store.prototype.load = load;
+      }
     });
 
     it("refuses a file that is no Turtle alone, naming its graph, the files before it loaded once, and lets no file write into another's graph", async () => {
