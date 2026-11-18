@@ -237,6 +237,35 @@ export async function podFiles(
 }
 
 /**
+ * Loads the files as `podFiles` does, those in `parsed` without checking their Turtle again: each was loaded into a
+ * store that checked it. Any other file is checked as it loads.
+ */
+export async function podFilesParsed(
+  pod: Files,
+  layout: Layout,
+  address: string,
+  union: Union,
+  paths: readonly string[],
+  parsed: ReadonlySet<string>,
+): Promise<void> {
+  await podFiles(
+    pod,
+    layout,
+    address,
+    union,
+    paths.filter((path) => parsed.has(path)),
+    { parsedBefore: true },
+  );
+  await podFiles(
+    pod,
+    layout,
+    address,
+    union,
+    paths.filter((path) => !parsed.has(path)),
+  );
+}
+
+/**
  * A pod as a folder holds it, in the store: each RDF file but those the build writes a named graph, by the address its
  * owner's profile names plus its path; the lens's derived state; the files the build writes, written again for the
  * time and title the pod's manifest gives, or else those given; and the layout. Given `samesStillJoined`, the Sames M7 leaves as

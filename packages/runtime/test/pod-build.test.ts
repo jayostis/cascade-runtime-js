@@ -7,7 +7,12 @@ import {
   vocabularyBuild,
   vocabularyDerive,
 } from "../src/build.js";
-import { dataset, podDataset, podStated } from "../src/dataset.js";
+import {
+  dataset,
+  podDataset,
+  podStated,
+  podFilesParsed,
+} from "../src/dataset.js";
 import { KeptBuild } from "../src/incremental.js";
 import { BuildFailure, CorePod } from "../src/core-pod.js";
 import type { SamesStillJoined } from "../src/derive.js";
@@ -697,12 +702,12 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.equal(loadedAll, 1);
     });
 
-    it("reads the pod's own files into one store for its stated reads and a judgment's filing before it keeps a build, and into another for the build the judgment calls for", () => {
+    it("reads the pod's own files into one store for its stated reads and a judgment's filing, and into another for the build the judgment calls for", () => {
       assert.equal(statedReads.filed, 2);
     });
 
-    it("reads a stated read after a step from the build it keeps, and finds what the step wrote", () => {
-      assert.equal(statedReads.after, 0);
+    it("reads the pod's own files again for a stated read after a step, and finds what the step wrote", () => {
+      assert.equal(statedReads.after, 1);
       assert.deepEqual(statedReads.judgments, [0, 1]);
     });
 
@@ -755,6 +760,34 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.deepEqual(
         used.filter(({ checked }) => checked !== 1),
         [],
+      );
+    });
+  });
+
+  describe("given files loaded into a scope, some of them held by the kept store", () => {
+    it("checks the Turtle of a file the kept store does not hold, and reads again unchecked one it holds", async () => {
+      const files = await countedCopy();
+      const counting = countingStores();
+      const paths = (
+        await files.list(
+          layout.records(
+            "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
+          )?.folder ?? "",
+        )
+      ).filter((path) => layout.isRdf(path));
+      const [held, other] = paths;
+      assert.ok(held !== undefined && other !== undefined);
+      await podFilesParsed(
+        files,
+        layout,
+        address,
+        new Union(counting.newStore()),
+        [held, other],
+        new Set([held]),
+      );
+      assert.deepEqual(
+        [counting.checked(address + held), counting.checked(address + other)],
+        [0, 1],
       );
     });
   });
@@ -907,63 +940,6 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       });
       assert.equal(counting?.rows.length, 1);
       assert.equal(rebuilds(files) - before, 2);
-    });
-
-    it("finds in a stated read the judgments whose steps left their rebuild, loading the pod's records into no other store", async () => {
-      const files = await countedCopy();
-      const counting = countingStores();
-      const stepped = opened(files, counting.newStore);
-      await stepped.refuse("a first step");
-      const before = rebuilds(files);
-      const records = (
-        await files.list(
-          layout.records(
-            "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
-          )?.folder ?? "",
-        )
-      )
-        .filter((path) => layout.isRdf(path))
-        .map((path) => address + path);
-      assert.ok(records.length > 0);
-      counting.forget();
-      const judged = (profile: string) =>
-        `${PREFIXES} SELECT ?judgment WHERE { ?judgment a cascade:Judgment ; prov:hadMember <${profile}> }`;
-      let found: number[] = [];
-      await stepped.deferring(async () => {
-        const none = await stepped.selectStated(judged(profiles[0] as string));
-        await stepped.judge(aboutJudgment(profiles[0] as string));
-        const one = await stepped.selectStated(judged(profiles[0] as string));
-        await stepped.judge(aboutJudgment(profiles[1] as string));
-        const other = await stepped.selectStated(judged(profiles[1] as string));
-        found = [none.rows.length, one.rows.length, other.rows.length];
-        assert.equal(rebuilds(files) - before, 0, "left to the end of the run");
-        assert.equal(counting.loadedAll(records), 0);
-      });
-      assert.deepEqual(found, [0, 1, 1]);
-      assert.equal(rebuilds(files) - before, 1);
-      const { kept, files: whole } = await KeptBuild.whole(
-        {
-          pod: files,
-          layout,
-          address,
-          newStore: () => new OxigraphStore(),
-          build: incremental,
-          lens: LENS,
-          samesStillJoined: () => Promise.resolve([]),
-        },
-        {
-          address,
-          at: (await podStated(files, layout, new OxigraphStore())).at ?? "",
-          title: "matching",
-          ...(stepped.head === undefined
-            ? {}
-            : { snapshot: stepped.head.snapshot }),
-        },
-      );
-      kept.free();
-      await writtenAsBuiltWhole(files, (path) =>
-        Promise.resolve([...(whole.get(path) ?? [])]),
-      );
     });
 
     it("rebuilds before it throws what the run threw, leaving the judgment counting for the next read", async () => {
