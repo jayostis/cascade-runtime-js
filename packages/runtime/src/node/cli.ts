@@ -1,4 +1,7 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { availableParallelism, tmpdir } from "node:os";
+import { promisify } from "node:util";
 import {
   dirname,
   isAbsolute,
@@ -23,6 +26,8 @@ import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
 import { Layout } from "../layout.js";
 import { FolderFiles } from "./folder-files.js";
+import { featuresOf } from "../features.js";
+import { folderOf } from "../files.js";
 import { importersNamed } from "../importers.js";
 import { type Resolved, resolve } from "./resolver.js";
 import {
@@ -128,6 +133,9 @@ async function conformance(args: string[]): Promise<number> {
       report: { type: "string" },
       feature: { type: "string", multiple: true },
       folder: { type: "string", multiple: true, default: [] },
+      jobs: { type: "string" },
+      // Set by a run that shards: where a shard writes its assertions, as JSON, instead of the report.
+      assertions: { type: "string" },
     },
   });
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -148,21 +156,167 @@ async function conformance(args: string[]): Promise<number> {
   );
   const bridge = await findBridgePackage(options);
   const files = new FolderFiles(vocabulary.folder, vocabulary.iri);
+  const shards =
+    values.feature === undefined && values.assertions === undefined
+      ? await shardsOf(files, jobsOf(values.jobs))
+      : [];
+  const assertions =
+    shards.length > 1
+      ? await shardedRun(shards, values.folder, {
+          iri: files.iri,
+          features: await featuresOf(files),
+        })
+      : await conformed(files, values.feature, config.importers);
+  if (values.assertions !== undefined) {
+    await writeFile(values.assertions, JSON.stringify(assertions));
+    return 0;
+  }
+  await reported(assertions, report, vocabulary, adapters, bridge);
+  return 0;
+}
+
+function jobsOf(given: string | undefined): number {
+  const jobs = given === undefined ? availableParallelism() : Number(given);
+  if (!Number.isInteger(jobs) || jobs < 1)
+    throw new Error(`--jobs ${given} is not a number of runs, 1 or more`);
+  return Math.min(jobs, 4);
+}
+
+/**
+ * The feature files of the vocabulary in at most `jobs` shards of about the same size, a folder's features together
+ * (they share a person, and so a replay), the biggest folder first into the smallest shard. One shard when `jobs` is 1.
+ */
+async function shardsOf(files: FolderFiles, jobs: number): Promise<string[][]> {
+  const features = await featuresOf(files);
+  const folders = new Map<string, { paths: string[]; size: number }>();
+  for (const path of features) {
+    const group = folders.get(folderOf(path)) ?? { paths: [], size: 0 };
+    group.paths.push(path);
+    group.size += (await files.read(path))?.length ?? 0;
+    folders.set(folderOf(path), group);
+  }
+  const shards: { paths: string[]; size: number }[] = Array.from(
+    { length: Math.min(jobs, folders.size) },
+    () => ({ paths: [], size: 0 }),
+  );
+  for (const { paths, size } of [...folders.values()].sort(
+    (a, b) =>
+      b.size - a.size || (a.paths[0] ?? "").localeCompare(b.paths[0] ?? ""),
+  )) {
+    const [smallest] = [...shards].sort((a, b) => a.size - b.size);
+    if (smallest === undefined) break;
+    smallest.paths.push(...paths);
+    smallest.size += size;
+  }
+  return shards.map(({ paths }) => paths);
+}
+
+/**
+ * Each shard run as a child of this command, beside the others, with the flags this process runs under; its assertions
+ * come back in the order of `order`, the vocabulary's feature files, however many shards there are. When one fails the
+ * others are stopped and have ended before the folder they write to is removed.
+ */
+async function shardedRun(
+  shards: readonly (readonly string[])[],
+  folders: readonly string[],
+  order: { readonly iri: string; readonly features: readonly string[] },
+): Promise<Assertion[]> {
+  const out = await mkdtemp(join(tmpdir(), "conformance-shards-"));
+  const stop = new AbortController();
+  try {
+    const ran = await Promise.allSettled(
+      shards.map(async (features, index) => {
+        const written = join(out, `${index}.json`);
+        try {
+          await promisify(execFile)(
+            process.execPath,
+            [
+              ...process.execArgv,
+              fileURLToPath(import.meta.url),
+              "conformance",
+              "--assertions",
+              written,
+              ...features.flatMap((feature) => ["--feature", feature]),
+              ...folders.flatMap((folder) => ["--folder", folder]),
+            ],
+            { maxBuffer: 64 * 1024 * 1024, signal: stop.signal },
+          );
+        } catch (error) {
+          stop.abort();
+          const { stderr } = error as { stderr?: string };
+          throw new Error(
+            `the conformance run of ${features.join(", ")} failed: ${stderr?.trim() || String(error)}`,
+            { cause: error },
+          );
+        }
+        return JSON.parse(await readFile(written, "utf8")) as Assertion[];
+      }),
+    );
+    // The first to fail aborted the rest, which reject as aborted: the failure reported is the first that is not that.
+    const failed = ran.filter(
+      (each): each is PromiseRejectedResult => each.status === "rejected",
+    );
+    const cause =
+      failed.find(
+        ({ reason }) =>
+          (reason as { cause?: { name?: string } }).cause?.name !==
+          "AbortError",
+      ) ?? failed[0];
+    if (cause !== undefined) throw cause.reason;
+    const rank = (test: string): number => {
+      const path = test.slice(order.iri.length);
+      const own = order.features.findIndex((feature) =>
+        path.startsWith(feature),
+      );
+      return own >= 0
+        ? own
+        : order.features.findIndex((feature) =>
+            path.startsWith(`${folderOf(feature)}/`),
+          );
+    };
+    return ran
+      .flatMap((each) => (each.status === "fulfilled" ? each.value : []))
+      .map((assertion) => ({ assertion, at: rank(assertion.test) }))
+      .sort(
+        (x, y) =>
+          (x.at < 0 ? Number.MAX_SAFE_INTEGER : x.at) -
+          (y.at < 0 ? Number.MAX_SAFE_INTEGER : y.at),
+      )
+      .map(({ assertion }) => assertion);
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+}
+
+async function conformed(
+  files: FolderFiles,
+  features: string[] | undefined,
+  importers: readonly string[],
+): Promise<Assertion[]> {
   const layout = await Layout.read(files, () => new OxigraphStore());
-  const assertions = await runConformance({
+  return runConformance({
     vocabulary: files,
     runtime: await thisRuntime(),
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
-    importers: importersNamed(config.importers),
+    importers: importersNamed(importers),
     layout,
     derive: await vocabularyDerive(files, layout),
     // Read before the tools load: the other way round, Node 22's V8 crashed in the deoptimizer inside this read (vocabulary#397).
     shapes: await Shapes.read(files, () => new OxigraphStore()),
     tools: await toolsOffered(),
     proposer: await proposerOf(),
-    ...(values.feature === undefined ? {} : { features: values.feature }),
+    ...(features === undefined ? {} : { features }),
   });
+}
+
+async function reported(
+  assertions: readonly Assertion[],
+  report: string,
+  vocabulary: Resolved,
+  adapters: readonly Resolved[],
+  bridge: Awaited<ReturnType<typeof findBridgePackage>>,
+): Promise<void> {
   await mkdir(dirname(report), { recursive: true });
   await writeFile(
     report,
@@ -184,7 +338,6 @@ async function conformance(args: string[]): Promise<number> {
         `${outcome}: ${test}\n  ${(why ?? "").replaceAll("\n", "\n  ")}`,
       );
   console.error(`${summary(assertions)}; the EARL report is ${report}`);
-  return 0;
 }
 
 /** Replays the vocabulary's conformance kit `conformance/<name>/` into build/<name>/pod. */
