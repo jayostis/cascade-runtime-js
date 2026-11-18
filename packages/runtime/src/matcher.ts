@@ -16,7 +16,7 @@ import { counted, timed, timedAside } from "./probe.js";
 import { codeIri, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type References, tableTerms, type TableTerms } from "./references.js";
 import { CASCADE, Refusal, type StepContext } from "./step.js";
-import { type Dataset, type Row, type Rows, Union } from "./store.js";
+import { type Dataset, type Row, Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
@@ -459,20 +459,6 @@ async function takenRecords(
   return new Map(records.map((record) => [record.name, record]));
 }
 
-/** The rows of `query` over each RDF file of the pod but those the build writes, with nothing derived: the vocabulary is not read. */
-export async function podRows(
-  context: Pick<StepContext, "layout" | "pod" | "address" | "newStore">,
-  query: string,
-): Promise<Rows> {
-  const union = new Union(context.newStore());
-  try {
-    await podFiles(context.pod, context.layout, context.address, union);
-    return await union.select(query);
-  } finally {
-    union.store.free?.();
-  }
-}
-
 /**
  * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, the
  * union of a new store; with `samesStillJoined`, the Sames M7 leaves as they were count on.
@@ -617,10 +603,10 @@ export function recordsInOneBlock(size = RECORDS_IN_ONE_BLOCK): void {
   recordsInABlock = size;
 }
 
-/** The records in blocks of at most `recordsInOneBlock`, in order; none is one empty block. */
-function inBlocks(records: readonly string[]): string[][] {
+/** The records in blocks of at most `recordsInOneBlock`, in order; none is no block, so none is run or counted. */
+export function inBlocks(records: readonly string[]): string[][] {
   const blocks: string[][] = [];
-  for (let at = 0; at < records.length || at === 0; at += recordsInABlock) {
+  for (let at = 0; at < records.length; at += recordsInABlock) {
     const block = records.slice(at, at + recordsInABlock);
     counted("matcher.valuesBlocks");
     counted("matcher.valuesBlockRecords", block.length);

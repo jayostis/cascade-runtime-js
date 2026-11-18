@@ -311,8 +311,9 @@ export function readsInABlock(turtle: Uint8Array): boolean {
       case Byte.CloseBrace:
         return false;
       default:
+        // A dot before the word ends a statement, so `.PREFIX` is a directive, not the end of a name.
         if (
-          !inWord(previous) &&
+          (!inWord(previous) || previous === Byte.Dot) &&
           (keywordAt(turtle, at, "prefix") || keywordAt(turtle, at, "base"))
         )
           return false;

@@ -7,7 +7,12 @@ import { featuresOf, readFeature } from "../src/features.js";
 import { MemoryFiles, relative } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { importersNamed } from "../src/importers.js";
-import { MATCHER, readEveryRecord, recordsInOneBlock } from "../src/matcher.js";
+import {
+  inBlocks,
+  MATCHER,
+  readEveryRecord,
+  recordsInOneBlock,
+} from "../src/matcher.js";
 import { documentName } from "../src/names.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
@@ -355,6 +360,29 @@ describe("Running the matcher on a step's records alone · CorePod.match(), read
         blocks.records <= BLOCK * blocks.blocks,
         `${blocks.records} records in ${blocks.blocks} blocks`,
       );
+    });
+  });
+
+  describe("inBlocks(records)", () => {
+    it("makes no block, and counts none, of no records", async () => {
+      const { result, seen } = await probing(() =>
+        Promise.resolve(inBlocks([])),
+      );
+      assert.deepEqual(result, []);
+      assert.equal(seen.counts.get("matcher.valuesBlocks") ?? 0, 0);
+    });
+
+    it("splits records into blocks of at most the size it is given, in order", async () => {
+      recordsInOneBlock(2);
+      try {
+        const { result, seen } = await probing(() =>
+          Promise.resolve(inBlocks(["a", "b", "c"])),
+        );
+        assert.deepEqual(result, [["a", "b"], ["c"]]);
+        assert.equal(seen.counts.get("matcher.valuesBlocks"), 2);
+      } finally {
+        recordsInOneBlock();
+      }
     });
   });
 
