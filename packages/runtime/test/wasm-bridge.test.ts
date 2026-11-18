@@ -26,7 +26,12 @@ import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
 import { ofMediaType } from "../src/load-adapter.js";
 import { importersNamed } from "../src/importers.js";
-import { type KitFindings, kitFindings } from "../src/kit-findings.js";
+import {
+  type KitFindings,
+  KNOWN_SKIPPED,
+  kitFindings,
+  unvouchedFor,
+} from "../src/kit-findings.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { probing } from "../src/probe.js";
@@ -255,7 +260,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
     });
 
     it("skips only an import whose export its importer cannot read and for which the kit saves nothing", () => {
-      assert.deepEqual(found.skipped, ["conformance/priya-natarajan E11"]);
+      assert.deepEqual(found.skipped, KNOWN_SKIPPED);
     });
   });
 
@@ -935,5 +940,36 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       assert.ok((savedPod?.length ?? 0) > 0);
       assert.equal(notIsomorphic(savedPod ?? [], live ?? []), undefined);
     });
+  });
+});
+
+describe("Holding a kit to its imports · unvouchedFor()", () => {
+  it("names a skipped import that is not on the known list", () => {
+    assert.match(
+      unvouchedFor("conformance/someone", {
+        skipped: ["conformance/someone E1"],
+        converted: 3,
+      }).join("\n"),
+      /E1.*not a known skip/,
+    );
+  });
+
+  it("names a kit that converted nothing", () => {
+    assert.match(
+      unvouchedFor("conformance/someone", { skipped: [], converted: 0 }).join(
+        "\n",
+      ),
+      /converted nothing/,
+    );
+  });
+
+  it("passes a kit that converted something and skipped only what is known", () => {
+    assert.deepEqual(
+      unvouchedFor("conformance/priya-natarajan", {
+        skipped: KNOWN_SKIPPED,
+        converted: 5,
+      }),
+      [],
+    );
   });
 });
