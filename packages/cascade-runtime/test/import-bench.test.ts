@@ -7,6 +7,7 @@ import { openPod } from "cascade-runtime";
 import { probing } from "@cascade-runtime/runtime/probe";
 import {
   againstBudget,
+  growBench,
   HOT_SPOTS,
   importBench,
   openBench,
@@ -502,6 +503,29 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       const opened = await openBench(20, true);
       assert.ok(opened.openMs > 0 && opened.firstReadMs > 0);
       assert.notEqual(opened.pid, process.pid);
+    });
+  });
+
+  describe("given the same pull of 100 resources imported into an empty pod and into one that holds 300 earlier resources", () => {
+    let empty: Measured;
+    let grown: Measured;
+
+    before(async () => {
+      empty = await growBench(0, 100);
+      grown = await growBench(300, 100);
+    });
+
+    it("imports it into each, with nothing refused", () => {
+      assert.equal(empty.refused, undefined);
+      assert.equal(grown.refused, undefined);
+    });
+
+    it("lends the matcher its view of the larger pod moving no more quads than of the empty one: the views the build writes stay out of the store across the import's steps, rather than moved out and back for each", () => {
+      const moved = (run: Measured) => run.counts["view.quadsMoved"] ?? 0;
+      assert.ok(
+        moved(grown) <= moved(empty),
+        `${moved(grown)} quads moved into the larger pod, ${moved(empty)} into the empty one`,
+      );
     });
   });
 });
