@@ -45,7 +45,13 @@ const run = spawnSync(
     ...process.argv.slice(2),
     ...compiled,
   ],
-  { stdio: "inherit" },
+  {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      CASCADE_TEST_OFFLINE: process.env.CASCADE_TEST_OFFLINE ?? "1",
+    },
+  },
 );
 if (run.error) throw run.error;
 process.exitCode = run.status ?? 1;

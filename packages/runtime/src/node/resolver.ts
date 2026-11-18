@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve as absolute } from "node:path";
 import { type Followed, repositoryName, treeIri } from "../config.js";
+import { counted } from "../probe.js";
 import { checkout, git } from "./git.js";
 
 export type Source = "sibling" | "folder" | "fetched" | "packed";
@@ -170,14 +171,107 @@ async function fetched(component: Followed, cache: string): Promise<Resolved> {
   };
 }
 
+/** What a process's options say, apart from the log a run is given; the folders by repository, in order. */
+export function optionsKey(options: ResolverOptions): string {
+  return JSON.stringify([
+    options.siblingsIn,
+    options.folders === undefined ? [] : [...options.folders].sort(),
+    options.cache,
+  ]);
+}
+
+async function stamped(path: string): Promise<string> {
+  const found = await stat(path).catch(() => undefined);
+  return found === undefined ? "-" : `${found.size}:${found.mtimeMs}`;
+}
+
+/** The folder git keeps a checkout's state in: `.git`, or the folder a worktree's `.git` file points to. */
+async function gitFolder(checkout: string): Promise<string> {
+  const dot = join(checkout, ".git");
+  const text = await readFile(dot, "utf8").catch(() => undefined);
+  const pointed =
+    text === undefined ? undefined : /^gitdir:\s*(.+)$/m.exec(text);
+  return pointed?.[1] === undefined
+    ? dot
+    : absolute(checkout, pointed[1].trim());
+}
+
+/**
+ * What changes when a local checkout's commit or index does, a few stats: the time of change of `.git/HEAD`, of the ref it
+ * points at (and `packed-refs`, where a ref is packed) and of `.git/index`. A resolution of a checkout is kept for as long
+ * as this is the same, so a commit, a checkout of another branch or a `git add` is seen; an edit of a file git has not been
+ * told of is not, as it moves none of them.
+ */
+export async function checkoutStamp(checkout: string): Promise<string> {
+  const dir = await gitFolder(checkout);
+  const head = await readFile(join(dir, "HEAD"), "utf8").catch(() => "");
+  const ref = /^ref:\s*(\S+)/.exec(head)?.[1];
+  const common = await readFile(join(dir, "commondir"), "utf8")
+    .then((text) => absolute(dir, text.trim()))
+    .catch(() => dir);
+  return (
+    await Promise.all([
+      stamped(join(dir, "HEAD")),
+      ref === undefined ? "-" : stamped(join(common, ref)),
+      stamped(join(common, "packed-refs")),
+      stamped(join(dir, "index")),
+    ])
+  ).join(" ");
+}
+
+/** The checkout a component is read from on disk, if it is: the sibling first, then the folder handed in. */
+export function localCheckout(
+  component: Followed,
+  options: ResolverOptions,
+): string | undefined {
+  const handedIn = options.folders?.get(component.repository);
+  return (
+    siblingIn(options.siblingsIn, repositoryName(component)) ??
+    (handedIn === undefined ? undefined : absolute(handedIn))
+  );
+}
+
+const resolutions = new Map<string, Promise<Resolved>>();
+const resolutionKeys = new Map<string, string>();
+
 /**
  * The folder a component is read from, first match wins: a sibling checkout as it is on disk; a folder handed in;
- * otherwise the head of its default branch as it is now, fetched. The run says which.
+ * otherwise the head of its default branch as it is now, fetched. The run says which. Resolved once per process for each
+ * component and options, so every part of one run reads the same commit and git runs once; a checkout on disk is
+ * resolved again when its {@link checkoutStamp} changes, so a long-lived process records the commit it is at.
  */
 export async function resolve(
   component: Followed,
   options: ResolverOptions,
 ): Promise<Resolved> {
+  const local = localCheckout(component, options);
+  const identity = JSON.stringify([component, optionsKey(options)]);
+  const key = JSON.stringify([
+    identity,
+    local === undefined ? "" : await checkoutStamp(local),
+  ]);
+  let found = resolutions.get(key);
+  if (found === undefined) {
+    // One resolution of a component under these options is kept: the one it was before is let go.
+    const before = resolutionKeys.get(identity);
+    if (before !== undefined) resolutions.delete(before);
+    resolutionKeys.set(identity, key);
+    found = resolveNow(component, options);
+    resolutions.set(key, found);
+    found.catch(() => {
+      if (resolutions.get(key) === found) resolutions.delete(key);
+    });
+  }
+  const resolved = await found;
+  options.log?.(said(resolved));
+  return resolved;
+}
+
+async function resolveNow(
+  component: Followed,
+  options: ResolverOptions,
+): Promise<Resolved> {
+  counted("components.resolved");
   const sibling = siblingIn(options.siblingsIn, repositoryName(component));
   const handedIn = options.folders?.get(component.repository);
   const resolved =
@@ -186,6 +280,5 @@ export async function resolve(
       : handedIn !== undefined
         ? await onDisk(component, "folder", absolute(handedIn))
         : await fetched(component, options.cache);
-  options.log?.(said(resolved));
   return resolved;
 }

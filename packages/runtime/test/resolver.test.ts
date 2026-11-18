@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { type Components, packed } from "../src/node/components.js";
 import { checkout, git } from "../src/node/git.js";
 import {
+  optionsKey,
   type Resolved,
   type ResolverOptions,
   resolve,
@@ -97,6 +98,116 @@ describe("Finding the vocabulary and adapters a run uses · resolve(), siblingsO
       assert.match(said, /^cascade-vocabulary: the sibling checkout /);
       assert.ok(said.includes(at.slice(0, 12)), said);
       assert.match(said, /with 1 uncommitted files$/);
+    });
+  });
+
+  describe("given a process that lives on while a sibling checkout moves", () => {
+    it("resolves it again at the commit it is at now", async () => {
+      const siblings = join(root, "siblings-moving");
+      const folder = join(siblings, "cascade-vocabulary");
+      const first = await repositoryAt(folder);
+      const options = { siblingsIn: [siblings], cache: join(root, "cache") };
+      assert.equal((await resolved(options)).found.commit, first);
+      await writeFile(join(folder, "more.md"), "more\n");
+      await git(folder, "add", ".");
+      await git(
+        folder,
+        "-c",
+        "user.name=test",
+        "-c",
+        "user.email=test@example.org",
+        "commit",
+        "--quiet",
+        "-m",
+        "next",
+      );
+      const next = (await git(folder, "rev-parse", "HEAD")).trim();
+      assert.equal((await resolved(options)).found.commit, next);
+    });
+
+    /** A commit made with plumbing and moved to by `update-ref`: the index git keeps is not written, only the ref is. */
+    async function moved(folder: string): Promise<string> {
+      await new Promise((done) => setTimeout(done, 30));
+      const commit = (
+        await git(
+          folder,
+          "-c",
+          "user.name=test",
+          "-c",
+          "user.email=test@example.org",
+          "commit-tree",
+          "HEAD^{tree}",
+          "-p",
+          "HEAD",
+          "-m",
+          "moved",
+        )
+      ).trim();
+      await git(folder, "update-ref", "HEAD", commit);
+      return commit;
+    }
+
+    it("sees a branch's ref move with no change of the index", async () => {
+      const siblings = join(root, "siblings-empty");
+      const folder = join(siblings, "cascade-vocabulary");
+      const first = await repositoryAt(folder);
+      const options = { siblingsIn: [siblings], cache: join(root, "cache") };
+      // Each resolution's `git status` may rewrite the index: it is at rest once the one kept has been read twice.
+      for (let again = 0; again < 3; again += 1)
+        assert.equal((await resolved(options)).found.commit, first);
+      const next = await moved(folder);
+      assert.notEqual(next, first);
+      assert.equal((await resolved(options)).found.commit, next);
+    });
+
+    it("sees a commit in a linked worktree, where the ref lives in the main repository", async () => {
+      const main = join(root, "main-of-worktree");
+      const first = await repositoryAt(main);
+      const siblings = join(root, "siblings-worktree");
+      const folder = join(siblings, "cascade-vocabulary");
+      await mkdir(siblings, { recursive: true });
+      await git(main, "worktree", "add", "--quiet", "-b", "linked", folder);
+      const options = { siblingsIn: [siblings], cache: join(root, "cache") };
+      // Each resolution's `git status` may rewrite the index: it is at rest once the one kept has been read twice.
+      for (let again = 0; again < 3; again += 1)
+        assert.equal((await resolved(options)).found.commit, first);
+      const next = await moved(folder);
+      assert.equal((await resolved(options)).found.commit, next);
+    });
+
+    it("sees a commit on a detached HEAD", async () => {
+      const siblings = join(root, "siblings-detached");
+      const folder = join(siblings, "cascade-vocabulary");
+      const first = await repositoryAt(folder);
+      await git(folder, "checkout", "--quiet", "--detach");
+      const options = { siblingsIn: [siblings], cache: join(root, "cache") };
+      // Each resolution's `git status` may rewrite the index: it is at rest once the one kept has been read twice.
+      for (let again = 0; again < 3; again += 1)
+        assert.equal((await resolved(options)).found.commit, first);
+      const next = await moved(folder);
+      assert.equal((await resolved(options)).found.commit, next);
+    });
+
+    it("keys the folders handed in without regard to their order", () => {
+      const cache = join(root, "cache");
+      assert.equal(
+        optionsKey({
+          siblingsIn: [],
+          cache,
+          folders: new Map([
+            ["b", "1"],
+            ["a", "2"],
+          ]),
+        }),
+        optionsKey({
+          siblingsIn: [],
+          cache,
+          folders: new Map([
+            ["a", "2"],
+            ["b", "1"],
+          ]),
+        }),
+      );
     });
   });
 

@@ -27,6 +27,9 @@ jobs:
     name: tests and conformance
     if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
+    # The suite's tests reach no network (packages/cascade-runtime/test/offline.ts); the jobs that install the package, which fetch, leave this unset.
+    env:
+      CASCADE_TEST_OFFLINE: "1"
     permissions:
       contents: read
       pull-requests: write
@@ -37,6 +40,30 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cascade-runtime-js
+          persist-credentials: false
+      # Beside this checkout, where the runtime looks for a component before it fetches one: the offline suite reads
+      # the pod-encryption vectors and the reference tables from these, and fetches nothing. The start action honours a
+      # Depends-On: line for the vocabulary and the adapters only, so the depends-on action reads it for these two: a pull
+      # request of either, named on one, is checked out at its head, else the default branch.
+      - id: conformance-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: the-cascade-protocol/conformance
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.conformance-at.outputs.repository }}
+          ref: ${{ steps.conformance-at.outputs.ref }}
+          path: conformance
+          persist-credentials: false
+      - id: tables-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: jayostis/cascade-reference-tables
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.tables-at.outputs.repository }}
+          ref: ${{ steps.tables-at.outputs.ref }}
+          path: cascade-reference-tables
           persist-credentials: false
       # Node 24: on 22 its V8 aborts a test file now and then ("unreachable code" in the deoptimizer). The package,
       # docs site, starter and installed jobs stay on 22, the oldest Node the package supports.
@@ -549,6 +576,9 @@ jobs:
     if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The suite's tests reach no network (packages/cascade-runtime/test/offline.ts); the jobs that install the package, which fetch, leave this unset.
+    env:
+      CASCADE_TEST_OFFLINE: "1"
     defaults:
       run:
         working-directory: cascade-runtime-js
@@ -556,6 +586,30 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cascade-runtime-js
+          persist-credentials: false
+      # Beside this checkout, where the runtime looks for a component before it fetches one: the offline suite reads
+      # the pod-encryption vectors and the reference tables from these, and fetches nothing. The start action honours a
+      # Depends-On: line for the vocabulary and the adapters only, so the depends-on action reads it for these two: a pull
+      # request of either, named on one, is checked out at its head, else the default branch.
+      - id: conformance-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: the-cascade-protocol/conformance
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.conformance-at.outputs.repository }}
+          ref: ${{ steps.conformance-at.outputs.ref }}
+          path: conformance
+          persist-credentials: false
+      - id: tables-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: jayostis/cascade-reference-tables
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.tables-at.outputs.repository }}
+          ref: ${{ steps.tables-at.outputs.ref }}
+          path: cascade-reference-tables
           persist-credentials: false
       # Node 24 as the tests job runs the same suite.
       - uses: actions/setup-node@v5

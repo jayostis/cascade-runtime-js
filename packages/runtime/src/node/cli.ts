@@ -46,6 +46,7 @@ import { kitImports } from "../kit-bridge.js";
 import { ofMediaType } from "../load-adapter.js";
 import { WasmBridge } from "../wasm-bridge.js";
 import { checkouts } from "./components.js";
+import { bridgeRecord } from "./bridge-record.js";
 
 const RUNTIME = "cascade-runtime-js";
 const KIT = "conformance/";
@@ -304,14 +305,25 @@ async function saveKitBridge(args: string[]): Promise<number> {
   return 0;
 }
 
-/** The Bridge's build a run reads, picked and downloaded, so the run's later steps read it from the cache. */
+/**
+ * The Bridge's build a run reads, picked and downloaded, so the run's later steps read it from the cache. The build it
+ * picked, whichever source, is recorded in `expected.json` beside it: the build the offline tests pin, which never ask the remote for another.
+ */
 async function bridge(): Promise<number> {
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
-  await findBridgePackage({
+  const cache = join(root, "build", "cache");
+  const found = await findBridgePackage({
     siblingsIn: await siblingsOf(root),
-    cache: join(root, "build", "cache"),
+    cache,
     log,
   });
+  const at = join(cache, "cascade-bridge-rs");
+  await mkdir(at, { recursive: true });
+  await writeFile(
+    join(at, "expected.json"),
+    `${JSON.stringify(bridgeRecord(found, BRIDGE_REPOSITORY))}
+`,
+  );
   return 0;
 }
 
