@@ -1,4 +1,10 @@
-import * as oxigraph from "oxigraph";
+import {
+  type EngineQuad,
+  type EngineStore,
+  type EngineTerm,
+  type OxigraphEngine,
+  usedOxigraph,
+} from "./oxigraph-engine.js";
 import { blank, iri, literal, type Term, type Triple, written } from "./rdf.js";
 import { queried } from "./probe.js";
 import { parseResults } from "./sparql-results.js";
@@ -23,7 +29,7 @@ function free(...objects: readonly unknown[]): void {
     (object as { free?: () => void } | undefined)?.free?.();
 }
 
-function fromOxigraph(term: oxigraph.Term): Term {
+function fromOxigraph(term: EngineTerm): Term {
   try {
     switch (term.termType) {
       case "NamedNode":
@@ -35,7 +41,7 @@ function fromOxigraph(term: oxigraph.Term): Term {
           return literal(term.value, { language: term.language });
         const datatype = term.datatype;
         try {
-          return literal(term.value, datatype.value);
+          return literal(term.value, datatype?.value);
         } finally {
           free(datatype);
         }
@@ -51,7 +57,7 @@ function fromOxigraph(term: oxigraph.Term): Term {
 }
 
 /** The quad's triple, the quad and its terms freed. */
-function tripleOf(quad: oxigraph.Quad): Triple {
+function tripleOf(quad: EngineQuad): Triple {
   try {
     return [
       fromOxigraph(quad.subject) as Triple[0],
@@ -326,20 +332,18 @@ export function readsInABlock(turtle: Uint8Array): boolean {
   return last === Byte.Dot;
 }
 
-function toOxigraph(
-  term: Term,
-): oxigraph.NamedNode | oxigraph.BlankNode | oxigraph.Literal {
+function toOxigraph(engine: OxigraphEngine, term: Term): EngineTerm {
   switch (term.termType) {
     case "NamedNode":
-      return oxigraph.namedNode(term.value);
+      return engine.namedNode(term.value);
     case "BlankNode":
-      return oxigraph.blankNode(term.value);
+      return engine.blankNode(term.value);
     case "Literal": {
       if (term.language)
-        return oxigraph.literal(term.value, { language: term.language });
-      const datatype = oxigraph.namedNode(term.datatype.value);
+        return engine.literal(term.value, { language: term.language });
+      const datatype = engine.namedNode(term.datatype.value);
       try {
-        return oxigraph.literal(term.value, datatype);
+        return engine.literal(term.value, datatype);
       } finally {
         free(datatype);
       }
@@ -347,16 +351,26 @@ function toOxigraph(
   }
 }
 
-/** The Store on Oxigraph's JavaScript build. */
+/** The Store on Oxigraph: the engine it is given, else the one `usedOxigraph()` names. */
 export class OxigraphStore implements Store {
-  #oxigraph: oxigraph.Store | undefined;
+  #oxigraph: EngineStore | undefined;
   readonly #graphs = new Set<string>();
   #freed = false;
+  readonly #engine: OxigraphEngine;
+
+  constructor(options: { readonly engine?: OxigraphEngine } = {}) {
+    this.#engine = options.engine ?? usedOxigraph();
+  }
+
+  /** The Oxigraph build the store runs on. */
+  get engine(): OxigraphEngine {
+    return this.#engine;
+  }
 
   /** Made on first use, so a store only parsed with holds nothing in Oxigraph's memory. */
-  get #store(): oxigraph.Store {
+  get #store(): EngineStore {
     if (this.#freed) throw new Error("the store was freed and is read again");
-    return (this.#oxigraph ??= new oxigraph.Store());
+    return (this.#oxigraph ??= this.#engine.newStore());
   }
 
   /** Frees what the store holds in Oxigraph's memory now, rather than when it is collected; it is never read again. */
@@ -379,11 +393,11 @@ export class OxigraphStore implements Store {
     query: string,
     union: ReadonlySet<string>,
     options: { results_format?: string } = {},
-  ): ReturnType<oxigraph.Store["query"]> {
-    let named: oxigraph.NamedNode[] | undefined;
+  ): unknown {
+    let named: EngineTerm[] | undefined;
     for (const graph of this.#graphs)
       if (!union.has(graph)) {
-        named = [...union].map((graph) => oxigraph.namedNode(graph));
+        named = [...union].map((graph) => this.#engine.namedNode(graph));
         break;
       }
     try {
@@ -412,7 +426,7 @@ export class OxigraphStore implements Store {
     options: LoadOptions,
     lenient: boolean,
   ): void {
-    const graph = oxigraph.namedNode(options.graph);
+    const graph = this.#engine.namedNode(options.graph);
     try {
       this.#store.load(turtle, {
         format: TURTLE,
@@ -506,13 +520,13 @@ export class OxigraphStore implements Store {
   }
 
   async parse(turtle: Uint8Array | string, base: string): Promise<Triple[]> {
-    return oxigraph
+    return this.#engine
       .parse(turtle, { format: TURTLE, base_iri: base })
       .map(tripleOf);
   }
 
   async add(triples: Iterable<Triple>, options: LoadOptions): Promise<void> {
-    const graph = oxigraph.namedNode(options.graph);
+    const graph = this.#engine.namedNode(options.graph);
     const ground: string[] = [];
     let any = false;
     try {
@@ -527,16 +541,11 @@ export class OxigraphStore implements Store {
           continue;
         }
         const terms = [
-          toOxigraph(subject),
-          oxigraph.namedNode(predicate.value),
-          toOxigraph(object),
+          toOxigraph(this.#engine, subject),
+          this.#engine.namedNode(predicate.value),
+          toOxigraph(this.#engine, object),
         ] as const;
-        const quad = oxigraph.quad(
-          terms[0] as oxigraph.NamedNode | oxigraph.BlankNode,
-          terms[1],
-          terms[2],
-          graph,
-        );
+        const quad = this.#engine.quad(terms[0], terms[1], terms[2], graph);
         this.#store.add(quad);
         free(quad, ...terms);
       }
@@ -558,13 +567,13 @@ export class OxigraphStore implements Store {
    * time, since a load names its blank nodes afresh.
    */
   async renewed(): Promise<Store> {
-    const renewed = new OxigraphStore();
+    const renewed = new OxigraphStore({ engine: this.#engine });
     const store = this.#oxigraph;
     const graphs: { graph: string; ground: string; blank: string }[] = [];
     for (const graph of this.#graphs) {
       renewed.#graphs.add(graph);
       if (store === undefined) continue;
-      const name = oxigraph.namedNode(graph);
+      const name = this.#engine.namedNode(graph);
       let dumped: string;
       try {
         dumped = store.dump({ format: N_TRIPLES, from_graph_name: name });
@@ -600,7 +609,7 @@ export class OxigraphStore implements Store {
   ): Promise<void> {
     for (const { graph, ground, blank } of graphs) {
       if (ground !== "") {
-        const name = oxigraph.namedNode(graph);
+        const name = this.#engine.namedNode(graph);
         try {
           this.#store.load(ground, {
             format: N_TRIPLES,
@@ -630,7 +639,7 @@ export class OxigraphStore implements Store {
       for (const graph of graphs) {
         if (!namesABlock(graph))
           throw new Error(`TriG cannot name the graph ${graph}`);
-        const name = oxigraph.namedNode(graph);
+        const name = this.#engine.namedNode(graph);
         let triples: string;
         try {
           triples = store.dump({ format: N_TRIPLES, from_graph_name: name });
@@ -727,16 +736,11 @@ export class OxigraphStore implements Store {
   ): Promise<boolean[]> {
     return triples.map(([subject, predicate, object]) => {
       const terms = [
-        toOxigraph(subject),
-        oxigraph.namedNode(predicate.value),
-        toOxigraph(object),
+        toOxigraph(this.#engine, subject),
+        this.#engine.namedNode(predicate.value),
+        toOxigraph(this.#engine, object),
       ] as const;
-      const quads = this.#store.match(
-        terms[0] as oxigraph.NamedNode | oxigraph.BlankNode,
-        terms[1],
-        terms[2],
-        null,
-      );
+      const quads = this.#store.match(terms[0], terms[1], terms[2], null);
       const held = quads.some((quad) => {
         const graph = quad.graph;
         try {

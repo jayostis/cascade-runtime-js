@@ -37,6 +37,8 @@ const run = spawnSync(
     env: {
       ...process.env,
       CASCADE_TEST_OFFLINE: process.env.CASCADE_TEST_OFFLINE ?? "1",
+      // The build the suite runs on, as scripts/test.mjs names it.
+      CASCADE_OXIGRAPH: process.env.CASCADE_OXIGRAPH ?? "wasm",
     },
   },
 );

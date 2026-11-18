@@ -50,6 +50,8 @@ const run = spawnSync(
     env: {
       ...process.env,
       CASCADE_TEST_OFFLINE: process.env.CASCADE_TEST_OFFLINE ?? "1",
+      // The build the suite runs on: the WebAssembly build, which runs everywhere, unless one is named.
+      CASCADE_OXIGRAPH: process.env.CASCADE_OXIGRAPH ?? "wasm",
     },
   },
 );

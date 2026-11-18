@@ -119,3 +119,12 @@ runtime uses in its place where it loads. The `oxigraph-native` workflow builds
 it for Linux x64, Windows x64 and macOS arm64 and x64, and a tag
 `oxigraph-native-v<version>` attaches each file to a pre-release, and the run's
 summary lists the sha256 of each.
+`npm run oxigraph:fetch` keeps this platform's file under `~/.cache/cascade-runtime`
+(or `$XDG_CACHE_HOME`). It fetches, and a run loads, only a file whose sha256 is
+the one `OXIGRAPH_NATIVE_SHA256` commits for the release, as its workflow run's
+summary lists them; until they are committed, a run uses the WebAssembly build.
+`CASCADE_OXIGRAPH_NATIVE` names another file, which is loaded with no sha256
+checked: name only a build you made or ship, as an app's bundle or CI's fresh
+build. A run uses the native build where the file loads and is the same Oxigraph
+as the package's, and the WebAssembly build elsewhere; `CASCADE_OXIGRAPH=wasm` or
+`native` asks for one, and `native` fails where none loads.

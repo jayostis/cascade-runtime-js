@@ -25,6 +25,7 @@ export * from "./load-adapter.js";
 export * from "./matcher.js";
 export * from "./names.js";
 export * from "./phrases.js";
+export * from "./oxigraph-engine.js";
 export * from "./oxigraph-store.js";
 export * from "./pod.js";
 export * from "./questions.js";

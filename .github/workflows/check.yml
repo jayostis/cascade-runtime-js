@@ -170,6 +170,89 @@ jobs:
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/site/test/spec.json
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/evals/test/spec.json
 
+  # The runtime on Oxigraph's native build, built here from native/oxigraph as the oxigraph-native workflow builds it
+  # for Linux: the conformance command runs on each build and every test must have the same outcome on both, and the
+  # suite runs on the native build. The start action only checks the counterparts out, as for `runtime tests`, so this
+  # job posts no table and keeps no report beside the `tests and conformance` job's.
+  tests-native:
+    name: tests and conformance (native)
+    if: ${{ github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    env:
+      CASCADE_TEST_OFFLINE: "1"
+    defaults:
+      run:
+        working-directory: cascade-runtime-js
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          persist-credentials: false
+      - id: conformance-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: the-cascade-protocol/conformance
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.conformance-at.outputs.repository }}
+          ref: ${{ steps.conformance-at.outputs.ref }}
+          path: conformance
+          persist-credentials: false
+      - id: tables-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: jayostis/cascade-reference-tables
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.tables-at.outputs.repository }}
+          ref: ${{ steps.tables-at.outputs.ref }}
+          path: cascade-reference-tables
+          persist-credentials: false
+      # Node 24 as the tests job runs the same check.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: cascade-runtime-js/package-lock.json
+      # The runner images preinstall different toolchains, and rust-cache hashes every one it finds into its key.
+      - working-directory: cascade-runtime-js/native/oxigraph
+        run: |
+          rustup toolchain install --profile minimal
+          channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup default "$channel"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cascade-runtime-js/native/oxigraph
+          save-if: ${{ github.event_name != 'pull_request' }}
+      - working-directory: cascade-runtime-js/native/oxigraph
+        run: |
+          cargo build --release --locked
+          cp target/release/liboxigraph_native.so "$RUNNER_TEMP/oxigraph-native.linux-x64.node"
+          echo "CASCADE_OXIGRAPH_NATIVE=$RUNNER_TEMP/oxigraph-native.linux-x64.node" >> "$GITHUB_ENV"
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: "true"
+      - run: npm ci
+      - run: npm run --silent bridge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      # The search test builds the hub, whose adapter explorers need Python and rdflib.
+      - run: python3 -m pip install rdflib==7.6.0
+      - name: Every example and kit check has the same outcome on each build
+        shell: bash
+        run: |
+          set -euo pipefail
+          CASCADE_OXIGRAPH=wasm npm run --silent conformance -- --report "$RUNNER_TEMP/wasm.nt"
+          CASCADE_OXIGRAPH=native npm run --silent conformance -- --report "$RUNNER_TEMP/native.nt" 2> >(tee "$RUNNER_TEMP/native.log" >&2)
+          grep -q "on Oxigraph's native build" "$RUNNER_TEMP/native.log"
+          node scripts/same-outcomes.mjs "$RUNNER_TEMP/wasm.nt" "$RUNNER_TEMP/native.nt"
+      - name: The runtime's tests on the native build
+        if: ${{ !cancelled() }}
+        env:
+          CASCADE_OXIGRAPH: native
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm test
+
   # The docs site as Pages would serve it: `build-pages` runs the same command, and this job keeps the tree it wrote.
   browser:
     name: docs site
@@ -494,21 +577,22 @@ jobs:
   # The name branch protection requires. A part that was skipped is no pass, except starter-kit on a pull request into an alpha/ branch.
   compatibility:
     name: compatibility
-    needs: [tests, browser, starter-kit, runtime-tests]
+    needs: [tests, tests-native, browser, starter-kit, runtime-tests]
     if: ${{ !cancelled() && github.event_name != 'push' }}
     runs-on: ubuntu-latest
     permissions: {}
     steps:
       - env:
           TESTS: ${{ needs.tests.result }}
+          NATIVE: ${{ needs.tests-native.result }}
           BROWSER: ${{ needs.browser.result }}
           STARTER: ${{ needs.starter-kit.result }}
           RUNTIME_TESTS: ${{ needs.runtime-tests.result }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
         run: |
-          echo "tests and conformance: ${TESTS}; docs site: ${BROWSER}; starter-kit: ${STARTER}; runtime tests: ${RUNTIME_TESTS}"
-          [ "${TESTS}" = success ] && [ "${BROWSER}" = success ] || exit 1
+          echo "tests and conformance: ${TESTS}; on the native build: ${NATIVE}; docs site: ${BROWSER}; starter-kit: ${STARTER}; runtime tests: ${RUNTIME_TESTS}"
+          [ "${TESTS}" = success ] && [ "${NATIVE}" = success ] && [ "${BROWSER}" = success ] || exit 1
           # The suite runs in `runtime-tests` on the nightly run, where `tests and conformance` leaves it out. On a pull
           # request or a hand-started run that job is skipped, and the suite ran in `tests and conformance`.
           if [ "${EVENT}" = schedule ]; then [ "${RUNTIME_TESTS}" = success ] || exit 1; fi

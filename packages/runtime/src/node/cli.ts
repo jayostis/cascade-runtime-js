@@ -49,6 +49,12 @@ import {
 import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 import { EVERY_FINDING } from "../bridge.js";
+import { useOxigraph, usedOxigraph } from "../oxigraph-engine.js";
+import {
+  chooseOxigraph,
+  fetchNativeOxigraph,
+  nativeOxigraph,
+} from "./oxigraph-native.js";
 import { kitImports } from "../kit-bridge.js";
 import { KIT_FINDINGS_CHECK, kitFindings } from "../kit-findings.js";
 import { kitsOf } from "../kit.js";
@@ -148,6 +154,8 @@ async function conformance(args: string[]): Promise<number> {
     values.report ?? join(root, "build", "conformance", "earl.nt"),
   );
   const folders = folderMap(values.folder);
+  if (values.assertions === undefined)
+    log(`conformance: on Oxigraph's ${usedOxigraph().name} build`);
   const vocabulary = await resolveVocabulary(root, config, folders, log);
   const options = {
     siblingsIn: await siblingsOf(root),
@@ -538,14 +546,25 @@ async function bridge(): Promise<number> {
   return 0;
 }
 
+/** Fetches Oxigraph's native build for this platform, unless it is kept already, and checks that it loads. */
+async function fetchOxigraph(): Promise<number> {
+  const file = await fetchNativeOxigraph();
+  const engine = nativeOxigraph(file);
+  if (engine instanceof Error) throw engine;
+  log(`Oxigraph's native build is at ${file}, and loads`);
+  return 0;
+}
+
 const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   bridge,
   conformance,
+  "fetch-oxigraph": fetchOxigraph,
   "build-example-pod": buildExamplePod,
   "kit-bridge": saveKitBridge,
 };
 
 async function main(argv: string[]): Promise<number> {
+  useOxigraph(() => chooseOxigraph());
   const [command = "", ...args] = argv;
   const run = COMMANDS[command];
   if (run === undefined) {
