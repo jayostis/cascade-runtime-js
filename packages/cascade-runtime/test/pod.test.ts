@@ -2410,14 +2410,15 @@ describe("Opening a pod again · openPod()", () => {
       assert.deepEqual(rows, wholeRows);
     });
 
-    it("builds again when a view the build wrote no longer holds what it wrote", async () => {
+    it("builds again when a view the build wrote no longer holds what it wrote, writes that view again, and the next session reads it back", async () => {
       const at = await copiedWithBuild(first, "view-edited");
       const view = kept.layout.views.find(
         ({ writtenBy }) => writtenBy === "views/conditions.rq",
       )?.file;
       assert.ok(view);
       const file = join(at, ...view.split("/"));
-      assert.ok((await readFile(file)).length > 0, "the pod has no conditions");
+      const held = await readFile(file);
+      assert.ok(held.length > 0, "the pod has no conditions");
       await writeFile(file, "");
       const { rows, spans } = await asked(kept, at);
       assert.ok(
@@ -2425,6 +2426,15 @@ describe("Opening a pod again · openPod()", () => {
         spans.join(", "),
       );
       assert.deepEqual(rows, wholeRows);
+      assert.deepEqual(
+        await readFile(file),
+        held,
+        "the view was not written again",
+      );
+      await rm(join(pods, ".answers", "view-edited", "answers.json"));
+      const again = await asked(kept, at);
+      assert.ok(again.spans.includes("kept.readBack"), again.spans.join(", "));
+      assert.deepEqual(again.rows, wholeRows);
     });
 
     it("builds again when what is kept beside the pod was kept under another hash than the manifest names, as when a process stops before it closes the pod", async () => {
