@@ -1387,11 +1387,15 @@ export class CorePod {
     return making;
   }
 
-  /** A pod that stands where this one does, over a copy of its files, with its own time. */
+  /** A pod that stands where this one does, over a copy of its files, with its own time, keeping nothing beside the pod. */
   async fork(time: IdsAndTime): Promise<CorePod> {
     await this.#settle();
+    const options: {
+      -readonly [K in keyof CorePodOptions]: CorePodOptions[K];
+    } = { ...this.#options };
+    delete options.besidePod;
     const fork = new CorePod({
-      ...this.#options,
+      ...options,
       pod: await copied(this.#options.pod),
       time,
     });
