@@ -190,7 +190,7 @@ async function gitFolder(checkout: string): Promise<string> {
   const dot = join(checkout, ".git");
   const text = await readFile(dot, "utf8").catch(() => undefined);
   const pointed =
-    text === undefined ? undefined : /^gitdir:s*(.+)$/m.exec(text);
+    text === undefined ? undefined : /^gitdir:\s*(.+)$/m.exec(text);
   return pointed?.[1] === undefined
     ? dot
     : absolute(checkout, pointed[1].trim());
@@ -205,7 +205,7 @@ async function gitFolder(checkout: string): Promise<string> {
 export async function checkoutStamp(checkout: string): Promise<string> {
   const dir = await gitFolder(checkout);
   const head = await readFile(join(dir, "HEAD"), "utf8").catch(() => "");
-  const ref = /^ref:s*(S+)/.exec(head)?.[1];
+  const ref = /^ref:\s*(\S+)/.exec(head)?.[1];
   const common = await readFile(join(dir, "commondir"), "utf8")
     .then((text) => absolute(dir, text.trim()))
     .catch(() => dir);
