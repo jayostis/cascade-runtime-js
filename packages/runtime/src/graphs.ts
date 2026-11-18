@@ -6,7 +6,7 @@ import {
   type Term,
   type Triple,
   written,
-} from "../src/rdf.js";
+} from "./rdf.js";
 
 function term(value: oxigraph.Term): Term {
   if (value.termType === "NamedNode") return iri(value.value);

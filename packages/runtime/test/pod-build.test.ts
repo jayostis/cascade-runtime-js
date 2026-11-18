@@ -35,7 +35,7 @@ import {
 import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
 import { copied } from "./cleo.js";
-import { notIsomorphic } from "./graphs.js";
+import { notIsomorphic } from "../src/graphs.js";
 import {
   layout as readLayout,
   ROOT,

@@ -9,7 +9,7 @@ import { kitImports } from "../src/kit-bridge.js";
 import { importersNamed } from "../src/importers.js";
 import { checkouts } from "../src/node/components.js";
 import { iri, type Triple } from "../src/rdf.js";
-import { notIsomorphic, triples } from "./graphs.js";
+import { notIsomorphic, triples } from "../src/graphs.js";
 import { ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
 const KIT = "conformance/tamsin-vale";
