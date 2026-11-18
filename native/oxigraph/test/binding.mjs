@@ -2,7 +2,10 @@
 // --panic-probe and a build with the panic-probe feature, throws a panic in Rust as a JavaScript error.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import console from "node:console";
 import { createRequire } from "node:module";
+import process from "node:process";
+import { URL } from "node:url";
 
 const [file, probe] = process.argv.slice(2);
 const binding = createRequire(import.meta.url)(file);
