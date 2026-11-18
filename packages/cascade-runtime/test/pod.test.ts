@@ -2435,6 +2435,71 @@ describe("Opening a pod again · openPod()", () => {
       );
     });
 
+    it("keeps the build a read made whole when the manifest named its hash and nothing was kept beside it, and the next session reads it back", async () => {
+      const at = await copiedWithBuild(first, "beside-lost");
+      await rm(join(pods, ".answers", "beside-lost", "build.nt"));
+      const manifest = await readFile(
+        join(at, ...kept.layout.manifest.split("/")),
+      );
+      const built = await asked(kept, at);
+      assert.ok(
+        built.spans.some((span) => DERIVING.test(span)),
+        built.spans.join(", "),
+      );
+      assert.deepEqual(
+        await readFile(join(at, ...kept.layout.manifest.split("/"))),
+        manifest,
+        "a read rewrote a manifest that named its hash",
+      );
+      await rm(join(pods, ".answers", "beside-lost", "answers.json"));
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("writes the build a read made whole again when the manifest named another hash, and the next session reads it back", async () => {
+      const at = await copiedWithBuild(first, "hash-changed");
+      const { build } = kept;
+      const changed: Parts = {
+        ...kept,
+        build: { ...build, queries: [...build.queries, "# changed"] },
+      };
+      const built = await asked(changed, at);
+      assert.ok(
+        built.spans.some((span) => DERIVING.test(span)),
+        built.spans.join(", "),
+      );
+      await rm(join(pods, ".answers", "hash-changed", "answers.json"));
+      const { rows, spans } = await asked(changed, at);
+      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("answers when the manifest named another hash and the pod cannot be written", async () => {
+      const at = await copiedWithBuild(first, "read-only");
+      const { build } = kept;
+      const refused = () => Promise.reject(new Error("read-only"));
+      const readOnly: Parts = {
+        ...kept,
+        build: { ...build, queries: [...build.queries, "# changed"] },
+        folder: (path, iri) => {
+          const folder = kept.folder(path, iri);
+          return {
+            ...folder,
+            files: new Proxy(folder.files, {
+              get: (files, name) => {
+                if (name === "write" || name === "writeAll") return refused;
+                const value = Reflect.get(files, name, files) as unknown;
+                return typeof value === "function" ? value.bind(files) : value;
+              },
+            }),
+          };
+        },
+      };
+      const { rows } = await asked(readOnly, at);
+      assert.deepEqual(rows, wholeRows);
+    });
+
     it("rebuilds a step in part from the build it read back, and the next session reads back what that step wrote, answering as a build whole does", async () => {
       const at = await copiedWithBuild(first, "stepped");
       const claimProfiles = [await profileOf("J1"), await profileOf("J2")];
