@@ -359,11 +359,31 @@ describe("Running the matcher on a step's records alone · CorePod.match(), read
   });
 
   describe("given a first import and a comparison that returns a reference series as its `?record`", () => {
-    it("is evaluated unbound and keeps no row whose `?record` the run did not begin", async () => {
+    it("is evaluated unbound when the records its rule applies to fill more than a block, and keeps no row whose `?record` the run did not begin", async () => {
+      recordsInOneBlock(1);
+      try {
+        const { seen, refused } = await seriesAsRecordRun();
+        assert.equal(refused, undefined);
+        assert.equal(seen.counts.get("matcher.queriesRun"), 1);
+        assert.equal(seen.counts.get("matcher.boundRecords"), undefined);
+        assert.equal(
+          seen.counts.get(`matcher.rule:${CASCADE}SameCode.rows`),
+          0,
+        );
+      } finally {
+        recordsInOneBlock();
+      }
+    });
+
+    it("is bound to the records the run began that its rule applies to, when they fit one block", async () => {
       const { seen, refused } = await seriesAsRecordRun();
       assert.equal(refused, undefined);
-      assert.equal(seen.counts.get("matcher.queriesRun"), 1);
-      assert.equal(seen.counts.get("matcher.boundRecords"), undefined);
+      const bound = seen.counts.get("matcher.boundRecords") ?? 0;
+      const taken = seen.counts.get("matcher.takenRecords") ?? 0;
+      assert.ok(
+        bound > 0 && bound < taken,
+        `${bound} of ${taken} records bound`,
+      );
       assert.equal(seen.counts.get(`matcher.rule:${CASCADE}SameCode.rows`), 0);
     });
   });
