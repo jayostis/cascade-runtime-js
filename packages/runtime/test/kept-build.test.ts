@@ -15,7 +15,16 @@ import { randomId } from "../src/ids.js";
 import { LAYOUT_FILE, LAYOUT_GRAPH, Layout } from "../src/layout.js";
 import { matcherView, runMatcher } from "../src/matcher.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { iri, written } from "../src/rdf.js";
+import { probing } from "../src/probe.js";
+import {
+  iri,
+  KeptFiles,
+  KeptLines,
+  literal,
+  ntriples,
+  type Triple,
+  written,
+} from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { StepWrites } from "../src/pod.js";
 import { type Perform, PERFORMERS, type Replayed } from "../src/replay.js";
@@ -890,6 +899,164 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           held.fromFiles.held(record),
           record,
         );
+    });
+  });
+
+  /**
+   * A built file is written from the lines kept for it: each triple's line by the triple (a rebuild hands back, as the
+   * same object, each triple that did not change), and the lines last written, sorted. A rebuild writes a line only for
+   * a triple it was not given before, and sorts only the lines it adds, and the file is the bytes a write from nothing
+   * gives.
+   */
+  describe("given a built file written again from its kept lines · ntriples()", () => {
+    const record = (n: number): Triple[] =>
+      ["a", "b", "c", "d"].map(
+        (name) =>
+          [
+            iri(`urn:example:record/${n}`),
+            iri(`urn:example:${name}`),
+            literal(`${name}${n}`),
+          ] as Triple,
+      );
+    const lines = async (
+      run: () => Uint8Array,
+    ): Promise<{ bytes: Uint8Array; counts: Record<string, number> }> => {
+      const { result, seen } = await probing(() => Promise.resolve(run()));
+      return {
+        bytes: result,
+        counts: {
+          total: seen.counts.get("built.lines.total") ?? 0,
+          written: seen.counts.get("built.lines.written") ?? 0,
+          sorted: seen.counts.get("built.lines.sorted") ?? 0,
+        },
+      };
+    };
+
+    it("writes and sorts only the lines of the triples a rebuild changed, and gives the bytes a write from nothing gives", async () => {
+      const kept = new KeptLines();
+      const first = [...record(1), ...record(2), ...record(3)];
+      const whole = await lines(() => ntriples(first, kept));
+      assert.deepEqual(whole.counts, { total: 12, written: 12, sorted: 12 });
+
+      const changed: Triple = [
+        iri("urn:example:record/2"),
+        iri("urn:example:c"),
+        literal("c2 revised"),
+      ];
+      const second = first.map((triple) =>
+        triple[0].value === "urn:example:record/2" &&
+        triple[1].value === "urn:example:c"
+          ? changed
+          : triple,
+      );
+      const one = await lines(() => ntriples(second, kept));
+      assert.deepEqual(one.counts, { total: 12, written: 1, sorted: 1 });
+      assert.deepEqual(one.bytes, ntriples(second));
+
+      const fewer = second.filter(
+        (triple) => triple[0].value !== "urn:example:record/1",
+      );
+      const gone = await lines(() => ntriples(fewer, kept));
+      assert.deepEqual(gone.counts, { total: 8, written: 0, sorted: 0 });
+      assert.deepEqual(gone.bytes, ntriples(fewer));
+
+      const back = [...fewer, ...record(1).slice(0, 2)];
+      const returned = await lines(() => ntriples(back, kept));
+      assert.deepEqual(returned.counts, { total: 10, written: 2, sorted: 2 });
+      assert.deepEqual(returned.bytes, ntriples(back));
+    });
+
+    it("writes a blank node's line again as the bytes a write from nothing gives, whether the node is kept or replaced", async () => {
+      const kept = new KeptLines();
+      const node = {
+        termType: "BlankNode",
+        value: "b1",
+      } as unknown as Triple[0];
+      const other = {
+        termType: "BlankNode",
+        value: "b2",
+      } as unknown as Triple[0];
+      const about: Triple = [node, iri("urn:example:a"), literal("a")];
+      const rest = record(1);
+      const first = [...rest, about];
+      await lines(() => ntriples(first, kept));
+
+      const same = await lines(() => ntriples(first, kept));
+      assert.deepEqual(same.counts, { total: 5, written: 0, sorted: 0 });
+      assert.deepEqual(same.bytes, ntriples(first));
+
+      const renamed: Triple = [other, iri("urn:example:a"), literal("a")];
+      const second = [...rest, renamed];
+      const swapped = await lines(() => ntriples(second, kept));
+      assert.deepEqual(swapped.counts, { total: 5, written: 1, sorted: 1 });
+      assert.deepEqual(swapped.bytes, ntriples(second));
+    });
+
+    it("forgets the lines of a file a rebuild no longer builds", () => {
+      const files = new KeptFiles();
+      files.of("a.nt");
+      files.of("b.nt");
+      files.of("c.nt");
+      files.keepOnly(new Set(["a.nt", "c.nt", "d.nt"]));
+      assert.equal(files.size, 2);
+      assert.equal(files.of("b.nt").sorted, undefined);
+    });
+  });
+
+  /**
+   * The sync story replayed with `build.verify`, which throws where a file written from the kept lines is not the bytes
+   * of one written from nothing; and with each step counted by the lines its built files hold, write and sort.
+   */
+  describe("given a pod replayed with its build kept, each step counted by built lines", () => {
+    let steps: {
+      name: string;
+      total: number;
+      written: number;
+      sorted: number;
+    }[];
+    let stopped: unknown;
+
+    before(async () => {
+      const files = await vocabulary();
+      const build = await vocabularyBuild(files, await layout());
+      steps = [];
+      const done = await replayed("runtime/sync.feature", SYNC_RUN, {
+        importers: [appleHealthExport],
+        build: {
+          lens: "everyday",
+          derive: deriveWith(build),
+          incremental: build,
+          verify: true,
+        },
+        performers: Object.fromEntries(
+          Object.entries(PERFORMERS).map(([kind, perform]) => [
+            kind,
+            async (pod: CorePod, step, context) => {
+              const { result, seen } = await probing(() =>
+                perform(pod, step, context),
+              );
+              steps.push({
+                name: step.name,
+                total: seen.counts.get("built.lines.total") ?? 0,
+                written: seen.counts.get("built.lines.written") ?? 0,
+                sorted: seen.counts.get("built.lines.sorted") ?? 0,
+              });
+              return result;
+            },
+          ]),
+        ) as typeof PERFORMERS,
+      });
+      stopped = done.stopped;
+    });
+
+    it("writes and sorts, in a step that rebuilds in part, fewer lines than its built files hold", () => {
+      assert.equal(stopped, undefined);
+      const inPart = steps.filter(
+        (step) => step.total > 0 && step.written < step.total,
+      );
+      assert.ok(inPart.length > 0, JSON.stringify(steps));
+      for (const step of steps)
+        assert.ok(step.sorted <= step.written, JSON.stringify(step));
     });
   });
 });

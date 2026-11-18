@@ -6,6 +6,7 @@ import { counted, probed, timedAside } from "./probe.js";
 import {
   blank,
   iri,
+  type KeptLines,
   literal,
   ntriples,
   RDF,
@@ -96,14 +97,16 @@ export function builtFileBytes(
   address: string,
   path: string,
   triples: Iterable<Triple>,
+  kept?: KeptLines,
 ): Uint8Array {
   return layout.views.some(({ file }) => file === path)
     ? relativeTurtle(
         triples,
         address + path,
         layout.views.map(({ file }) => address + (file ?? "")),
+        kept,
       )
-    : ntriples(triples);
+    : ntriples(triples, kept);
 }
 
 /** A query's triples, with its file marked as a view built with these reference versions. */
