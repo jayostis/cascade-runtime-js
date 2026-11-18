@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -14,11 +15,17 @@ import {
 
 /** The release of this repository whose assets are the native builds this runtime loads. */
 export const OXIGRAPH_NATIVE_RELEASE = "oxigraph-native-v0.5.11";
+/**
+ * The sha256 of each asset of that release, as the summary of the workflow run that made it gives them. The runtime
+ * fetches no asset, and loads no kept file, whose sha256 is not the one here; until the release's are committed, a run
+ * uses the WebAssembly build.
+ */
+export const OXIGRAPH_NATIVE_SHA256: Readonly<Record<string, string>> = {};
 const RELEASES =
   "https://github.com/jayostis/cascade-runtime-js/releases/download";
 /** Which engine a run uses: `native`, `wasm`, or, unset or `auto`, native where it loads and wasm elsewhere. */
 export const OXIGRAPH_CHOICE = "CASCADE_OXIGRAPH";
-/** A native build's file, read in place of the one fetched. */
+/** A native build's file, read in place of the one fetched and with no sha256 checked: a build its owner made or bundled. */
 export const OXIGRAPH_NATIVE_FILE = "CASCADE_OXIGRAPH_NATIVE";
 
 const RDF_LANG_STRING = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
@@ -54,6 +61,35 @@ export function nativeOxigraphFile(env = process.env): string {
     OXIGRAPH_NATIVE_RELEASE,
     nativeAsset(),
   );
+}
+
+/** The hashes a kept file is checked against: none, `null`, for a file `CASCADE_OXIGRAPH_NATIVE` names, which its owner built or bundled. */
+function hashesOf(env = process.env): Readonly<Record<string, string>> | null {
+  return env[OXIGRAPH_NATIVE_FILE] ? null : OXIGRAPH_NATIVE_SHA256;
+}
+
+/**
+ * Why the bytes are not this platform's asset by the hashes given, or nothing where they are: with no bytes, only why
+ * none would be.
+ */
+function unlike(
+  bytes: Uint8Array | undefined,
+  hashes: Readonly<Record<string, string>>,
+  where: string,
+): Error | undefined {
+  const asset = nativeAsset();
+  const committed = hashes[asset];
+  if (committed === undefined)
+    return new Error(
+      `no sha256 is committed for ${asset} of ${OXIGRAPH_NATIVE_RELEASE}, so ${where} is not used`,
+    );
+  if (bytes === undefined) return undefined;
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  if (actual !== committed)
+    return new Error(
+      `${where} has sha256 ${actual}, where ${asset} of ${OXIGRAPH_NATIVE_RELEASE} has ${committed}`,
+    );
+  return undefined;
 }
 
 /** The version of the `oxigraph` package the WebAssembly build is. */
@@ -97,16 +133,26 @@ export function nativeEngine(binding: NativeBinding): OxigraphEngine {
 }
 
 /**
- * The native build in the file, if it loads and is the Oxigraph the WebAssembly build is; else why not. A build of
- * another Oxigraph is refused, so an answer never depends on which engine gave it.
+ * The native build in the file, if its sha256 is this platform's in the hashes given (`null` reads it unchecked), it
+ * loads, and it is the Oxigraph the WebAssembly build is; else why not. A build of another Oxigraph is refused, so an
+ * answer never depends on which engine gave it.
  */
 export function nativeOxigraph(
   file: string = nativeOxigraphFile(),
   load: (file: string) => NativeBinding = (file) =>
     require(file) as NativeBinding,
+  hashes: Readonly<Record<string, string>> | null = hashesOf(),
 ): OxigraphEngine | Error {
   if (!existsSync(file))
     return new Error(`no native Oxigraph build at ${file}`);
+  if (hashes !== null) {
+    const refused = unlike(
+      readFileSync(file),
+      hashes,
+      `the native Oxigraph build at ${file}`,
+    );
+    if (refused) return refused;
+  }
   let binding: NativeBinding;
   try {
     binding = load(file);
@@ -158,23 +204,32 @@ export function chooseOxigraph(
 }
 
 /**
- * Fetches this platform's native build from the release into the file it is kept at, unless it is there, and returns
- * the file. The one network call the native build makes; a run only ever reads the file.
+ * Fetches this platform's native build from the release into the file it is kept at, unless the file there has the
+ * committed sha256, and returns the file. Bytes of another sha256 are never written, and nothing is fetched for a
+ * platform with none committed. The one network call the native build makes; a run only ever reads the file.
  */
 export async function fetchNativeOxigraph(
   file: string = nativeOxigraphFile(),
+  hashes: Readonly<Record<string, string>> = OXIGRAPH_NATIVE_SHA256,
+  get: (address: string) => Promise<Response> = fetch,
 ): Promise<string> {
-  if (existsSync(file)) return file;
+  const uncommitted = unlike(undefined, hashes, "the release");
+  if (uncommitted) throw uncommitted;
+  if (existsSync(file) && !unlike(readFileSync(file), hashes, file))
+    return file;
   const address = `${RELEASES}/${OXIGRAPH_NATIVE_RELEASE}/${nativeAsset()}`;
-  const response = await fetch(address);
+  const response = await get(address);
   if (!response.ok)
     throw new Error(
       `${address} answered ${response.status}: no native Oxigraph build for ${process.platform}-${process.arch}`,
     );
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const refused = unlike(bytes, hashes, address);
+  if (refused) throw refused;
   await mkdir(dirname(file), { recursive: true });
   const part = `${file}.${process.pid}.part`;
   try {
-    await writeFile(part, new Uint8Array(await response.arrayBuffer()));
+    await writeFile(part, bytes);
     await rename(part, file);
   } finally {
     await rm(part, { force: true });
