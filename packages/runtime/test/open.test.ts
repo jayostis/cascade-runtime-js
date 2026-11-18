@@ -738,7 +738,7 @@ ${variant(1)}`),
         ),
         twice(
           "runtime/matcher.feature",
-          "opening a pod matched under version 6 with version 7 files one finding naming the matcher judgments of the rule version 7 changed that it did not file again",
+          'opening a pod matched under version "0" with version 19 files one finding naming the matcher judgments of the rule version 19 changed that it did not file again',
         ),
       ]);
       const under = async (runs: typeof released, prefix: string) =>
