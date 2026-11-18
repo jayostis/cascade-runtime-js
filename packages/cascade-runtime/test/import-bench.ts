@@ -3,7 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { openPod, pullFiles } from "cascade-runtime";
+import { openPod, type Pod, pullFiles } from "cascade-runtime";
+import { answersBeside, resolved } from "../src/node/resolved.js";
+import { openPodWith } from "../src/pod.js";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 
 /**
@@ -25,7 +27,10 @@ import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
  * With `--second` it imports one hospital's pull, then a second hospital's onto the same pod, and reports the second
  * import alone: the same records from another FHIR base and source, so each has a same-code, same-day twin in the pod
  * and the matcher binds the run's records into its comparisons, the path a first import never takes. With `--reopen` the
- * pod is closed and opened again between the two, as the app does, so that nothing of the first import is kept.
+ * pod is closed and opened again between the two, as the app does, so that nothing of the first import is kept. With
+ * `--read-reopened` it imports one pull, closes the pod and opens it again, and measures the first read and the one after,
+ * as the app's host reads a pod an earlier process imported. A pod kept in a folder is opened as a packed runtime opens it,
+ * its answers and its build kept beside it.
  */
 
 const RULE = "matcher.rule:";
@@ -312,6 +317,14 @@ export async function profileOf(
   }
 }
 
+/** The pod in the folder as a packed runtime opens it, keeping its answers and its build beside it. */
+async function openPacked(folder: string): Promise<Pod> {
+  return openPodWith(
+    { ...(await resolved()), answers: { runtime: "bench", at: answersBeside } },
+    folder,
+  );
+}
+
 /**
  * The import of a synthetic pull of `resources`, then the first read and one more, measured; with `second`, the
  * import of the second hospital's pull onto a pod that already holds the first's, which is measured and the first not;
@@ -330,15 +343,15 @@ export async function importBench(
     ? await mkdtemp(join(tmpdir(), "import-bench-"))
     : undefined;
   const claiming = await profileOf(second ? "second" : "first");
-  let pod = await openPod(folder);
+  let pod = folder === undefined ? await openPod() : await openPacked(folder);
   try {
     if (second)
       await pod.import(syntheticPull(resources), {
         claimProfiles: await profileOf("first"),
       });
-    if (reopen) {
+    if (reopen && folder !== undefined) {
       await pod.close();
-      pod = await openPod(folder);
+      pod = await openPacked(folder);
     }
     const marks: { name: string; at: number }[] = [];
     let started = 0;
@@ -374,6 +387,40 @@ export async function importBench(
     await pod.close();
     if (folder !== undefined)
       await rm(folder, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The import of a synthetic pull of `resources` into a pod in a folder, closed and opened again; then the first read
+ * and one more, measured, the import not.
+ */
+export async function reopenedReadBench(resources: number): Promise<Measured> {
+  const folder = await mkdtemp(join(tmpdir(), "import-bench-"));
+  let pod = await openPacked(folder);
+  try {
+    const started = performance.now();
+    const done = await pod.import(syntheticPull(resources), {
+      claimProfiles: await profileOf("first"),
+    });
+    const importMs = round(performance.now() - started);
+    await pod.close();
+    pod = await openPacked(folder);
+    const { seen } = await probing(async () => {
+      await timed("read.reopened", () => pod.ask("pod/My active conditions"));
+      await timed("read.second", () => pod.ask("pod/My active medications"));
+    });
+    return {
+      resources,
+      phases: [],
+      importMs,
+      ...tabulated(seen),
+      wrote: done.wrote.length,
+      refused: done.refused,
+      rssMb: Math.round(process.memoryUsage().rss / 1048576),
+    };
+  } finally {
+    await pod.close();
+    await rm(folder, { recursive: true, force: true });
   }
 }
 
@@ -443,17 +490,19 @@ async function main(args: string[]): Promise<void> {
     .map(Number);
   if (sizes.length === 0) {
     process.stderr.write(
-      "usage: import-bench.js [--second | --reopen] <resources>... [--json <file>]\n",
+      "usage: import-bench.js [--second | --reopen | --read-reopened] <resources>... [--json <file>]\n",
     );
     process.exitCode = 2;
     return;
   }
   const runs: Measured[] = [];
   for (const size of sizes) {
-    const run = await importBench(size, {
-      second: args.includes("--second"),
-      reopen: args.includes("--reopen"),
-    });
+    const run = args.includes("--read-reopened")
+      ? await reopenedReadBench(size)
+      : await importBench(size, {
+          second: args.includes("--second"),
+          reopen: args.includes("--reopen"),
+        });
     runs.push(run);
     process.stdout.write(`${tableOf(run)}\n\n`);
   }

@@ -51,7 +51,7 @@ const HASHES = `${PREFIXES}SELECT DISTINCT ?rule ?hash WHERE {
 const comparisonsRead = new WeakMap<Files, Promise<Map<string, string>>>();
 
 /** The vocabulary's comparisons' texts, by the name of their bytes (M11). */
-function comparisons(vocabulary: Files): Promise<Map<string, string>> {
+export function comparisons(vocabulary: Files): Promise<Map<string, string>> {
   let read = comparisonsRead.get(vocabulary);
   if (read === undefined) {
     read = (async () => {

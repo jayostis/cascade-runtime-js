@@ -39,8 +39,9 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
 
 - **A change the starter must follow lands as a pair.** The runtime PR's body
   carries `Depends-On: https://github.com/jayostis/cascade-starter-kit/pull/<n>`, so `starter-kit` in
-  `check.yml` runs that PR's head on this PR's tarball; the runtime PR merges first,
-  then the starter's PR takes the new pin.
+  `check.yml` runs that PR's head on this PR's tarball. The merge gate merges a PR
+  only once every PR it names has merged (cascade-bridge-spec `compatibility.md`), so
+  the starter's PR merges first, and passes against the runtime on main until then.
 
 ## Conventions
 
