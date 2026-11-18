@@ -41,6 +41,7 @@ import {
   endSharedAdapters,
   inWorker,
   loadConfiguredAdapters,
+  liveSharedEntries,
   loadSharedAdapters,
   Pool,
 } from "../src/node/wasm.js";
@@ -549,6 +550,31 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
         false,
         "a folder behind a link, which the adapter is not given",
       );
+    });
+
+    it("keeps live the two most recently used vocabulary folders of one adapter folder, and lets the others go", async () => {
+      const { folder, copied, first } = await adapterCopy();
+      const base = `${bridgeFolder} ${folder}`;
+      const vocabularies = [];
+      for (let each = 0; each < 4; each += 1) {
+        vocabularies.push(await vocabularyCopy(copied, first));
+        await started(vocabularies[each]?.copied as Components);
+      }
+      assert.equal(liveSharedEntries(base), 2, "four folders, two live");
+      const [oldest, , older, newest] = vocabularies as Array<{
+        copied: Components;
+      }>;
+      assert.deepEqual(await started(newest?.copied as Components), {
+        workers: 0,
+        resolved: 0,
+      });
+      assert.equal(
+        (await started(oldest?.copied as Components)).workers > 0,
+        true,
+        "the oldest was let go and loads again",
+      );
+      assert.equal(liveSharedEntries(base), 2, "and the cap holds");
+      assert.ok(older);
     });
 
     it("says which version of each it uses on every call, ends the adapter a change replaces, and starts one load for two calls at once", async () => {

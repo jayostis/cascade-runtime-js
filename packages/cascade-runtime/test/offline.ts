@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import "./offline-git.js";
 import { configureTables } from "cascade-runtime";
-import { BRIDGE_REPOSITORY } from "@cascade-runtime/runtime/node";
+import { type BridgeRecord, pinOfRecord } from "@cascade-runtime/runtime/node";
 
 configureTables({ checkOnOpen: false });
 
@@ -62,34 +62,24 @@ function sayOnce(line: string): void {
   }
 }
 
-/** The build `npm run bridge` recorded as the one this checkout reads, which must be in the cache. */
-function pinnedBuild(root: string): string {
+/** The build `npm run bridge` recorded as the one this checkout reads: a release must be in the cache, a checkout's build still there. */
+function pinnedBuild(root: string): string | undefined {
   const cache = join(root, "build", "cache", "cascade-bridge-rs");
-  let commit: string | undefined;
+  let record: Partial<BridgeRecord> | undefined;
   try {
-    commit = (
-      JSON.parse(readFileSync(join(cache, "expected.json"), "utf8")) as {
-        commit?: string;
-      }
-    ).commit;
+    record = JSON.parse(readFileSync(join(cache, "expected.json"), "utf8"));
   } catch {
     // None recorded.
   }
-  if (commit === undefined)
-    throw new Error(
-      `tests run offline and read the Bridge build \`npm run bridge\` recorded in ${join(cache, "expected.json")}, and none is recorded: run \`npm run bridge\``,
-    );
-  const built = join(cache, `build-${commit}`, "package.json");
-  if (!existsSync(built))
-    throw new Error(
-      `tests run offline and expect the Bridge build ${commit}, which is not in ${cache}: run \`npm run bridge\``,
-    );
+  const { pin, build, line } = pinOfRecord(record, cache);
   sayOnce(
-    `pinned Bridge ${commit} (built ${statSync(built).mtime.toISOString().slice(0, 10)})`,
+    `${line} (built ${statSync(build).mtime.toISOString().slice(0, 10)})`,
   );
-  return commit;
+  return pin;
 }
 
 const root = offline ? checkoutRoot() : undefined;
-if (root !== undefined && process.env.CASCADE_BRIDGE_PIN === undefined)
-  process.env.CASCADE_BRIDGE_PIN = `${BRIDGE_REPOSITORY}@${pinnedBuild(root)}`;
+if (root !== undefined && process.env.CASCADE_BRIDGE_PIN === undefined) {
+  const pin = pinnedBuild(root);
+  if (pin !== undefined) process.env.CASCADE_BRIDGE_PIN = pin;
+}

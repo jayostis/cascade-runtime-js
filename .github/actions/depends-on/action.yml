@@ -1,0 +1,48 @@
+name: depends-on
+description: >
+  Where to check `repository` out, as this pull request's body names it on a `Depends-On:` line: the head of that open
+  pull request, else its default branch (a merged or closed one, or none named, or no pull request). The start action
+  does this for the vocabulary and the adapters only; the checkouts of other repositories ask it.
+inputs:
+  repository:
+    description: The repository as owner/name.
+    required: true
+outputs:
+  repository:
+    description: The repository to check out, which is the pull request's fork when it comes from one.
+    value: ${{ steps.pick.outputs.repository }}
+  ref:
+    description: The commit to check out; empty for the default branch.
+    value: ${{ steps.pick.outputs.ref }}
+
+runs:
+  using: composite
+  steps:
+    # The body is read now, not from the event: a re-run after the body gained its Depends-On line sees the line.
+    - id: pick
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PULL: ${{ github.event.pull_request.number }}
+        REPOSITORY: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+        repository="$REPOSITORY"; ref=""
+        if [ -n "$PULL" ]; then
+          body=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PULL}" --jq '.body // ""')
+          pair=$(printf '%s\n' "$body" | tr -d '\r' \
+            | grep -iEo "^[[:space:]]*Depends-On:[[:space:]]*(https://github\.com/)?${REPOSITORY}(#|/pull/)[0-9]+" \
+            | head -n 1 | grep -Eo '[0-9]+$' || true)
+          if [ -n "$pair" ]; then
+            read -r state head_repository head_sha < <(gh api "repos/${REPOSITORY}/pulls/${pair}" \
+              --jq '[.state, .head.repo.full_name, .head.sha] | join(" ")')
+            if [ "$state" = open ]; then
+              repository="$head_repository"; ref="$head_sha"
+              echo "${REPOSITORY}: Depends-On names ${pair}, open: its head ${ref}"
+            else
+              echo "${REPOSITORY}: Depends-On names ${pair}, ${state}: the default branch"
+            fi
+          fi
+        fi
+        echo "repository=${repository}" >> "$GITHUB_OUTPUT"
+        echo "ref=${ref}" >> "$GITHUB_OUTPUT"

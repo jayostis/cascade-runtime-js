@@ -531,7 +531,32 @@ interface Shared {
  * One live entry for each adapter folder and vocabulary folder it reads, under one Bridge: a change of the adapter's
  * version, its files, the vocabulary's or the build of the Bridge replaces the entry, and retires the one it replaces.
  */
-const shared = new Map<string, { loading: Promise<Shared>; folder: string }>();
+const shared = new Map<
+  string,
+  { loading: Promise<Shared>; folder: string; base: string }
+>();
+
+/** The entries kept live for one Bridge build and adapter folder, whichever vocabulary folders they read: the most recently used. */
+export const LIVE_PER_BASE = 2;
+
+/** Retires the least recently used entries of `base` beyond {@link LIVE_PER_BASE}: idle workers at once, busy ones after their calls. */
+function keepRecent(base: string): void {
+  const mine = [...shared].filter(([, entry]) => entry.base === base);
+  for (const [slot, entry] of mine.slice(0, -LIVE_PER_BASE)) {
+    shared.delete(slot);
+    void entry.loading.then(
+      ({ pool }) => pool.retire(),
+      () => undefined,
+    );
+  }
+}
+
+/** How many entries are live for `base`, for the tests. */
+export function liveSharedEntries(base?: string): number {
+  return [...shared.values()].filter(
+    (entry) => base === undefined || entry.base === base,
+  ).length;
+}
 
 /** The repository of the vocabulary each adapter folder names, once it has been loaded and said: the key of its entries. */
 const vocabularies = new Map<string, string>();
@@ -628,7 +653,12 @@ async function sharedAt(
               found.vocabulary.signature));
       // Another caller may have replaced it while this one looked: this one looks at that one instead.
       if (shared.get(slot) !== entry) continue;
-      if (same) return found;
+      if (same) {
+        // Used now: it moves to the end of the entries, which are retired from the front.
+        shared.delete(slot);
+        shared.set(slot, entry);
+        return found;
+      }
       found?.pool.retire();
     }
     const loading = loadFirst(
@@ -639,8 +669,9 @@ async function sharedAt(
       files,
       build,
     );
-    const live = { loading, folder: resolved.folder };
+    const live = { loading, folder: resolved.folder, base };
     shared.set(slot, live);
+    keepRecent(base);
     loading.then(
       (made) => {
         // Where the vocabulary was not known, it is now: the entry moves to the slot of its vocabulary's folder.
@@ -653,7 +684,9 @@ async function sharedAt(
           ({ pool }) => pool.retire(),
           () => undefined,
         );
+        shared.delete(at);
         shared.set(at, live);
+        keepRecent(base);
       },
       () => {
         if (shared.get(slot) === live) shared.delete(slot);

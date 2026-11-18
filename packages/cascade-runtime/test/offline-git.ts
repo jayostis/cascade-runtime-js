@@ -7,13 +7,15 @@ import { promisify } from "node:util";
  * its own, imported first, so that it is in place before the runtime's `git()` takes hold of `execFile`.
  */
 const url = /^(?:[a-z][a-z0-9+.-]*:\/\/|[\w.-]+@[\w.-]+:)/i;
+const isGit = (file: unknown): boolean =>
+  typeof file === "string" && /(?:^|[\\/])git(?:\.exe)?$/i.test(file);
 if (process.env.CASCADE_TEST_OFFLINE === "1") {
   const childProcess = createRequire(import.meta.url)("node:child_process") as {
     execFile: typeof execFile;
   };
   const real = childProcess.execFile;
   const refuse = (file: unknown, args: unknown): void => {
-    if (file !== "git" || !Array.isArray(args)) return;
+    if (!isGit(file) || !Array.isArray(args)) return;
     const named = args.find(
       (arg): arg is string =>
         typeof arg === "string" && url.test(arg) && !arg.startsWith("file:"),
