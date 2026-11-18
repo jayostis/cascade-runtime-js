@@ -2404,6 +2404,50 @@ describe("Opening a pod again · openPod()", () => {
         );
     });
 
+    it("builds a sealed pod again when its manifest names another hash, writes the build, and the next session reads it back", async () => {
+      const at = join(pods, "sealed-another-hash");
+      const parts = { ...kept, derive: fastDerive() };
+      const made = await openFolderPod(parts, at, { secret: WORDS });
+      try {
+        await made.import(exported("x-e2"), {
+          claimProfiles: [await profileOf("J1"), await profileOf("J2")],
+        });
+      } finally {
+        await made.close();
+      }
+      const { build } = parts;
+      const changed = {
+        ...parts,
+        build: { ...build, queries: [...build.queries, "# changed"] },
+      };
+      const session = async (question: string, using: Parts = changed) => {
+        const pod = await openFolderPod(using, at, { secret: WORDS });
+        try {
+          const { result, seen } = await probing(() => pod.ask(question));
+          return { rows: result, spans: [...seen.spans.keys()] };
+        } finally {
+          await pod.close();
+        }
+      };
+      const rebuilt = await session("pod/My active medications");
+      assert.ok(
+        rebuilt.spans.some((span) => DERIVING.test(span)),
+        rebuilt.spans.join(", "),
+      );
+      const back = await session("pod/My active allergies");
+      assert.ok(back.spans.includes("kept.readBack"), back.spans.join(", "));
+      assert.deepEqual(
+        back.spans.filter((span) => DERIVING.test(span)),
+        [],
+      );
+      const whole = await session("pod/My active allergies", {
+        ...keepingNothing(),
+        derive: fastDerive(),
+      });
+      assert.ok(whole.rows.length > 0);
+      assert.deepEqual(back.rows, whole.rows);
+    });
+
     it("builds again when a file the build read changed in place", async () => {
       const at = await copiedWithBuild(first, "card-changed");
       await appendFile(join(at, ...kept.layout.card.split("/")), "# changed\n");
