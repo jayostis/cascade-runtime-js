@@ -55,6 +55,11 @@ export async function probing<T>(
   }
 }
 
+/** Whether a run is being probed, for work that is run one at a time then so that each span is its own. */
+export function probed(): boolean {
+  return active !== undefined;
+}
+
 /** Counts `by` of the name while probing. */
 export function counted(name: string, by = 1): void {
   active?.add(name, by);
