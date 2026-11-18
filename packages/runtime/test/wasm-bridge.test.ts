@@ -15,6 +15,7 @@ import {
   type AdaptersOf,
   type BridgeDocument,
   type Conversion,
+  EVERY_FINDING,
   isBridgeError,
   type LoadedAdapter,
 } from "../src/bridge.js";
@@ -163,7 +164,10 @@ async function saved(step: string, stem: string): Promise<Saved> {
 function same(expected: Saved, found: Conversion): void {
   assert.equal(notIsomorphic(expected.graph, triples(found.graph)), undefined);
   assert.equal(
-    notIsomorphic(expected.findings, triples(found.findings)),
+    notIsomorphic(
+      expected.findings,
+      triples(found.findings ?? new Uint8Array()),
+    ),
     undefined,
   );
 }
@@ -265,7 +269,7 @@ async function differences(): Promise<{
           differ.push(`${named}: no adapter accepts it`);
           continue;
         }
-        const made = await accepting.convert(offered);
+        const made = await accepting.convert(offered, EVERY_FINDING);
         const path = `${files.iri}${documentPath}`;
         const expectedFindings =
           findings === undefined
@@ -278,7 +282,10 @@ async function differences(): Promise<{
               );
         const why =
           notIsomorphic(triples(graph), triples(made.graph)) ??
-          notIsomorphic(expectedFindings, triples(made.findings));
+          notIsomorphic(
+            expectedFindings,
+            triples(made.findings ?? new Uint8Array()),
+          );
         if (why !== undefined) differ.push(`${named}: ${why}`);
       }
     }
@@ -380,7 +387,10 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       await inWorkerAdapter
         .convert(await standIn(expected.document, "{ not json"))
         .catch(() => undefined);
-      same(expected, await inWorkerAdapter.convert(expected.document));
+      same(
+        expected,
+        await inWorkerAdapter.convert(expected.document, EVERY_FINDING),
+      );
     });
   });
 
@@ -742,8 +752,8 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       const adapter = (shared as { adapter: LoadedAdapter }).adapter;
       most = 0;
       const both = await Promise.all([
-        adapter.convert(expected.document),
-        adapter.convert(expected.document),
+        adapter.convert(expected.document, EVERY_FINDING),
+        adapter.convert(expected.document, EVERY_FINDING),
       ]);
       for (const conversion of both) same(expected, conversion);
       assert.equal(most, 2, "two instances at work at the same time");
@@ -763,10 +773,10 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       );
       const adapter = (shared as { adapter: LoadedAdapter }).adapter;
       await Promise.all([
-        adapter.convert(expected.document),
-        adapter.convert(expected.document),
+        adapter.convert(expected.document, EVERY_FINDING),
+        adapter.convert(expected.document, EVERY_FINDING),
       ]);
-      const fine = adapter.convert(expected.document);
+      const fine = adapter.convert(expected.document, EVERY_FINDING);
       const trapped = adapter.convert(await standIn(expected.document, "trap"));
       await assert.rejects(
         trapped,
@@ -939,12 +949,12 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
     });
 
     it("converts the next document in a new worker", async () => {
-      await adapter.convert(expected.document);
+      await adapter.convert(expected.document, EVERY_FINDING);
       const started = spawns;
       await adapter
         .convert(await standIn(expected.document, "trap"))
         .catch(() => undefined);
-      same(expected, await adapter.convert(expected.document));
+      same(expected, await adapter.convert(expected.document, EVERY_FINDING));
       assert.equal(spawns - started, 1, "the workers started after the fault");
     });
   });
@@ -953,16 +963,16 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
     it("converts a document, in the main thread, to the graph and conversion findings a worker gives", async () => {
       const expected = await saved("e6", "Immunization-imm-tdap-2026");
       const [inAWorker, inTheMainThread] = await Promise.all([
-        inWorkerAdapter.convert(expected.document),
+        inWorkerAdapter.convert(expected.document, EVERY_FINDING),
         loaded(inThread(compiled)).then((adapter) =>
-          adapter.convert(expected.document),
+          adapter.convert(expected.document, EVERY_FINDING),
         ),
       ]);
       for (const part of ["graph", "findings"] as const)
         assert.equal(
           notIsomorphic(
-            triples(inAWorker[part]),
-            triples(inTheMainThread[part]),
+            triples(inAWorker[part] ?? new Uint8Array()),
+            triples(inTheMainThread[part] ?? new Uint8Array()),
           ),
           undefined,
           part,

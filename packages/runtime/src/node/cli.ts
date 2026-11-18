@@ -47,6 +47,7 @@ import {
 } from "./runtime.js";
 import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
+import { EVERY_FINDING } from "../bridge.js";
 import { kitImports } from "../kit-bridge.js";
 import { ofMediaType } from "../load-adapter.js";
 import { WasmBridge } from "../wasm-bridge.js";
@@ -441,11 +442,14 @@ async function saveKitBridge(args: string[]): Promise<number> {
         )
           console.error(`${step.name} ${stem}: converted before`);
         else {
-          const made = await accepting.convert(offered);
+          const made = await accepting.convert(offered, EVERY_FINDING);
           const folder = join(out, saved, stem);
           await mkdir(folder, { recursive: true });
           await writeFile(join(folder, "graph.ttl"), made.graph);
-          await writeFile(join(folder, "findings.ttl"), made.findings);
+          await writeFile(
+            join(folder, "findings.ttl"),
+            made.findings ?? new Uint8Array(),
+          );
           written++;
         }
       }

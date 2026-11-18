@@ -100,6 +100,12 @@ export class SavedOutputBridge implements Bridge {
         `the story saves no Bridge output for ${document.iri}`,
       );
     }
+    if (!options?.findings && !options?.census) return { graph };
+    if (!options.findings || !options.census)
+      throw new BridgeError(
+        "bridge",
+        "the saved output holds the findings and the census together, so a convert asks for both or neither",
+      );
     const findings =
       (await this.files.read(`${this.converted}${stem}/findings.ttl`)) ??
       new Uint8Array();

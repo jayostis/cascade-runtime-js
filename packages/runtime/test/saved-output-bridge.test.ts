@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import {
   type BridgeDocument,
+  EVERY_FINDING,
   isBridgeError,
   type LoadedAdapter,
 } from "../src/bridge.js";
@@ -69,11 +70,16 @@ describe("Converting from a kit's saved output · SavedOutputBridge.of()", () =>
       assert.equal(await adapter.accepts(await documentOf(peanut)), true);
     });
 
-    it("converts it to the graph and the conversion findings saved under its file's name", async () => {
-      const converted = await adapter.convert(await documentOf(peanut));
+    it("converts it to the graph and, asked for every finding, the conversion findings saved under its file's name", async () => {
+      const converted = await adapter.convert(
+        await documentOf(peanut),
+        EVERY_FINDING,
+      );
       const store = new OxigraphStore();
       await store.loadTurtle(converted.graph, { graph: "urn:graph" });
-      await store.loadTurtle(converted.findings, { graph: "urn:findings" });
+      await store.loadTurtle(converted.findings ?? "", {
+        graph: "urn:findings",
+      });
       assert.equal(
         await store.ask(
           "ASK { GRAPH <urn:graph> { <urn:record> a <urn:Allergy> } }",
@@ -90,6 +96,11 @@ describe("Converting from a kit's saved output · SavedOutputBridge.of()", () =>
         true,
         "the conversion findings",
       );
+    });
+
+    it("returns the graph alone where the convert asks for no findings", async () => {
+      const converted = await adapter.convert(await documentOf(peanut));
+      assert.equal(converted.findings, undefined);
     });
 
     it("declines a document the step marks with `unaccepted.txt`", async () => {
