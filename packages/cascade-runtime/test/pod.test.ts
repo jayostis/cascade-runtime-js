@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import {
   appendFile,
@@ -2531,6 +2532,35 @@ describe("Opening a pod again · openPod()", () => {
       assert.deepEqual(again.rows, wholeRows);
     });
 
+    it("builds exactly once when its manifest names the hash taken over a wider set of files, a .DS_Store among them, and the next session reads the build back", async () => {
+      const at = await copiedWithBuild(first, "wider-set");
+      await writeFile(join(at, ".DS_Store"), "junk");
+      const manifest = join(at, ...kept.layout.manifest.split("/"));
+      const text = await readFile(manifest, "utf8");
+      const named = /buildInputsHash> "([0-9a-f]+)"/.exec(text);
+      assert.ok(named?.[1], "the manifest names no build inputs hash");
+      await writeFile(
+        manifest,
+        text.replace(named[1], "0".repeat(named[1].length)),
+      );
+      const rebuilt = await asked(kept, at);
+      assert.ok(
+        rebuilt.spans.some((span) => DERIVING.test(span)),
+        rebuilt.spans.join(", "),
+      );
+      assert.deepEqual(rebuilt.rows, wholeRows);
+      await rm(join(pods, ".answers", "wider-set", "answers.json"), {
+        force: true,
+      });
+      const again = await asked(kept, at);
+      assert.ok(again.spans.includes("kept.readBack"), again.spans.join(", "));
+      assert.deepEqual(
+        again.spans.filter((span) => DERIVING.test(span)),
+        [],
+      );
+      assert.deepEqual(again.rows, wholeRows);
+    });
+
     it("builds again when what is kept beside the pod was kept under another hash than the manifest names, as when a process stops before it closes the pod", async () => {
       const at = await copiedWithBuild(first, "kept-under-another");
       const file = join(pods, ".answers", "kept-under-another", "build.nt");
@@ -2811,6 +2841,41 @@ describe("Opening a pod again · openPod()", () => {
         found,
         rows.map(([what, , , , kept]) => [what, kept]),
       );
+    });
+
+    it("names a checkout's built code by paths written with a forward slash, so one pod synced between operating systems keeps its build", async () => {
+      const root = await mkdtemp(join(tmpdir(), "built-code-slash-"));
+      try {
+        const files: Record<string, string> = {
+          "cascade-runtime/package.json": JSON.stringify({
+            name: "cascade-runtime",
+          }),
+          "cascade-runtime/dist/src/a-b.js": "export const b = 1;\n",
+          "cascade-runtime/dist/src/a/c.js": "export const c = 2;\n",
+          "cascade-runtime/dist/src/a.js": "export const a = 3;\n",
+          "cascade-runtime/dist/src/a0.js": "export const d = 4;\n",
+        };
+        for (const [path, text] of Object.entries(files)) {
+          await mkdir(dirname(join(root, path)), { recursive: true });
+          await writeFile(join(root, path), text);
+        }
+        const hash = createHash("sha256");
+        for (const path of Object.keys(files)
+          .filter((path) => path.startsWith("cascade-runtime/dist/"))
+          .map((path) => `/${path}`)
+          .sort()) {
+          hash.update(path);
+          hash.update(new Uint8Array([0]));
+          hash.update(files[path.slice(1)] as string);
+          hash.update(new Uint8Array([0]));
+        }
+        assert.equal(
+          await builtCode(join(root, "cascade-runtime")),
+          hash.digest("hex"),
+        );
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     });
 
     it("names a checkout's built code by the bytes of what runs, so code built at another commit than the checkout's keeps its build apart", async () => {

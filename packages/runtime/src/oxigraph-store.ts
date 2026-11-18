@@ -2,7 +2,13 @@ import * as oxigraph from "oxigraph";
 import { blank, iri, literal, type Term, type Triple, written } from "./rdf.js";
 import { queried } from "./probe.js";
 import { parseResults } from "./sparql-results.js";
-import type { LoadOptions, Rows, Store } from "./store.js";
+import {
+  type GraphFile,
+  type LoadOptions,
+  NotTurtle,
+  type Rows,
+  type Store,
+} from "./store.js";
 
 const TURTLE = "text/turtle";
 const N_TRIPLES = "application/n-triples";
@@ -163,6 +169,162 @@ export function nTriples(text: string): Triple[] {
   }
 }
 
+const TRIG = "application/trig";
+/** The bytes of Turtle one TriG call reads at most, past the file that reaches it: a call that fails reads them again. */
+const BLOCKS_AT_ONCE = 4 * 1024 * 1024;
+const BLOCK_END = new TextEncoder().encode("\n}\n");
+const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+const REFUSED_IN_IRI = new Set(
+  [...'<>"{}|^`\\'].map((character) => character.charCodeAt(0)),
+);
+
+/** Whether TriG can name the graph as it is written: an absolute IRI with none of the characters an IRI reference refuses. */
+function namesABlock(graph: string): boolean {
+  if (!SCHEME.test(graph)) return false;
+  for (let index = 0; index < graph.length; index += 1) {
+    const code = graph.charCodeAt(index);
+    if (code <= 0x20 || REFUSED_IN_IRI.has(code)) return false;
+  }
+  return true;
+}
+
+const Byte = {
+  Tab: 0x09,
+  Newline: 0x0a,
+  Return: 0x0d,
+  Space: 0x20,
+  Quote: 0x22,
+  Hash: 0x23,
+  Apostrophe: 0x27,
+  Dot: 0x2e,
+  Colon: 0x3a,
+  Less: 0x3c,
+  Greater: 0x3e,
+  At: 0x40,
+  Backslash: 0x5c,
+  Underscore: 0x5f,
+  OpenBrace: 0x7b,
+  CloseBrace: 0x7d,
+} as const;
+
+const isWhite = (byte: number): boolean =>
+  byte === Byte.Space ||
+  byte === Byte.Tab ||
+  byte === Byte.Newline ||
+  byte === Byte.Return;
+const isLetter = (byte: number): boolean =>
+  (byte | 0x20) >= 0x61 && (byte | 0x20) <= 0x7a;
+/** A byte that may continue a word, so that `prefix` or `base` before it is no keyword. */
+const inWord = (byte: number | undefined): boolean =>
+  byte !== undefined &&
+  (isLetter(byte) ||
+    (byte >= 0x30 && byte <= 0x39) ||
+    byte === Byte.Underscore ||
+    byte === 0x2d ||
+    byte === Byte.Colon ||
+    byte === Byte.Dot ||
+    byte >= 0x80);
+
+/** Whether the bytes at `at` spell the word, in either case, with no word byte after it. */
+function keywordAt(bytes: Uint8Array, at: number, word: string): boolean {
+  for (let index = 0; index < word.length; index += 1)
+    if (((bytes[at + index] ?? 0) | 0x20) !== word.charCodeAt(index))
+      return false;
+  return !inWord(bytes[at + word.length]);
+}
+
+/** Whether an IRI's scheme and its colon start at `at`: an IRI without one is relative. */
+function schemeAt(bytes: Uint8Array, at: number): boolean {
+  if (!isLetter(bytes[at] ?? 0)) return false;
+  for (let index = at + 1; index < bytes.length; index += 1) {
+    const byte = bytes[index] as number;
+    if (byte === Byte.Colon) return true;
+    if (
+      !isLetter(byte) &&
+      !(byte >= 0x30 && byte <= 0x39) &&
+      byte !== 0x2b &&
+      byte !== 0x2d &&
+      byte !== Byte.Dot
+    )
+      return false;
+  }
+  return false;
+}
+
+/**
+ * Whether the Turtle reads inside a TriG graph block, among other files' blocks, as it reads alone: it labels no blank
+ * node, which TriG shares across a document's blocks; it has no directive and no relative IRI, which TriG reads against
+ * the document; it has no brace and no long string, and its last statement is ended, so nothing of it runs on past its
+ * block. What only might be one of these makes the file read alone, as any file may be.
+ */
+export function readsInABlock(turtle: Uint8Array): boolean {
+  if (turtle[0] === 0xef) return false;
+  let previous: number = Byte.Newline;
+  let last: number = Byte.Dot;
+  for (let at = 0; at < turtle.length; at += 1) {
+    const byte = turtle[at] as number;
+    switch (byte) {
+      case Byte.Hash:
+        while (
+          at < turtle.length &&
+          turtle[at] !== Byte.Newline &&
+          turtle[at] !== Byte.Return
+        )
+          at += 1;
+        previous = Byte.Newline;
+        continue;
+      case Byte.Less:
+        if (!schemeAt(turtle, at + 1)) return false;
+        for (at += 1; turtle[at] !== Byte.Greater; at += 1) {
+          const inside = turtle[at];
+          if (
+            inside === undefined ||
+            inside === Byte.Newline ||
+            inside === Byte.OpenBrace ||
+            inside === Byte.CloseBrace
+          )
+            return false;
+        }
+        break;
+      case Byte.Quote:
+      case Byte.Apostrophe:
+        if (turtle[at + 1] === byte && turtle[at + 2] === byte) return false;
+        for (at += 1; turtle[at] !== byte; at += 1) {
+          const inside = turtle[at];
+          if (
+            inside === undefined ||
+            inside === Byte.Newline ||
+            inside === Byte.Return
+          )
+            return false;
+          if (inside === Byte.Backslash) at += 1;
+        }
+        break;
+      case Byte.At:
+        if (previous !== Byte.Quote && previous !== Byte.Apostrophe)
+          return false;
+        break;
+      case Byte.Colon:
+        if (previous === Byte.Underscore) return false;
+        break;
+      case Byte.OpenBrace:
+      case Byte.CloseBrace:
+        return false;
+      default:
+        // A dot before the word ends a statement, so `.PREFIX` is a directive, not the end of a name.
+        if (
+          (!inWord(previous) || previous === Byte.Dot) &&
+          (keywordAt(turtle, at, "prefix") || keywordAt(turtle, at, "base"))
+        )
+          return false;
+    }
+    const ended = turtle[at] as number;
+    if (!isWhite(ended)) last = ended;
+    previous = ended;
+  }
+  return last === Byte.Dot;
+}
+
 function toOxigraph(
   term: Term,
 ): oxigraph.NamedNode | oxigraph.BlankNode | oxigraph.Literal {
@@ -252,6 +414,74 @@ export class OxigraphStore implements Store {
       free(graph);
     }
     this.#graphs.add(options.graph);
+  }
+
+  /**
+   * Oxigraph spends about as long on each call as on the bytes of a small file, so the files whose Turtle reads the
+   * same inside a TriG graph block are read in one call, each in a block named by its graph, and each other file alone.
+   * A call that fails is undone and its files read alone, so the file that is no Turtle is the one refused.
+   */
+  async loadFiles(files: readonly GraphFile[]): Promise<void> {
+    const blocks: GraphFile[] = [];
+    const named = new Set<string>();
+    let size = 0;
+    const flush = async (): Promise<void> => {
+      if (blocks.length === 0) return;
+      const batch = blocks.splice(0);
+      named.clear();
+      size = 0;
+      await this.#loadBlocks(batch);
+    };
+    for (const file of files) {
+      if (
+        !this.#graphs.has(file.graph) &&
+        !named.has(file.graph) &&
+        namesABlock(file.graph) &&
+        readsInABlock(file.turtle)
+      ) {
+        blocks.push(file);
+        named.add(file.graph);
+        size += file.turtle.length;
+        if (size >= BLOCKS_AT_ONCE) await flush();
+        continue;
+      }
+      await flush();
+      await this.#loadAlone(file);
+    }
+    await flush();
+  }
+
+  async #loadBlocks(files: readonly GraphFile[]): Promise<void> {
+    const encoder = new TextEncoder();
+    const parts = files.flatMap(({ graph, turtle }) => [
+      encoder.encode(`<${graph}> {\n`),
+      turtle,
+      BLOCK_END,
+    ]);
+    const trig = new Uint8Array(
+      parts.reduce((sum, part) => sum + part.length, 0),
+    );
+    let at = 0;
+    for (const part of parts) {
+      trig.set(part, at);
+      at += part.length;
+    }
+    try {
+      this.#store.load(trig, { format: TRIG });
+    } catch {
+      for (const { graph } of files) await this.drop(graph);
+      for (const file of files) await this.#loadAlone(file);
+      return;
+    }
+    for (const { graph } of files) this.#graphs.add(graph);
+  }
+
+  async #loadAlone({ graph, turtle }: GraphFile): Promise<void> {
+    try {
+      await this.loadTurtle(turtle, { graph });
+    } catch (error) {
+      throw new NotTurtle(graph, error);
+    }
   }
 
   async parse(turtle: Uint8Array | string, base: string): Promise<Triple[]> {

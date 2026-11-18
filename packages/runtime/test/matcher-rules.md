@@ -1,6 +1,6 @@
 # What a narrowing of the matcher's comparisons may skip, rule by rule
 
-Read from the queries under `queries/matcher/` of cascade-vocabulary that the default rule list (`runtime/rule-list/cbbb992c-cba6-4825-baab-9ebcd1c4379e.ttl`) names, every row read again at cascade-vocabulary `740bb65c` (origin/main after the re-mint). No query was changed: its text is hashed into `rec:queryHash`.
+Read from the queries under `queries/matcher/` of cascade-vocabulary that the default rule list, version 19 (`runtime/rule-list/ae65e38f-9301-4831-b0b2-f54005d465e1.ttl`), names, every row read again at cascade-vocabulary `c8339cf2` (origin/main after #451). No query was changed by D2: its text is hashed into `rec:queryHash`.
 
 A narrowing skips the pairs it is sure the rule would not join. D2 narrows pairs, never a query's input: three kinds of rule read records or table rows outside the pair, and a query given only the pair's two records would answer differently. Three kinds are asked about:
 
@@ -35,6 +35,8 @@ A narrowing skips the pairs it is sure the rule would not join. D2 narrows pairs
 
 Two findings rules sit in the same list, `DifferentResultValuesAtOneInstant` and `DifferentResultUnitsAtOneInstant`. They file findings, not Sames, and `joins.golden.txt` holds their findings as `finding` lines (five today, all of one run). Both key on the same `testCode` and the same instant, so a narrowing by code or by an equal-instant window is safe, as for `SameResult`, and neither has a record-kind filter.
 
+At version 19, `SameResult` and the two findings rules read a time Oxigraph cannot work out (more than 18 fractional digits, or an ill-typed `xsd:dateTime`) as written: it is the instant of the results that write it alike, and nothing else is paired with it. A narrowing by instant must therefore treat the time as written as the key for such a record. `SameResultOnOneDay` is unchanged, since a day can always be worked out.
+
 Reading the table, D2's rule from the critical read holds: narrowing is per rule, from its key.
 
 - **By code**, a rule whose cell says unsafe keeps the full comparison: `SameMappedCode`, `SameMappedCodeAndDate`, `SameConvertedCode`, `SameBrandGeneric`, `SameVariationThroughTable` and `SameNoteOrDocumentMasterIdentifier`.
@@ -46,7 +48,7 @@ The same-server rule's key is the server itself, and the rules that read a table
 
 ## What D2 found and did
 
-Every query the default rule list names already joins `?other` to the bound record on its key: a `key-joined-first` query (and R21's and the same-server rule's) through the bound record's own code or identifier, a `bound-per-side` query through a `# bound: ?record` group that gives the bound records' codes alone, and `same-code-and-period-read-as-ranges.rq` and `same-product-code-in-current-tables-and-overlapping-exposure-periods.rq` by joining two sub-selects on the code, each of which reads every record of its kind. No rule pairs a new record with a held one whose key differs, so D2 narrows no rule's pairs further: every rule keeps the comparison its query makes. Narrowing the last two's sub-selects, or any rule by a time window, would mean opening a group no `# bound` line marks, which changes what the query says rather than what it is given, and is left out.
+Every query the default rule list names already joins `?other` to the bound record on its key: a `key-joined-first` query (and R21's and the same-server rule's) through the bound record's own code or identifier, a `bound-per-side` query through a `# bound: ?record` group that gives the bound records' codes alone, and a version 19 lab query (R6, R15, R16, R17, the `others-by-code-and-instant` and `others-by-code-and-day` files) the same, its other side opening with a sub-select of the bound records' code and instant (or day), so that the other side's value and unit are worked out only for candidates that share the full key, and `same-code-and-period-read-as-ranges.rq` and `same-product-code-in-current-tables-and-overlapping-exposure-periods.rq` by joining two sub-selects on the code, each of which reads every record of its kind. No rule pairs a new record with a held one whose key differs, so D2 narrows no rule's pairs further: every rule keeps the comparison its query makes. Narrowing the last two's sub-selects, or any rule by a time window, would mean opening a group no `# bound` line marks, which changes what the query says rather than what it is given, and is left out.
 
 What D2 changed is how a run that takes records binds them. A pod that held no record before the run (a first import) has its comparisons evaluated unbound, and keeps the rows whose `?record` is the run's: the VALUES lists, copied into each marked group, cost more than they narrow when every record is the run's. A run into a pod that holds other records binds as before. Binding through a graph of the run's records rather than a VALUES list did not pay at 1,000 resources (three pairs, mixed), and is left out.
 

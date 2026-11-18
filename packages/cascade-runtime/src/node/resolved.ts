@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { basename, dirname, join, resolve as absolute } from "node:path";
+import { basename, dirname, join, resolve as absolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   appTablesSettings,
@@ -203,7 +203,7 @@ export async function builtCode(folder: string): Promise<string> {
     for (const name of found.depends) reach(named.get(name));
   };
   reach(own);
-  const paths = (
+  const found = (
     await Promise.all(
       [...runs].map(async (at) =>
         (
@@ -221,13 +221,18 @@ export async function builtCode(folder: string): Promise<string> {
           .map((entry) => join(entry.parentPath, entry.name)),
       ),
     )
-  )
-    .flat()
-    .sort();
-  const read = await Promise.all(paths.map((path) => readFile(path)));
+  ).flat();
+  // Named and ordered by a path written with "/", so one pod synced between operating systems keeps its build.
+  const paths = found
+    .map((path) => ({
+      path,
+      named: path.slice(packages.length).split(sep).join("/"),
+    }))
+    .sort((a, b) => (a.named < b.named ? -1 : a.named > b.named ? 1 : 0));
+  const read = await Promise.all(paths.map(({ path }) => readFile(path)));
   const hash = createHash("sha256");
-  for (const [index, path] of paths.entries()) {
-    hash.update(`${path.slice(packages.length)}`);
+  for (const [index, { named }] of paths.entries()) {
+    hash.update(named);
     hash.update(new Uint8Array([0]));
     hash.update(read[index] as Uint8Array);
     hash.update(new Uint8Array([0]));

@@ -101,6 +101,16 @@ describe("Checking a replayed kit · kitChecks(), shapeFaults(), snapshotFaults(
       assert.deepEqual(await faults(), []);
     });
 
+    it("returns no fault for a `.DS_Store` and an `._` file beside the pod's files, which are no part of the set", async () => {
+      assert.deepEqual(
+        await faults({
+          ".DS_Store": bytes("junk"),
+          "records/._allergies.ttl": bytes("junk"),
+        }),
+        [],
+      );
+    });
+
     it("reports a file of the set that is missing from the pod, and the last set hash as wrong", async () => {
       assert.deepEqual(await faults({ [record]: undefined }), [
         failing,

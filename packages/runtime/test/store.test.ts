@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { nTriples, OxigraphStore } from "../src/oxigraph-store.js";
 import { blank, iri, literal, type Triple, written } from "../src/rdf.js";
-import { RestorableUnion, type Store, Union } from "../src/store.js";
+import * as oxigraph from "oxigraph";
+import { NotTurtle, RestorableUnion, type Store, Union } from "../src/store.js";
 
 const XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer";
 
@@ -275,6 +276,162 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
           ),
         ).size;
       assert.equal(blanks(constructed), blanks(parsed));
+    });
+  });
+
+  describe("OxigraphStore.loadFiles()", () => {
+    const encoded = (text: string) => new TextEncoder().encode(text);
+    /** Files of each shape a pod's file may take, and fifty of the shape a runtime writes. */
+    const files = [
+      ["https://pod.example/relative.ttl", '<#r> <urn:p> "x"@en .'],
+      [
+        "https://pod.example/prefixed.ttl",
+        "@prefix ex: <urn:ex:> .\nex:s ex:p ex:o .",
+      ],
+      [
+        "https://pod.example/sparql-prefix.ttl",
+        "PREFIX ex: <urn:ex:>\nex:t ex:p 1 .",
+      ],
+      [
+        "https://pod.example/dot-prefix.ttl",
+        "<urn:h> <urn:p> 3 .PREFIX dp: <urn:dp:>\ndp:u dp:p 4 .",
+      ],
+      [
+        "https://pod.example/dot-base.ttl",
+        "<urn:i> <urn:p> 5 .BASE <urn:base:>\n<y> <urn:p> 6 .",
+      ],
+      ["https://pod.example/one-label.ttl", "<urn:b> <urn:p> _:x ."],
+      ["https://pod.example/same-label.ttl", "<urn:c> <urn:p> _:x ."],
+      ["https://pod.example/anonymous.ttl", "<urn:d> <urn:p> [ <urn:q> 1 ] ."],
+      ["https://pod.example/braces.ttl", '<urn:e> <urn:p> "a { b } c" .'],
+      ["https://pod.example/long.ttl", '<urn:f> <urn:p> """two\nlines""" .'],
+      ["https://pod.example/empty.ttl", ""],
+      ["https://pod.example/commented.ttl", "<urn:g> <urn:p> 2 . # the end"],
+      ...Array.from(
+        { length: 50 },
+        (_, index) =>
+          [
+            `https://pod.example/plain/${index}.ttl`,
+            `<urn:plain:${index}> <urn:p> "${index}"@en ;\n  <urn:q> <urn:plain:${index + 1}> .\n`,
+          ] as const,
+      ),
+    ] as const;
+    /** Each quad, a blank node's label left out. */
+    const unlabelled = async (store: Store) =>
+      (await quadsOf(store)).map((quad) => quad.replace(/_:\S+/g, "_:"));
+    let alone: string[];
+    let together: string[];
+    let blankNodes: number;
+    let loads: number;
+
+    before(async () => {
+      const one = new OxigraphStore();
+      for (const [graph, turtle] of files)
+        await one.loadTurtle(encoded(turtle), { graph });
+      alone = await unlabelled(one);
+      const many = new OxigraphStore();
+      const load = oxigraph.Store.prototype.load;
+      loads = 0;
+      oxigraph.Store.prototype.load = function (
+        ...args: Parameters<typeof load>
+      ) {
+        loads += 1;
+        return load.apply(this, args);
+      };
+      try {
+        await many.loadFiles(
+          files.map(([graph, turtle]) => ({ graph, turtle: encoded(turtle) })),
+        );
+      } finally {
+        oxigraph.Store.prototype.load = load;
+      }
+      together = await unlabelled(many);
+      blankNodes = (
+        await many.select(
+          "SELECT DISTINCT ?o WHERE { GRAPH ?g { ?s <urn:p> ?o FILTER isBlank(?o) } }",
+          new Set(),
+        )
+      ).rows.length;
+    });
+
+    it("holds each file's triples in its graph as loading each file alone does, the blank nodes of two files apart", () => {
+      assert.deepEqual(together, alone);
+      assert.equal(blankNodes, 3);
+    });
+
+    it("parses the files of the shape a runtime writes in one load, and each other file alone", () => {
+      assert.ok(loads <= files.length - 50 + 1, `${loads} loads`);
+    });
+
+    it("loads alone a file that has a directive right after a statement's dot, as `.PREFIX` or `.BASE`, with no failed block load first", async () => {
+      const load = oxigraph.Store.prototype.load;
+      let calls = 0;
+      oxigraph.Store.prototype.load = function (
+        ...args: Parameters<typeof load>
+      ) {
+        calls += 1;
+        return load.apply(this, args);
+      };
+      try {
+        for (const [graph, turtle] of files.filter(([graph]) =>
+          /dot-(prefix|base)/.test(graph),
+        )) {
+          calls = 0;
+          await new OxigraphStore().loadFiles([
+            { graph, turtle: encoded(turtle) },
+          ]);
+          assert.equal(calls, 1, graph);
+        }
+      } finally {
+        oxigraph.Store.prototype.load = load;
+      }
+    });
+
+    it("refuses a file that is no Turtle alone, naming its graph, the files before it loaded once, and lets no file write into another's graph", async () => {
+      const plain = {
+        graph: "urn:plain",
+        turtle: encoded("<urn:a> <urn:p> 1 ."),
+      };
+      const refusals = [
+        [{ graph: "urn:unended", turtle: encoded("<urn:a> <urn:p> 2") }],
+        [
+          {
+            graph: "urn:four-terms",
+            turtle: encoded("<urn:a> <urn:p> <urn:b> <urn:c> ."),
+          },
+        ],
+        [
+          {
+            graph: "urn:breaks-out",
+            turtle: encoded(
+              '<urn:a> <urn:p> "x" .\n}\n<urn:stolen> {\n<urn:a> <urn:p> 3 .',
+            ),
+          },
+        ],
+        [
+          {
+            graph: "urn:opens-a-string",
+            turtle: encoded('<urn:a> <urn:p> """'),
+          },
+          { graph: "urn:closes-it", turtle: encoded('""" .') },
+        ],
+      ] as const;
+      for (const bad of refusals) {
+        const store = new OxigraphStore();
+        await assert.rejects(
+          store.loadFiles([plain, ...bad, plain]),
+          (error: unknown) =>
+            error instanceof NotTurtle && error.graph === bad[0].graph,
+        );
+        const quads = await quadsOf(store);
+        assert.ok(quads.every((quad) => !quad.includes("urn:stolen")));
+        assert.deepEqual(
+          quads.filter((quad) => quad.endsWith("<urn:plain>")),
+          [
+            `<urn:a> <urn:p> "1"^^<http://www.w3.org/2001/XMLSchema#integer> <urn:plain>`,
+          ],
+        );
+      }
     });
   });
 

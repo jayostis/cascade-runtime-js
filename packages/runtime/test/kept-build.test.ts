@@ -9,7 +9,7 @@ import {
   vocabularyDerive,
 } from "../src/build.js";
 import { CorePod, type CorePodOptions } from "../src/core-pod.js";
-import { dataset } from "../src/dataset.js";
+import { dataset, podFiles } from "../src/dataset.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { randomId } from "../src/ids.js";
 import { LAYOUT_FILE, LAYOUT_GRAPH, Layout } from "../src/layout.js";
@@ -20,11 +20,31 @@ import { References } from "../src/references.js";
 import { StepWrites } from "../src/pod.js";
 import { type Perform, PERFORMERS, type Replayed } from "../src/replay.js";
 import { Refusal, type StepContext } from "../src/step.js";
-import { RestorableUnion, type Row, type Store } from "../src/store.js";
+import {
+  RestorableUnion,
+  type Row,
+  type Rows,
+  type Store,
+  Union,
+} from "../src/store.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const SYNC_RUN =
   "after both writers imported one export, the sync's run takes only the entry the other writer made";
+/** The rows of `query` over each RDF file of the pod but those the build writes, with nothing derived. */
+async function podRows(
+  context: Pick<StepContext, "layout" | "pod" | "address" | "newStore">,
+  query: string,
+): Promise<Rows> {
+  const union = new Union(context.newStore());
+  try {
+    await podFiles(context.pod, context.layout, context.address, union);
+    return await union.select(query);
+  } finally {
+    union.store.free?.();
+  }
+}
+
 const GRAPHS = "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }";
 
 /** Every quad of the matcher's view, each blank node one placeholder, sorted. */
@@ -505,6 +525,20 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           false,
         ],
         [
+          "the bytes of a macOS resource fork's `._x.ttl`",
+          {
+            pod: await podWith({
+              "records/._x.ttl": "<#x> a <urn:example:Other> .\n",
+            }),
+          },
+          false,
+        ],
+        [
+          "the bytes of a `Thumbs.db`",
+          { pod: await podWith({ "records/Thumbs.db": "junk" }) },
+          false,
+        ],
+        [
           "the bytes of a Solid .acl, which is not a .ttl",
           {
             pod: await podWith({
@@ -598,6 +632,16 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
             lent = undefined;
           },
           keptDataset: async () => undefined,
+          selectStated: (query) =>
+            podRows(
+              {
+                layout: laidOut,
+                pod: pod.files,
+                address: pod.files.iri,
+                newStore: side.newStore,
+              },
+              query,
+            ),
         };
         const references = await References.of(
           side.source,
@@ -656,6 +700,29 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         assert.ok(one.changed && one.released, one.failure.message);
         assert.deepEqual(one.after, one.before, one.failure.message);
       }
+    });
+  });
+
+  describe("Layout.loads()", () => {
+    it("refuses a `._` file, even one named .ttl, a `Thumbs.db`, a `.DS_Store`, a Solid `.acl` and `.meta` and an `.icloud` placeholder, and takes a .ttl file and a file the layout gives by itself", async () => {
+      const laidOut = await layout();
+      const refused = [
+        "._x.ttl",
+        "records/._x.ttl",
+        "Thumbs.db",
+        "records/Thumbs.db",
+        ".DS_Store",
+        "records/allergies/.acl",
+        "records/allergies/x.ttl.meta",
+        "records/.x.ttl.icloud",
+        `${laidOut.storedBytes.folder ?? ""}x.ttl`,
+      ];
+      assert.deepEqual(
+        refused.filter((path) => laidOut.loads(path)),
+        [],
+      );
+      assert.equal(laidOut.loads("records/x.ttl"), true);
+      assert.equal(laidOut.loads(laidOut.preferences), true);
     });
   });
 

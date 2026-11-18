@@ -366,6 +366,7 @@ export class Layout {
   loads(path: string): boolean {
     return (
       this.isRdf(path) &&
+      !path.slice(path.lastIndexOf("/") + 1).startsWith("._") &&
       (path.endsWith(".ttl") ||
         this.placements.some(({ file }) => file === path))
     );
