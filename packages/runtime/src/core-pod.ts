@@ -14,7 +14,13 @@ import {
   type PodState,
   type VocabularyBuild,
 } from "./build.js";
-import { addLayout, built, podFiles, podStated } from "./dataset.js";
+import {
+  addLayout,
+  built,
+  podFiles,
+  podStated,
+  type PodStated,
+} from "./dataset.js";
 import type { SamesStillJoined } from "./derive.js";
 import { Unopened } from "./encryption.js";
 import { type Files, MemoryFiles, relative, writeAll } from "./files.js";
@@ -311,9 +317,13 @@ class HeldFiles implements Files {
 const TITLE_LINE =
   /(?<=^|\n)\S+ <http:\/\/purl\.org\/dc\/terms\/title> [^\n]*\n?/g;
 
+/** The manifest's line giving the hash of what its build read (C8), which a read may write again and no answer depends on. */
+const INPUTS_HASH_LINE =
+  /(?<=^|\n)\S+ <https:\/\/ns\.cascadeprotocol\.org\/cascade#buildInputsHash> [^\n]*\n?/g;
+
 /**
- * The hash of the pod's address, the files it holds but those the build writes, and its manifest's bytes but its title;
- * nothing is parsed. The build adds the title to the pod's union, so a named question that read the manifest's
+ * The hash of the pod's address, the files it holds but those the build writes, and its manifest's bytes but its title
+ * and its build's inputs hash; nothing is parsed. The build adds the title to the pod's union, so a named question that read the manifest's
  * `dct:title` would keep a stale answer after a retitle; none does.
  */
 export async function podRevision(
@@ -333,7 +343,10 @@ export async function podRevision(
     written === undefined
       ? new Uint8Array()
       : new TextEncoder().encode(
-          new TextDecoder().decode(written).replace(TITLE_LINE, ""),
+          new TextDecoder()
+            .decode(written)
+            .replace(TITLE_LINE, "")
+            .replace(INPUTS_HASH_LINE, ""),
         );
   const bytes = new Uint8Array(listing.length + manifest.length);
   bytes.set(listing);
@@ -1993,14 +2006,15 @@ export class CorePod {
   /**
    * The pod built whole for a read, kept as the build the next step continues from and, once the pod closes, beside the
    * pod (C8), so the next session reads it back. When the manifest names another hash than the build's, as after an
-   * upgrade, the read writes the files the build writes too, the manifest last, as a step would; it writes no file a step
-   * does not write, and a write that fails, as to a pod on a read-only disk, keeps nothing and answers all the same.
+   * upgrade, the read writes the files the build writes too, the manifest last, as a step would, the manifest as it was
+   * but for the hash, so the pod's revision stays as it was; it writes no file a step does not write, and a write that
+   * fails, as to a pod on a read-only disk, keeps nothing and answers all the same.
    */
   async #builtForRead(
     build: PodBuildOption,
     incremental: VocabularyBuild,
     pod: PodState,
-    stated: { readonly inputsHash?: string },
+    stated: PodStated,
     paths: readonly string[],
   ): Promise<Union> {
     const { layout, address } = this.#options;
@@ -2016,7 +2030,23 @@ export class CorePod {
     const bytes = [...whole.files]
       .map(
         ([path, triples]) =>
-          [path, builtFileBytes(layout, address, path, triples)] as const,
+          [
+            path,
+            builtFileBytes(
+              layout,
+              address,
+              path,
+              path === layout.manifest
+                ? manifest(
+                    address + layout.manifest,
+                    stated.title,
+                    pod.at,
+                    stated.snapshot,
+                    inputsHash,
+                  )
+                : triples,
+            ),
+          ] as const,
       )
       .sort(
         ([a], [b]) =>
@@ -2033,7 +2063,6 @@ export class CorePod {
       for (const [path, made] of bytes)
         this.#builtDigests.set(path, hex(await fileDigest(made)));
       this.#toKeep = inputsHash;
-      if (stated.inputsHash !== inputsHash) this.#kept.delete(REVISION);
     }
     return whole.kept.union;
   }
