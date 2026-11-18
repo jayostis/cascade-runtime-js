@@ -25,6 +25,12 @@ pub fn oxigraph_version() -> String {
     env!("OXIGRAPH_VERSION").to_owned()
 }
 
+#[cfg(feature = "panic-probe")]
+#[napi]
+pub fn panics() {
+    panic!("a panic in the binding");
+}
+
 #[napi(object)]
 pub struct JsNamedNode {
     pub term_type: String,

@@ -15,6 +15,10 @@ napi-derive = "3"
 oxigraph = { version = "=0.5.11", default-features = false, features = ["rdf-12"] }
 spargeo = "=0.5.6"
 
+[features]
+# A `panics` export, for the check that a panic in Rust throws a JavaScript error rather than ending the process.
+panic-probe = []
+
 [build-dependencies]
 napi-build = "2"
 

@@ -75,6 +75,8 @@ jobs:
           rustup component add rustfmt clippy
           cargo fmt --check
           cargo clippy --release --locked --target "${{ matrix.target }}" -- -D warnings
+          # A panic that reaches napi's extern "C" callback ends the process, so every export catches it.
+          awk '/#\[napi/ { attribute = $0; getline item; if (item ~ /pub fn/ && attribute !~ /catch_unwind/) { print "no catch_unwind: " item; missed = 1 } } END { exit missed }' src/lib.rs
       - run: cargo build --release --locked --target "${{ matrix.target }}"
       - run: |
           mkdir -p out
@@ -83,18 +85,15 @@ jobs:
         if: matrix.runs
         with:
           node-version: "22"
-      # The file loads on this platform and names the Oxigraph version Cargo.lock pins.
+      # The file loads on this platform, is the Oxigraph Cargo.lock pins, and refuses an option it does not read.
       - if: matrix.runs
+        run: node test/binding.mjs "$PWD/out/oxigraph-native.${{ matrix.asset }}.node"
+      # A build with the panic-probe feature throws a panic in Rust as a JavaScript error, and the process goes on.
+      - if: matrix.asset == 'linux-x64'
         run: |
-          node -e '
-            const binding = require(process.argv[1]);
-            const pinned = /name = "oxigraph"\nversion = "([^"]+)"/.exec(require("fs").readFileSync("Cargo.lock", "utf8"))[1];
-            if (binding.oxigraphVersion() !== pinned) throw new Error(`built with Oxigraph ${binding.oxigraphVersion()}, Cargo.lock pins ${pinned}`);
-            const store = new binding.Store();
-            store.load("<urn:a> <urn:b> <urn:c> .", { format: "text/turtle" });
-            if (store.size !== 1) throw new Error("the store holds " + store.size + " quads after a load of one");
-            console.log("Oxigraph", pinned, "loads on", process.platform, process.arch);
-          ' "$PWD/out/oxigraph-native.${{ matrix.asset }}.node"
+          cargo build --release --locked --target "${{ matrix.target }}" --features panic-probe
+          cp "target/${{ matrix.target }}/release/${{ matrix.built }}" "$RUNNER_TEMP/panic-probe.node"
+          node test/binding.mjs "$RUNNER_TEMP/panic-probe.node" --panic-probe
       - uses: actions/upload-artifact@v7
         with:
           name: oxigraph-native-${{ matrix.asset }}
