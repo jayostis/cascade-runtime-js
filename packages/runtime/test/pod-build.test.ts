@@ -578,7 +578,12 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
     let refused: unknown;
     let records: string[];
     let loadedAll: number;
-    let loadedAllToJudge: number;
+    /** The stores that loaded every record for two stated reads and a judgment, and for a stated read after it; the judgments each read found. */
+    let statedReads: {
+      filed: number;
+      after: number;
+      judgments: readonly number[];
+    };
 
     before(async () => {
       const counting = countingStores();
@@ -638,11 +643,23 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       const judged = opened(await countedCopy(), judging.newStore);
       await judged.dataset(LENS);
       judging.forget();
+      const judgedProfile = `${PREFIXES} SELECT ?judgment WHERE { ?judgment a cascade:Judgment ; prov:hadMember <${profiles[0]}> }`;
+      const before = await judged.selectStated(judgedProfile);
+      await judged.selectStated(
+        `${PREFIXES} SELECT ?record WHERE { ?record a cascade:AllergyOrIntolerance }`,
+      );
       const { refused: judgmentRefused } = await judged.judge(
         aboutJudgment(profiles[0] as string),
       );
       assert.equal(judgmentRefused, undefined);
-      loadedAllToJudge = judging.loadedAll(records);
+      const filed = judging.loadedAll(records);
+      judging.forget();
+      const after = await judged.selectStated(judgedProfile);
+      statedReads = {
+        filed,
+        after: judging.loadedAll(records),
+        judgments: [before.rows.length, after.rows.length],
+      };
       judged.close();
     });
 
@@ -660,8 +677,13 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.equal(loadedAll, 1);
     });
 
-    it("loads the records the pod held into one store, at most, to file a judgment on a pod it has read", () => {
-      assert.ok(loadedAllToJudge <= 1, `${loadedAllToJudge} stores`);
+    it("reads the pod's own files into one store for its stated reads and a judgment's filing, and into another for the build the judgment calls for", () => {
+      assert.equal(statedReads.filed, 2);
+    });
+
+    it("reads the pod's own files again for a stated read after a step, and finds what the step wrote", () => {
+      assert.equal(statedReads.after, 1);
+      assert.deepEqual(statedReads.judgments, [0, 1]);
     });
 
     it("writes for its first entry session the files a build of the whole pod writes", async () => {

@@ -36,7 +36,6 @@ import {
   migrateRuleListVersions,
   openWithTables,
   podCodes,
-  podRows,
   releaseRetractions,
   runMatcher,
 } from "./matcher.js";
@@ -86,6 +85,7 @@ const MATCHER_VIEW = "matcher view";
 const COMPACT_AFTER_MOVED = 2_000_000;
 const REVISION = "revision";
 const KEPT = "kept";
+const STATED = "stated";
 
 export interface CorePodOptions {
   /** The pod's files, named by its address. */
@@ -1223,9 +1223,26 @@ export class CorePod {
     return timed("core-pod.matcherSelect", () => kept.select(query));
   }
 
-  /** The query's rows over the pod's RDF files but those the build writes, with nothing derived: the vocabulary is not read. */
-  selectStated(query: string): Promise<Rows> {
-    return podRows(this.#options, query);
+  /**
+   * The query's rows over the pod's RDF files but those the build writes, with nothing derived: the vocabulary is not
+   * read. The files are read into a store once, kept until the next step, which may change them.
+   */
+  async selectStated(query: string): Promise<Rows> {
+    for (;;) {
+      const held = this.#held(STATED, async () => {
+        const { pod, layout, address, newStore } = this.#options;
+        const union = new Union(newStore());
+        try {
+          await podFiles(pod, layout, address, union);
+        } catch (error) {
+          union.store.free?.();
+          throw error;
+        }
+        return union;
+      });
+      const union = await held;
+      if (this.#kept.get(STATED) === held) return union.select(query);
+    }
   }
 
   /**
@@ -1542,6 +1559,7 @@ export class CorePod {
           matcherView: () => this.#matcherView(),
           releaseMatcherView: () => this.#releaseMatcherView(),
           keptDataset: () => this.#keptOrBuiltWhole(at),
+          selectStated: (query) => this.selectStated(query),
         }),
       ).finally(async () => {
         this.#performing = false;
