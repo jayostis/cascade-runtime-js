@@ -7,7 +7,7 @@ import { featuresOf, readFeature } from "../src/features.js";
 import { MemoryFiles, relative } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { importersNamed } from "../src/importers.js";
-import { MATCHER, readEveryRecord } from "../src/matcher.js";
+import { MATCHER, readEveryRecord, recordsInOneBlock } from "../src/matcher.js";
 import { documentName } from "../src/names.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
@@ -51,7 +51,16 @@ interface Wrote {
   readonly refused?: string;
 }
 
-/** What the step wrote, by path, reading only what a run needs or every record. */
+/** The records a scoped run reads, and binds its comparisons to, in one VALUES block. */
+const BLOCK = 2;
+
+/** The VALUES blocks the scoped runs read and bound records in, the records they held, and the lists split, all told. */
+const blocks = { blocks: 0, records: 0, split: 0 };
+
+/**
+ * What the step wrote, by path, reading only what a run needs, BLOCK records to a VALUES block, or every record, as
+ * many to a block as the runtime takes.
+ */
 async function performed(
   replay: Replay,
   step: Step,
@@ -59,10 +68,17 @@ async function performed(
 ): Promise<Wrote> {
   const fork = await replay.fork();
   readEveryRecord(every);
+  if (!every) recordsInOneBlock(BLOCK);
   try {
-    await fork.perform(step);
+    const { seen } = await probing(() => fork.perform(step));
+    if (!every) {
+      blocks.blocks += seen.counts.get("matcher.valuesBlocks") ?? 0;
+      blocks.records += seen.counts.get("matcher.valuesBlockRecords") ?? 0;
+      blocks.split += seen.counts.get("matcher.valuesListsSplit") ?? 0;
+    }
   } finally {
     readEveryRecord(false);
+    recordsInOneBlock();
   }
   return lastWrote(fork, step);
 }
@@ -316,7 +332,7 @@ async function noteMasterIdentifierRuns(
  * @rule runtime/matcher.feature M1
  * @rule runtime/matcher.feature M4a
  */
-describe("Running the matcher on a step's records alone · CorePod.match(), readEveryRecord()", () => {
+describe("Running the matcher on a step's records alone · CorePod.match(), readEveryRecord(), recordsInOneBlock()", () => {
   describe("given each matcher run that takes records in the stories of the vocabulary's feature files", () => {
     let runs: readonly Compared[];
 
@@ -328,6 +344,17 @@ describe("Running the matcher on a step's records alone · CorePod.match(), read
     it("writes what the same run writes when it reads every record", () => {
       for (const { name, scoped, every } of runs)
         assert.deepEqual(scoped, every, name);
+    });
+
+    it("reads and binds its records in VALUES blocks of at most the number it is given, and writes the same", () => {
+      assert.ok(
+        blocks.split > 0,
+        "no run read or bound more records than a block holds",
+      );
+      assert.ok(
+        blocks.records <= BLOCK * blocks.blocks,
+        `${blocks.records} records in ${blocks.blocks} blocks`,
+      );
     });
   });
 

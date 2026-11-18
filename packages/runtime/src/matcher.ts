@@ -596,6 +596,9 @@ export function readEveryRecord(every: boolean): void {
   everyRecordRead = every;
 }
 
+/** Sets how many records a run reads, or binds a comparison to, in one VALUES block; with none, the runtime's own. */
+export function recordsInOneBlock(_size?: number): void {}
+
 /** The matcher's procedure, M1 to M11, and O1, over the pod as the steps before this one left it. */
 class Matcher {
   /** The reference descriptions the run writes after all its judgments, by path (W1). */
