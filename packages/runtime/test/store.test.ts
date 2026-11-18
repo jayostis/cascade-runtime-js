@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { nTriples, OxigraphStore } from "../src/oxigraph-store.js";
 import { blank, iri, literal, type Triple, written } from "../src/rdf.js";
-import * as oxigraph from "oxigraph";
+import { type OxigraphEngine, usedOxigraph } from "../src/oxigraph-engine.js";
 import { NotTurtle, RestorableUnion, type Store, Union } from "../src/store.js";
 
 const XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer";
@@ -21,6 +21,27 @@ async function quadsOf(store: Store): Promise<string[]> {
         .join(" "),
     )
     .sort();
+}
+
+/** The engine of this run, each store made on it counting its loads in `loads`. */
+function countingLoads(): { readonly engine: OxigraphEngine; loads: number } {
+  const used = usedOxigraph();
+  const counted = {
+    loads: 0,
+    engine: {
+      ...used,
+      newStore: () => {
+        const store = used.newStore();
+        const load = store.load.bind(store);
+        store.load = (...args) => {
+          counted.loads += 1;
+          load(...args);
+        };
+        return store;
+      },
+    },
+  };
+  return counted;
 }
 
 /** A store that holds one graph from Turtle with a relative IRI and a literal in a language, and one made by `add`. */
@@ -329,22 +350,12 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
       for (const [graph, turtle] of files)
         await one.loadTurtle(encoded(turtle), { graph });
       alone = await unlabelled(one);
-      const many = new OxigraphStore();
-      const load = oxigraph.Store.prototype.load;
-      loads = 0;
-      oxigraph.Store.prototype.load = function (
-        ...args: Parameters<typeof load>
-      ) {
-        loads += 1;
-        return load.apply(this, args);
-      };
-      try {
-        await many.loadFiles(
-          files.map(([graph, turtle]) => ({ graph, turtle: encoded(turtle) })),
-        );
-      } finally {
-        oxigraph.Store.prototype.load = load;
-      }
+      const counted = countingLoads();
+      const many = new OxigraphStore({ engine: counted.engine });
+      await many.loadFiles(
+        files.map(([graph, turtle]) => ({ graph, turtle: encoded(turtle) })),
+      );
+      loads = counted.loads;
       together = await unlabelled(many);
       blankNodes = (
         await many.select(
@@ -364,26 +375,14 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
     });
 
     it("loads alone a file that has a directive right after a statement's dot, as `.PREFIX` or `.BASE`, with no failed block load first", async () => {
-      const load = oxigraph.Store.prototype.load;
-      let calls = 0;
-      oxigraph.Store.prototype.load = function (
-        ...args: Parameters<typeof load>
-      ) {
-        calls += 1;
-        return load.apply(this, args);
-      };
-      try {
-        for (const [graph, turtle] of files.filter(([graph]) =>
-          /dot-(prefix|base)/.test(graph),
-        )) {
-          calls = 0;
-          await new OxigraphStore().loadFiles([
-            { graph, turtle: encoded(turtle) },
-          ]);
-          assert.equal(calls, 1, graph);
-        }
-      } finally {
-        oxigraph.Store.prototype.load = load;
+      for (const [graph, turtle] of files.filter(([graph]) =>
+        /dot-(prefix|base)/.test(graph),
+      )) {
+        const counted = countingLoads();
+        await new OxigraphStore({ engine: counted.engine }).loadFiles([
+          { graph, turtle: encoded(turtle) },
+        ]);
+        assert.equal(counted.loads, 1, graph);
       }
     });
 
