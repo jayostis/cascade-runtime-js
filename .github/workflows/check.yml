@@ -134,6 +134,12 @@ jobs:
       - name: Tests of the eval harness in random order
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: node scripts/random-order.mjs evals
+      # The import bench at 1,000 resources against the time each stage of an import may take (import-budget.json: ms on
+      # this Linux runner, about three times the slowest of the CI runs it names). A stage over its budget, or gone from the
+      # run, is measured once more, and fails here, named, only if it is over in both runs.
+      - name: Import time budget
+        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+        run: npm run bench:import -- 1000 --budget packages/cascade-runtime/test/import-budget.json
       # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice. Its JUnit report is
       # read for the test page's shape below, as the `runtime-tests` job reads its own.
       - id: suite

@@ -1,7 +1,7 @@
 import { parseCrate } from "./crate.js";
 import { answersQuery, entries } from "./entries.js";
 import { type Files, readText, under } from "./files.js";
-import { timedAside } from "./probe.js";
+import { counted, timedAside } from "./probe.js";
 import { type Triple, written } from "./rdf.js";
 import type { Union } from "./store.js";
 
@@ -138,6 +138,7 @@ export class Derivations {
             return true;
           });
           await union.add(fresh, DERIVED + lens);
+          counted(`derive.step:${path}.rows`, fresh.length);
           return { path, added: [...kept, ...fresh] };
         }),
       );

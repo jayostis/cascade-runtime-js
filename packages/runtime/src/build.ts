@@ -2,7 +2,7 @@ import { Derivations, type SamesStillJoined, QUERIES } from "./derive.js";
 import { ENTRY_PLACEHOLDER } from "./entries.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
-import { timedAside } from "./probe.js";
+import { counted, probed, timedAside } from "./probe.js";
 import {
   blank,
   iri,
@@ -311,17 +311,22 @@ export async function vocabularyBuild(
         (await timedAside("build.queried.viewsHeld", () => viewsHeld(union)));
       const files = new Map<string, readonly Triple[]>();
       for (const group of groups) {
-        const made = await Promise.all(
-          group
-            .filter(({ file }) => !views.includes(file) || held.has(file))
-            .map(async ({ file, query: path }) => ({
-              file,
-              view: address + file,
-              triples: await timedAside(`build.query:${file}`, () =>
-                union.construct(query(path)),
-              ),
-            })),
+        const todo = group.filter(
+          ({ file }) => !views.includes(file) || held.has(file),
         );
+        const make = async ({ file, query: path }: (typeof todo)[number]) => ({
+          file,
+          view: address + file,
+          triples: await timedAside(`build.query:${file}`, async () => {
+            const rows = await union.construct(query(path));
+            counted(`build.query:${file}.rows`, rows.length);
+            return rows;
+          }),
+        });
+        // A probe times each view alone: run together they wait on one another and each span holds the others.
+        const made: Awaited<ReturnType<typeof make>>[] = [];
+        if (probed()) for (const one of todo) made.push(await make(one));
+        else made.push(...(await Promise.all(todo.map(make))));
         await timedAside("build.queried.written", async () => {
           const owner = entryViews(
             made.filter(({ file }) => views.includes(file)),
