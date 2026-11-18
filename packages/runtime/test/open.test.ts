@@ -5,6 +5,7 @@ import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { References } from "../src/references.js";
+import { deriveWith, vocabularyBuild } from "../src/build.js";
 import { replay } from "../src/replay.js";
 import { randomId } from "../src/ids.js";
 import { ntriples } from "../src/rdf.js";
@@ -481,6 +482,99 @@ describe("Opening a pod with tables other than the ones it was matched with · C
       assert.deepEqual(await justifications(pod, matched.wrote), [
         SAME_VARIATION,
       ]);
+    });
+  });
+
+  describe("given a build kept beside the pod, and tables that newly hold a version the pod names only in its series' file", () => {
+    it("answers, once opened with those tables, as the pod built whole with them does", async () => {
+      const rows: [number, string][] = [[90011, "NM_000249.3:c.2042C>T"]];
+      const older = await variantTables([[V1, rows]]);
+      const newer = await variantTables([
+        [V1, rows],
+        [V2, rows],
+      ]);
+      const vocabularyFiles = await vocabulary();
+      const laidOut = await layout();
+      const incremental = await vocabularyBuild(vocabularyFiles, laidOut);
+      const address = "https://pod.example/";
+      const subject = "urn:uuid:c1643cc9-f0c4-447e-8b47-ecc71130d83b";
+      const files = new MemoryFiles(address);
+      let tick = Date.parse("2026-07-01T09:00:00Z");
+      const podWith = (tables: References, besidePod: MemoryFiles) =>
+        new CorePod({
+          runtime: RUNTIME,
+          pod: files,
+          address,
+          subject,
+          title: "",
+          vocabulary: vocabularyFiles,
+          layout: laidOut,
+          newStore,
+          time: {
+            newId: randomId,
+            now: () => new Date((tick += 60_000)).toISOString(),
+          },
+          importers: [],
+          references: () => Promise.resolve(tables),
+          besidePod,
+          build: {
+            lens: "everyday",
+            derive: deriveWith(incremental),
+            incremental,
+          },
+        });
+      const beside = new MemoryFiles("urn:example:beside/");
+      const first = podWith(older, beside);
+      await first.create();
+      await first.open(older);
+      const variant = (n: number) =>
+        `<urn:cascade:output-${n}> a cascade:GeneticVariantFinding .
+<urn:cascade:output-${n}-version> prov:specializationOf <urn:cascade:output-${n}> ;
+  cascade:hgvsCodingDnaExpression "NM_000249.3:c.2042C>T" ; cascade:patient <${subject}> .`;
+      const { activity } = await first.enter({
+        bytes: new TextEncoder().encode(`@prefix cascade: <${CASCADE}> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<urn:uuid:9d3e7a14-52b8-4c61-a0f2-6e8b1d4c7a95> a prov:Activity ; rdfs:label "entered in the Cascade app" ;
+  prov:qualifiedAssociation [ prov:agent <${address}profile/card.ttl#me> ; prov:hadRole cascade:PatientRole ] .
+${variant(0)}
+${variant(1)}`),
+        base: "https://tables.example/variants.ttl",
+        name: "variants",
+      });
+      assert.deepEqual(
+        await justifications(first, (await first.match(activity)).wrote),
+        [SAME_VARIATION],
+      );
+      first.close();
+      const series = laidOut.place(`${CASCADE}ReferenceSeries`).path(VARIANTS);
+      await files.write(
+        series,
+        new TextEncoder().encode(
+          `${new TextDecoder().decode(await files.read(series))}
+<${V2}> <http://www.w3.org/ns/prov#specializationOf> <${VARIANTS}> ; <http://www.w3.org/ns/prov#wasRevisionOf> <${V1}> .
+`,
+        ),
+      );
+      const kept = podWith(older, beside);
+      await kept.open(older);
+      await kept.keepBuild();
+      kept.close();
+      const JOINED = `SELECT ?judgment ?version WHERE { GRAPH ?g { ?judgment <${CASCADE}membersJoinedByCurrentTableVersion> ?version } }`;
+      const answered = async (pod: CorePod) =>
+        (await (await pod.dataset("everyday")).select(JOINED)).rows.map(
+          (row) => `${row.get("judgment")?.value} ${row.get("version")?.value}`,
+        );
+      const reopened = podWith(newer, beside);
+      const wrote = (await reopened.open(newer)).wrote;
+      const read = await answered(reopened);
+      reopened.close();
+      const whole = await answered(
+        podWith(newer, new MemoryFiles("urn:example:nothing-beside/")),
+      );
+      assert.deepEqual(wrote, []);
+      assert.equal(whole.length, 1);
+      assert.deepEqual(read, whole);
     });
   });
 
