@@ -1,0 +1,21 @@
+[package]
+name = "oxigraph-native"
+version = "0.5.11"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "3", default-features = false, features = ["napi8"] }
+napi-derive = "3"
+oxigraph = { version = "=0.5.11", default-features = false }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
