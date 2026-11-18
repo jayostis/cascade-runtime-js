@@ -2007,10 +2007,11 @@ export class CorePod {
 
   /**
    * The pod built whole for a read, kept as the build the next step continues from and, once the pod closes, beside the
-   * pod (C8), so the next session reads it back. When the manifest names another hash than the build's, as after an
-   * upgrade, the read writes the files the build writes too, the manifest last, as a step would, the manifest as it was
-   * but for the hash, so the pod's revision stays as it was; it writes no file a step does not write, and a write that
-   * fails, as to a pod on a read-only disk, keeps nothing and answers all the same.
+   * pod (C8), so the next session reads it back. The read writes each file the build writes whose bytes the pod does not
+   * hold, the manifest last, as a step would: all of them when the manifest names another hash than the build's, as
+   * after an upgrade, and when it names the build's, those a crash or a sync left holding other bytes. The manifest is
+   * the one the pod held but for the hash, so the pod's revision stays as it was; it writes no file a step does not
+   * write, and a write that fails, as to a pod on a read-only disk, keeps nothing and answers all the same.
    */
   async #builtForRead(
     build: PodBuildOption,
@@ -2054,12 +2055,10 @@ export class CorePod {
         ([a], [b]) =>
           Number(a === layout.manifest) - Number(b === layout.manifest),
       );
-    const written =
-      stated.inputsHash === inputsHash ||
-      (await writeAll(this.#options.pod, bytes).then(
-        () => true,
-        () => false,
-      ));
+    const written = await writeAll(this.#options.pod, bytes).then(
+      () => true,
+      () => false,
+    );
     if (written) {
       this.#builtDigests = new Map();
       for (const [path, made] of bytes)
