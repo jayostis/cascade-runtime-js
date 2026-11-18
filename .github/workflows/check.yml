@@ -134,9 +134,9 @@ jobs:
       - name: Tests of the eval harness in random order
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: node scripts/random-order.mjs evals
-      # The import bench at 1,000 resources against the time each stage of an import may take (import-budget.json, set
-      # from this job's own log at about twice what it took), so a slowdown fails a run: a stage over its budget, or gone
-      # from the run, fails here, named.
+      # The import bench at 1,000 resources against the time each stage of an import may take (import-budget.json: ms on
+      # this Linux runner, about three times the slowest of the CI runs it names). A stage over its budget, or gone from the
+      # run, is measured once more, and fails here, named, only if it is over in both runs.
       - name: Import time budget
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run bench:import -- 1000 --budget packages/cascade-runtime/test/import-budget.json

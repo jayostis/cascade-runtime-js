@@ -363,6 +363,39 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
     });
   });
 
+  describe("given the same pull imported into two pods, one probed, one not", () => {
+    it("holds the same triples, the probe running the views one at a time and a plain import running them together", async () => {
+      const profiles = await profileOf("first");
+      const imported = async (probed: boolean) => {
+        const folder = await mkdtemp(join(tmpdir(), "import-probed-"));
+        const pod = await openPod(folder);
+        try {
+          const pull = () =>
+            pod.import(syntheticPull(40, { hospital: "first" }), {
+              claimProfiles: profiles,
+            });
+          if (probed) await probing(pull);
+          else await pull();
+          return (await pod.ask("record/Which entry shows it"))
+            .map((row) =>
+              JSON.stringify([
+                row.recordLabel,
+                row.entryLabel,
+                String(row.view).split("/").at(-1),
+              ]),
+            )
+            .sort();
+        } finally {
+          await pod.close();
+          await rm(folder, { recursive: true, force: true });
+        }
+      };
+      const plain = await imported(false);
+      assert.ok(plain.length > 0);
+      assert.deepEqual(await imported(true), plain);
+    });
+  });
+
   describe("given a pull of no resources, one, and ten", () => {
     it("saves a Bundle of that many entries, each with an id of its own", () => {
       for (const total of [0, 1, 10]) {

@@ -1,16 +1,19 @@
 {
   "resources": 1000,
+  "unit": "ms",
+  "runner": "GitHub Actions ubuntu (Linux) runner, the tests job",
+  "calibrationRuns": ["44240022377", "44241099253", "44242261562"],
   "stagesMs": {
-    "importMs": 14000,
-    "read.first": 300,
-    "arrivals.convert": 5200,
-    "pod.judge": 600,
-    "pod.match": 6200,
-    "core-pod.step.rebuild:import+judge": 2000,
-    "core-pod.step.rebuild:import": 1500,
-    "core-pod.step.rebuild:match": 1100,
-    "kept.rebuilt.derive": 1400,
-    "build.queried": 1100,
-    "matcher.of": 1300
+    "importMs": 22100,
+    "read.first": 460,
+    "arrivals.convert": 7700,
+    "pod.judge": 960,
+    "pod.match": 10500,
+    "core-pod.step.rebuild:import+judge": 3500,
+    "core-pod.step.rebuild:import": 2410,
+    "core-pod.step.rebuild:match": 1800,
+    "kept.rebuilt.derive": 2340,
+    "build.queried": 1830,
+    "matcher.of": 2190
   }
 }

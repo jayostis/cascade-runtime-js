@@ -704,6 +704,12 @@ function tabulated(seen: Seen): Pick<Measured, "spans" | "counts"> {
 /** The time each stage of an import may take at a size: a run over it fails, so a slowdown shows in CI, not in a report. */
 export interface Budget {
   readonly resources: number;
+  /** The unit of every time here: milliseconds. */
+  readonly unit: "ms";
+  /** The runner the times were taken on, which the budget holds for only. */
+  readonly runner: string;
+  /** The CI runs the budget was set from, each stage's budget being about three times its slowest. */
+  readonly calibrationRuns: readonly string[];
   /** Milliseconds by stage: `importMs` is the whole import, any other a span's inclusive time, which the run must have. */
   readonly stagesMs: Readonly<Record<string, number>>;
 }
@@ -711,7 +717,7 @@ export interface Budget {
 /** Each stage of the budget with the time the run took and whether it is within, and what the run lacks that the budget names. */
 export function againstBudget(
   run: Measured,
-  budget: Budget,
+  budget: Pick<Budget, "resources" | "stagesMs">,
 ): {
   stage: string;
   ms: number | undefined;
@@ -772,27 +778,44 @@ export function tableOf(run: Measured): string {
   return lines.join("\n");
 }
 
-/** Prints each budgeted stage of the run against its budget, and fails the process, naming them, if any is over or missing. */
-async function checkBudget(run: Measured, file: string): Promise<void> {
+/**
+ * Prints each budgeted stage of the run against its budget. A stage over, or gone from the run, is taken again: `again`
+ * runs the bench once more and the process fails, naming them, only for a stage that is over or missing in both runs, as a
+ * runner's slow minute is not a slowdown.
+ */
+async function checkBudget(
+  run: Measured,
+  file: string,
+  again: () => Promise<Measured>,
+): Promise<void> {
   const budget = JSON.parse(await readFile(file, "utf8")) as Budget;
   if (run.resources !== budget.resources)
     throw new Error(
       `${file} is the budget of ${budget.resources} resources, not ${run.resources}`,
     );
-  const rows = againstBudget(run, budget);
-  const lines = [
-    `stage budget at ${run.resources} resources (ms; ${file})`,
-    ...rows.map(
-      ({ stage, ms, budgetMs, within }) =>
-        `  ${within ? "ok  " : "OVER"} ${stage.padEnd(40)} ${String(ms ?? "missing").padStart(9)} of ${String(budgetMs).padStart(7)}`,
-    ),
-  ];
-  process.stdout.write(`${lines.join("\n")}\n\n`);
-  const over = rows.filter(({ within }) => !within);
-  if (over.length > 0) {
-    process.stderr.write(
-      `over budget: ${over.map(({ stage }) => stage).join(", ")}\n`,
+  const print = (title: string, rows: ReturnType<typeof againstBudget>) =>
+    process.stdout.write(
+      `${[
+        `${title} at ${run.resources} resources (${budget.unit}; ${file})`,
+        ...rows.map(
+          ({ stage, ms, budgetMs, within }) =>
+            `  ${within ? "ok  " : "OVER"} ${stage.padEnd(40)} ${String(ms ?? "missing").padStart(9)} of ${String(budgetMs).padStart(7)}`,
+        ),
+      ].join("\n")}\n\n`,
     );
+  const first = againstBudget(run, budget);
+  print("stage budget", first);
+  if (first.every(({ within }) => within)) return;
+  process.stdout.write(
+    "over budget in the first run: running the bench again\n",
+  );
+  const second = againstBudget(await again(), budget);
+  print("stage budget, second run", second);
+  const over = first
+    .filter(({ within }, at) => !within && !(second[at]?.within ?? true))
+    .map(({ stage }) => stage);
+  if (over.length > 0) {
+    process.stderr.write(`over budget in both runs: ${over.join(", ")}\n`);
     process.exitCode = 1;
   }
 }
@@ -804,6 +827,14 @@ async function main(args: string[]): Promise<void> {
   const imports = series === -1 ? 0 : Number(args[series + 1]);
   const budgeted = args.indexOf("--budget");
   const budgetFile = budgeted === -1 ? undefined : args[budgeted + 1];
+  if (
+    budgeted !== -1 &&
+    (budgetFile === undefined || budgetFile.startsWith("--"))
+  ) {
+    process.stderr.write("--budget needs the path of a budget file\n");
+    process.exitCode = 2;
+    return;
+  }
   const sizes = args
     .filter(
       (arg, index) =>
@@ -828,14 +859,17 @@ async function main(args: string[]): Promise<void> {
       process.stdout.write(`${JSON.stringify(opened)}
 `);
     } else {
-      const run = args.includes("--read-reopened")
-        ? await reopenedReadBench(size)
-        : await importBench(size, {
-            second: args.includes("--second"),
-            reopen: args.includes("--reopen"),
-          });
+      const once = () =>
+        args.includes("--read-reopened")
+          ? reopenedReadBench(size)
+          : importBench(size, {
+              second: args.includes("--second"),
+              reopen: args.includes("--reopen"),
+            });
+      const run = await once();
       runs.push(run);
-      if (budgetFile !== undefined) await checkBudget(run, budgetFile);
+      if (budgetFile !== undefined)
+        await checkBudget(run, budgetFile, once as () => Promise<Measured>);
       process.stdout.write(`${tableOf(run)}
 
 `);
