@@ -154,6 +154,8 @@ export class KeptBuild {
   #builtOut = false;
   /** The layout's triples, each blank node the node the union held, while it is out of the union. */
   #layoutOut: readonly Triple[] = [];
+  /** The quads the steps have put in the union in place of others since `moved` was last read. */
+  #moved = 0;
   #held: ReadonlySet<string>;
   /** The subjects of the derived state that are no record's, its version's or revision's, or its entry's. */
   #globalDerived: Set<string>;
@@ -651,6 +653,7 @@ export class KeptBuild {
     if (this.#builtOut) return;
     await this.#union.removeSubjects(graph, gone);
     await this.#union.add(fresh, graph);
+    this.#moved += fresh.length;
   }
 
   /** Puts the triples in the graph of the type index or the manifest in place of what it held. */
@@ -662,6 +665,7 @@ export class KeptBuild {
     if (this.#builtOut) return;
     await this.#union.drop(graph);
     await this.#union.add(triples, graph);
+    this.#moved += triples.length;
   }
 
   /** Each file the build writes, by its path, as the build or the last step wrote it. */
@@ -712,6 +716,16 @@ export class KeptBuild {
     this.#layoutOut = [];
     this.#builtOut = false;
     counted("view.quadsMoved", moved);
+    return moved;
+  }
+
+  /**
+   * The quads the steps since this was last read put in the union in place of others: a store keeps something of each
+   * quad it removes, so the pod moves the build to a store of its own after enough of them.
+   */
+  moved(): number {
+    const moved = this.#moved;
+    this.#moved = 0;
     return moved;
   }
 
@@ -1189,13 +1203,12 @@ export class KeptBuild {
       ...oldEntries,
       ...this.#globalDerived,
     ]);
-    await union.add(
-      added.filter(
-        ([subject]) =>
-          inScope.has(subject.value) || candidates.has(subject.value),
-      ),
-      derivedGraph,
+    const derivedAdded = added.filter(
+      ([subject]) =>
+        inScope.has(subject.value) || candidates.has(subject.value),
     );
+    await union.add(derivedAdded, derivedGraph);
+    this.#moved += derivedAdded.length;
     this.#globalDerived = candidates;
 
     // The views.

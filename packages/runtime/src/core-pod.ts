@@ -5,7 +5,7 @@ import {
   fileEntry,
   fileExport,
 } from "./arrivals.js";
-import { countedQuery, timed, timedAside } from "./probe.js";
+import { counted, countedQuery, timed, timedAside } from "./probe.js";
 import type { AdaptersOf, ConvertBudget } from "./bridge.js";
 import {
   builtFileBytes,
@@ -79,10 +79,10 @@ const TYPE = `${RDF}type`;
 const DATASET = "dataset:";
 const MATCHER_VIEW = "matcher view";
 /**
- * The quads the matcher's views may remove from the kept build's store and add again before the build moves to a store
- * of its own: about 12 lends at 10,000 records, each moving some 175,000 quads.
+ * The quads the matcher's views and the steps' rebuilds may remove from the kept build's store and add again before the
+ * build moves to a store of its own.
  */
-const COMPACT_AFTER_MOVED = 2_000_000;
+const COMPACT_AFTER_MOVED = 100_000;
 const REVISION = "revision";
 const KEPT = "kept";
 const STATED = "stated";
@@ -1443,6 +1443,11 @@ export class CorePod {
     }
     if (view.store !== this.#built?.union.store) return;
     this.#movedInBuilt += view.moved;
+    await this.#compactedIfMoved();
+  }
+
+  /** Moves the kept build to a store of its own once the quads removed from its store and added again are enough. */
+  async #compactedIfMoved(): Promise<void> {
     if (
       this.#movedInBuilt >=
       (this.#options.build?.renewAfterMoved ?? COMPACT_AFTER_MOVED)
@@ -1482,9 +1487,10 @@ export class CorePod {
   async #compactBuilt(): Promise<void> {
     const built = this.#built;
     if (built === undefined) return;
+    counted("core-pod.compactions");
     const was = built.union;
     try {
-      await built.compact();
+      await timedAside("core-pod.compact", () => built.compact());
     } catch (error) {
       this.#dropDatasets(was.store);
       throw error;
@@ -2473,6 +2479,10 @@ export class CorePod {
         }
       if (verifying !== undefined)
         await this.#verified(rebuilding, state, verifying);
+      if (built === this.#built) {
+        this.#movedInBuilt += built.moved();
+        await this.#compactedIfMoved();
+      }
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
       this.#builtHash = inputsHash;
       this.#toKeep = inputsHash;
