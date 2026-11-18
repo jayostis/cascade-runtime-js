@@ -394,7 +394,9 @@ export class Revisions {
       const listed = await Promise.all(
         folders.map((folder) => pod.list(folder)),
       );
-      await podFiles(pod, layout, pod.iri, union, listed.flat());
+      await timedAside("arrivals.records.podFiles", () =>
+        podFiles(pod, layout, pod.iri, union, listed.flat()),
+      );
       dataset = union;
       base = pod.iri;
     } else {
@@ -591,7 +593,9 @@ export class Revisions {
         )
         .filter((path) => folders.some((folder) => path.startsWith(folder)));
       const union = new Union(context.newStore());
-      await podFiles(context.pod, layout, context.address, union, shared);
+      await timedAside("arrivals.shared.podFiles", () =>
+        podFiles(context.pod, layout, context.address, union, shared),
+      );
       return union;
     })();
     return this.#shared;
@@ -610,7 +614,9 @@ export class Revisions {
     const paths = records.flatMap((record) => [
       ...(this.#recordFiles.get(record) ?? []),
     ]);
-    await podFiles(context.pod, this.layout, context.address, union, paths);
+    await timedAside("arrivals.current.podFiles", () =>
+      podFiles(context.pod, this.layout, context.address, union, paths),
+    );
     graphs.push(...paths.map((path) => context.address + path));
     for (const record of records)
       for (const [path, bytes] of this.#pending.get(record) ?? []) {

@@ -508,7 +508,9 @@ export class KeptBuild {
       (path) => !clinical.some((folder) => path.startsWith(folder)),
     );
     const scope = new Union(newStore());
-    await podFiles(pod, layout, address, scope, paths);
+    await timedAside("kept.scoped.podFiles", () =>
+      podFiles(pod, layout, address, scope, paths),
+    );
     for (const path of paths) this.#scopeLoaded.add(path);
     await this.#learnJudging(scope, paths);
     this.#scope = scope;
