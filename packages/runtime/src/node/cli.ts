@@ -162,7 +162,10 @@ async function conformance(args: string[]): Promise<number> {
       : [];
   const assertions =
     shards.length > 1
-      ? await shardedRun(shards, values.folder)
+      ? await shardedRun(shards, values.folder, {
+          iri: files.iri,
+          features: await featuresOf(files),
+        })
       : await conformed(files, values.feature, config.importers);
   if (values.assertions !== undefined) {
     await writeFile(values.assertions, JSON.stringify(assertions));
@@ -208,20 +211,27 @@ async function shardsOf(files: FolderFiles, jobs: number): Promise<string[][]> {
   return shards.map(({ paths }) => paths);
 }
 
-/** Each shard run as a child of this command, beside the others; its assertions come back in the shards' order. */
+/**
+ * Each shard run as a child of this command, beside the others, with the flags this process runs under; its assertions
+ * come back in the order of `order`, the vocabulary's feature files, however many shards there are. When one fails the
+ * others are stopped and have ended before the folder they write to is removed.
+ */
 async function shardedRun(
   shards: readonly (readonly string[])[],
   folders: readonly string[],
+  order: { readonly iri: string; readonly features: readonly string[] },
 ): Promise<Assertion[]> {
   const out = await mkdtemp(join(tmpdir(), "conformance-shards-"));
+  const stop = new AbortController();
   try {
-    const ran = await Promise.all(
+    const ran = await Promise.allSettled(
       shards.map(async (features, index) => {
         const written = join(out, `${index}.json`);
         try {
           await promisify(execFile)(
             process.execPath,
             [
+              ...process.execArgv,
               fileURLToPath(import.meta.url),
               "conformance",
               "--assertions",
@@ -229,9 +239,10 @@ async function shardedRun(
               ...features.flatMap((feature) => ["--feature", feature]),
               ...folders.flatMap((folder) => ["--folder", folder]),
             ],
-            { maxBuffer: 64 * 1024 * 1024 },
+            { maxBuffer: 64 * 1024 * 1024, signal: stop.signal },
           );
         } catch (error) {
+          stop.abort();
           const { stderr } = error as { stderr?: string };
           throw new Error(
             `the conformance run of ${features.join(", ")} failed: ${stderr?.trim() || String(error)}`,
@@ -241,7 +252,37 @@ async function shardedRun(
         return JSON.parse(await readFile(written, "utf8")) as Assertion[];
       }),
     );
-    return ran.flat();
+    // The first to fail aborted the rest, which reject as aborted: the failure reported is the first that is not that.
+    const failed = ran.filter(
+      (each): each is PromiseRejectedResult => each.status === "rejected",
+    );
+    const cause =
+      failed.find(
+        ({ reason }) =>
+          (reason as { cause?: { name?: string } }).cause?.name !==
+          "AbortError",
+      ) ?? failed[0];
+    if (cause !== undefined) throw cause.reason;
+    const rank = (test: string): number => {
+      const path = test.slice(order.iri.length);
+      const own = order.features.findIndex((feature) =>
+        path.startsWith(feature),
+      );
+      return own >= 0
+        ? own
+        : order.features.findIndex((feature) =>
+            path.startsWith(`${folderOf(feature)}/`),
+          );
+    };
+    return ran
+      .flatMap((each) => (each.status === "fulfilled" ? each.value : []))
+      .map((assertion) => ({ assertion, at: rank(assertion.test) }))
+      .sort(
+        (x, y) =>
+          (x.at < 0 ? Number.MAX_SAFE_INTEGER : x.at) -
+          (y.at < 0 ? Number.MAX_SAFE_INTEGER : y.at),
+      )
+      .map(({ assertion }) => assertion);
   } finally {
     await rm(out, { recursive: true, force: true });
   }

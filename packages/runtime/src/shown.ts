@@ -190,15 +190,19 @@ async function nameTaken(
     : undefined;
 }
 
-/** The predicates the machine-basis shape reads of a judgment; the rest of what it states cannot change its answer. */
+/** The predicates the machine-basis shape reads of a judgment, subclass statements included for its `sh:class`; the rest of what it states cannot change its answer. */
 const BASIS_READS = new Set([
   RDF + "type",
+  "http://www.w3.org/2000/01/rdf-schema#subClassOf",
   `${CASCADE}basis`,
   `${PROV}wasAttributedTo`,
 ]);
 
-/** What the machine-basis shape answered, by the shapes asked and the statements it reads: a judgment is checked to prepare it and again to file it. */
-const basisChecked = new WeakMap<object, Map<string, ShapeResult[]>>();
+/** What the machine-basis shape last answered, by the shapes asked and the statements it reads: a judgment is checked to prepare it and again to file it, and nothing else asks again. */
+const basisChecked = new WeakMap<
+  object,
+  { key: string; results: readonly ShapeResult[] }
+>();
 
 async function basisResults(
   shapes: Pick<Shapes, "resultsOf">,
@@ -212,15 +216,13 @@ async function basisResults(
       .map((triple) => triple.map(written).join(" "))
       .sort(),
   ]);
-  let answers = basisChecked.get(shapes);
-  if (answers === undefined) basisChecked.set(shapes, (answers = new Map()));
-  const held = answers.get(key);
-  if (held !== undefined) return held;
+  const held = basisChecked.get(shapes);
+  if (held?.key === key) return [...held.results];
   counted("shapes.machine-basis-check");
   const results = await shapes.resultsOf(`${CASCADE}MachineBasisShape`, [
     ...triples,
   ]);
-  answers.set(key, results);
+  basisChecked.set(shapes, { key, results: [...results] });
   return results;
 }
 

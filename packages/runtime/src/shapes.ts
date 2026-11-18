@@ -66,7 +66,7 @@ export class Shapes {
 
   /**
    * The shapes the vocabulary's ontology files give. What a set of files parses to is parsed once for the process,
-   * by their paths and text: each read gets a validator and stores of its own, so no use of one shows in another.
+   * by their paths and the digest of their text, the latest of each set of paths: each read gets a validator and stores of its own, so no use of one shows in another.
    */
   static async read(
     vocabulary: Files,
@@ -76,16 +76,31 @@ export class Shapes {
     for (const path of await vocabulary.list(ONTOLOGIES))
       if (path.endsWith(".ttl"))
         sources.push([path, await readText(vocabulary, path)]);
-    const key = JSON.stringify([vocabulary.iri, sources]);
-    let reading = parsed.get(key);
-    if (reading === undefined) {
-      reading = parseShapes(sources, vocabulary, newStore);
-      parsed.set(key, reading);
+    const slot = JSON.stringify([
+      vocabulary.iri,
+      sources.map(([path]) => path),
+    ]);
+    const digest = [
+      ...new Uint8Array(
+        await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(JSON.stringify(sources)),
+        ),
+      ),
+    ]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    let held = parsed.get(slot);
+    if (held?.digest !== digest) {
+      const reading = parseShapes(sources, vocabulary, newStore);
+      held = { digest, reading };
+      parsed.set(slot, held);
+      const mine = held;
       reading.catch(() => {
-        if (parsed.get(key) === reading) parsed.delete(key);
+        if (parsed.get(slot) === mine) parsed.delete(slot);
       });
     }
-    const { rest, constraints, terms } = await reading;
+    const { rest, constraints, terms } = await held.reading;
     return new Shapes(
       new SHACLValidator(dataset(rest)),
       constraints,
@@ -206,7 +221,11 @@ interface ParsedShapes {
   readonly terms: readonly Triple[];
 }
 
-const parsed = new Map<string, Promise<ParsedShapes>>();
+/** The latest parse of each set of paths, with a digest of the text it was made from: a set whose text changed is parsed again and the old parse let go. */
+const parsed = new Map<
+  string,
+  { digest: string; reading: Promise<ParsedShapes> }
+>();
 
 async function parseShapes(
   sources: readonly (readonly [string, string])[],
