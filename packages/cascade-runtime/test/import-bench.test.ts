@@ -109,13 +109,18 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         assert.ok((run.counts[name] ?? 0) > 0, `${name} was not counted`);
     });
 
-    it("reports each matcher rule that ran by its justification, with its store queries", () => {
+    it("reports each matcher rule that ran by its justification, with its store queries, none for a rule that applies to no record the import began and has no row", () => {
       const rules = run.spans.filter(({ name }) =>
         name.startsWith("matcher.rule:"),
       );
       assert.ok(rules.length > 0);
+      const queried = rules.filter(
+        ({ name }) => (run.counts[`${name}.store.queries`] ?? 0) > 0,
+      );
+      assert.ok(queried.length > 0);
       for (const { name } of rules)
-        assert.ok((run.counts[`${name}.store.queries`] ?? 0) > 0, name);
+        if (!queried.some((rule) => rule.name === name))
+          assert.equal(run.counts[`${name}.rows`], 0, name);
     });
 
     it("binds into a comparison's text only the records the import began that its rule applies to", () => {
