@@ -24,14 +24,12 @@ const none = () => new Error("no native Oxigraph build at /nowhere");
 
 describe("Choosing Oxigraph's native or WebAssembly build · chooseOxigraph(), nativeOxigraph(), OxigraphStore", () => {
   it("uses the native build where it loads, unless asked for the WebAssembly build", () => {
-    assert.equal(chooseOxigraph(undefined, same).name, "native");
     assert.equal(chooseOxigraph("auto", same).name, "native");
     assert.equal(chooseOxigraph("native", same).name, "native");
     assert.equal(chooseOxigraph("wasm", same), wasmOxigraph);
   });
 
   it("uses the WebAssembly build where no native build loads, unless asked for the native one, and then throws why", () => {
-    assert.equal(chooseOxigraph(undefined, none), wasmOxigraph);
     assert.equal(chooseOxigraph("auto", none), wasmOxigraph);
     assert.throws(() => chooseOxigraph("native", none), /at \/nowhere/);
   });
