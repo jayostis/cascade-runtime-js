@@ -2367,9 +2367,10 @@ export class CorePod {
       )
         read.push(file);
     const whole = await KeptBuild.whole(rebuilding, state);
+    const union = await built.unionWhole();
     const back = await KeptBuild.readBack(rebuilding, state, {
-      store: await built.union.store.dump(),
-      graphs: [...built.union.graphs],
+      store: await union.store.dump(),
+      graphs: [...union.graphs],
       read,
       paths: [...built.paths],
     });
@@ -2414,7 +2415,7 @@ export class CorePod {
           change.written.length === 0 &&
           given.inputsHash !== undefined &&
           given.inputsHash === this.#builtHash &&
-          (await this.#hashCovers(stepping.union, [...read]))
+          (await this.#hashCovers(await stepping.unionWhole(), [...read]))
             ? { written: [] }
             : change;
         files = await timedAside("kept.step", () =>
