@@ -3,7 +3,11 @@ import { before, describe, it } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
 import { reachedIn } from "../src/arrivals.js";
-import { BridgeError, type LoadedAdapter } from "../src/bridge.js";
+import {
+  BridgeError,
+  type ConvertOptions,
+  type LoadedAdapter,
+} from "../src/bridge.js";
 import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { StoryTime } from "../src/ids.js";
@@ -366,6 +370,23 @@ async function adaStoredBytes(
  * @rule runtime/naming.feature N4
  */
 describe("Turning an adapter's arrivals into revisions · CorePod.import(), reachedIn()", () => {
+  describe("given an adapter that says what its convert was asked for", () => {
+    it("asks the Bridge for the graph alone: neither the conversion findings nor the census", async () => {
+      const asked: (ConvertOptions | undefined)[] = [];
+      await importWith({
+        accepts: () => Promise.resolve(true),
+        convert: (_document, options) => {
+          asked.push(options);
+          return Promise.reject(new BridgeError("document", "asked"));
+        },
+        free: () => Promise.resolve(),
+      });
+      assert.equal(asked.length, 1);
+      assert.equal(asked[0]?.findings, undefined);
+      assert.equal(asked[0]?.census, undefined);
+    });
+  });
+
   describe("given an arrival whose selector has statements of its own, as a blank node or as a node named by an IRI", () => {
     let saved: Replayed;
     let named: Replayed;

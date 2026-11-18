@@ -81,11 +81,19 @@ export interface ConvertBudget {
 
 export interface ConvertOptions extends ConvertBudget {
   readonly format?: Format;
+  /** Asks for the conversion findings but the census: what the adapter's queries, schemas and accounting report. */
+  readonly findings?: boolean;
+  /** Asks for the census: a finding for each path of a record that the adapter's accounting does not name. */
+  readonly census?: boolean;
 }
+
+/** Asks for every conversion finding, the census among them, as a kit saves them. */
+export const EVERY_FINDING = { findings: true, census: true } as const;
 
 export interface Conversion {
   readonly graph: Uint8Array;
-  readonly findings: Uint8Array;
+  /** The findings the convert asked for; absent where it asked for none, or the graph went unvalidated. */
+  readonly findings?: Uint8Array;
   /** Set when the adapter names vocabulary files and was loaded with none, so the graph went unvalidated. */
   readonly unvalidated?: string;
 }
