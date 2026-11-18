@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -143,26 +144,95 @@ async function resolve(): Promise<ResolvedParts> {
   const { version } = JSON.parse(
     await readFile(join(PACKAGE, "package.json"), "utf8"),
   ) as { version: string };
-  return keptBeside(parts, version);
+  return keptBeside(parts, version, () => builtCode(PACKAGE));
 }
 
 /**
  * The parts with what a pod in a folder keeps beside it: its answers, when a packed build of the runtime at a commit
  * computes them, and its build wherever the runtime (N7) and the components it runs are each at a commit, since the
- * build's hash names the runtime by its IRI. A runtime with changes outside a commit keeps neither.
+ * build's hash names the runtime by its IRI; a checkout's build under its built code too, which no commit holds, so code
+ * built before a pull or a switch of branch keeps no build under the new commit's name. A runtime with changes outside a
+ * commit keeps neither.
  */
-export function keptBeside<
+export async function keptBeside<
   P extends {
     readonly performer: string;
     readonly local: { readonly resolved: { readonly uncommitted?: number } };
   },
->(parts: P, version: string): P & Pick<Parts, "answers" | "builtBeside"> {
+>(
+  parts: P,
+  version: string,
+  code: () => Promise<string>,
+): Promise<P & Pick<Parts, "answers" | "builtBeside" | "builtCode">> {
   const clean = parts.local.resolved.uncommitted === 0;
   if (clean && /-commit-[0-9a-f]+$/.test(version))
     return { ...parts, answers: { runtime: version, at: answersBeside } };
   return clean && !parts.performer.includes("#")
-    ? { ...parts, builtBeside: answersBeside }
+    ? { ...parts, builtBeside: answersBeside, builtCode: await code() }
     : parts;
+}
+
+/**
+ * The SHA-256, in hex, of the code a checkout's package in the folder runs: each file built under `dist/src` of it and of
+ * each package of the checkout it depends on, by name, its source maps and declarations aside.
+ */
+export async function builtCode(folder: string): Promise<string> {
+  const packages = dirname(absolute(folder));
+  const named = new Map<string, { folder: string; depends: string[] }>();
+  for (const entry of await readdir(packages, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const at = join(packages, entry.name);
+    const manifest = await readFile(join(at, "package.json"), "utf8").catch(
+      () => undefined,
+    );
+    if (manifest === undefined) continue;
+    const { name, dependencies } = JSON.parse(manifest) as {
+      name?: string;
+      dependencies?: Record<string, string>;
+    };
+    if (name !== undefined)
+      named.set(name, { folder: at, depends: Object.keys(dependencies ?? {}) });
+  }
+  const own = [...named.values()].find(
+    (found) => absolute(found.folder) === absolute(folder),
+  );
+  const runs = new Set<string>();
+  const reach = (found: { folder: string; depends: string[] } | undefined) => {
+    if (found === undefined || runs.has(found.folder)) return;
+    runs.add(found.folder);
+    for (const name of found.depends) reach(named.get(name));
+  };
+  reach(own);
+  const paths = (
+    await Promise.all(
+      [...runs].map(async (at) =>
+        (
+          await readdir(join(at, "dist", "src"), {
+            recursive: true,
+            withFileTypes: true,
+          }).catch(() => [])
+        )
+          .filter(
+            (entry) =>
+              entry.isFile() &&
+              !entry.name.endsWith(".map") &&
+              !entry.name.endsWith(".d.ts"),
+          )
+          .map((entry) => join(entry.parentPath, entry.name)),
+      ),
+    )
+  )
+    .flat()
+    .sort();
+  const read = await Promise.all(paths.map((path) => readFile(path)));
+  const hash = createHash("sha256");
+  for (const [index, path] of paths.entries()) {
+    hash.update(`${path.slice(packages.length)}`);
+    hash.update(new Uint8Array([0]));
+    hash.update(read[index] as Uint8Array);
+    hash.update(new Uint8Array([0]));
+  }
+  return hash.digest("hex");
 }
 
 /** What a pod is opened with over the components, folders on disk; nothing is kept. */

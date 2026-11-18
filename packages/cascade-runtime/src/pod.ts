@@ -363,6 +363,8 @@ export interface Parts {
   readonly answers?: AnswerStore;
   /** Where the build of a pod in a folder is kept beside it when its answers are not; none when it may not be. */
   readonly builtBeside?: (folder: string) => Files;
+  /** What the code that runs is, by its bytes, where the performer does not name it exactly; a kept build names it. */
+  readonly builtCode?: string;
   /** The export or download at the path, as the files it is in and its name there, or why no path is read. */
   exportAt(path: string): Export | string;
   loadBridge(): Promise<LoadedBridge>;
@@ -1337,6 +1339,7 @@ function coreOver(
       : { keepHead: (kept: Head) => parts.tables.keepHead(address, kept) }),
     references: () => Promise.resolve(references),
     ...(beside === undefined ? {} : { besidePod: beside }),
+    ...(parts.builtCode === undefined ? {} : { builtCode: parts.builtCode }),
     build: {
       lens: parts.lens,
       derive: async (store, lens, pod, samesStillJoined) => {

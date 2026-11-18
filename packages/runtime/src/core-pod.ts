@@ -124,6 +124,11 @@ export interface CorePodOptions {
    * its build back instead of building it whole when the hash is still the pod's (C8).
    */
   readonly besidePod?: Files;
+  /**
+   * What the code that runs is, by its bytes, where `runtime` does not name it exactly, as for a runtime run from a
+   * checkout, whose built code is not committed; the hash of what a build read names it too.
+   */
+  readonly builtCode?: string;
 }
 
 /**
@@ -1874,7 +1879,7 @@ export class CorePod {
     incremental: VocabularyBuild,
     read: readonly string[],
   ): Promise<string | undefined> {
-    const { pod, layout, address, runtime, besidePod, vocabulary } =
+    const { pod, layout, address, runtime, builtCode, besidePod, vocabulary } =
       this.#options;
     if (besidePod === undefined) return undefined;
     return timedAside("core-pod.inputsHash", async () => {
@@ -1883,6 +1888,7 @@ export class CorePod {
           new TextEncoder().encode(
             JSON.stringify([
               runtime,
+              builtCode ?? null,
               build.lens,
               address,
               incremental.derivations.for(build.lens).map(({ query }) => query),
