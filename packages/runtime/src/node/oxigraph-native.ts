@@ -20,7 +20,16 @@ export const OXIGRAPH_NATIVE_RELEASE = "oxigraph-native-v0.5.11";
  * fetches no asset, and loads no kept file, whose sha256 is not the one here; until the release's are committed, a run
  * uses the WebAssembly build.
  */
-export const OXIGRAPH_NATIVE_SHA256: Readonly<Record<string, string>> = {};
+export const OXIGRAPH_NATIVE_SHA256: Readonly<Record<string, string>> = {
+  "oxigraph-native.darwin-arm64.node":
+    "1fffb2ebdfc698d42538f9ea66167e3daf3a10a2522a92514f33df2a629f7dfe",
+  "oxigraph-native.darwin-x64.node":
+    "75e4945caa2ad4e54c7dd7f2dfbfa7b5651a54e40a56bcb8c1e63c849ab8cfb3",
+  "oxigraph-native.linux-x64.node":
+    "0c68f6f8c47a06b837689a3eb711b9fc0696ae61d70f7f0382543eba9d4747f1",
+  "oxigraph-native.win32-x64.node":
+    "b61d91cc6b39eb866104b26315072c811f98d03a9bf969d1376fd6be528c7716",
+};
 const RELEASES =
   "https://github.com/jayostis/cascade-runtime-js/releases/download";
 /** Which engine a run uses: `native`, `wasm`, or, unset or `auto`, native where it loads and wasm elsewhere. */
