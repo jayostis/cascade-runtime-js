@@ -269,7 +269,19 @@ async function subjectRecords(
   subject: string,
   only?: readonly string[],
 ): Promise<TakenRecord[]> {
-  if (only?.length === 0) return [];
+  if (only === undefined) return subjectRecordsIn(dataset, subject);
+  if (only.length === 0) return [];
+  const found: TakenRecord[] = [];
+  for (const block of inBlocks(only))
+    found.push(...(await subjectRecordsIn(dataset, subject, block)));
+  return found;
+}
+
+async function subjectRecordsIn(
+  dataset: Dataset,
+  subject: string,
+  only?: readonly string[],
+): Promise<TakenRecord[]> {
   const named =
     only === undefined
       ? ""
@@ -561,7 +573,7 @@ export async function namedVersions(
  * only the origins given.
  */
 async function joins(
-  rowsOf: (query: string) => Promise<readonly Row[]>,
+  rowsOf: (rule: MatcherRule, query: string) => Promise<readonly Row[]>,
   found: readonly { rule: MatcherRule; text: string }[],
   loaded: ReadonlyMap<string, ReadonlySet<string>>,
   kept: ReadonlySet<string>,
@@ -569,7 +581,7 @@ async function joins(
   const all = new Map<string, Map<string, Set<string>>>();
   for (const { rule, text } of found) {
     const rows = await timed(`matcher.rule:${rule.justification}`, () =>
-      rowsOf(text),
+      rowsOf(rule, text),
     );
     counted(`matcher.rule:${rule.justification}.rows`, rows.length);
     const pairs = new Map<string, Set<string>>();
@@ -594,6 +606,28 @@ let everyRecordRead = false;
 /** Makes every run read every record, or only what it reaches: a test compares the two, which write alike. */
 export function readEveryRecord(every: boolean): void {
   everyRecordRead = every;
+}
+
+/** The most records a run reads, or binds a comparison to, in one VALUES block. */
+const RECORDS_IN_ONE_BLOCK = 4096;
+let recordsInABlock = RECORDS_IN_ONE_BLOCK;
+
+/** Sets how many records a run reads, or binds a comparison to, in one VALUES block; with none, the runtime's own. */
+export function recordsInOneBlock(size = RECORDS_IN_ONE_BLOCK): void {
+  recordsInABlock = size;
+}
+
+/** The records in blocks of at most `recordsInOneBlock`, in order; none is one empty block. */
+function inBlocks(records: readonly string[]): string[][] {
+  const blocks: string[][] = [];
+  for (let at = 0; at < records.length || at === 0; at += recordsInABlock) {
+    const block = records.slice(at, at + recordsInABlock);
+    counted("matcher.valuesBlocks");
+    counted("matcher.valuesBlockRecords", block.length);
+    blocks.push(block);
+  }
+  if (blocks.length > 1) counted("matcher.valuesListsSplit");
+  return blocks;
 }
 
 /** The matcher's procedure, M1 to M11, and O1, over the pod as the steps before this one left it. */
@@ -746,27 +780,47 @@ class Matcher {
         );
       }
       const selected = new Map<string, Promise<readonly Row[]>>();
-      const rowsOf = (query: string): Promise<readonly Row[]> => {
-        let rows = selected.get(query);
+      const rowsOf = (
+        rule: MatcherRule,
+        query: string,
+      ): Promise<readonly Row[]> => {
+        const records = bound?.filter((name) => {
+          const record = pod.records.get(name);
+          return record !== undefined && applies(rule, record);
+        });
+        const key =
+          records === undefined
+            ? query
+            : `${[...rule.appliesTo].sort().join(" ")}
+${query}`;
+        let rows = selected.get(key);
         if (rows === undefined) {
           counted("matcher.queriesRun");
-          if (bound === undefined || allBound !== undefined)
+          if (records === undefined)
+            rows = union.select(query).then((answer) => answer.rows);
+          else if (allBound !== undefined && records.length > recordsInABlock) {
+            const applying = new Set(records);
             rows = union
               .select(query)
               .then(({ rows }) =>
-                allBound === undefined
-                  ? rows
-                  : rows.filter((row) =>
-                      allBound.has(row.get("record")?.value ?? ""),
-                    ),
+                rows.filter((row) =>
+                  applying.has(row.get("record")?.value ?? ""),
+                ),
               );
-          else {
-            counted("matcher.boundRecords", bound.length);
-            rows = union
-              .select(boundToRecords(query, bound))
-              .then((answer) => answer.rows);
+          } else {
+            counted("matcher.takenRecords", bound?.length ?? 0);
+            counted("matcher.boundRecords", records.length);
+            rows = (async () => {
+              const found: Row[] = [];
+              for (const block of inBlocks(records))
+                for (const row of (
+                  await union.select(boundToRecords(query, block))
+                ).rows)
+                  found.push(row);
+              return found;
+            })();
           }
-          selected.set(query, rows);
+          selected.set(key, rows);
         }
         return rows;
       };
