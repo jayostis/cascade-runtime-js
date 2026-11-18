@@ -2493,6 +2493,25 @@ describe("Opening a pod again · openPod()", () => {
         built.spans.some((span) => DERIVING.test(span)),
         built.spans.join(", "),
       );
+      const unbuilding: Parts = {
+        ...changed,
+        build: {
+          ...changed.build,
+          closing: () => {
+            throw NOT_BUILT;
+          },
+        },
+      };
+      const answeredFromKept = await opened(unbuilding, at, async (pod) => {
+        const rows: Row[][] = [];
+        for (const question of ASKED) rows.push(await pod.ask(question));
+        return rows;
+      });
+      assert.deepEqual(
+        answeredFromKept,
+        built.rows,
+        "the answers kept as the read wrote the build, under the pod's revision",
+      );
       await rm(join(pods, ".answers", "hash-changed", "answers.json"));
       const { rows, spans } = await asked(changed, at);
       assert.ok(spans.includes("kept.readBack"), spans.join(", "));
