@@ -1,3 +1,5 @@
+import { counted } from "./probe.js";
+
 export const XSD = "http://www.w3.org/2001/XMLSchema#";
 export const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 export const XSD_STRING = `${XSD}string`;
@@ -95,8 +97,11 @@ export function written(term: Term): string {
 }
 
 /** The triples as N-Triples, which every Turtle reader also reads. */
-export function ntriples(triples: Iterable<Triple>): Uint8Array {
-  return lines(triples, written);
+export function ntriples(
+  triples: Iterable<Triple>,
+  kept?: KeptLines,
+): Uint8Array {
+  return lines(triples, written, kept);
 }
 
 /**
@@ -108,6 +113,7 @@ export function relativeTurtle(
   triples: Iterable<Triple>,
   file: string,
   siblings: readonly string[] = [],
+  kept?: KeptLines,
 ): Uint8Array {
   const folder = file.slice(0, file.lastIndexOf("/") + 1);
   const named = siblings.filter(
@@ -116,25 +122,89 @@ export function relativeTurtle(
       sibling.startsWith(folder) &&
       /^[^/:#?]+$/.test(sibling.slice(folder.length)),
   );
-  return lines(triples, (term) => {
-    if (term.termType !== "NamedNode") return written(term);
-    if (term.value === file || term.value.startsWith(`${file}#`))
-      return `<${term.value.slice(file.length)}>`;
-    const sibling = named.find(
-      (each) => term.value === each || term.value.startsWith(`${each}#`),
-    );
-    return sibling === undefined
-      ? written(term)
-      : `<${term.value.slice(folder.length)}>`;
-  });
+  return lines(
+    triples,
+    (term) => {
+      if (term.termType !== "NamedNode") return written(term);
+      if (term.value === file || term.value.startsWith(`${file}#`))
+        return `<${term.value.slice(file.length)}>`;
+      const sibling = named.find(
+        (each) => term.value === each || term.value.startsWith(`${each}#`),
+      );
+      return sibling === undefined
+        ? written(term)
+        : `<${term.value.slice(folder.length)}>`;
+    },
+    kept,
+  );
 }
 
+/**
+ * What one written file is kept with across a pod's rebuilds: each triple's line by the triple, so
+ * a triple written before (the same object, as a kept build hands back what did not change) is not written again; and
+ * the lines last written, sorted, so the next writing sorts only the lines it adds and merges them in.
+ */
+export class KeptLines {
+  readonly memo = new WeakMap<Triple, string>();
+  sorted: readonly string[] | undefined;
+  held: ReadonlySet<string> | undefined;
+}
+
+/** The two sorted runs as one, in the order `sort()` gives. */
+function merged(a: readonly string[], b: readonly string[]): string[] {
+  const out = new Array<string>(a.length + b.length);
+  let i = 0;
+  let j = 0;
+  let k = 0;
+  while (i < a.length && j < b.length)
+    out[k++] =
+      (a[i] as string) <= (b[j] as string)
+        ? (a[i++] as string)
+        : (b[j++] as string);
+  while (i < a.length) out[k++] = a[i++] as string;
+  while (j < b.length) out[k++] = b[j++] as string;
+  return out;
+}
+
+/** The triples' lines, sorted; given `kept`, as `KeptLines` says. */
 function lines(
   triples: Iterable<Triple>,
   write: (term: Term) => string,
+  kept?: KeptLines,
 ): Uint8Array {
+  const memo = kept?.memo;
   const found = new Set<string>();
-  for (const [subject, predicate, object] of triples)
-    found.add(`${write(subject)} ${write(predicate)} ${write(object)} .\n`);
-  return new TextEncoder().encode([...found].sort().join(""));
+  let serialised = 0;
+  for (const triple of triples) {
+    let line = memo?.get(triple);
+    if (line === undefined) {
+      const [subject, predicate, object] = triple;
+      line = `${write(subject)} ${write(predicate)} ${write(object)} .
+`;
+      serialised += 1;
+      memo?.set(triple, line);
+    }
+    found.add(line);
+  }
+  counted("built.lines.total", found.size);
+  counted("built.lines.written", serialised);
+  let sorted: readonly string[];
+  const before = kept?.held;
+  if (kept?.sorted !== undefined && before !== undefined) {
+    const added = [...found].filter((line) => !before.has(line)).sort();
+    counted("built.lines.sorted", added.length);
+    const still =
+      before.size + added.length === found.size
+        ? kept.sorted
+        : kept.sorted.filter((line) => found.has(line));
+    sorted = added.length === 0 ? still : merged(still, added);
+  } else {
+    counted("built.lines.sorted", found.size);
+    sorted = [...found].sort();
+  }
+  if (kept !== undefined) {
+    kept.sorted = sorted;
+    kept.held = found;
+  }
+  return new TextEncoder().encode(sorted.join(""));
 }

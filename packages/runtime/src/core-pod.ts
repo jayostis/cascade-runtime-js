@@ -47,7 +47,16 @@ import {
 } from "./names.js";
 import { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
 import { type Act, same, StepWrites } from "./pod.js";
-import { iri, literal, RDF, type Triple, written, XSD } from "./rdf.js";
+import {
+  iri,
+  KeptLines,
+  literal,
+  ntriples,
+  RDF,
+  type Triple,
+  written,
+  XSD,
+} from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
 import { matcherJudgmentTouched } from "./shown.js";
@@ -153,7 +162,7 @@ export interface PodBuildOption {
   readonly incremental?: VocabularyBuild;
   /**
    * For tests: after each step rebuilt in part, builds the pod whole too, and throws where it differs from the build in
-   * part, or from the build read back from what the step wrote and the derived state as it is kept beside the pod.
+   * part, or where a file written from the kept lines is not the bytes of one written from nothing, or from the build read back from what the step wrote and the derived state as it is kept beside the pod.
    */
   readonly verify?: boolean;
   /** The quads the matcher's views may remove from the kept build's store and add again before it is renewed. */
@@ -798,8 +807,21 @@ export class CorePod {
     }
   }
 
+  /** Each built file's lines by the triple each writes, kept while the build is: a step's rebuild hands back the triples that did not change as they were. */
+  #lines = new Map<string, KeptLines>();
+
+  #linesOf(path: string): KeptLines {
+    let found = this.#lines.get(path);
+    if (found === undefined) {
+      found = new KeptLines();
+      this.#lines.set(path, found);
+    }
+    return found;
+  }
+
   /** Frees the build kept across steps; the next step builds whole. */
   #dropBuilt(): void {
+    this.#lines = new Map();
     this.#built?.free();
     this.#built = undefined;
     this.#builtHash = undefined;
@@ -2406,7 +2428,16 @@ export class CorePod {
         [...made]
           .map(
             ([path, triples]) =>
-              [path, builtFileBytes(layout, address, path, triples)] as const,
+              [
+                path,
+                builtFileBytes(
+                  layout,
+                  address,
+                  path,
+                  triples,
+                  this.#linesOf(path),
+                ),
+              ] as const,
           )
           .sort(
             ([a], [b]) =>
@@ -2416,6 +2447,22 @@ export class CorePod {
       await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
       for (const [path, written] of bytes)
         this.#builtDigests.set(path, hex(await fileDigest(written)));
+      if (build.verify === true)
+        for (const [path, written] of bytes) {
+          const fresh = builtFileBytes(
+            layout,
+            address,
+            path,
+            made.get(path) ?? [],
+          );
+          if (
+            fresh.length !== written.length ||
+            fresh.some((byte, at) => byte !== written[at])
+          )
+            throw new Error(
+              `${path} as written from the kept lines differs from it written afresh`,
+            );
+        }
       if (verifying !== undefined)
         await this.#verified(rebuilding, state, verifying);
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
