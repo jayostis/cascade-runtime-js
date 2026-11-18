@@ -9,6 +9,7 @@ import {
   linesAbout,
   reasonLabels,
   References,
+  RULE_LIST,
   rowsByCode,
   tableTerms,
   type TableTerms,
@@ -56,7 +57,7 @@ describe("Reading reference tables from a folder · References.of(), References.
       story = new MemoryFiles(files.iri);
       await story.write(
         `${folder}references.ttl`,
-        (await files.read(`${folder}references.ttl`)) ?? new Uint8Array(),
+        (await files.read(`${RULE_LIST}references.ttl`)) ?? new Uint8Array(),
       );
       shared = await references();
       rules = shared.fallback(await shared.ruleList());
