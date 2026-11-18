@@ -561,7 +561,7 @@ export class CorePod {
     ) {
       const stated = await podStated(pod, layout, union.store);
       union.store.free?.();
-      const state = this.#state(stated.at ?? time.now());
+      const state = { address, at: stated.at ?? time.now(), title };
       const paths = await this.#readPaths();
       const back = await this.#writtenBuild(
         build,
