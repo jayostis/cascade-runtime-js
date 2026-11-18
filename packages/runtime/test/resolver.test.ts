@@ -352,7 +352,8 @@ describe("Finding the vocabulary and adapters a run uses · resolve(), siblingsO
       assert.equal((await checkout(sibling))?.commit, pullHead);
     });
 
-    it("keeps HEAD for a merge anyone else made", async () => {
+    it("keeps HEAD for a merge anyone else made", async (context) => {
+      context.after(() => git(sibling, "reset", "--quiet", "--hard", merge));
       await git(sibling, "reset", "--quiet", "--hard", "HEAD^");
       await git(
         sibling,
