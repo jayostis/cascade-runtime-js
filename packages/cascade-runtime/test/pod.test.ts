@@ -2594,7 +2594,7 @@ describe("Opening a pod again · openPod()", () => {
     });
   });
 
-  describe("where a pod's answers and its build are kept beside it · keptBeside()", () => {
+  describe("given a runtime packed, or run from a checkout · keptBeside()", () => {
     it("keeps answers for a packed, committed runtime, and the build too wherever the runtime and its components are each at a commit", () => {
       const COMMIT =
         "https://github.com/jayostis/cascade-runtime-js/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
