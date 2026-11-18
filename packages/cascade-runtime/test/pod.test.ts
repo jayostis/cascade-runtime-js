@@ -2427,6 +2427,22 @@ describe("Opening a pod again · openPod()", () => {
       assert.deepEqual(rows, wholeRows);
     });
 
+    it("builds again when what is kept beside the pod was kept under another hash than the manifest names, as when a process stops before it closes the pod", async () => {
+      const at = await copiedWithBuild(first, "kept-under-another");
+      const file = join(pods, ".answers", "kept-under-another", "build.nt");
+      const bytes = await readFile(file, "utf8");
+      const end = bytes.indexOf("\n");
+      const header = JSON.parse(bytes.slice(2, end)) as { inputsHash: string };
+      header.inputsHash = "0".repeat(header.inputsHash.length);
+      await writeFile(file, `# ${JSON.stringify(header)}${bytes.slice(end)}`);
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.deepEqual(rows, wholeRows);
+    });
+
     it("builds again when the vocabulary's build queries changed", async () => {
       const at = await copiedWithBuild(first, "queries-changed");
       const { build } = kept;
