@@ -2553,6 +2553,44 @@ describe("Opening a pod again · openPod()", () => {
       assert.deepEqual(rows, wholeRows);
     });
 
+    it("writes nothing when another session's step lands between what the read listed and its write, and answers all the same", async () => {
+      const { build } = kept;
+      const manifestIn = (at: string) =>
+        join(at, ...kept.layout.manifest.split("/"));
+      const landings: [string, (at: string) => Promise<void>][] = [
+        ["file", (at) => writeFile(join(at, "landed.ttl"), "")],
+        [
+          "manifest",
+          (at) => appendFile(manifestIn(at), "# another session's step\n"),
+        ],
+      ];
+      const found: string[] = [];
+      for (const [what, land] of landings) {
+        const at = await copiedWithBuild(first, `landed-${what}`);
+        let landed: Buffer | undefined;
+        const landing: Parts = {
+          ...kept,
+          build: {
+            ...build,
+            queries: [...build.queries, "# changed"],
+            queried: async (...args: Parameters<typeof build.queried>) => {
+              if (landed === undefined) {
+                await land(at);
+                landed = await readFile(manifestIn(at));
+              }
+              return build.queried(...args);
+            },
+          },
+        };
+        const { rows } = await asked(landing, at);
+        assert.deepEqual(rows, wholeRows, what);
+        assert.ok(landed !== undefined, what);
+        if (!(await readFile(manifestIn(at))).equals(landed))
+          found.push(`${what}: the read wrote its manifest over the step's`);
+      }
+      assert.deepEqual(found, []);
+    });
+
     it("rebuilds a step in part from the build it read back, and the next session reads back what that step wrote, answering as a build whole does", async () => {
       const at = await copiedWithBuild(first, "stepped");
       const claimProfiles = [await profileOf("J1"), await profileOf("J2")];
