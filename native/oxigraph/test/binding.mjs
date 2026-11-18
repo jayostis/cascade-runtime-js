@@ -9,7 +9,9 @@ const binding = createRequire(import.meta.url)(file);
 
 if (probe === "--panic-probe") {
   assert.throws(() => binding.panics(), /a panic in the binding/);
-  console.log("a panic in Rust throws a JavaScript error, and the process goes on");
+  console.log(
+    "a panic in Rust throws a JavaScript error, and the process goes on",
+  );
 }
 
 const pinned = /name = "oxigraph"\nversion = "([^"]+)"/.exec(

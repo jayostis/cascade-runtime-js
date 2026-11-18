@@ -1,8 +1,10 @@
 //! Oxigraph's in-memory store for Node, in the shape of the `oxigraph` package's JavaScript build: the same options
 //! objects, and terms as RDF/JS plain objects.
 
-use napi::bindgen_prelude::{Either, Uint8Array};
-use napi::{Error, Result};
+use napi::bindgen_prelude::{
+    Either, FromNapiValue, Object, TypeName, Uint8Array, ValidateNapiValue,
+};
+use napi::{sys, Error, Result, ValueType};
 use napi_derive::napi;
 use oxigraph::io::{RdfFormat, RdfParser, RdfSerializer};
 use oxigraph::model::{
@@ -20,13 +22,13 @@ fn failed(error: impl std::fmt::Display) -> Error {
 }
 
 /// The version of the oxigraph crate this was built with, as Cargo.lock names it.
-#[napi]
+#[napi(catch_unwind)]
 pub fn oxigraph_version() -> String {
     env!("OXIGRAPH_VERSION").to_owned()
 }
 
 #[cfg(feature = "panic-probe")]
-#[napi]
+#[napi(catch_unwind)]
 pub fn panics() {
     panic!("a panic in the binding");
 }
@@ -241,6 +243,42 @@ fn results_format(format: &str) -> Result<QueryResultsFormat> {
     })
 }
 
+/// The keys of an options object, as the oxigraph package names them.
+pub trait Keys {
+    const KEYS: &'static [&'static str];
+}
+
+/// An options object every key of which is read here. The WebAssembly build reads more of them, and one ignored here
+/// would get another answer than there without a word.
+pub struct Known<T>(T);
+
+impl<T: FromNapiValue + Keys> FromNapiValue for Known<T> {
+    unsafe fn from_napi_value(env: sys::napi_env, value: sys::napi_value) -> Result<Self> {
+        let object = unsafe { Object::from_napi_value(env, value)? };
+        if let Some(key) = Object::keys(&object)?
+            .into_iter()
+            .find(|key| !T::KEYS.contains(&key.as_str()))
+        {
+            return Err(failed(format!(
+                "the option {key} is not read by Oxigraph's native build"
+            )));
+        }
+        unsafe { T::from_napi_value(env, value) }.map(Self)
+    }
+}
+
+impl<T> TypeName for Known<T> {
+    fn type_name() -> &'static str {
+        "Object"
+    }
+
+    fn value_type() -> ValueType {
+        ValueType::Object
+    }
+}
+
+impl<T> ValidateNapiValue for Known<T> {}
+
 #[napi(object)]
 pub struct ParseOptions {
     pub format: String,
@@ -249,6 +287,10 @@ pub struct ParseOptions {
     #[napi(js_name = "to_graph_name")]
     pub to_graph_name: Option<JsTerm>,
     pub lenient: Option<bool>,
+}
+
+impl Keys for ParseOptions {
+    const KEYS: &'static [&'static str] = &["format", "base_iri", "to_graph_name", "lenient"];
 }
 
 fn parser(options: &ParseOptions) -> Result<RdfParser> {
@@ -273,9 +315,12 @@ fn bytes(data: &Either<String, Uint8Array>) -> &[u8] {
 }
 
 /// The quads of the input, read whole.
-#[napi]
-pub fn parse(data: Either<String, Uint8Array>, options: ParseOptions) -> Result<Vec<JsQuad>> {
-    parser(&options)?
+#[napi(catch_unwind)]
+pub fn parse(
+    data: Either<String, Uint8Array>,
+    options: Known<ParseOptions>,
+) -> Result<Vec<JsQuad>> {
+    parser(&options.0)?
         .for_slice(bytes(&data))
         .map(|quad| quad_of(&quad.map_err(failed)?))
         .collect()
@@ -291,11 +336,23 @@ pub struct QueryOptions {
     pub default_graph: Option<Vec<JsTerm>>,
 }
 
+impl Keys for QueryOptions {
+    const KEYS: &'static [&'static str] = &[
+        "results_format",
+        "use_default_graph_as_union",
+        "default_graph",
+    ];
+}
+
 #[napi(object)]
 pub struct DumpOptions {
     pub format: String,
     #[napi(js_name = "from_graph_name")]
     pub from_graph_name: Option<JsTerm>,
+}
+
+impl Keys for DumpOptions {
+    const KEYS: &'static [&'static str] = &["format", "from_graph_name"];
 }
 
 /// An in-memory Oxigraph store.
@@ -306,7 +363,7 @@ pub struct Store {
 
 #[napi]
 impl Store {
-    #[napi(constructor)]
+    #[napi(constructor, catch_unwind)]
     pub fn new() -> Result<Self> {
         Ok(Self {
             store: Some(oxigraph::store::Store::new().map_err(failed)?),
@@ -321,29 +378,29 @@ impl Store {
 
     /// Releases the quads the store holds now, rather than when the object is collected, which knows nothing of their
     /// size; the store is never used again.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn free(&mut self) {
         self.store = None;
     }
 
-    #[napi(getter)]
+    #[napi(getter, catch_unwind)]
     pub fn size(&self) -> Result<i64> {
         Ok(self.held()?.len().map_err(failed)? as i64)
     }
 
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn add(&self, quad: JsQuad) -> Result<()> {
         self.held()?.insert(&self::quad(&quad)?).map_err(failed)?;
         Ok(())
     }
 
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn delete(&self, quad: JsQuad) -> Result<()> {
         self.held()?.remove(&self::quad(&quad)?).map_err(failed)?;
         Ok(())
     }
 
-    #[napi(js_name = "match")]
+    #[napi(js_name = "match", catch_unwind)]
     pub fn match_quads(
         &self,
         subject: Option<JsTerm>,
@@ -369,24 +426,28 @@ impl Store {
             .collect()
     }
 
-    #[napi]
-    pub fn load(&self, data: Either<String, Uint8Array>, options: ParseOptions) -> Result<()> {
+    #[napi(catch_unwind)]
+    pub fn load(
+        &self,
+        data: Either<String, Uint8Array>,
+        options: Known<ParseOptions>,
+    ) -> Result<()> {
         self.held()?
-            .load_from_slice(parser(&options)?, bytes(&data))
+            .load_from_slice(parser(&options.0)?, bytes(&data))
             .map_err(failed)
     }
 
     /// A SELECT's or a CONSTRUCT's answer written in `results_format`, which they need here; an ASK's as a boolean
     /// unless one is given.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn query(
         &self,
         query: String,
-        options: Option<QueryOptions>,
+        options: Option<Known<QueryOptions>>,
     ) -> Result<Either<bool, String>> {
         let mut prepared = evaluator().parse_query(&query).map_err(failed)?;
         let mut format = None;
-        if let Some(options) = options {
+        if let Some(Known(options)) = options {
             if options.use_default_graph_as_union.unwrap_or(false) {
                 prepared.dataset_mut().set_default_graph_as_union();
             }
@@ -437,7 +498,7 @@ impl Store {
         }
     }
 
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn update(&self, update: String) -> Result<()> {
         evaluator()
             .parse_update(&update)
@@ -447,8 +508,9 @@ impl Store {
             .map_err(failed)
     }
 
-    #[napi]
-    pub fn dump(&self, options: DumpOptions) -> Result<String> {
+    #[napi(catch_unwind)]
+    pub fn dump(&self, options: Known<DumpOptions>) -> Result<String> {
+        let Known(options) = options;
         let format = rdf_format(&options.format)?;
         let bytes = match &options.from_graph_name {
             Some(name) => {

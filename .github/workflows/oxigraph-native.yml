@@ -3,7 +3,8 @@ name: oxigraph-native
 # Oxigraph's in-memory store built for Node from native/oxigraph, for each platform the runtime offers it on. On a pull
 # request that changes it, and by hand, each target is built, and loaded and asked its Oxigraph version where the runner
 # can run it. A tag oxigraph-native-v<crate version> attaches the four files to a pre-release of that tag, where the
-# runtime's fetch script finds them.
+# runtime's fetch script finds them, and the run's summary lists the sha256 of each, which the runtime commits
+# and checks.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -120,3 +121,17 @@ jobs:
           set -euo pipefail
           gh release create "$TAG" assets/*.node --repo "$GITHUB_REPOSITORY" --prerelease --verify-tag \
             --title "$TAG" --notes "Oxigraph's in-memory store for Node, built from native/oxigraph at $GITHUB_SHA."
+      # The table the runtime checks each fetched file against, to commit as it stands.
+      - run: |
+          set -euo pipefail
+          {
+            echo 'The sha256 of each asset, for `OXIGRAPH_NATIVE_SHA256` in packages/runtime/src/node/oxigraph-native.ts:'
+            echo
+            echo '```ts'
+            echo 'export const OXIGRAPH_NATIVE_SHA256: Readonly<Record<string, string>> = {'
+            for file in assets/*.node; do
+              echo "  \"$(basename "$file")\": \"$(sha256sum "$file" | cut -d ' ' -f 1)\","
+            done
+            echo '};'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

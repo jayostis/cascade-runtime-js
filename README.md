@@ -117,4 +117,5 @@ published query by its file.
 in Rust, the same Oxigraph as the `oxigraph` package's WebAssembly, which the
 runtime uses in its place where it loads. The `oxigraph-native` workflow builds
 it for Linux x64, Windows x64 and macOS arm64 and x64, and a tag
-`oxigraph-native-v<version>` attaches each file to a pre-release.
+`oxigraph-native-v<version>` attaches each file to a pre-release, and the run's
+summary lists the sha256 of each.
