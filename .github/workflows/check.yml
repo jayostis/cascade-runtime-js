@@ -27,6 +27,9 @@ jobs:
     name: tests and conformance
     if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
+    # The suite's tests reach no network (packages/cascade-runtime/test/offline.ts); the jobs that install the package, which fetch, leave this unset.
+    env:
+      CASCADE_TEST_OFFLINE: "1"
     permissions:
       contents: read
       pull-requests: write
@@ -549,6 +552,9 @@ jobs:
     if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The suite's tests reach no network (packages/cascade-runtime/test/offline.ts); the jobs that install the package, which fetch, leave this unset.
+    env:
+      CASCADE_TEST_OFFLINE: "1"
     defaults:
       run:
         working-directory: cascade-runtime-js

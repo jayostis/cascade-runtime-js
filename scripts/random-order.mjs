@@ -32,7 +32,13 @@ const run = spawnSync(
       join("packages", folder, "dist", "test", file.replace(/\.ts$/, ".js")),
     ),
   ],
-  { stdio: "inherit" },
+  {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      CASCADE_TEST_OFFLINE: process.env.CASCADE_TEST_OFFLINE ?? "1",
+    },
+  },
 );
 if (run.error) throw run.error;
 process.exitCode = run.status ?? 1;
