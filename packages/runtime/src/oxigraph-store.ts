@@ -594,6 +594,72 @@ export class OxigraphStore implements Store {
     }
   }
 
+  /**
+   * A first line naming every graph listed and the length of what follows, then TriG: each graph that holds anything a
+   * block of the N-Triples Oxigraph writes of it. Its blank nodes' labels are the store's own, the same in every block, so
+   * one load reads each blank node as one node.
+   */
+  async dump(): Promise<Uint8Array> {
+    const encoder = new TextEncoder();
+    const graphs = [...this.#graphs];
+    const blocks: Uint8Array[] = [];
+    let length = 0;
+    const store = this.#oxigraph;
+    if (store !== undefined)
+      for (const graph of graphs) {
+        if (!namesABlock(graph))
+          throw new Error(`TriG cannot name the graph ${graph}`);
+        const name = oxigraph.namedNode(graph);
+        let triples: string;
+        try {
+          triples = store.dump({ format: N_TRIPLES, from_graph_name: name });
+        } finally {
+          free(name);
+        }
+        if (triples === "") continue;
+        const block = encoder.encode(`<${graph}> {\n${triples}}\n`);
+        blocks.push(block);
+        length += block.length;
+      }
+    const head = encoder.encode(`# ${JSON.stringify({ graphs, length })}\n`);
+    const bytes = new Uint8Array(head.length + length);
+    bytes.set(head);
+    let at = head.length;
+    for (const block of blocks) {
+      bytes.set(block, at);
+      at += block.length;
+    }
+    return bytes;
+  }
+
+  async restore(bytes: Uint8Array): Promise<void> {
+    if (this.#graphs.size > 0 || (this.#oxigraph?.size ?? 0) > 0)
+      throw new Error("a store is restored only when it holds nothing");
+    const end = bytes.indexOf(Byte.Newline);
+    let head: { graphs?: unknown; length?: unknown } = {};
+    try {
+      if (end > 2 && bytes[0] === Byte.Hash)
+        head = JSON.parse(
+          new TextDecoder().decode(bytes.subarray(2, end)),
+        ) as typeof head;
+    } catch {
+      head = {};
+    }
+    const { graphs, length } = head;
+    if (
+      !Array.isArray(graphs) ||
+      !graphs.every((graph) => typeof graph === "string") ||
+      length !== bytes.length - end - 1
+    )
+      throw new Error("these bytes are no store's dump, or not all of one");
+    if (length > 0)
+      this.#store.load(bytes.subarray(end + 1), {
+        format: TRIG,
+        lenient: true,
+      });
+    for (const graph of graphs as string[]) this.#graphs.add(graph);
+  }
+
   async drop(graph: string): Promise<void> {
     if (this.#oxigraph === undefined) return;
     this.#oxigraph.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
