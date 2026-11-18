@@ -531,8 +531,8 @@ SELECT ?s WHERE { ?s ?p ?o }
         ],
       );
       assert.deepEqual(names(folded(html, "Vaccination · 2 rules")), [
-        "same-code-key-joined-first.html",
         "same-code-and-day-or-exact-time-key-joined-first.html",
+        "same-code-key-joined-first.html",
       ]);
       assert.deepEqual(names(folded(html, "Other · 1 rule")), [
         "same-ndc-code-and-overlapping-exposure-periods.html",
