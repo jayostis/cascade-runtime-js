@@ -50,7 +50,7 @@ import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 import { EVERY_FINDING } from "../bridge.js";
 import { kitImports } from "../kit-bridge.js";
-import { kitFindings } from "../kit-findings.js";
+import { KIT_FINDINGS_CHECK, kitFindings } from "../kit-findings.js";
 import { kitsOf } from "../kit.js";
 import { ofMediaType } from "../load-adapter.js";
 import { WasmBridge } from "../wasm-bridge.js";
@@ -218,8 +218,8 @@ async function kitFindingAssertions(
     return (await kitsOf(files)).map((kit): Assertion => {
       const mine = differ.filter((line) => line.startsWith(`${kit} `));
       return {
-        test: `${files.iri}${kit}/`,
-        name: `the Bridge's output for each import of ${kit} is the output the kit saves`,
+        test: `${files.iri}${kit}/#${KIT_FINDINGS_CHECK}`,
+        name: KIT_FINDINGS_CHECK,
         outcome: mine.length === 0 ? "passed" : "failed",
         ...(mine.length === 0 ? {} : { why: mine.join("\n") }),
       };
