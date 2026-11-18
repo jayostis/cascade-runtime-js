@@ -41,6 +41,18 @@ jobs:
         with:
           path: cascade-runtime-js
           persist-credentials: false
+      # Beside this checkout, where the runtime looks for a component before it fetches one: the offline suite reads
+      # the pod-encryption vectors and the reference tables from these, and fetches nothing.
+      - uses: actions/checkout@v7
+        with:
+          repository: the-cascade-protocol/conformance
+          path: conformance
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: jayostis/cascade-reference-tables
+          path: cascade-reference-tables
+          persist-credentials: false
       # Node 24: on 22 its V8 aborts a test file now and then ("unreachable code" in the deoptimizer). The package,
       # docs site, starter and installed jobs stay on 22, the oldest Node the package supports.
       - uses: actions/setup-node@v5
@@ -562,6 +574,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cascade-runtime-js
+          persist-credentials: false
+      # Beside this checkout, where the runtime looks for a component before it fetches one: the offline suite reads
+      # the pod-encryption vectors and the reference tables from these, and fetches nothing.
+      - uses: actions/checkout@v7
+        with:
+          repository: the-cascade-protocol/conformance
+          path: conformance
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: jayostis/cascade-reference-tables
+          path: cascade-reference-tables
           persist-credentials: false
       # Node 24 as the tests job runs the same suite.
       - uses: actions/setup-node@v5
