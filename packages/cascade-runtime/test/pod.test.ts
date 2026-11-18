@@ -108,6 +108,8 @@ const STORAGE = "http://www.w3.org/ns/pim/space#storage";
 const HAD_MEMBER = "http://www.w3.org/ns/prov#hadMember";
 const UUID4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+/** The pod's working copy, kept beside it in its answers' folder. */
+const BUILT_BESIDE = "build.trig";
 const SESSION = "5c5734fb-433f-4ed1-8de7-1ad16d7d21cc";
 
 type Looked = Awaited<ReturnType<Pod["look"]>>;
@@ -2406,6 +2408,44 @@ describe("Opening a pod again · openPod()", () => {
       return to;
     }
 
+    /** The parts with the path of each file of a pod read through them recorded in `read`. */
+    const reading = (read: string[]): Parts => ({
+      ...kept,
+      folder: (path, iri) => {
+        const folder = kept.folder(path, iri);
+        const { files } = folder;
+        const recorded: Files = {
+          iri: files.iri,
+          read: (pathOrIri) => {
+            read.push(
+              pathOrIri.startsWith(files.iri)
+                ? pathOrIri.slice(files.iri.length)
+                : pathOrIri,
+            );
+            return files.read(pathOrIri);
+          },
+          write: (pathOrIri, bytes) => files.write(pathOrIri, bytes),
+          list: (folder) => files.list(folder),
+          ...(files.writeNew === undefined
+            ? {}
+            : { writeNew: files.writeNew.bind(files) }),
+          ...(files.writeAll === undefined
+            ? {}
+            : { writeAll: files.writeAll.bind(files) }),
+          ...(files.replace === undefined
+            ? {}
+            : { replace: files.replace.bind(files) }),
+          ...(files.remove === undefined
+            ? {}
+            : { remove: files.remove.bind(files) }),
+          ...(files.readRange === undefined
+            ? {}
+            : { readRange: files.readRange.bind(files) }),
+        };
+        return { ...folder, files: recorded };
+      },
+    });
+
     before(async () => {
       first = join(pods, "built-before");
       const pod = await openPodWith(kept, first);
@@ -2429,6 +2469,83 @@ describe("Opening a pod again · openPod()", () => {
       );
       assert.ok(wholeRows.some((answered) => answered.length > 0));
       assert.deepEqual(rows, wholeRows);
+    });
+
+    it("opens from the working copy kept beside it, reading no file of the pod's snapshot set, and answers as a build whole does", async () => {
+      const at = await copiedWithBuild(first, "restored");
+      const read: string[] = [];
+      const { rows, spans } = await asked(reading(read), at);
+      assert.ok(spans.includes("kept.readBack.restore"), spans.join(", "));
+      assert.ok(!spans.includes("kept.whole.podFiles"), spans.join(", "));
+      assert.deepEqual(
+        read.filter((path) => kept.layout.inSnapshotSet(path)),
+        [],
+      );
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("builds again when the working copy kept beside it was cut short, and the next session opens from the one it wrote", async () => {
+      const at = await copiedWithBuild(first, "copy-cut-short");
+      const file = join(pods, ".answers", "copy-cut-short", BUILT_BESIDE);
+      const bytes = await readFile(file);
+      await writeFile(
+        file,
+        bytes.subarray(0, bytes.lastIndexOf(0x0a, bytes.length - 2) + 1),
+      );
+      const rebuilt = await asked(kept, at);
+      assert.ok(
+        rebuilt.spans.some((span) => DERIVING.test(span)),
+        rebuilt.spans.join(", "),
+      );
+      assert.deepEqual(rebuilt.rows, wholeRows);
+      await rm(join(pods, ".answers", "copy-cut-short", "answers.json"), {
+        force: true,
+      });
+      const again = await asked(kept, at);
+      assert.ok(
+        again.spans.includes("kept.readBack.restore"),
+        again.spans.join(", "),
+      );
+      assert.deepEqual(
+        again.spans.filter((span) => DERIVING.test(span)),
+        [],
+      );
+      assert.deepEqual(again.rows, wholeRows);
+    });
+
+    it("builds again when a byte of the working copy kept beside it changed", async () => {
+      const at = await copiedWithBuild(first, "copy-changed");
+      const file = join(pods, ".answers", "copy-changed", BUILT_BESIDE);
+      const bytes = await readFile(file);
+      const at1 = bytes.indexOf('"', bytes.indexOf(0x0a) + 1) + 1;
+      assert.ok(at1 > 0, "the working copy holds no literal");
+      bytes[at1] = bytes[at1] === 0x41 ? 0x42 : 0x41;
+      await writeFile(file, bytes);
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.deepEqual(rows, wholeRows);
+    });
+
+    it("builds again when a file of the snapshot set was removed from the pod", async () => {
+      const at = await copiedWithBuild(first, "set-file-removed");
+      const removed = (await filesIn(at))
+        .map((file) => relative(at, file).split(sep).join("/"))
+        .find(
+          (path) =>
+            kept.layout.inSnapshotSet(path) && kept.layout.inActFolder(path),
+        );
+      assert.ok(removed, "the pod has no act file");
+      await rm(join(at, ...removed.split("/")));
+      const { rows, spans } = await asked(kept, at);
+      assert.ok(
+        spans.some((span) => DERIVING.test(span)),
+        spans.join(", "),
+      );
+      assert.ok(!spans.includes("kept.readBack.restore"), spans.join(", "));
+      assert.deepEqual(rows, (await asked(keepingNothing(), at)).rows);
     });
 
     it("opens it, with tables that never opened it, by reading the build back: no derivation, no build and no matcher's view of its own, and answers as a build whole does", async () => {
@@ -2474,7 +2591,8 @@ describe("Opening a pod again · openPod()", () => {
           reopened.ask("pod/My active allergies"),
         );
         const spans = [...seen.spans.keys()];
-        assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+        assert.ok(spans.includes("kept.readBack.restore"), spans.join(", "));
+        assert.ok(!spans.includes("kept.whole.podFiles"), spans.join(", "));
         assert.deepEqual(
           spans.filter((span) => DERIVING.test(span)),
           [],
@@ -2494,6 +2612,12 @@ describe("Opening a pod again · openPod()", () => {
       } finally {
         await reopened.close();
       }
+      assert.ok(
+        (await filesIn(join(pods, ".answers", "sealed-read-back"))).some(
+          (file) => basename(file) === BUILT_BESIDE,
+        ),
+        "no working copy is kept beside the sealed pod",
+      );
       for (const file of await filesIn(
         join(pods, ".answers", "sealed-read-back"),
       ))
@@ -2616,7 +2740,7 @@ describe("Opening a pod again · openPod()", () => {
 
     it("builds again when what is kept beside the pod was kept under another hash than the manifest names, as when a process stops before it closes the pod", async () => {
       const at = await copiedWithBuild(first, "kept-under-another");
-      const file = join(pods, ".answers", "kept-under-another", "build.nt");
+      const file = join(pods, ".answers", "kept-under-another", BUILT_BESIDE);
       const bytes = await readFile(file, "utf8");
       const end = bytes.indexOf("\n");
       const header = JSON.parse(bytes.slice(2, end)) as { inputsHash: string };
@@ -2648,7 +2772,7 @@ describe("Opening a pod again · openPod()", () => {
 
     it("keeps the build a read made whole when the manifest named its hash and nothing was kept beside it, and the next session reads it back", async () => {
       const at = await copiedWithBuild(first, "beside-lost");
-      await rm(join(pods, ".answers", "beside-lost", "build.nt"));
+      await rm(join(pods, ".answers", "beside-lost", BUILT_BESIDE));
       const manifest = await readFile(
         join(at, ...kept.layout.manifest.split("/")),
       );
@@ -2670,7 +2794,7 @@ describe("Opening a pod again · openPod()", () => {
 
     it("leaves every file of the pod as it was, views included, when only the build kept beside it was lost", async () => {
       const at = await copiedWithBuild(first, "beside-lost-untouched");
-      await rm(join(pods, ".answers", "beside-lost-untouched", "build.nt"));
+      await rm(join(pods, ".answers", "beside-lost-untouched", BUILT_BESIDE));
       const before = await heldIn(at);
       assert.ok(before.size > 0);
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -2794,7 +2918,7 @@ describe("Opening a pod again · openPod()", () => {
         assert.ok(!spans.includes("kept.whole"), spans.join(", "));
       });
       const { rows, spans } = await asked(kept, at);
-      assert.ok(spans.includes("kept.readBack"), spans.join(", "));
+      assert.ok(spans.includes("kept.readBack.restore"), spans.join(", "));
       assert.deepEqual(rows, (await asked(keepingNothing(), at)).rows);
       assert.notDeepEqual(rows, wholeRows);
     });

@@ -60,6 +60,16 @@ export interface Store {
    * freed, before the new one is filled where it can be.
    */
   renewed(): Promise<Store>;
+  /**
+   * Every graph the store lists and every triple of each, as bytes `restore` reads into an empty store: what a store
+   * holds, kept outside it. Throws, writing nothing, for a graph it cannot name in them.
+   */
+  dump(): Promise<Uint8Array>;
+  /**
+   * Fills this store, which holds nothing, with what `dump` wrote: each graph listed, each triple in its graph, each
+   * blank node one node wherever it was, under a label of its own. Throws for bytes `dump` did not write.
+   */
+  restore(bytes: Uint8Array): Promise<void>;
   /** Releases what the store holds; a store freed is never read again. */
   free?(): void;
 }
