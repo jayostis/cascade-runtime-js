@@ -1,4 +1,4 @@
-import { timedAside } from "./probe.js";
+import { counted, timedAside } from "./probe.js";
 import { iri, type Term, type Triple, written } from "./rdf.js";
 
 export type Row = ReadonlyMap<string, Term>;
@@ -193,13 +193,12 @@ export class RestorableUnion extends Union {
   async #keep(graph: string): Promise<void> {
     this.#open();
     if (this.#before.has(graph)) return;
-    this.#before.set(graph, {
-      triples: await this.store.construct(
-        `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ${written(iri(graph))} { ?s ?p ?o } }`,
-        new Set(),
-      ),
-      inUnion: this.graphs.has(graph),
-    });
+    const triples = await this.store.construct(
+      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ${written(iri(graph))} { ?s ?p ?o } }`,
+      new Set(),
+    );
+    counted("view.quadsMoved", triples.length);
+    this.#before.set(graph, { triples, inUnion: this.graphs.has(graph) });
   }
 
   override async loadTurtle(
@@ -265,6 +264,7 @@ export class RestorableUnion extends Union {
       if (triples.length > 0) await this.store.add(triples, { graph });
       else if (inUnion) await this.store.loadTurtle("", { graph });
       this.#moved += triples.length;
+      counted("view.quadsMoved", triples.length);
     }
   }
 }

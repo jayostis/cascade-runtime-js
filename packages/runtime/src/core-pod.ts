@@ -5,7 +5,7 @@ import {
   fileEntry,
   fileExport,
 } from "./arrivals.js";
-import { countedQuery, timed, timedAside } from "./probe.js";
+import { counted, countedQuery, timed, timedAside } from "./probe.js";
 import type { AdaptersOf, ConvertBudget } from "./bridge.js";
 import {
   builtFileBytes,
@@ -79,10 +79,10 @@ const TYPE = `${RDF}type`;
 const DATASET = "dataset:";
 const MATCHER_VIEW = "matcher view";
 /**
- * The quads the matcher's views may remove from the kept build's store and add again before the build moves to a store
- * of its own: about 12 lends at 10,000 records, each moving some 175,000 quads.
+ * The quads the matcher's views and the steps' rebuilds may remove from the kept build's store and add again before the
+ * build moves to a store of its own.
  */
-const COMPACT_AFTER_MOVED = 2_000_000;
+const COMPACT_AFTER_MOVED = 100_000;
 const REVISION = "revision";
 const KEPT = "kept";
 const STATED = "stated";
@@ -589,6 +589,7 @@ export class CorePod {
   async dataset(lens: string): Promise<Union> {
     await this.#settle();
     await this.#putBackMatcherView();
+    await this.#withBuilt();
     return this.#held(`${DATASET}${lens}`, () =>
       this.#filled(new Union(this.#options.newStore()), lens),
     );
@@ -719,6 +720,7 @@ export class CorePod {
   async keepBuild(): Promise<void> {
     await this.#settle();
     await this.#putBackMatcherView();
+    await this.#withBuilt();
     const inputsHash = this.#toKeep;
     const built = this.#built;
     if (inputsHash === undefined || built === undefined) return;
@@ -830,7 +832,7 @@ export class CorePod {
   #release(): void {
     const kept = this.#kept;
     this.#kept = new Map();
-    const owned = this.#built?.union.store;
+    const owned = this.#built?.store;
     for (const held of kept.values())
       held.then(
         (union) => {
@@ -1355,11 +1357,14 @@ export class CorePod {
           : undefined;
       if (dataset === undefined)
         return matcherView(this.#options, this.#samesStillJoined());
+      const built = this.#built;
+      const lent = built !== undefined && dataset === built.unionAsItStands;
+      if (lent) this.#movedInBuilt += await built.withoutBuilt();
       const rebuilt = new Set(layout.rebuilt.map((path) => address + path));
       const left = [...dataset.graphs].filter(
         (graph) => graph === LAYOUT_GRAPH || rebuilt.has(graph),
       );
-      if (this.#performing && dataset !== this.#built?.union) {
+      if (this.#performing && !lent) {
         this.#kept.delete(DATASET + MATCHER_LENS);
         for (const graph of left) await dataset.drop(graph);
         return dataset;
@@ -1412,6 +1417,16 @@ export class CorePod {
       await this.#releaseMatcherView();
   }
 
+  /**
+   * Puts the files the build writes and the layout back in the build kept across steps, if they were lent out to the
+   * matcher's view: they stay out across steps, which rebuild them beside the union, until a read needs the whole pod.
+   */
+  async #withBuilt(): Promise<void> {
+    const built = this.#built;
+    if (built === undefined) return;
+    this.#movedInBuilt += await built.withBuilt();
+  }
+
   /** Takes the matcher's view out of what the pod keeps: puts back the dataset it was made in, or frees its store. */
   async #releaseMatcherView(): Promise<void> {
     const held = this.#kept.get(MATCHER_VIEW) as Promise<Union> | undefined;
@@ -1428,8 +1443,13 @@ export class CorePod {
       this.#dropDatasets(view.store);
       throw error;
     }
-    if (view.store !== this.#built?.union.store) return;
+    if (view.store !== this.#built?.store) return;
     this.#movedInBuilt += view.moved;
+    await this.#compactedIfMoved();
+  }
+
+  /** Moves the kept build to a store of its own once the quads removed from its store and added again are enough. */
+  async #compactedIfMoved(): Promise<void> {
     if (
       this.#movedInBuilt >=
       (this.#options.build?.renewAfterMoved ?? COMPACT_AFTER_MOVED)
@@ -1442,7 +1462,7 @@ export class CorePod {
    * in whole is read again by nothing.
    */
   #dropDatasets(store: Store): void {
-    const built = this.#built?.union.store;
+    const built = this.#built?.store;
     for (const [key, held] of [...this.#kept])
       if (key.startsWith(DATASET)) {
         this.#kept.delete(key);
@@ -1469,9 +1489,10 @@ export class CorePod {
   async #compactBuilt(): Promise<void> {
     const built = this.#built;
     if (built === undefined) return;
-    const was = built.union;
+    counted("core-pod.compactions");
+    const was = built.unionAsItStands;
     try {
-      await built.compact();
+      await timedAside("core-pod.compact", () => built.compact());
     } catch (error) {
       this.#dropDatasets(was.store);
       throw error;
@@ -1482,7 +1503,7 @@ export class CorePod {
         key.startsWith(DATASET) &&
         (await held.catch(() => undefined)) === was
       )
-        this.#kept.set(key, Promise.resolve(built.union));
+        this.#kept.set(key, Promise.resolve(built.unionAsItStands));
   }
 
   /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
@@ -2346,9 +2367,10 @@ export class CorePod {
       )
         read.push(file);
     const whole = await KeptBuild.whole(rebuilding, state);
+    const union = await built.unionWhole();
     const back = await KeptBuild.readBack(rebuilding, state, {
-      store: await built.union.store.dump(),
-      graphs: [...built.union.graphs],
+      store: await union.store.dump(),
+      graphs: [...union.graphs],
       read,
       paths: [...built.paths],
     });
@@ -2393,7 +2415,7 @@ export class CorePod {
           change.written.length === 0 &&
           given.inputsHash !== undefined &&
           given.inputsHash === this.#builtHash &&
-          (await this.#hashCovers(stepping.union, [...read]))
+          (await this.#hashCovers(await stepping.unionWhole(), [...read]))
             ? { written: [] }
             : change;
         files = await timedAside("kept.step", () =>
@@ -2460,7 +2482,14 @@ export class CorePod {
         }
       if (verifying !== undefined)
         await this.#verified(rebuilding, state, verifying);
-      this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
+      if (built === this.#built) {
+        this.#movedInBuilt += built.moved();
+        await this.#compactedIfMoved();
+      }
+      this.#kept.set(
+        DATASET + build.lens,
+        Promise.resolve(built.unionAsItStands),
+      );
       this.#builtHash = inputsHash;
       this.#toKeep = inputsHash;
       return;

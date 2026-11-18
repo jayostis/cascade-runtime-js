@@ -120,7 +120,6 @@ export const HOT_SPOTS = {
     "arrivals.arrivals.graph.scans",
     "arrivals.refuseUnaccounted.graph.scans",
     "core-pod.matcherSelect.store.queries",
-    "core-pod.matcherView.store.queries",
     "matcher.queriesRun",
     "store.queries",
     "incremental.boundValues.calls",
@@ -625,6 +624,33 @@ export async function seriesBench(
 }
 
 /**
+ * An in-memory pod given `base` resources (unmeasured), then an import of `resources` more of the same patient, the days
+ * running on, measured: what an import costs by the pod it goes into, against the same import into an empty pod (base 0).
+ * With `read`, the pod is read once after the base, unmeasured, and once after the import, measured, as an app reads it.
+ */
+export async function growBench(
+  base: number,
+  resources: number,
+  read = false,
+): Promise<Measured> {
+  const claiming = await profileOf("first");
+  const pod = await openPod();
+  try {
+    if (base > 0) await importAll(pod, syntheticPulls(base), claiming);
+    if (read) await pod.ask(FIRST_READ);
+    return await measured(
+      pod,
+      syntheticPulls(resources, { from: base }),
+      claiming,
+      resources,
+      read,
+    );
+  } finally {
+    await pod.close();
+  }
+}
+
+/**
  * A pod on disk given `records` in one import and closed; then, in a process of its own as an app's next session is,
  * `openPod`, the first read and a second, timed.
  */
@@ -874,6 +900,8 @@ async function main(args: string[]): Promise<void> {
   const json = at === -1 ? undefined : args[at + 1];
   const series = args.indexOf("--series");
   const imports = series === -1 ? 0 : Number(args[series + 1]);
+  const growing = args.indexOf("--grow");
+  const base = growing === -1 ? undefined : Number(args[growing + 1]);
   const budgeted = args.indexOf("--budget");
   const budgetFile = budgeted === -1 ? undefined : args[budgeted + 1];
   if (
@@ -889,6 +917,7 @@ async function main(args: string[]): Promise<void> {
       (arg, index) =>
         (at === -1 || index !== at + 1) &&
         (series === -1 || index !== series + 1) &&
+        (growing === -1 || index !== growing + 1) &&
         /^\d+$/.test(arg),
     )
     .map(Number);
@@ -902,7 +931,13 @@ async function main(args: string[]): Promise<void> {
   const runs: unknown[] = [];
   for (const size of sizes) {
     if (imports > 0) runs.push(...(await seriesBench(size, imports)));
-    else if (args.includes("--reopen-read")) {
+    else if (base !== undefined) {
+      const run = await growBench(base, size, args.includes("--read"));
+      runs.push(run);
+      process.stdout.write(`${tableOf(run)}
+
+`);
+    } else if (args.includes("--reopen-read")) {
       const opened = await openBench(size, args.includes("--secret"));
       runs.push(opened);
       process.stdout.write(`${JSON.stringify(opened)}

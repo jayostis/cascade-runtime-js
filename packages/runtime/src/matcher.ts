@@ -482,7 +482,11 @@ export async function matcherView(
   });
 }
 
-/** What the matcher reads of the pod and its derived state, before any table's rows are added to it. */
+/**
+ * What the matcher reads of the pod and its derived state, before any table's rows are added to it. A run that takes
+ * records leaves empty what a recheck alone reads: the judgments, the entries, and the findings of judgments no longer
+ * reached and the rule list rows they read.
+ */
 interface Pod {
   readonly subject: string | undefined;
   readonly held: ReadonlySet<string>;
@@ -670,7 +674,9 @@ class Matcher {
       adopted?.get(series) ??
       references.current(series, named.get(series) ?? []);
     const scoped = everyRecordRead ? undefined : takes;
-    let pod = await read(union, references, scoped);
+    let pod = await timed("matcher.of.read", () =>
+      read(union, references, scoped, takes === undefined),
+    );
     const bound =
       takes === undefined
         ? undefined
@@ -678,7 +684,10 @@ class Matcher {
             taken(record, takes) ? [record.name] : [],
           );
     const allBound =
-      bound !== undefined && (await withCurrentVersions(union)) <= bound.length
+      bound !== undefined &&
+      (await timed("matcher.of.withCurrentVersions", () =>
+        withCurrentVersions(union),
+      )) <= bound.length
         ? new Set(bound)
         : undefined;
     const rulesVersion = current(await references.ruleList());
@@ -743,7 +752,10 @@ class Matcher {
       ]),
     );
     const terms = await tableTerms(context.vocabulary, context.newStore);
-    const find = { codes: await podCodes(union, terms), terms };
+    const find = {
+      codes: await timed("matcher.of.podCodes", () => podCodes(union, terms)),
+      terms,
+    };
     const shown = new Set<string>();
     const over = async (
       held: readonly string[],
@@ -836,10 +848,13 @@ ${query}`;
           if (graph.startsWith(address + folder)) await union.drop(graph);
       known =
         foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
-      matched = await over(versions, found);
-      if (scoped !== undefined) pod = await withPartners(union, pod, matched);
+      matched = await timed("matcher.of.over", () => over(versions, found));
+      if (scoped !== undefined)
+        pod = await timed("matcher.of.withPartners", () =>
+          withPartners(union, pod, matched),
+        );
     } finally {
-      await context.releaseMatcherView();
+      await timed("matcher.of.releaseView", () => context.releaseMatcherView());
     }
     if (adopted === undefined)
       return new Matcher(
@@ -1638,12 +1653,19 @@ async function mayTake(
   ).flatMap(([record]) => record ?? []);
 }
 
-/** What the matcher reads of the pod; given the takes, of the records only those the run may take. */
+/**
+ * What the matcher reads of the pod; given the takes, of the records only those the run may take. A run that takes
+ * records and rechecks none reads no judgment, entry or finding a recheck alone reads: those the pod holds of every
+ * record, which grow with the pod rather than with the run.
+ */
 async function read(
   dataset: Dataset,
   references: References,
-  takes?: Takes,
+  takes: Takes | undefined,
+  rechecking: boolean,
 ): Promise<Pod> {
+  const ifRechecking = async <T>(reading: () => Promise<T[]>): Promise<T[]> =>
+    rechecking ? reading() : [];
   const held = await heldOf(dataset, references);
   const subject = await subjectOf(dataset);
   const retracted = grouped(
@@ -1657,19 +1679,23 @@ async function read(
       "member",
     ),
   );
-  const judgments = await recheckable(dataset);
+  const judgments = await ifRechecking(() => recheckable(dataset));
   const counted = new Set(judgments.map(({ name }) => name));
-  const entries = await column(
-    dataset,
-    "SELECT DISTINCT ?record ?entry WHERE { ?record cascade:inEntry ?entry }",
-    "record",
-    "entry",
+  const entries = await ifRechecking(() =>
+    column(
+      dataset,
+      "SELECT DISTINCT ?record ?entry WHERE { ?record cascade:inEntry ?entry }",
+      "record",
+      "entry",
+    ),
   );
-  const matcherJudgments = await column(
-    dataset,
-    `SELECT DISTINCT ?matcherJudgment WHERE { ?matcherJudgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same }`,
-    "matcherJudgment",
-  );
+  const matcherJudgments = rechecking
+    ? await column(
+        dataset,
+        `SELECT DISTINCT ?matcherJudgment WHERE { ?matcherJudgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same }`,
+        "matcherJudgment",
+      )
+    : [...retracted.keys()].map((matcherJudgment) => [matcherJudgment]);
   const sames = grouped(
     await column(
       dataset,
@@ -1684,27 +1710,33 @@ async function read(
       "member",
     ),
   );
-  const noLongerReachedUnder = await column(
-    dataset,
-    `SELECT DISTINCT ?version WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; cascade:noLongerReachedUnderRuleListVersion ?version }`,
-    "version",
+  const noLongerReachedUnder = await ifRechecking(() =>
+    column(
+      dataset,
+      `SELECT DISTINCT ?version WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; cascade:noLongerReachedUnderRuleListVersion ?version }`,
+      "version",
+    ),
   );
   const findings = await column(
     dataset,
     "SELECT DISTINCT ?finding WHERE { ?finding a cascade:FindingForReview }",
     "finding",
   );
-  const namedByFinding = await column(
-    dataset,
-    `SELECT DISTINCT ?matcherJudgment WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; oa:hasTarget ?matcherJudgment }`,
-    "matcherJudgment",
+  const namedByFinding = await ifRechecking(() =>
+    column(
+      dataset,
+      `SELECT DISTINCT ?matcherJudgment WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; oa:hasTarget ?matcherJudgment }`,
+      "matcherJudgment",
+    ),
   );
-  const rows = await column(
-    dataset,
-    "SELECT DISTINCT ?version ?rule ?hash WHERE { ?row cascade:rowOfRuleListVersion ?version ; cascade:matcherRule ?rule ; cascade:queryHash ?hash }",
-    "version",
-    "rule",
-    "hash",
+  const rows = await ifRechecking(() =>
+    column(
+      dataset,
+      "SELECT DISTINCT ?version ?rule ?hash WHERE { ?row cascade:rowOfRuleListVersion ?version ; cascade:matcherRule ?rule ; cascade:queryHash ?hash }",
+      "version",
+      "rule",
+      "hash",
+    ),
   );
   const ruleHashes = new Map<string, Map<string, string>>();
   for (const [version, rule, hash] of rows)

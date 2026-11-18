@@ -148,6 +148,8 @@ interface TakingRun {
   readonly all: ReadonlySet<string>;
   /** The graphs a `select()` leaves out: the layout and the manifest the build writes. */
   readonly built: readonly string[];
+  /** Every graph of a file the build writes, and the layout's. */
+  readonly rebuilt: ReadonlySet<string>;
 }
 
 let takingRuns: Promise<TakingRun[]> | undefined;
@@ -207,6 +209,10 @@ function runsTakingRecords(): Promise<TakingRun[]> {
         lent,
         all,
         built: [LAYOUT_GRAPH, pod.files.iri + laidOut.manifest],
+        rebuilt: new Set([
+          LAYOUT_GRAPH,
+          ...laidOut.rebuilt.map((path) => pod.files.iri + path),
+        ]),
       });
       return performed;
     });
@@ -606,12 +612,116 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       runs = await runsTakingRecords();
     });
 
-    it("puts back every quad of the kept dataset, each blank node the node it was, before the step writes a file", () => {
+    it("puts back every quad of the kept dataset but the files the build writes and the layout, each blank node the node it was, before the step writes a file; those stay out until a read, the next `dataset()`", () => {
       assert.ok(runs.length > 0);
       for (const run of runs) {
         assert.ok(run.wrote > 0 && run.dropped > 0, run.step);
-        assert.deepEqual(run.atFirstWrite, run.before, run.step);
+        assert.deepEqual(
+          run.atFirstWrite,
+          run.before.filter(
+            (quad) => !run.rebuilt.has(quad.slice(1, quad.indexOf(">"))),
+          ),
+          run.step,
+        );
       }
+    });
+  });
+
+  describe("when a match runs and nothing reads the pod after it", () => {
+    interface Kept {
+      readonly step: string;
+      readonly rebuilt: ReadonlySet<string>;
+      readonly before: ReadonlySet<string>;
+      readonly atKeep: ReadonlySet<string>;
+    }
+    let kept: Kept[];
+
+    before(async () => {
+      const laidOut = await layout();
+      kept = [];
+      await replaySyncRun(
+        async (pod, step, side) => {
+          const { store } = await pod.dataset("everyday");
+          const graphs = async () =>
+            graphsOf((await store.select(GRAPHS, new Set())).rows);
+          const before = await graphs();
+          const performed = await (PERFORMERS.matcher as Perform)(
+            pod,
+            step,
+            side,
+          );
+          await pod.keepBuild();
+          kept.push({
+            step: step.name,
+            rebuilt: new Set([
+              LAYOUT_GRAPH,
+              ...laidOut.rebuilt.map((path) => pod.files.iri + path),
+            ]),
+            before,
+            atKeep: await graphs(),
+          });
+          return performed;
+        },
+        { renewAfterMoved: Number.MAX_SAFE_INTEGER },
+      );
+    });
+
+    it("holds the files the build writes and the layout in the kept build's union when `keepBuild()` keeps it", () => {
+      assert.ok(kept.length > 0);
+      for (const one of kept) {
+        const built = [...one.before].filter((graph) => one.rebuilt.has(graph));
+        assert.ok(built.length > 0, one.step);
+        for (const graph of built)
+          assert.ok(one.atKeep.has(graph), `${one.step}: ${graph}`);
+      }
+    });
+  });
+
+  describe("when lending the matcher its view fails part way through taking the files the build writes out", () => {
+    interface Lent {
+      readonly step: string;
+      readonly whole: string[];
+      readonly next: string[];
+    }
+    let lent: Lent[];
+
+    before(async () => {
+      lent = [];
+      await replaySyncRun(
+        async (pod, step, side) => {
+          const performed = await (PERFORMERS.matcher as Perform)(
+            pod,
+            step,
+            side,
+          );
+          const { store } = await pod.dataset("everyday");
+          const whole = await storeQuads(store);
+          const drop = store.drop.bind(store);
+          let drops = 0;
+          store.drop = (graph) => {
+            drops += 1;
+            if (drops === 2) throw new Error("the drop fails");
+            return drop(graph);
+          };
+          try {
+            await assert.rejects(pod.select(GRAPHS), /the drop fails/);
+          } finally {
+            store.drop = drop;
+          }
+          lent.push({
+            step: step.name,
+            whole,
+            next: await storeQuads((await pod.dataset("everyday")).store),
+          });
+          return performed;
+        },
+        { renewAfterMoved: Number.MAX_SAFE_INTEGER },
+      );
+    });
+
+    it("returns from the next `dataset()` every quad the pod held before", () => {
+      assert.ok(lent.length > 0);
+      for (const one of lent) assert.deepEqual(one.next, one.whole, one.step);
     });
   });
 
