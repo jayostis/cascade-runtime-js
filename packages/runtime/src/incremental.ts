@@ -334,42 +334,40 @@ export class KeptBuild {
   }
 
   /**
-   * The pod's files, the layout, and the lens's derived state and the files a build wrote, read back as they were
-   * written rather than derived and built (C8): the derived state as N-Triples, each file the build's queries write by
-   * its path, the views among them those written. What a step rebuilds in part from is found from them only when the
-   * first step comes, so a read pays nothing for it; the files to write are the type index and the manifest alone.
+   * The build as a store it was held in kept it (C8): the pod's files, the layout, the lens's derived state and the files
+   * the build's queries wrote, restored rather than read from the pod's files, derived and built; `read` the paths of
+   * the files the build wrote, the views among them those written. What a step rebuilds in part from is found from them
+   * only when the first step comes, so a read pays nothing for it; the files to write are the type index and the
+   * manifest alone. A store that cannot be restored throws, and nothing is kept.
    */
   static async readBack(
     rebuilding: Rebuilding,
     pod: PodState,
-    written: {
-      readonly derived: Uint8Array;
-      readonly files: ReadonlyMap<string, Uint8Array>;
-      /** The paths of the pod's files to load, as the caller listed them; otherwise listed here. */
-      readonly paths?: readonly string[];
+    kept: {
+      /** What `Store.dump` wrote of the build's store. */
+      readonly store: Uint8Array;
+      /** The graphs of the build's union. */
+      readonly graphs: readonly string[];
+      readonly read: readonly string[];
+      /** The paths of the pod's files the build read. */
+      readonly paths: readonly string[];
     },
   ): Promise<{
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }> {
-    const { layout, address, lens } = rebuilding;
+    const { layout } = rebuilding;
+    const views = new Set(layout.views.map(({ file }) => file));
     return timedAside("kept.readBack", () =>
       KeptBuild.#made(
         rebuilding,
         pod,
-        async (union) => {
-          await union.loadTurtle(written.derived, DERIVED + lens);
-          for (const [path, bytes] of written.files)
-            await union.loadTurtle(bytes, address + path);
-          const views = new Set(layout.views.map(({ file }) => file));
-          return {
-            read: [...written.files.keys()],
-            held: new Set(
-              [...written.files.keys()].filter((path) => views.has(path)),
-            ),
-          };
-        },
-        written.paths,
+        async () => ({
+          read: kept.read,
+          held: new Set(kept.read.filter((path) => views.has(path))),
+        }),
+        kept.paths,
+        kept,
       ),
     );
   }
@@ -386,6 +384,10 @@ export class KeptBuild {
       | { readonly read: readonly string[]; readonly held: ReadonlySet<string> }
     >,
     listed?: readonly string[],
+    restoring?: {
+      readonly store: Uint8Array;
+      readonly graphs: readonly string[];
+    },
   ): Promise<{
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
@@ -395,18 +397,33 @@ export class KeptBuild {
     const paths = (listed ?? (await rebuilding.pod.list(""))).filter(
       (path) => layout.loads(path) && !rebuilt.has(path),
     );
-    const union = new Union(newStore());
-    await timedAside("kept.whole.podFiles", () =>
-      podFiles(rebuilding.pod, layout, address, union, paths),
-    );
+    const store = newStore();
+    let union: Union;
+    try {
+      if (restoring === undefined) {
+        union = new Union(store);
+        await timedAside("kept.whole.podFiles", () =>
+          podFiles(rebuilding.pod, layout, address, union, paths),
+        );
+      } else {
+        await timedAside("kept.readBack.restore", () =>
+          store.restore(restoring.store),
+        );
+        union = new Union(store, restoring.graphs);
+      }
+    } catch (error) {
+      store.free?.();
+      throw error;
+    }
     const made = await build(union);
     const { held } = made;
     const all = new Map("files" in made ? made.files : []);
     for (const [path, triples] of rebuilding.build.closing(pod, held)) {
       all.set(path, triples);
+      if (restoring !== undefined) await union.drop(address + path);
       await union.add(triples, address + path);
     }
-    await addLayout(union, layout, address);
+    if (restoring === undefined) await addLayout(union, layout, address);
     const kept = new KeptBuild(rebuilding, union, new Set(paths), held);
     const indexed = async (): Promise<void> => {
       kept.#index(
@@ -533,12 +550,16 @@ export class KeptBuild {
 
   /**
    * Throws where this build and the whole one differ: in the derived state, or in a file the build writes, as the
-   * union holds it or as it would be written. The whole one is the caller's to free.
+   * union holds it or as it would be written; with `everyGraph`, in each of the pod's files too, as for a build restored
+   * rather than read from them. The whole one is the caller's to free.
    */
-  async verify(whole: {
-    kept: KeptBuild;
-    files: ReadonlyMap<string, readonly Triple[]>;
-  }): Promise<void> {
+  async verify(
+    whole: {
+      kept: KeptBuild;
+      files: ReadonlyMap<string, readonly Triple[]>;
+    },
+    { everyGraph = false }: { readonly everyGraph?: boolean } = {},
+  ): Promise<void> {
     await this.#ready();
     const { address, layout } = this.#rebuilding;
     const graphOf = async (union: Union, graph: string) =>
@@ -586,7 +607,7 @@ export class KeptBuild {
     const manifest = address + layout.manifest;
     const loaded = new Set([...this.#loaded].map((path) => address + path));
     for (const graph of new Set([...keptGraphs, ...builtGraphs]))
-      if (graph !== manifest && !loaded.has(graph))
+      if (graph !== manifest && (everyGraph || !loaded.has(graph)))
         compare(
           graph === this.#derived
             ? "the derived state"

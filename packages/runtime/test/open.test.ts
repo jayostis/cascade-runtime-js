@@ -621,6 +621,21 @@ ${variant(1)}`),
       assert.deepEqual(read, whole);
     });
 
+    it("builds whole, not from the working copy kept beside it, for a read with those tables in a later session", async () => {
+      const kept = await copied(beside);
+      assert.ok(
+        (await kept.read("build.trig")) !== undefined,
+        "no working copy is kept beside the pod",
+      );
+      const reopened = podWith(await copied(files), newer, kept);
+      const { result, seen } = await probing(() => answered(reopened));
+      reopened.close();
+      const spans = [...seen.spans.keys()].join(", ");
+      assert.ok(seen.spans.has("kept.readBack.restore"), spans);
+      assert.ok(seen.spans.has("kept.whole"), spans);
+      assert.deepEqual(result, whole);
+    });
+
     it("builds whole at an open with those tables in the session that built it with the older ones, though the open writes nothing", async () => {
       const pod = podWith(
         await copied(files),

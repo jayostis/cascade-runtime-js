@@ -544,6 +544,91 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
       assert.equal(done.renewal.joined, true);
     });
   });
+  describe("store.dump(), store.restore()", () => {
+    let dumped: {
+      held: string[];
+      restored: string[];
+      joined: boolean;
+      text: string;
+      truncated: unknown;
+      refusedWhenHolding: unknown;
+      again: string[];
+    };
+
+    /** The quads as `quadsOf` writes them, each blank node by where it is rather than by its label. */
+    const unlabelled = (quads: readonly string[]) =>
+      quads.map((quad) => quad.replace(/_:[^ ]+/g, "_:b")).sort();
+
+    before(async () => {
+      const store = new OxigraphStore();
+      await store.loadTurtle(
+        String.raw`<urn:s> <urn:p> [ <urn:q> 1 ] ; <urn:p> "say \"hi\" é"@en-GB, "x"^^<urn:type> .`,
+        { graph: "https://pod.example/one.ttl" },
+      );
+      const [[, , shared] = []] = await store.construct(
+        "CONSTRUCT { ?s <urn:p> ?o } WHERE { GRAPH ?g { ?s <urn:p> ?o FILTER isBlank(?o) } }",
+        new Set(),
+      );
+      assert.equal(shared?.termType, "BlankNode");
+      await store.add([[shared, iri("urn:r"), iri("urn:t")] as Triple], {
+        graph: "urn:two",
+      });
+      await store.loadTurtle("", { graph: "urn:empty" });
+      const bytes = await store.dump();
+      const restored = new OxigraphStore();
+      await restored.restore(bytes);
+      const graphs = ["https://pod.example/one.ttl", "urn:two", "urn:empty"];
+      const again = new OxigraphStore();
+      await again.restore(await restored.dump());
+      const truncated = new OxigraphStore();
+      const holding = new OxigraphStore();
+      await holding.loadTurtle("<urn:a> <urn:b> <urn:c> .", { graph: "urn:x" });
+      dumped = {
+        held: await quadsOf(store),
+        restored: await quadsOf(restored),
+        joined: await new Union(restored, graphs).ask(
+          "ASK { <urn:s> <urn:p> ?node . ?node <urn:q> 1 ; <urn:r> <urn:t> }",
+        ),
+        text: new TextDecoder().decode(bytes),
+        truncated: await truncated
+          .restore(bytes.subarray(0, bytes.length - 3))
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          ),
+        refusedWhenHolding: await holding.restore(bytes).then(
+          () => undefined,
+          (error: unknown) => error,
+        ),
+        again: await quadsOf(again),
+      };
+    });
+
+    it("restores every quad into a store of its own", () => {
+      assert.ok(dumped.held.length > 0);
+      assert.deepEqual(unlabelled(dumped.restored), unlabelled(dumped.held));
+    });
+
+    it("keeps each blank node one node across the graphs it is in", () => {
+      assert.equal(dumped.joined, true);
+    });
+
+    it("names every graph the store lists, one that holds nothing too", () => {
+      assert.ok(dumped.text.includes("urn:empty"), dumped.text);
+    });
+
+    it("restores from a store restored what it held", () => {
+      assert.deepEqual(unlabelled(dumped.again), unlabelled(dumped.held));
+    });
+
+    it("refuses bytes cut short, and a store that holds something", () => {
+      assert.ok(dumped.truncated instanceof Error, String(dumped.truncated));
+      assert.ok(
+        dumped.refusedWhenHolding instanceof Error,
+        String(dumped.refusedWhenHolding),
+      );
+    });
+  });
 });
 
 /** A CONSTRUCT of every triple of Turtle that has escapes, languages, datatypes, IRIs beyond ASCII and shared blank nodes, and a parse of it. */

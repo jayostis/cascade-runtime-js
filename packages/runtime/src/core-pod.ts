@@ -47,15 +47,7 @@ import {
 } from "./names.js";
 import { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
 import { type Act, same, StepWrites } from "./pod.js";
-import {
-  iri,
-  literal,
-  ntriples,
-  RDF,
-  type Triple,
-  written,
-  XSD,
-} from "./rdf.js";
+import { iri, literal, RDF, type Triple, written, XSD } from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
 import { matcherJudgmentTouched } from "./shown.js";
@@ -132,10 +124,23 @@ export interface CorePodOptions {
 }
 
 /**
- * Where the build's derived state is kept beside the pod: one name whatever the pod or its lens, as a sealed pod's
- * names say nothing of what it holds.
+ * Where the build's working copy is kept beside the pod: one name whatever the pod or its lens, as a sealed pod's names
+ * say nothing of what it holds.
  */
-const BUILT_BESIDE = "build.nt";
+const BUILT_BESIDE = "build.trig";
+/** Where an earlier runtime kept the build's derived state alone, removed once a working copy is kept. */
+const DERIVED_BESIDE = "build.nt";
+
+/** What a working copy is kept under: the hash of what its build read and the digest of each file the build wrote. */
+function keptUnder(
+  inputsHash: string,
+  digests: Iterable<readonly [string, string]>,
+): string {
+  return JSON.stringify([
+    inputsHash,
+    [...digests].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  ]);
+}
 
 function hex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -537,8 +542,13 @@ export class CorePod {
   #deferring = 0;
   /** What the steps that left their rebuild changed, rebuilt before anything reads what the build writes. */
   #pending: Pending | undefined;
-  /** The hash of what the kept build read, when it was rebuilt since its derived state was last kept beside the pod. */
+  /** The hash of what the kept build read, when it was rebuilt since its working copy was last kept beside the pod. */
   #toKeep: string | undefined;
+  /**
+   * What the working copy beside the pod was kept under, once this session read it back or kept it: the hash of what it
+   * was built from and the digest of each file the build wrote.
+   */
+  #besideKept: string | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -697,6 +707,7 @@ export class CorePod {
    */
   async keepBuild(): Promise<void> {
     await this.#settle();
+    await this.#putBackMatcherView();
     const inputsHash = this.#toKeep;
     const built = this.#built;
     if (inputsHash === undefined || built === undefined) return;
@@ -2066,7 +2077,12 @@ export class CorePod {
     if (kept === undefined) return undefined;
     const end = kept.indexOf(0x0a);
     if (end < 0) return undefined;
-    let header: { inputsHash?: unknown; built?: unknown };
+    let header: {
+      inputsHash?: unknown;
+      built?: unknown;
+      graphs?: unknown;
+      sha256?: unknown;
+    };
     try {
       header = JSON.parse(
         new TextDecoder().decode(kept.subarray(2, end)),
@@ -2081,29 +2097,40 @@ export class CorePod {
       Array.isArray(header.built)
     )
       return undefined;
-    const files = new Map<string, Uint8Array>();
+    const { graphs, sha256 } = header;
+    if (
+      !Array.isArray(graphs) ||
+      !graphs.every((graph) => typeof graph === "string") ||
+      typeof sha256 !== "string"
+    )
+      return undefined;
     const digests = new Map<string, string>();
-    for (const [path, digest] of Object.entries(header.built)) {
-      const bytes = await pod.read(path);
-      if (bytes === undefined) return undefined;
-      files.set(path, bytes);
-      digests.set(path, digest);
-    }
     const held = await timedAside("core-pod.builtDigests", async () => {
-      for (const [path, bytes] of files)
-        if (hex(await fileDigest(bytes)) !== digests.get(path)) return false;
+      for (const [path, digest] of Object.entries(header.built as object)) {
+        const bytes = await pod.read(path);
+        if (bytes === undefined || hex(await fileDigest(bytes)) !== digest)
+          return false;
+        digests.set(path, digest as string);
+      }
       return true;
     });
     if (!held) return undefined;
+    const store = kept.subarray(end + 1);
+    const digest = await timedAside("core-pod.besideDigest", () =>
+      fileDigest(store),
+    );
+    if (hex(digest) !== sha256) return undefined;
     const back = await KeptBuild.readBack(
       this.#rebuilding(build, incremental),
       state,
-      { derived: kept.subarray(end + 1), files, paths },
-    );
+      { store, graphs: graphs as string[], read: [...digests.keys()], paths },
+    ).catch(() => undefined);
+    if (back === undefined) return undefined;
     if (!(await this.#hashCovers(back.kept.union, paths))) {
       back.kept.free();
       return undefined;
     }
+    this.#besideKept = keptUnder(inputsHash, digests);
     return { ...back, digests };
   }
 
@@ -2242,9 +2269,10 @@ export class CorePod {
   }
 
   /**
-   * Keeps the build's derived state beside the pod under the hash of what it read, naming each file of the pod its
-   * queries wrote with the SHA-256 of the bytes written there; a failure keeps nothing, and so does a build that does
-   * not know those bytes, and the pod is built whole when next opened.
+   * Keeps the build's working copy beside the pod, its store as `Store.dump` writes it, under the hash of what it read,
+   * naming each file of the pod its queries wrote with the SHA-256 of the bytes written there, the SHA-256 of the store's
+   * bytes, and the union's graphs; a failure keeps nothing, and so does a build that does not know those bytes, and the
+   * pod is built whole when next opened.
    */
   async #keepBeside(inputsHash: string, built: KeptBuild): Promise<void> {
     const { besidePod, layout } = this.#options;
@@ -2257,14 +2285,33 @@ export class CorePod {
         if (digest === undefined) return;
         digests[file] = digest;
       }
+    const kept = keptUnder(inputsHash, Object.entries(digests));
+    if (kept === this.#besideKept) return;
+    let store: Uint8Array;
+    try {
+      store = await timedAside("core-pod.keepBuild.dump", () =>
+        built.union.store.dump(),
+      );
+    } catch {
+      return;
+    }
+    const sha256 = hex(await fileDigest(store));
+    const graphs = [...built.union.graphs];
     const header = new TextEncoder().encode(
-      `# ${JSON.stringify({ inputsHash, built: digests })}\n`,
+      `# ${JSON.stringify({ inputsHash, built: digests, sha256, graphs })}\n`,
     );
-    const derived = ntriples(await built.derived());
-    const bytes = new Uint8Array(header.length + derived.length);
+    const bytes = new Uint8Array(header.length + store.length);
     bytes.set(header);
-    bytes.set(derived, header.length);
-    await besidePod.write(BUILT_BESIDE, bytes).catch(() => undefined);
+    bytes.set(store, header.length);
+    const written = await timedAside("core-pod.keepBuild.write", () =>
+      besidePod.write(BUILT_BESIDE, bytes),
+    ).then(
+      () => true,
+      () => false,
+    );
+    if (!written) return;
+    this.#besideKept = kept;
+    await besidePod.remove?.([DERIVED_BESIDE]).catch(() => undefined);
   }
 
   /** Throws where the build in part, or the build read back from what it wrote and kept, differs from a build whole. */
@@ -2275,20 +2322,23 @@ export class CorePod {
   ): Promise<void> {
     const { pod, layout } = this.#options;
     const views = new Set(layout.views.map(({ file }) => file));
-    const files = new Map<string, Uint8Array>();
+    const read: string[] = [];
     for (const file of layout.built.flatMap(({ file }) => file ?? []))
-      if (!views.has(file) || built.held.has(file)) {
-        const bytes = await pod.read(file);
-        if (bytes !== undefined) files.set(file, bytes);
-      }
+      if (
+        (!views.has(file) || built.held.has(file)) &&
+        (await pod.read(file)) !== undefined
+      )
+        read.push(file);
     const whole = await KeptBuild.whole(rebuilding, state);
     const back = await KeptBuild.readBack(rebuilding, state, {
-      derived: ntriples(await built.derived()),
-      files,
+      store: await built.union.store.dump(),
+      graphs: [...built.union.graphs],
+      read,
+      paths: [...built.paths],
     });
     try {
       await built.verify(whole);
-      await back.kept.verify(whole);
+      await back.kept.verify(whole, { everyGraph: true });
     } finally {
       back.kept.free();
       whole.kept.free();
