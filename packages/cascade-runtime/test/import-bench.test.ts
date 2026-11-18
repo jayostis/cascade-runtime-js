@@ -348,7 +348,7 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
       const run = {
         importMs: 90,
         spans: [{ name: "pod.match", calls: 1, ms: 40 }],
-      } as Measured;
+      } as unknown as Measured;
       assert.deepEqual(
         againstBudget(run, {
           resources: 1,
