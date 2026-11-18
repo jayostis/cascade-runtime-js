@@ -525,6 +525,20 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           false,
         ],
         [
+          "the bytes of a macOS resource fork's `._x.ttl`",
+          {
+            pod: await podWith({
+              "records/._x.ttl": "<#x> a <urn:example:Other> .\n",
+            }),
+          },
+          false,
+        ],
+        [
+          "the bytes of a `Thumbs.db`",
+          { pod: await podWith({ "records/Thumbs.db": "junk" }) },
+          false,
+        ],
+        [
           "the bytes of a Solid .acl, which is not a .ttl",
           {
             pod: await podWith({
@@ -686,6 +700,29 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         assert.ok(one.changed && one.released, one.failure.message);
         assert.deepEqual(one.after, one.before, one.failure.message);
       }
+    });
+  });
+
+  describe("Layout.loads()", () => {
+    it("refuses a `._` file, even one named .ttl, a `Thumbs.db`, a `.DS_Store`, a Solid `.acl` and `.meta` and an `.icloud` placeholder, and takes a .ttl file and a file the layout gives by itself", async () => {
+      const laidOut = await layout();
+      const refused = [
+        "._x.ttl",
+        "records/._x.ttl",
+        "Thumbs.db",
+        "records/Thumbs.db",
+        ".DS_Store",
+        "records/allergies/.acl",
+        "records/allergies/x.ttl.meta",
+        "records/.x.ttl.icloud",
+        `${laidOut.storedBytes.folder ?? ""}x.ttl`,
+      ];
+      assert.deepEqual(
+        refused.filter((path) => laidOut.loads(path)),
+        [],
+      );
+      assert.equal(laidOut.loads("records/x.ttl"), true);
+      assert.equal(laidOut.loads(laidOut.preferences), true);
     });
   });
 

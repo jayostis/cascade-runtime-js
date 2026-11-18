@@ -455,7 +455,7 @@ async function held(site: Site): Promise<Held[]> {
               ? await options.pod.read(path)
               : builtFileBytes(layout, pod.address, path, rebuilt);
           if (bytes === undefined) throw new Error(`${path} is gone`);
-          if (!layout.isRdf(path))
+          if (!layout.loads(path))
             return { path, bytes, graph: undefined, thing: pod.address + path };
           const store = options.newStore();
           const triples =
