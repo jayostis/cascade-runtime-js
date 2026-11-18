@@ -256,7 +256,7 @@ pub struct DumpOptions {
 /// An in-memory Oxigraph store.
 #[napi]
 pub struct Store {
-    store: oxigraph::store::Store,
+    store: Option<oxigraph::store::Store>,
 }
 
 #[napi]
@@ -264,24 +264,37 @@ impl Store {
     #[napi(constructor)]
     pub fn new() -> Result<Self> {
         Ok(Self {
-            store: oxigraph::store::Store::new().map_err(failed)?,
+            store: Some(oxigraph::store::Store::new().map_err(failed)?),
         })
+    }
+
+    fn held(&self) -> Result<&oxigraph::store::Store> {
+        self.store
+            .as_ref()
+            .ok_or_else(|| failed("the store was freed and is used again"))
+    }
+
+    /// Releases the quads the store holds now, rather than when the object is collected, which knows nothing of their
+    /// size; the store is never used again.
+    #[napi]
+    pub fn free(&mut self) {
+        self.store = None;
     }
 
     #[napi(getter)]
     pub fn size(&self) -> Result<i64> {
-        Ok(self.store.len().map_err(failed)? as i64)
+        Ok(self.held()?.len().map_err(failed)? as i64)
     }
 
     #[napi]
     pub fn add(&self, quad: JsQuad) -> Result<()> {
-        self.store.insert(&self::quad(&quad)?).map_err(failed)?;
+        self.held()?.insert(&self::quad(&quad)?).map_err(failed)?;
         Ok(())
     }
 
     #[napi]
     pub fn delete(&self, quad: JsQuad) -> Result<()> {
-        self.store.remove(&self::quad(&quad)?).map_err(failed)?;
+        self.held()?.remove(&self::quad(&quad)?).map_err(failed)?;
         Ok(())
     }
 
@@ -300,7 +313,7 @@ impl Store {
             .as_ref()
             .map(|graph| self::graph(Some(graph)))
             .transpose()?;
-        self.store
+        self.held()?
             .quads_for_pattern(
                 subject.as_ref().map(Into::into),
                 predicate.as_ref().map(Into::into),
@@ -313,7 +326,7 @@ impl Store {
 
     #[napi]
     pub fn load(&self, data: Either<String, Uint8Array>, options: ParseOptions) -> Result<()> {
-        self.store
+        self.held()?
             .load_from_slice(parser(&options)?, bytes(&data))
             .map_err(failed)
     }
@@ -344,7 +357,7 @@ impl Store {
         }
         let needs = || failed("a SELECT or a CONSTRUCT is answered here only in a results_format");
         let written = |bytes: Vec<u8>| String::from_utf8(bytes).map_err(failed);
-        match prepared.on_store(&self.store).execute().map_err(failed)? {
+        match prepared.on_store(self.held()?).execute().map_err(failed)? {
             QueryResults::Solutions(solutions) => {
                 let format = format.ok_or_else(needs)?;
                 let mut serializer = QueryResultsSerializer::from_format(results_format(&format)?)
@@ -384,7 +397,7 @@ impl Store {
         SparqlEvaluator::new()
             .parse_update(&update)
             .map_err(failed)?
-            .on_store(&self.store)
+            .on_store(self.held()?)
             .execute()
             .map_err(failed)
     }
@@ -393,10 +406,11 @@ impl Store {
     pub fn dump(&self, options: DumpOptions) -> Result<String> {
         let format = rdf_format(&options.format)?;
         let bytes = match &options.from_graph_name {
-            Some(name) => self
-                .store
-                .dump_graph_to_writer(&graph(Some(name))?, format, Vec::new()),
-            None => self.store.dump_to_writer(format, Vec::new()),
+            Some(name) => {
+                self.held()?
+                    .dump_graph_to_writer(&graph(Some(name))?, format, Vec::new())
+            }
+            None => self.held()?.dump_to_writer(format, Vec::new()),
         }
         .map_err(failed)?;
         String::from_utf8(bytes).map_err(failed)
