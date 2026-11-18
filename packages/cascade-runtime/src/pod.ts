@@ -81,7 +81,8 @@ export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
 /**
  * `timeBudgetSeconds` (a positive number) and `memoryBudgetMiB` (a positive whole number, up to the Bridge's own cap)
  * hold each document's conversion to the seconds and the heap they name; a conversion that passes either rejects the import with a `BridgeError` of kind `bridge`
- * and the import files nothing. Left out, the Bridge's own apply: 120 seconds and 1024 MiB.
+ * and the import files nothing. Left out, a conversion may take 120 seconds or 4 seconds a megabyte of its document, the
+ * more of the two, and the Bridge's own heap, 1024 MiB.
  */
 export interface ImportOptions extends ConvertBudget {
   /**

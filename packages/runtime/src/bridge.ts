@@ -84,7 +84,10 @@ export function conversionBudget(
   budget: ConvertBudget,
   bytes: number,
 ): ConvertBudget {
-  return budget;
+  return {
+    timeBudgetSeconds: Math.max(120, (4 * bytes) / 1_000_000),
+    ...budget,
+  };
 }
 
 export interface ConvertOptions extends ConvertBudget {
