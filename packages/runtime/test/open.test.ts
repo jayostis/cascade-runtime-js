@@ -4,7 +4,7 @@ import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { References } from "../src/references.js";
+import { References, RULE_LIST } from "../src/references.js";
 import { deriveWith, vocabularyBuild } from "../src/build.js";
 import { replay } from "../src/replay.js";
 import { randomId } from "../src/ids.js";
@@ -31,12 +31,11 @@ const [V1, V2, V3] = [
   "urn:uuid:3f0c1b52-6a4e-4d8e-9b1f-2c7a5e9d4b12",
   "urn:uuid:3f0c1b52-6a4e-4d8e-9b1f-2c7a5e9d4b13",
 ];
-const RULES_10 = "urn:uuid:ddb435a8-0aa6-4b17-a830-469bc38186cd";
 const HGVS = "https://ns.cascadeprotocol.org/codes/hgvs/";
 const SAME_VARIATION = `${CASCADE}SameVariationThroughTable`;
 
 /**
- * The vocabulary's rule list, at version 10 by default, and a variant classifications series whose versions each hold
+ * The vocabulary's rule list, and a variant classifications series whose versions each hold
  * the ClinVar rows given, by ID, each with its HGVS expression, revising the version before it, the last the default.
  */
 async function variantTables(
@@ -225,7 +224,7 @@ describe("Opening a pod with tables other than the ones it was matched with · C
   });
 
   describe("given tables that list another version of the pod's rule list, on no line with it", () => {
-    const rules = "f32ebeea-4ed7-4da7-b08c-031dc619538e";
+    let rules: string;
     const other = "0b6f2c1e-9d4a-4e7b-8c3f-5a1d2e6b7f90";
     let unheld: readonly string[] | undefined;
     let refused: string | undefined;
@@ -237,6 +236,15 @@ describe("Opening a pod with tables other than the ones it was matched with · C
         "adopting describes each version after the pod's up to the adopted one",
         {
           source: async (files, folder) => {
+            const app = await References.of(
+              files,
+              `${folder}/tables/app/`,
+              newStore,
+              files,
+            );
+            rules = app
+              .fallback(await app.ruleList())
+              .slice("urn:uuid:".length);
             const source = new MemoryFiles(files.iri);
             for (const path of await files.list(`${folder}/`)) {
               const bytes = (await files.read(path)) ?? new Uint8Array();
@@ -251,7 +259,8 @@ describe("Opening a pod with tables other than the ones it was matched with · C
             }
             await source.write(
               `${folder}/tables/app-later/${other}.ttl`,
-              (await files.read(`runtime/rule-list/${rules}.ttl`)) ??
+              (await files.read(`${folder}/tables/app/${rules}.ttl`)) ??
+                (await files.read(`${RULE_LIST}${rules}.ttl`)) ??
                 new Uint8Array(),
             );
             return source;
@@ -440,7 +449,7 @@ describe("Opening a pod with tables other than the ones it was matched with · C
           VARIANTS,
           V1,
           await tables.ruleList(),
-          RULES_10,
+          tables.fallback(await tables.ruleList()),
         ]),
       );
       atMatch = await justifications(pod, matched.wrote);
@@ -729,7 +738,7 @@ ${variant(1)}`),
         ),
         twice(
           "runtime/matcher.feature",
-          "opening a pod matched under version 6 with version 7 files one finding naming the matcher judgments of the rule version 7 changed that it did not file again",
+          'opening a pod matched under version "0" with version 19 files one finding naming the matcher judgments of the rule version 19 changed that it did not file again',
         ),
       ]);
       const under = async (runs: typeof released, prefix: string) =>

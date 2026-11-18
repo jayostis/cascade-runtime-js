@@ -274,7 +274,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         ),
         compare(
           "runtime/opening.feature",
-          "after the rule list's version 2 is adopted, R3 joins a brand allergy and its ingredient's, and not a two-ingredient product and one of its ingredients",
+          "adopting a rule list version that adds R3 judges the pairs R3 joins among records already matched, and asserts no matcher judgment of a rule it left unchanged",
         ),
       ]);
     });
