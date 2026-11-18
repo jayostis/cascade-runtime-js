@@ -393,6 +393,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       const rows: [string, Partial<CorePodOptions>, boolean][] = [
         ["nothing changed", {}, false],
         ["the runtime", { runtime: `${RUNTIME}#other` }, true],
+        ["the runtime's built code", { builtCode: "other" }, true],
         [
           "a comparison of the matcher's in the vocabulary",
           { vocabulary: withComparison },

@@ -71,7 +71,12 @@ import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
 import { checkFolderSecret, openFolderPod } from "../src/node/folder-pod.js";
 import { answersToPublish, partsOf } from "../src/node/published.js";
-import { answersBeside, keptBeside, resolved } from "../src/node/resolved.js";
+import {
+  answersBeside,
+  builtCode,
+  keptBeside,
+  resolved,
+} from "../src/node/resolved.js";
 // `samplesToPublish` throws outside a packed package; `samplesOf` is the body it hands its packed source to.
 import { samplesOf } from "../src/node/samples.js";
 // A browser's `openPod` reads published answers with `keptPod` and `withLookups`, which a Node test cannot call as a page does.
@@ -2643,51 +2648,126 @@ describe("Opening a pod again · openPod()", () => {
   });
 
   describe("given a runtime packed, or run from a checkout · keptBeside()", () => {
-    it("keeps answers for a packed, committed runtime, and the build too wherever the runtime and its components are each at a commit", () => {
+    it("keeps answers for a packed, committed runtime, and the build too wherever the runtime and its components are each at a commit, a checkout's under its built code", async () => {
       const COMMIT =
         "https://github.com/jayostis/cascade-runtime-js/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
-      const rows: [string, string, string, number, [boolean, boolean]][] = [
+      const rows: [
+        string,
+        string,
+        string,
+        number,
+        [boolean, boolean, string | undefined],
+      ][] = [
         [
           "packed and committed",
           "0.0.0-commit-abc123",
           COMMIT,
           0,
-          [true, true],
+          [true, true, undefined],
         ],
-        ["a checkout at a commit", "0.0.0", COMMIT, 0, [false, true]],
+        ["a checkout at a commit", "0.0.0", COMMIT, 0, [false, true, "built"]],
         [
           "a checkout with changes",
           "0.0.0",
           `${COMMIT}#uncommitted`,
           0,
-          [false, false],
+          [false, false, undefined],
         ],
         [
           "a checkout no commit names",
           "0.0.0",
           "https://github.com/jayostis/cascade-runtime-js#unidentified",
           0,
-          [false, false],
+          [false, false, undefined],
         ],
-        ["components with changes", "0.0.0", COMMIT, 2, [false, false]],
+        [
+          "components with changes",
+          "0.0.0",
+          COMMIT,
+          2,
+          [false, false, undefined],
+        ],
       ];
-      const found = rows.map(([what, version, performer, uncommitted]) => {
-        const parts = keptBeside(
+      const found = [];
+      for (const [what, version, performer, uncommitted] of rows) {
+        const parts = await keptBeside(
           { performer, local: { resolved: { uncommitted } } },
           version,
+          () => Promise.resolve("built"),
         );
-        return [
+        found.push([
           what,
           [
             parts.answers !== undefined,
             (parts.answers?.at ?? parts.builtBeside) !== undefined,
+            parts.builtCode,
           ],
-        ];
-      });
+        ]);
+      }
       assert.deepEqual(
         found,
         rows.map(([what, , , , kept]) => [what, kept]),
       );
+    });
+
+    it("names a checkout's built code by the bytes of what runs, so code built at another commit than the checkout's keeps its build apart", async () => {
+      const root = await mkdtemp(join(tmpdir(), "built-code-"));
+      try {
+        const files: Record<string, string> = {
+          "cascade-runtime/package.json": JSON.stringify({
+            name: "cascade-runtime",
+            dependencies: { "@cascade-runtime/runtime": "0.0.0" },
+          }),
+          "cascade-runtime/dist/src/index.js": "export {};\n",
+          "runtime/package.json": JSON.stringify({
+            name: "@cascade-runtime/runtime",
+          }),
+          "runtime/dist/src/core-pod.js": "export const at = 1;\n",
+          "runtime/dist/src/core-pod.js.map": "{}",
+          "site/package.json": JSON.stringify({
+            name: "@cascade-runtime/site",
+          }),
+          "site/dist/src/page.js": "export {};\n",
+        };
+        const put = async (path: string, text: string) => {
+          await mkdir(dirname(join(root, path)), { recursive: true });
+          await writeFile(join(root, path), text);
+        };
+        for (const [path, text] of Object.entries(files)) await put(path, text);
+        const code = () => builtCode(join(root, "cascade-runtime"));
+        const own = await code();
+        const rows: [string, string, string, boolean][] = [
+          [
+            "a file of a package it runs",
+            "runtime/dist/src/core-pod.js",
+            "export const at = 2;\n",
+            true,
+          ],
+          [
+            "a file of its own package",
+            "cascade-runtime/dist/src/index.js",
+            "export const at = 3;\n",
+            true,
+          ],
+          ["a source map", "runtime/dist/src/core-pod.js.map", "{ }", false],
+          [
+            "a package it does not run",
+            "site/dist/src/page.js",
+            "export const at = 4;\n",
+            false,
+          ],
+        ];
+        const found: string[] = [];
+        for (const [what, path, text, changes] of rows) {
+          await put(path, text);
+          if (((await code()) !== own) !== changes)
+            found.push(`${what}: ${changes ? "same" : "another"} digest`);
+          await put(path, files[path] ?? "");
+        }
+        assert.deepEqual(found, []);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     });
   });
 
