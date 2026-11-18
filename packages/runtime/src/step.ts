@@ -4,7 +4,7 @@ import type { IdsAndTime } from "./ids.js";
 import type { Layout } from "./layout.js";
 import type { StepWrites } from "./pod.js";
 import { Refusal } from "./refusal.js";
-import type { Dataset, StoreFactory, Union } from "./store.js";
+import type { Dataset, Rows, StoreFactory, Union } from "./store.js";
 
 export { Refusal };
 
@@ -53,6 +53,8 @@ export interface StepContext {
    * pod's address plus its path, beside the derived state, the files the build writes and the layout. Read only.
    */
   keptDataset(): Promise<Dataset | undefined>;
+  /** The query's rows over the pod's RDF files as they stand before the step, but those the build writes, with nothing derived. */
+  selectStated(query: string): Promise<Rows>;
 }
 
 /** A file a step is given: an entry's or a person's judgment's Turtle. */

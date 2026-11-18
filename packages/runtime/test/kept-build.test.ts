@@ -13,7 +13,7 @@ import { dataset } from "../src/dataset.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { randomId } from "../src/ids.js";
 import { LAYOUT_FILE, LAYOUT_GRAPH, Layout } from "../src/layout.js";
-import { matcherView, runMatcher } from "../src/matcher.js";
+import { matcherView, podRows, runMatcher } from "../src/matcher.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, written } from "../src/rdf.js";
 import { References } from "../src/references.js";
@@ -598,6 +598,16 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
             lent = undefined;
           },
           keptDataset: async () => undefined,
+          selectStated: (query) =>
+            podRows(
+              {
+                layout: laidOut,
+                pod: pod.files,
+                address: pod.files.iri,
+                newStore: side.newStore,
+              },
+              query,
+            ),
         };
         const references = await References.of(
           side.source,

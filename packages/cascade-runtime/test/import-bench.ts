@@ -98,7 +98,7 @@ export const HOT_SPOTS = {
     "kept.step.rebuilt",
     "kept.rebuilt.derive",
     "build.queried",
-    "union.loadTurtle",
+    "union.loadFiles",
     "pod.judge",
     "pod.match",
     "matcher.of",
