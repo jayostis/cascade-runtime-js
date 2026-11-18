@@ -27,7 +27,7 @@ import { type Files, MemoryFiles, relative, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
-import { type Kept, KeptMatcherJudgments } from "./kept.js";
+import { comparisons, type Kept, KeptMatcherJudgments } from "./kept.js";
 import { HashedSet, type KeptSet } from "./kept-set.js";
 import { LAYOUT_GRAPH, type Layout, SYNC } from "./layout.js";
 import {
@@ -514,7 +514,7 @@ export class CorePod {
   #builtBefore: ReadonlyMap<string, readonly Triple[]> | undefined;
   /** The SHA-256, in hex, of each file the kept build wrote, as written or as read back. */
   #builtDigests = new Map<string, string>();
-  /** The hash of what every build of the pod reads whatever its files: the runtime, the lens, the address and the vocabulary's texts. */
+  /** The hash of what every build of the pod reads whatever its files: the runtime, the lens, the address and the vocabulary's texts, its comparisons among them. */
   #builtWith: Promise<string> | undefined;
   /** What each act file of the pod read or written so far holds of the chain, by path. */
   readonly #chain = new Map<string, ActFile>();
@@ -1860,38 +1860,40 @@ export class CorePod {
 
   /**
    * The hash of everything a build of the pod's files at the paths reads (C8): the runtime, the lens, the pod's address,
-   * the texts of the lens's derivations, the layout and the build's queries; each path; the bytes of each file the layout
-   * gives by itself, which changes in place, as the card and the settings; and what the tables' index states of each
-   * version the pod files and of its series. A file of the set is named by what it holds (N9), so its path stands for its
-   * bytes; a version's rows never change. None without a place beside the pod to keep the build in.
+   * the texts of the lens's derivations, the layout, the build's queries and the matcher's comparisons; each path; the
+   * bytes of each file outside the snapshot set, which may change in place, as the card, the settings or a file placed by
+   * hand; and what the tables' index states of each version the pod files. A file of the set is named by what it holds
+   * (N9), so its path stands for its bytes; a version's rows never change, and a series' own triples, as its current
+   * version, are read from the pod's files, not the tables. None without a place beside the pod to keep the build in.
    */
   async #inputsHash(
     build: PodBuildOption,
     incremental: VocabularyBuild,
     read: readonly string[],
   ): Promise<string | undefined> {
-    const { pod, layout, address, runtime, besidePod } = this.#options;
+    const { pod, layout, address, runtime, besidePod, vocabulary } =
+      this.#options;
     if (besidePod === undefined) return undefined;
     return timedAside("core-pod.inputsHash", async () => {
-      this.#builtWith ??= fileDigest(
-        new TextEncoder().encode(
-          JSON.stringify([
-            runtime,
-            build.lens,
-            address,
-            incremental.derivations.for(build.lens).map(({ query }) => query),
-            layout.turtle,
-            incremental.queries,
-          ]),
-        ),
-      ).then(hex);
-      const paths = [...read].sort();
-      const byItself = new Set(
-        layout.placements.flatMap(({ file }) => file ?? []),
+      this.#builtWith ??= comparisons(vocabulary).then((compared) =>
+        fileDigest(
+          new TextEncoder().encode(
+            JSON.stringify([
+              runtime,
+              build.lens,
+              address,
+              incremental.derivations.for(build.lens).map(({ query }) => query),
+              layout.turtle,
+              incremental.queries,
+              [...compared].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+            ]),
+          ),
+        ).then(hex),
       );
+      const paths = [...read].sort();
       const inPlace: string[] = [];
       for (const path of paths)
-        if (byItself.has(path)) {
+        if (!layout.inSnapshotSet(path)) {
           const bytes = await pod.read(path);
           inPlace.push(
             path,
@@ -1902,7 +1904,7 @@ export class CorePod {
       const listed = new Set(paths);
       const series = layout.place(`${CASCADE}ReferenceSeries`);
       const described = new Set<string>();
-      for (const [version, , of] of index.match(
+      for (const [version] of index.match(
         undefined,
         `${PROV}specializationOf`,
       )) {
@@ -1912,7 +1914,7 @@ export class CorePod {
         } catch {
           continue;
         }
-        if (listed.has(path)) described.add(version.value).add(of.value);
+        if (listed.has(path)) described.add(version.value);
       }
       const tables = [...described]
         .flatMap((thing) => index.match(iri(thing)))
