@@ -833,6 +833,7 @@ class OpenPod implements Pod {
   close(): Promise<void> {
     return this.#next(async () => {
       this.#closed = true;
+      await this.#core.keepBuild().catch(() => undefined);
       this.#core.close();
       const bridge = this.#bridge;
       this.#bridge = undefined;

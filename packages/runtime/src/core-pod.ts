@@ -114,9 +114,9 @@ export interface CorePodOptions {
    */
   readonly build?: PodBuildOption;
   /**
-   * Where the runtime keeps what it built of the pod beside it, never in it. Given, with a build kept across steps, each
-   * rebuild keeps the lens's derived state there and the manifest names the hash of what the build read, so a pod
-   * opened again reads its build back instead of building it whole when the hash is still the pod's (C8).
+   * Where the runtime keeps what it built of the pod beside it, never in it. Given, with a build kept across steps, the manifest
+   * names the hash of what the build read, `keepBuild` keeps the lens's derived state there, and a pod opened again reads
+   * its build back instead of building it whole when the hash is still the pod's (C8).
    */
   readonly besidePod?: Files;
 }
@@ -509,6 +509,8 @@ export class CorePod {
   #deferring = 0;
   /** What the steps that left their rebuild changed, rebuilt before anything reads what the build writes. */
   #pending: Pending | undefined;
+  /** The hash of what the kept build read, when it was rebuilt since its derived state was last kept beside the pod. */
+  #toKeep: string | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -631,6 +633,23 @@ export class CorePod {
   }
 
   /**
+   * Keeps the build's derived state beside the pod, when it was rebuilt since it was last kept, so the pod opened again
+   * reads its build back (C8): once, before `close`, rather than at every step. Left unkept, as when the process stops
+   * first, the manifest names a hash the derived state beside the pod does not, and the pod is built whole when next
+   * opened.
+   */
+  async keepBuild(): Promise<void> {
+    await this.#settle();
+    const inputsHash = this.#toKeep;
+    const built = this.#built;
+    if (inputsHash === undefined || built === undefined) return;
+    await timedAside("core-pod.keepBuild", () =>
+      this.#keepBeside(inputsHash, built),
+    );
+    if (this.#built === built) this.#toKeep = undefined;
+  }
+
+  /**
    * Drops what is kept, and frees it; the pod builds again when next read. Inside `deferring` it throws and drops
    * nothing, since the steps it left would be lost with their rebuild undone.
    */
@@ -715,6 +734,7 @@ export class CorePod {
   #dropBuilt(): void {
     this.#built?.free();
     this.#built = undefined;
+    this.#toKeep = undefined;
     this.#movedInBuilt = 0;
   }
 
@@ -1940,14 +1960,9 @@ export class CorePod {
               Number(a === layout.manifest) - Number(b === layout.manifest),
           ),
       );
-      if (inputsHash !== undefined) {
-        const keeping = built;
-        await timedAside("core-pod.rebuild.keepBeside", () =>
-          this.#keepBeside(inputsHash, keeping),
-        );
-      }
       await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
+      this.#toKeep = inputsHash;
       return;
     }
     const rebuilt = new Set(layout.rebuilt);
