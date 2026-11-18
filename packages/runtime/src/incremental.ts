@@ -512,7 +512,7 @@ export class KeptBuild {
 
   /**
    * Throws where this build and the whole one differ: in the derived state, or in a file the build writes, as the
-   * union holds it or as it would be written.
+   * union holds it or as it would be written. The whole one is the caller's to free.
    */
   async verify(whole: {
     kept: KeptBuild;
@@ -581,7 +581,6 @@ export class KeptBuild {
       if (writing !== undefined)
         compare(`${path} as written`, described(writing), described(triples));
     }
-    whole.kept.free();
     if (differences.length > 0)
       throw new Error(
         `the build in part differs from the build whole:\n${differences.join("\n")}`,

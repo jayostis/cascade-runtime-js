@@ -506,7 +506,8 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
   /**
    * Stories of 20 steps drawn from the seeds 1 to 8 (`CASCADE_RANDOM_SEEDS`, `CASCADE_RANDOM_FIRST_SEED` and
    * `CASCADE_RANDOM_STEPS` change them), each replayed once with `build.verify`: after a step rebuilt in part the pod
-   * builds itself whole as well and throws where the two differ. A drawn story reaches step orders no kit does: a
+   * builds itself whole as well, and reads its build back from the files the step wrote and the derived state as kept
+   * beside a pod, and throws where either differs from the whole one. A drawn story reaches step orders no kit does: a
    * judgment over records a later import names, a sync after a newer table.
    */
   describe("given stories drawn from seeds, replayed with `build.verify`", () => {
@@ -516,7 +517,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       drawn = await drawnStories();
     });
 
-    it("leaves, after each step rebuilt in part, the derived state and the built files of a pod built whole", () => {
+    it("leaves, after each step rebuilt in part and once read back, the derived state and the built files of a pod built whole", () => {
       assert.ok(drawn.length > 0, "no story was drawn");
       assert.deepEqual(
         drawn

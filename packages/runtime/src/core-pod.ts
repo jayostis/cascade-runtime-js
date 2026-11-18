@@ -40,7 +40,7 @@ import {
   fileDigest,
   snapshotName,
 } from "./names.js";
-import { type Change, KeptBuild } from "./incremental.js";
+import { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
 import { type Act, same, StepWrites } from "./pod.js";
 import {
   iri,
@@ -136,7 +136,10 @@ export interface PodBuildOption {
   readonly lens: string;
   readonly derive: Derive;
   readonly incremental?: VocabularyBuild;
-  /** For tests: after each step rebuilt in part, builds the pod whole too, and throws where the two differ. */
+  /**
+   * For tests: after each step rebuilt in part, builds the pod whole too, and throws where it differs from the build in
+   * part, or from the build read back from what the step wrote and the derived state as it is kept beside the pod.
+   */
   readonly verify?: boolean;
   /** The quads the matcher's views may remove from the kept build's store and add again before it is renewed. */
   readonly renewAfterMoved?: number;
@@ -1990,6 +1993,34 @@ export class CorePod {
     await besidePod.write(BUILT_BESIDE, bytes).catch(() => undefined);
   }
 
+  /** Throws where the build in part, or the build read back from what it wrote and kept, differs from a build whole. */
+  async #verified(
+    rebuilding: Rebuilding,
+    state: PodState,
+    built: KeptBuild,
+  ): Promise<void> {
+    const { pod, layout } = this.#options;
+    const views = new Set(layout.views.map(({ file }) => file));
+    const files = new Map<string, Uint8Array>();
+    for (const file of layout.built.flatMap(({ file }) => file ?? []))
+      if (!views.has(file) || built.held.has(file)) {
+        const bytes = await pod.read(file);
+        if (bytes !== undefined) files.set(file, bytes);
+      }
+    const whole = await KeptBuild.whole(rebuilding, state);
+    const back = await KeptBuild.readBack(rebuilding, state, {
+      derived: ntriples(await built.derived()),
+      files,
+    });
+    try {
+      await built.verify(whole);
+      await back.kept.verify(whole);
+    } finally {
+      back.kept.free();
+      whole.kept.free();
+    }
+  }
+
   async #rebuild(
     build: PodBuildOption,
     at: string | undefined,
@@ -2009,8 +2040,10 @@ export class CorePod {
       );
       if (files !== undefined && this.#builtBefore !== undefined)
         files = new Map([...this.#builtBefore, ...files]);
-      if (built !== undefined && files !== undefined && build.verify === true)
-        await built.verify(await KeptBuild.whole(rebuilding, state));
+      const verifying =
+        built !== undefined && files !== undefined && build.verify === true
+          ? built
+          : undefined;
       if (built === undefined || files === undefined) {
         this.#dropBuilt();
         const whole = await timedAside("kept.whole", () =>
@@ -2034,6 +2067,8 @@ export class CorePod {
       await timedAside("core-pod.rebuild.writeAll", () => writeAll(pod, bytes));
       for (const [path, written] of bytes)
         this.#builtDigests.set(path, hex(await fileDigest(written)));
+      if (verifying !== undefined)
+        await this.#verified(rebuilding, state, verifying);
       this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
       this.#toKeep = inputsHash;
       return;
