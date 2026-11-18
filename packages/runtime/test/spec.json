@@ -42,7 +42,7 @@
     "Matching a 1.4 pod's key wrap against known answers · newHeader(), openHeader(), SealedIndex.open()",
     "Keeping a pod's sealed files under keyed names · SealedIndex.open(), EncryptedFiles",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
-    "Choosing Oxigraph's native or WebAssembly build · chooseOxigraph(), nativeOxigraph(), OxigraphStore",
+    "Choosing and fetching Oxigraph's native or WebAssembly build · chooseOxigraph(), nativeOxigraph(), fetchNativeOxigraph(), OxigraphStore",
     "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"
   ],
   "glossary": [
