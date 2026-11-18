@@ -106,13 +106,17 @@ export async function findBridgePackage(
   options: ResolverOptions,
   repository: string = BRIDGE_REPOSITORY,
 ): Promise<BridgePackageFound> {
+  const identity = JSON.stringify([optionsKey(options), repository]);
   const key = JSON.stringify([
-    optionsKey(options),
-    repository,
+    identity,
     await localStamps(options, repository),
   ]);
   let found = foundPackages.get(key);
   if (found === undefined) {
+    // One search under these options is kept: the one before it is let go.
+    const before = foundKeys.get(identity);
+    if (before !== undefined) foundPackages.delete(before);
+    foundKeys.set(identity, key);
     const said: string[] = [];
     const pending = findBridgePackageNow(
       { ...options, log: (line) => said.push(line) },
@@ -151,6 +155,7 @@ async function localStamps(
  * Found once per process for each set of options, as git and the sources of a checkout are read once; again when a
  * checkout's state, as {@link localStamps} reads it, has changed.
  */
+const foundKeys = new Map<string, string>();
 const foundPackages = new Map<
   string,
   Promise<{ located: BridgePackageFound; said: string[] }>
@@ -396,14 +401,25 @@ const INSTANCES = 2;
 interface Member {
   loaded: Promise<LoadedAdapter>;
   busy: number;
+  /** Let go of: a call that finds it so starts another. */
+  freed?: true;
+  /** One of those the pool had when it was retired: let go of as its calls end. */
+  ending?: true;
+  idle?: NodeJS.Timeout;
 }
+
+/** How long a retired pool keeps an instance for the pods still holding it, once it has no call. */
+const RETIRED_IDLE_MS = 5_000;
 
 /**
  * One adapter in up to {@link INSTANCES} instances, each in a worker of its own, so that a document that takes long or
  * faults holds up or ends only the instance it is on. A call goes to an idle instance, else starts the second, else
- * waits on the one with fewer calls. A retired pool lets go of each instance as its calls end.
+ * waits on the one with fewer calls; an instance that fails to load is dropped and its calls go to another. A retired
+ * pool (its adapter replaced) lets go of an instance idle at once and of the others as their calls end, but a pod still
+ * holding the adapter is served by one instance, started once however many calls arrive, which stays for a few seconds
+ * after its last call, so a retired adapter is not reloaded on every call.
  */
-class Pool {
+export class Pool {
   readonly #members: Member[] = [];
   #retired = false;
   readonly adapter: LoadedAdapter;
@@ -411,6 +427,7 @@ class Pool {
   constructor(
     first: LoadedAdapter,
     readonly more: () => Promise<LoadedAdapter>,
+    readonly idleMs: number = RETIRED_IDLE_MS,
   ) {
     this.#members.push({ loaded: Promise.resolve(first), busy: 0 });
     this.adapter = {
@@ -424,16 +441,8 @@ class Pool {
   #pick(): Member {
     const idle = this.#members.find(({ busy }) => busy === 0);
     if (idle !== undefined) return idle;
-    if (this.#members.length < INSTANCES) {
-      const member: Member = {
-        busy: 0,
-        loaded: this.more().catch(() => {
-          this.#members.splice(this.#members.indexOf(member), 1);
-          const [first] = this.#members;
-          if (first === undefined) throw new Error("no instance is left");
-          return first.loaded;
-        }),
-      };
+    if (this.#members.length < (this.#retired ? 1 : INSTANCES)) {
+      const member: Member = { busy: 0, loaded: this.more() };
       this.#members.push(member);
       return member;
     }
@@ -442,31 +451,69 @@ class Pool {
     );
   }
 
+  #drop(member: Member): void {
+    const at = this.#members.indexOf(member);
+    if (at >= 0) this.#members.splice(at, 1);
+  }
+
   async #run<T>(call: (on: LoadedAdapter) => Promise<T>): Promise<T> {
-    const member = this.#pick();
-    member.busy += 1;
-    try {
-      return await call(await member.loaded);
-    } finally {
-      member.busy -= 1;
-      if (this.#retired && member.busy === 0) this.#let(member);
+    let member = this.#pick();
+    for (;;) {
+      clearTimeout(member.idle);
+      member.busy += 1;
+      let on: LoadedAdapter;
+      try {
+        on = await member.loaded;
+      } catch (error) {
+        member.busy -= 1;
+        this.#drop(member);
+        const [other] = this.#members;
+        if (other === undefined) throw error;
+        member = other;
+        continue;
+      }
+      try {
+        return await call(on);
+      } finally {
+        member.busy -= 1;
+        if (this.#retired && member.busy === 0)
+          if (member.ending) this.#let(member);
+          else this.#later(member);
+      }
     }
   }
 
+  #later(member: Member): void {
+    clearTimeout(member.idle);
+    member.idle = setTimeout(() => {
+      if (member.busy === 0) this.#let(member);
+    }, this.idleMs);
+    member.idle.unref();
+  }
+
   #let(member: Member): void {
+    clearTimeout(member.idle);
+    if (member.freed) return;
+    member.freed = true;
+    this.#drop(member);
     void member.loaded.then((on) => on.free()).catch(() => undefined);
   }
 
-  /** Lets go of every instance now idle, and of the others as their calls end; a call after this starts its instance again and ends it once more. */
+  /** Lets go of every instance now idle at once, and of the others as their calls end; one a later call starts is kept a few seconds. */
   retire(): void {
     this.#retired = true;
-    for (const member of this.#members)
+    for (const member of [...this.#members]) {
+      member.ending = true;
       if (member.busy === 0) this.#let(member);
+    }
   }
 }
 
 interface Shared {
   readonly loaded: Loaded;
+  /** The build of the Bridge it was loaded by. */
+  readonly build: string;
+  readonly iri: string;
   readonly pool: Pool;
   /** The adapter's files as they were when it was loaded. */
   readonly signature: string;
@@ -480,8 +527,14 @@ interface Shared {
   };
 }
 
-/** One live entry for each adapter folder of each build of the Bridge: a newer one retires the one it replaces. */
+/**
+ * One live entry for each adapter folder and vocabulary folder it reads, under one Bridge: a change of the adapter's
+ * version, its files, the vocabulary's or the build of the Bridge replaces the entry, and retires the one it replaces.
+ */
 const shared = new Map<string, { loading: Promise<Shared>; folder: string }>();
+
+/** The repository of the vocabulary each adapter folder names, once it has been loaded and said: the key of its entries. */
+const vocabularies = new Map<string, string>();
 
 /** Ends the workers of every shared adapter, or of those loaded from `folder`; the next load starts them again. */
 export async function endSharedAdapters(folder?: string): Promise<void> {
@@ -513,9 +566,17 @@ export async function loadSharedAdapters(
   const out: ConfiguredAdapter[] = [];
   for (const followed of adapters) {
     const resolved = await components.resolve(followed);
-    const slot = [bridgeFolder, build, resolved.iri, resolved.folder].join(" ");
+    const base = [bridgeFolder, resolved.folder].join(" ");
+    const repository = vocabularies.get(base);
+    const vocabulary =
+      repository === undefined
+        ? undefined
+        : await components.resolve({ repository });
     const found = await sharedAt(
-      slot,
+      base,
+      `${base} ${vocabulary?.folder ?? ""}`,
+      vocabulary,
+      build,
       await signature(resolved.folder),
       resolved,
       followed,
@@ -534,7 +595,10 @@ export async function loadSharedAdapters(
 
 /** The live entry of the slot if it matches what this caller sees, otherwise a new one in its place. */
 async function sharedAt(
+  base: string,
   slot: string,
+  vocabularyNow: Resolved | undefined,
+  build: string,
   files: string,
   resolved: Resolved,
   followed: Followed,
@@ -548,11 +612,14 @@ async function sharedAt(
       const vocabulary =
         found?.vocabulary === undefined
           ? undefined
-          : await components.resolve({
+          : (vocabularyNow ??
+            (await components.resolve({
               repository: found.vocabulary.repository,
-            });
+            })));
       const same =
         found !== undefined &&
+        found.build === build &&
+        found.iri === resolved.iri &&
         found.signature === files &&
         (found.vocabulary === undefined ||
           (vocabulary?.iri === found.vocabulary.iri &&
@@ -564,11 +631,34 @@ async function sharedAt(
       if (same) return found;
       found?.pool.retire();
     }
-    const loading = loadFirst(spawn, followed, resolved, components, files);
-    shared.set(slot, { loading, folder: resolved.folder });
-    loading.catch(() => {
-      if (shared.get(slot)?.loading === loading) shared.delete(slot);
-    });
+    const loading = loadFirst(
+      spawn,
+      followed,
+      resolved,
+      components,
+      files,
+      build,
+    );
+    const live = { loading, folder: resolved.folder };
+    shared.set(slot, live);
+    loading.then(
+      (made) => {
+        // Where the vocabulary was not known, it is now: the entry moves to the slot of its vocabulary's folder.
+        const at = `${base} ${made.vocabulary?.folder ?? ""}`;
+        if (made.vocabulary !== undefined)
+          vocabularies.set(base, made.vocabulary.repository);
+        if (at === slot || shared.get(slot) !== live) return;
+        shared.delete(slot);
+        void shared.get(at)?.loading.then(
+          ({ pool }) => pool.retire(),
+          () => undefined,
+        );
+        shared.set(at, live);
+      },
+      () => {
+        if (shared.get(slot) === live) shared.delete(slot);
+      },
+    );
     return loading;
   }
 }
@@ -612,6 +702,7 @@ async function loadFirst(
   resolved: Resolved,
   components: Components,
   files: string,
+  build: string,
 ): Promise<Shared> {
   const known = new Map([[followed.repository, resolved]]);
   const { loaded, vocabularyAt } = await loadOne(
@@ -624,6 +715,8 @@ async function loadFirst(
   const repository = loaded.description.vocabulary?.repository;
   return {
     loaded,
+    build,
+    iri: resolved.iri,
     // The files were signed before the adapter reads them, when its first call needs them: a file edited between the
     // two is read at its new content under the old signature, and the next call loads it again, which errs safe.
     signature: files,

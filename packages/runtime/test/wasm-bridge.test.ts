@@ -42,6 +42,7 @@ import {
   inWorker,
   loadConfiguredAdapters,
   loadSharedAdapters,
+  Pool,
 } from "../src/node/wasm.js";
 import {
   blank,
@@ -530,7 +531,7 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
         true,
         "another folder of the vocabulary, the same files",
       );
-      assert.equal(await changed(), true, "and back");
+      assert.equal(await changed(), false, "and back: each folder has its own");
 
       const outside = await mkdtemp(join(tmpdir(), "behind-a-link-"));
       made.push(outside);
@@ -599,7 +600,24 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
 
     it("runs two documents of one adapter at once, each in an instance of its own", async () => {
       const { copied } = await adapterCopy();
-      const bridge = new WasmBridge(spawn);
+      let working = 0;
+      let most = 0;
+      const watching: Spawn = async () => {
+        const channel = await spawn();
+        return {
+          call: async (request, transfer) => {
+            working += 1;
+            most = Math.max(most, working);
+            try {
+              return await channel.call(request, transfer);
+            } finally {
+              working -= 1;
+            }
+          },
+          end: () => channel.end(),
+        };
+      };
+      const bridge = new WasmBridge(watching);
       const [shared] = await loadSharedAdapters(
         bridgeFolder,
         bridge,
@@ -607,11 +625,13 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
         copied,
       );
       const adapter = (shared as { adapter: LoadedAdapter }).adapter;
+      most = 0;
       const both = await Promise.all([
         adapter.convert(expected.document),
         adapter.convert(expected.document),
       ]);
       for (const conversion of both) same(expected, conversion);
+      assert.equal(most, 2, "two instances at work at the same time");
     });
 
     it("does not fail a call on one instance for a fault on the other", async () => {
@@ -638,6 +658,93 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
         (error) => isBridgeError(error) && error.kind === "bridge",
       );
       same(expected, await fine);
+    });
+  });
+
+  describe("given a pool of instances of one adapter", () => {
+    interface Fake {
+      readonly adapter: LoadedAdapter;
+      readonly freed: () => number;
+      readonly release: () => void;
+    }
+
+    /** An instance whose calls end when `release` is called, and that counts the `free`s it is given. */
+    function fake(): Fake {
+      let freed = 0;
+      const waiting: (() => void)[] = [];
+      return {
+        freed: () => freed,
+        release: () => waiting.splice(0).forEach((end) => end()),
+        adapter: {
+          accepts: () =>
+            new Promise<boolean>((end) => waiting.push(() => end(true))),
+          convert: () => Promise.reject(new Error("not used")),
+          free: () => {
+            freed += 1;
+            return Promise.resolve();
+          },
+        },
+      };
+    }
+
+    const document = { iri: "urn:cascade:test/pool", bytes: new Uint8Array() };
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+    it("lets go of an instance once, when its call ends after the pool is retired", async () => {
+      const first = fake();
+      const pool = new Pool(first.adapter, () =>
+        Promise.reject(new Error("no")),
+      );
+      const call = pool.adapter.accepts(document);
+      await settle();
+      pool.retire();
+      await settle();
+      assert.equal(first.freed(), 0, "not while a call is on it");
+      first.release();
+      assert.equal(await call, true);
+      await settle();
+      assert.equal(first.freed(), 1);
+    });
+
+    it("serves a call from the first instance, which is freed once, when the second fails to load", async () => {
+      const first = fake();
+      const pool = new Pool(first.adapter, () =>
+        Promise.reject(new Error("no")),
+      );
+      const one = pool.adapter.accepts(document);
+      const two = pool.adapter.accepts(document);
+      await settle();
+      first.release();
+      assert.deepEqual(await Promise.all([one, two]), [true, true]);
+      pool.retire();
+      await settle();
+      assert.equal(first.freed(), 1);
+    });
+
+    it("starts one instance for the pods holding a retired pool, and keeps it for the calls that follow", async () => {
+      const first = fake();
+      const later = fake();
+      let started = 0;
+      const pool = new Pool(first.adapter, () => {
+        started += 1;
+        return Promise.resolve(later.adapter);
+      });
+      pool.retire();
+      await settle();
+      assert.equal(first.freed(), 1);
+      const calls = [
+        pool.adapter.accepts(document),
+        pool.adapter.accepts(document),
+      ];
+      await settle();
+      later.release();
+      await Promise.all(calls);
+      const again = pool.adapter.accepts(document);
+      await settle();
+      later.release();
+      await again;
+      assert.equal(started, 1);
+      assert.equal(later.freed(), 0, "kept for the pods still holding it");
     });
   });
 
