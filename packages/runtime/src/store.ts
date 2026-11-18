@@ -19,6 +19,11 @@ export interface GraphFile {
   readonly turtle: Uint8Array;
 }
 
+export interface LoadFilesOptions {
+  /** Each file was loaded into a store before, its Turtle checked then, so it is read again without the checks. */
+  readonly parsedBefore?: boolean;
+}
+
 /** The failure to load a file that is no Turtle, naming the graph it was to be loaded into. */
 export class NotTurtle extends Error {
   constructor(
@@ -39,7 +44,10 @@ export interface Store {
    * Loads each file into its graph as `loadTurtle` would, one after another, in as few parses as it can. A file that is
    * no Turtle throws a `NotTurtle`, the files before it loaded.
    */
-  loadFiles(files: readonly GraphFile[]): Promise<void>;
+  loadFiles(
+    files: readonly GraphFile[],
+    options?: LoadFilesOptions,
+  ): Promise<void>;
   /** The Turtle's triples as it writes them, each literal's lexical form kept, its relative IRIs resolved against `base`. */
   parse(turtle: Uint8Array | string, base: string): Promise<Triple[]>;
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
@@ -109,9 +117,14 @@ export class Union implements Dataset {
   }
 
   /** Loads each file into its graph, as `Store.loadFiles` does; the graphs of the files loaded join the union. */
-  async loadFiles(files: readonly GraphFile[]): Promise<void> {
+  async loadFiles(
+    files: readonly GraphFile[],
+    options?: LoadFilesOptions,
+  ): Promise<void> {
     try {
-      await timedAside("union.loadFiles", () => this.store.loadFiles(files));
+      await timedAside("union.loadFiles", () =>
+        this.store.loadFiles(files, options),
+      );
     } catch (error) {
       const failed = files.findIndex(
         ({ graph }) => error instanceof NotTurtle && graph === error.graph,
@@ -209,9 +222,12 @@ export class RestorableUnion extends Union {
     await super.loadTurtle(turtle, graph);
   }
 
-  override async loadFiles(files: readonly GraphFile[]): Promise<void> {
+  override async loadFiles(
+    files: readonly GraphFile[],
+    options?: LoadFilesOptions,
+  ): Promise<void> {
     for (const { graph } of files) await this.#keep(graph);
-    await super.loadFiles(files);
+    await super.loadFiles(files, options);
   }
 
   override async add(triples: Iterable<Triple>, graph: string): Promise<void> {

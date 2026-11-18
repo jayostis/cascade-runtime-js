@@ -7,7 +7,12 @@ import {
   vocabularyBuild,
   vocabularyDerive,
 } from "../src/build.js";
-import { dataset, podDataset, podStated } from "../src/dataset.js";
+import {
+  dataset,
+  podDataset,
+  podStated,
+  podFilesParsed,
+} from "../src/dataset.js";
 import { KeptBuild } from "../src/incremental.js";
 import { BuildFailure, CorePod } from "../src/core-pod.js";
 import type { SamesStillJoined } from "../src/derive.js";
@@ -21,7 +26,12 @@ import { iri, type Triple } from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
 import type { StepFile } from "../src/step.js";
-import { type Dataset, type Rows, Union } from "../src/store.js";
+import {
+  type Dataset,
+  type LoadFilesOptions,
+  type Rows,
+  Union,
+} from "../src/store.js";
 import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
 import { copied } from "./cleo.js";
@@ -147,9 +157,15 @@ function opened(
   });
 }
 
-/** Stores that note each graph loaded into them, by `loadTurtle` or `loadFiles`. */
+/**
+ * Stores that note each graph loaded into them, by `loadTurtle` or `loadFiles`, and how many times each graph's Turtle
+ * was checked as it was loaded, over every store made.
+ */
 function countingStores() {
   let stores: Set<string>[] = [];
+  const checked = new Map<string, number>();
+  const check = (graph: string) =>
+    checked.set(graph, (checked.get(graph) ?? 0) + 1);
   class CountedStore extends OxigraphStore {
     readonly #loaded = new Set<string>();
 
@@ -163,18 +179,25 @@ function countingStores() {
       options: { readonly graph: string },
     ): Promise<void> {
       this.#loaded.add(options.graph);
+      check(options.graph);
       return super.loadTurtle(turtle, options);
     }
 
     override loadFiles(
       files: readonly { readonly graph: string; readonly turtle: Uint8Array }[],
+      options?: LoadFilesOptions,
     ): Promise<void> {
-      for (const { graph } of files) this.#loaded.add(graph);
-      return super.loadFiles(files);
+      for (const { graph } of files) {
+        this.#loaded.add(graph);
+        if (options?.parsedBefore !== true) check(graph);
+      }
+      return super.loadFiles(files, options);
     }
   }
   return {
     newStore: () => new CountedStore(),
+    /** How many times the graph's Turtle was checked as it was loaded, in any store made. */
+    checked: (graph: string) => checked.get(graph) ?? 0,
     /** How many stores made since the last `forget` loaded every one of the graphs. */
     loadedAll: (graphs: readonly string[]) =>
       stores.filter((loaded) => graphs.every((graph) => loaded.has(graph)))
@@ -691,6 +714,80 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
     it("writes for its first entry session the files a build of the whole pod writes", async () => {
       await writtenAsBuiltWhole(entered, (path) =>
         Promise.resolve([...(wholeFiles.get(path) ?? [])]),
+      );
+    });
+  });
+
+  describe("given a step that enters a record into a pod whose build is kept across steps", () => {
+    /** For each record file the step wrote, the times its Turtle was checked as it was loaded into a store. */
+    let used: readonly { path: string; checked: number }[];
+
+    before(async () => {
+      const files = await countedCopy();
+      const counting = countingStores();
+      const stepping = opened(files, counting.newStore);
+      await stepping.refuse("a first step");
+      const owner = `${address}${layout.card}#me`;
+      const { wrote, refused } = await stepping.enter({
+        bytes: new TextEncoder().encode(`
+          <urn:uuid:${crypto.randomUUID()}> a <http://www.w3.org/ns/prov#Activity> ;
+            <http://www.w3.org/2000/01/rdf-schema#label> "an entry" ;
+            <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${owner}> ;
+              <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#PatientRole> ] .
+          <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
+          <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
+            <https://ns.cascadeprotocol.org/cascade#allergenName> "Latex" .`),
+        base: "urn:entry",
+        name: "an entry",
+      });
+      assert.equal(refused, undefined);
+      const records = layout.records(
+        "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
+      )?.folder;
+      used = wrote
+        .filter(
+          (path) =>
+            records !== undefined &&
+            path.startsWith(records) &&
+            layout.isRdf(path),
+        )
+        .map((path) => ({ path, checked: counting.checked(address + path) }));
+      stepping.close();
+    });
+
+    it("checks the Turtle of each record file it wrote once, loading it into the build it keeps and the scope of its rebuild", () => {
+      assert.ok(used.length > 0, "the step wrote a record's file");
+      assert.deepEqual(
+        used.filter(({ checked }) => checked !== 1),
+        [],
+      );
+    });
+  });
+
+  describe("given files loaded into a scope, some of them held by the kept store", () => {
+    it("checks the Turtle of a file the kept store does not hold, and reads again unchecked one it holds", async () => {
+      const files = await countedCopy();
+      const counting = countingStores();
+      const paths = (
+        await files.list(
+          layout.records(
+            "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
+          )?.folder ?? "",
+        )
+      ).filter((path) => layout.isRdf(path));
+      const [held, other] = paths;
+      assert.ok(held !== undefined && other !== undefined);
+      await podFilesParsed(
+        files,
+        layout,
+        address,
+        new Union(counting.newStore()),
+        [held, other],
+        new Set([held]),
+      );
+      assert.deepEqual(
+        [counting.checked(address + held), counting.checked(address + other)],
+        [0, 1],
       );
     });
   });

@@ -1,5 +1,5 @@
 import type { PodState, VocabularyBuild } from "./build.js";
-import { addLayout, podFiles } from "./dataset.js";
+import { addLayout, podFiles, podFilesParsed } from "./dataset.js";
 import { DERIVED, type DerivedStep, type SamesStillJoined } from "./derive.js";
 import { ENTRY_PLACEHOLDER, unionFind } from "./entries.js";
 import type { Files } from "./files.js";
@@ -560,19 +560,28 @@ export class KeptBuild {
   /** The files every record's state reads: every file of the pod but those of records of the clinical kinds. */
   async #scoped(): Promise<Union> {
     if (this.#scope !== undefined) return this.#scope;
-    const { pod, layout, address, newStore } = this.#rebuilding;
+    const { newStore } = this.#rebuilding;
     const clinical = this.#clinicalFolders;
     const paths = [...this.#loaded].filter(
       (path) => !clinical.some((folder) => path.startsWith(folder)),
     );
     const scope = new Union(newStore());
     await timedAside("kept.scoped.podFiles", () =>
-      podFiles(pod, layout, address, scope, paths),
+      this.#loadScope(scope, paths),
     );
     for (const path of paths) this.#scopeLoaded.add(path);
     await this.#learnJudging(scope, paths);
     this.#scope = scope;
     return scope;
+  }
+
+  /**
+   * Loads the files into the scope. Those the kept store holds were parsed and checked into it, so they are read again
+   * without the checks; any other is checked as it loads.
+   */
+  async #loadScope(scope: Union, paths: readonly string[]): Promise<void> {
+    const { pod, layout, address } = this.#rebuilding;
+    await podFilesParsed(pod, layout, address, scope, paths, this.#loaded);
   }
 
   /** Learns each judgment and retraction the files hold. */
@@ -804,7 +813,7 @@ export class KeptBuild {
       const newShared = sharedPaths.filter(
         (path) => !this.#scopeLoaded.has(path),
       );
-      await podFiles(this.#rebuilding.pod, layout, address, scope, newShared);
+      await this.#loadScope(scope, newShared);
       for (const path of newShared) this.#scopeLoaded.add(path);
       await this.#learnJudging(scope, newShared);
     });
@@ -1150,7 +1159,7 @@ export class KeptBuild {
       this.#filesOf(read),
     );
     await timedAside("kept.rebuilt.podFiles", () =>
-      podFiles(this.#rebuilding.pod, layout, address, scope, paths),
+      this.#loadScope(scope, paths),
     );
     const touchesStale = await boundValues(
       union,
