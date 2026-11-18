@@ -42,6 +42,12 @@ async function main() {
       signal: AbortSignal.timeout(20000),
     });
     if (!response.ok) throw new Error(`answered ${response.status}`);
+    // A preview behind Cloudflare Access redirects to a sign-in page, which answers 200 as HTML.
+    const type = response.headers.get("content-type") ?? "";
+    if (response.redirected || !type.startsWith("text/css"))
+      throw new Error(
+        `it answered ${type || "no content type"}${response.redirected ? ` after a redirect to ${new URL(response.url).host}` : ""}, not text/css`,
+      );
     fetched = (await response.text()).replaceAll("\r\n", "\n");
     if (fetched.trim() === "") throw new Error("it is empty");
   } catch (error) {
