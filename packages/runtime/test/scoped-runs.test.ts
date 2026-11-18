@@ -363,6 +363,29 @@ describe("Running the matcher on a step's records alone · CorePod.match(), read
     });
   });
 
+  describe("inBlocks(records)", () => {
+    it("makes no block, and counts none, of no records", async () => {
+      const { result, seen } = await probing(() =>
+        Promise.resolve(inBlocks([])),
+      );
+      assert.deepEqual(result, []);
+      assert.equal(seen.counts.get("matcher.valuesBlocks") ?? 0, 0);
+    });
+
+    it("splits records into blocks of at most the size it is given, in order", async () => {
+      recordsInOneBlock(2);
+      try {
+        const { result, seen } = await probing(() =>
+          Promise.resolve(inBlocks(["a", "b", "c"])),
+        );
+        assert.deepEqual(result, [["a", "b"], ["c"]]);
+        assert.equal(seen.counts.get("matcher.valuesBlocks"), 2);
+      } finally {
+        recordsInOneBlock();
+      }
+    });
+  });
+
   describe("given a first import and a comparison that returns a reference series as its `?record`", () => {
     it("is evaluated unbound when the records its rule applies to fill more than a block, and keeps no row whose `?record` the run did not begin", async () => {
       recordsInOneBlock(1);
@@ -577,27 +600,6 @@ async function joinsNow(): Promise<string[]> {
  * @rule runtime/matcher.feature M1
  * @rule runtime/matcher.feature M4a
  */
-describe("Binding records to VALUES blocks · inBlocks()", () => {
-  it("makes no block, and counts none, of no records", async () => {
-    const { result, seen } = await probing(() => Promise.resolve(inBlocks([])));
-    assert.deepEqual(result, []);
-    assert.equal(seen.counts.get("matcher.valuesBlocks") ?? 0, 0);
-  });
-
-  it("splits records into blocks of at most the size it is given, in order", async () => {
-    recordsInOneBlock(2);
-    try {
-      const { result, seen } = await probing(() =>
-        Promise.resolve(inBlocks(["a", "b", "c"])),
-      );
-      assert.deepEqual(result, [["a", "b"], ["c"]]);
-      assert.equal(seen.counts.get("matcher.valuesBlocks"), 2);
-    } finally {
-      recordsInOneBlock();
-    }
-  });
-});
-
 describe("Holding the matcher's joins to those of today · CorePod.match()", () => {
   describe("given each run that takes records in the stories of the feature files, and each kit's whole story", () => {
     it("files the Sames and the findings of `joins.golden.txt`, each as it is, no line missing, extra or twice", async () => {
