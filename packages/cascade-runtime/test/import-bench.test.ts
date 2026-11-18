@@ -118,9 +118,11 @@ describe("Timing an import by mechanism · importBench(), syntheticPull(), probi
         assert.ok((run.counts[`${name}.store.queries`] ?? 0) > 0, name);
     });
 
-    it("binds no record into a comparison's text, since the pod held no record before the import", () => {
+    it("binds into a comparison's text only the records the import began that its rule applies to", () => {
       assert.ok((run.counts["matcher.queriesRun"] ?? 0) > 0);
-      assert.equal(run.counts["matcher.boundRecords"] ?? 0, 0);
+      const bound = run.counts["matcher.boundRecords"] ?? 0;
+      const taken = run.counts["matcher.takenRecords"] ?? 0;
+      assert.ok(bound > 0 && bound < taken, `${bound} of ${taken} bound`);
     });
 
     it("counts the rows of each matcher rule that ran", () => {
