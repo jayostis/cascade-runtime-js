@@ -10,7 +10,7 @@ import {
 } from "../src/build.js";
 import { CorePod, type CorePodOptions } from "../src/core-pod.js";
 import { dataset } from "../src/dataset.js";
-import { MemoryFiles } from "../src/files.js";
+import { type Files, MemoryFiles } from "../src/files.js";
 import { randomId } from "../src/ids.js";
 import { LAYOUT_FILE, LAYOUT_GRAPH, Layout } from "../src/layout.js";
 import { matcherView, runMatcher } from "../src/matcher.js";
@@ -316,6 +316,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         [laidOut.version(series, UNHELD)]:
           `<${UNHELD}> a <urn:example:Version> .\n`,
         ".DS_Store": "junk",
+        "profile/.acl": "<#owner> a <urn:example:Owner> .\n",
       };
       base = {
         runtime: RUNTIME,
@@ -373,15 +374,55 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
         derive: () => Promise.reject(new Error("not built")),
         incremental: { ...incremental, ...over },
       });
+      const vocabularyFiles = await vocabulary();
+      const comparison = "queries/matcher/same-added.rq";
+      const withComparison: Files = {
+        iri: vocabularyFiles.iri,
+        read: (path) =>
+          path === comparison
+            ? Promise.resolve(new TextEncoder().encode("# a comparison\n"))
+            : vocabularyFiles.read(path),
+        write: (path, bytes) => vocabularyFiles.write(path, bytes),
+        list: async (folder) => {
+          const listed = await vocabularyFiles.list(folder);
+          return comparison.startsWith(folder)
+            ? [...listed, comparison]
+            : listed;
+        },
+      };
       const rows: [string, Partial<CorePodOptions>, boolean][] = [
         ["nothing changed", {}, false],
         ["the runtime", { runtime: `${RUNTIME}#other` }, true],
+        [
+          "a comparison of the matcher's in the vocabulary",
+          { vocabulary: withComparison },
+          true,
+        ],
         ["the lens", { build: { ...build({}), lens: "export" } }, true],
         ["the pod's address", { address: "https://other.example/" }, true],
         [
           "a version the pod files arriving in the app's tables",
           { references: () => tables([FILED, UNHELD]) },
           true,
+        ],
+        [
+          "a new current version of a series the pod files a version of, in the app's tables",
+          {
+            references: async () => {
+              const index = new MemoryFiles("urn:example:newer-tables/");
+              await index.write(
+                "references.ttl",
+                new TextEncoder().encode(
+                  `<${SERIES}> a <${CASCADE}ReferenceSeries> ; <http://purl.org/pav/hasCurrentVersion> <${UNFILED}> .
+<${FILED}> <${PROV}specializationOf> <${SERIES}> .
+<${UNFILED}> <${PROV}specializationOf> <${SERIES}> .
+`,
+                ),
+              );
+              return References.of(index, "", () => new OxigraphStore());
+            },
+          },
+          false,
         ],
         [
           "a version the pod does not file arriving in the app's tables",
@@ -458,9 +499,18 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           true,
         ],
         [
-          "the bytes of a file no build reads, a .DS_Store",
+          "the bytes of a file the build loads that the layout does not name, a .DS_Store",
           { pod: await podWith({ ".DS_Store": "other junk" }) },
-          false,
+          true,
+        ],
+        [
+          "the bytes of a file placed by hand beside the layout's, a Solid .acl",
+          {
+            pod: await podWith({
+              "profile/.acl": "<#owner> a <urn:example:Other> .\n",
+            }),
+          },
+          true,
         ],
         [
           "a file in the stored documents' folder that names no document",
