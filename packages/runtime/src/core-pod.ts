@@ -589,6 +589,7 @@ export class CorePod {
   async dataset(lens: string): Promise<Union> {
     await this.#settle();
     await this.#putBackMatcherView();
+    await this.#withBuilt();
     return this.#held(`${DATASET}${lens}`, () =>
       this.#filled(new Union(this.#options.newStore()), lens),
     );
@@ -1355,6 +1356,8 @@ export class CorePod {
           : undefined;
       if (dataset === undefined)
         return matcherView(this.#options, this.#samesStillJoined());
+      if (dataset === this.#built?.union)
+        this.#movedInBuilt += await this.#built.withoutBuilt();
       const rebuilt = new Set(layout.rebuilt.map((path) => address + path));
       const left = [...dataset.graphs].filter(
         (graph) => graph === LAYOUT_GRAPH || rebuilt.has(graph),
@@ -1410,6 +1413,16 @@ export class CorePod {
       this.#kept.get(MATCHER_VIEW) === held
     )
       await this.#releaseMatcherView();
+  }
+
+  /**
+   * Puts the files the build writes and the layout back in the build kept across steps, if they were lent out to the
+   * matcher's view: they stay out across steps, which rebuild them beside the union, until a read needs the whole pod.
+   */
+  async #withBuilt(): Promise<void> {
+    const built = this.#built;
+    if (built === undefined) return;
+    this.#movedInBuilt += await built.withBuilt();
   }
 
   /** Takes the matcher's view out of what the pod keeps: puts back the dataset it was made in, or frees its store. */

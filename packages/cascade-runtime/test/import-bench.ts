@@ -120,7 +120,6 @@ export const HOT_SPOTS = {
     "arrivals.arrivals.graph.scans",
     "arrivals.refuseUnaccounted.graph.scans",
     "core-pod.matcherSelect.store.queries",
-    "core-pod.matcherView.store.queries",
     "matcher.queriesRun",
     "store.queries",
     "incremental.boundValues.calls",

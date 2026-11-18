@@ -3,7 +3,7 @@ import { addLayout, podFiles } from "./dataset.js";
 import { DERIVED, type DerivedStep, type SamesStillJoined } from "./derive.js";
 import { ENTRY_PLACEHOLDER, unionFind } from "./entries.js";
 import type { Files } from "./files.js";
-import type { Layout } from "./layout.js";
+import { LAYOUT_GRAPH, type Layout } from "./layout.js";
 import { counted, timed, timedAside } from "./probe.js";
 import { type Term, type Triple, written } from "./rdf.js";
 import { type StoreFactory, Union } from "./store.js";
@@ -145,6 +145,15 @@ export class KeptBuild {
   readonly #others = new Map<string, Map<string, Triple[]>>();
   /** Each view written always, by its path. */
   readonly #always = new Map<string, readonly Triple[]>();
+  /** The type index and the manifest, as the build or the last step wrote them. */
+  readonly #closingFiles = new Map<string, readonly Triple[]>();
+  /**
+   * Whether the files the build writes and the layout are out of the union, lent to the matcher's view, which reads
+   * the pod without them: a step then rebuilds them in the maps above alone, and `withBuilt` puts them back.
+   */
+  #builtOut = false;
+  /** The layout's triples, each blank node the node the union held, while it is out of the union. */
+  #layoutOut: readonly Triple[] = [];
   #held: ReadonlySet<string>;
   /** The subjects of the derived state that are no record's, its version's or revision's, or its entry's. */
   #globalDerived: Set<string>;
@@ -418,13 +427,16 @@ export class KeptBuild {
     const made = await build(union);
     const { held } = made;
     const all = new Map("files" in made ? made.files : []);
-    for (const [path, triples] of rebuilding.build.closing(pod, held)) {
+    const closing = rebuilding.build.closing(pod, held);
+    for (const [path, triples] of closing) {
       all.set(path, triples);
       if (restoring !== undefined) await union.drop(address + path);
       await union.add(triples, address + path);
     }
     if (restoring === undefined) await addLayout(union, layout, address);
     const kept = new KeptBuild(rebuilding, union, new Set(paths), held);
+    for (const [path, triples] of closing)
+      kept.#closingFiles.set(path, triples);
     const indexed = async (): Promise<void> => {
       kept.#index(
         "files" in made ? made.files : await kept.#graphsOf(made.read),
@@ -561,6 +573,7 @@ export class KeptBuild {
     { everyGraph = false }: { readonly everyGraph?: boolean } = {},
   ): Promise<void> {
     await this.#ready();
+    await this.withBuilt();
     const { address, layout } = this.#rebuilding;
     const graphOf = async (union: Union, graph: string) =>
       described(
@@ -627,6 +640,79 @@ export class KeptBuild {
       throw new Error(
         `the build in part differs from the build whole:\n${differences.join("\n")}`,
       );
+  }
+
+  /** Puts the subjects' triples in the graph, of a file the build writes, in place of what it held of them. */
+  async #replacedSubjects(
+    graph: string,
+    gone: readonly string[],
+    fresh: readonly Triple[],
+  ): Promise<void> {
+    if (this.#builtOut) return;
+    await this.#union.removeSubjects(graph, gone);
+    await this.#union.add(fresh, graph);
+  }
+
+  /** Puts the triples in the graph of the type index or the manifest in place of what it held. */
+  async #replaced(graph: string, triples: readonly Triple[]): Promise<void> {
+    this.#closingFiles.set(
+      graph.slice(this.#rebuilding.address.length),
+      triples,
+    );
+    if (this.#builtOut) return;
+    await this.#union.drop(graph);
+    await this.#union.add(triples, graph);
+  }
+
+  /** Each file the build writes, by its path, as the build or the last step wrote it. */
+  #builtFiles(): Map<string, readonly Triple[]> {
+    const files = new Map<string, readonly Triple[]>();
+    for (const [path, subjects] of this.#others)
+      files.set(path, flat(subjects));
+    for (const [path, groups] of this.#views) files.set(path, flat(groups));
+    for (const [path, triples] of this.#always) files.set(path, triples);
+    for (const [path, triples] of this.#closingFiles) files.set(path, triples);
+    return files;
+  }
+
+  /**
+   * Takes the files the build writes and the layout out of the union, which then holds the pod's files and the derived
+   * state alone, as the matcher's view reads them; until `withBuilt`, a step rebuilds them here alone. Gives the quads
+   * the store had removed.
+   */
+  async withoutBuilt(): Promise<number> {
+    if (this.#builtOut) return 0;
+    await this.#ready();
+    const { layout, address } = this.#rebuilding;
+    let moved = 0;
+    for (const triples of this.#builtFiles().values()) moved += triples.length;
+    this.#layoutOut = await this.#union.construct(
+      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${LAYOUT_GRAPH}> { ?s ?p ?o } }`,
+    );
+    for (const graph of [
+      ...layout.rebuilt.map((path) => address + path),
+      LAYOUT_GRAPH,
+    ])
+      if (this.#union.graphs.has(graph)) await this.#union.drop(graph);
+    this.#builtOut = true;
+    counted("view.quadsMoved", moved);
+    return moved;
+  }
+
+  /** Puts back what `withoutBuilt` took out of the union, as the steps since have rebuilt it; gives the quads added. */
+  async withBuilt(): Promise<number> {
+    if (!this.#builtOut) return 0;
+    const { address } = this.#rebuilding;
+    let moved = 0;
+    for (const [path, triples] of this.#builtFiles()) {
+      await this.#union.add(triples, address + path);
+      moved += triples.length;
+    }
+    await this.#union.add(this.#layoutOut, LAYOUT_GRAPH);
+    this.#layoutOut = [];
+    this.#builtOut = false;
+    counted("view.quadsMoved", moved);
+    return moved;
   }
 
   /** Frees what the build holds in the store's memory. */
@@ -772,10 +858,8 @@ export class KeptBuild {
   ): Promise<ReadonlyMap<string, readonly Triple[]>> {
     const { address, build } = this.#rebuilding;
     const files = build.closing(pod, this.#held);
-    for (const [path, triples] of files) {
-      await this.union.drop(address + path);
-      await this.union.add(triples, address + path);
-    }
+    for (const [path, triples] of files)
+      await this.#replaced(address + path, triples);
     return files;
   }
 
@@ -1131,11 +1215,11 @@ export class KeptBuild {
         if (sameTriples(before, made)) continue;
         for (const [subject] of [...before, ...made])
           if (subject.value !== view) entryNames.add(subject.value);
-        await union.removeSubjects(
+        await this.#replacedSubjects(
           view,
           before.map(([subject]) => subject.value),
+          made,
         );
-        await union.add(made, view);
         this.#always.set(path, made);
         changed.set(path, made);
         continue;
@@ -1172,8 +1256,7 @@ export class KeptBuild {
         }
       }
       if (gone.length === 0 && fresh.length === 0) continue;
-      await union.removeSubjects(view, gone);
-      await union.add(fresh, view);
+      await this.#replacedSubjects(view, gone, fresh);
       if (groups !== undefined) changed.set(path, flat(groups));
     }
     this.#held = held;
@@ -1227,14 +1310,12 @@ export class KeptBuild {
         fresh.push(...after);
       }
       if (gone.length === 0 && fresh.length === 0) continue;
-      await union.removeSubjects(graph, gone);
-      await union.add(fresh, graph);
+      await this.#replacedSubjects(graph, gone, fresh);
       changed.set(path, flat(subjects));
     }
 
     for (const [path, triples] of build.closing(pod, held)) {
-      await union.drop(address + path);
-      await union.add(triples, address + path);
+      await this.#replaced(address + path, triples);
       changed.set(path, triples);
     }
 

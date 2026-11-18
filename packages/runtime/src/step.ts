@@ -50,7 +50,8 @@ export interface StepContext {
   releaseMatcherView(): Promise<void>;
   /**
    * The dataset the pod keeps as it stands before the step, when it keeps one: every file of it a graph named by the
-   * pod's address plus its path, beside the derived state, the files the build writes and the layout. Read only.
+   * pod's address plus its path, beside the derived state; the files the build writes and the layout may be out of it,
+   * lent to the matcher's view. Read only.
    */
   keptDataset(): Promise<Dataset | undefined>;
   /** The query's rows over the pod's RDF files as they stand before the step, but those the build writes, with nothing derived. */

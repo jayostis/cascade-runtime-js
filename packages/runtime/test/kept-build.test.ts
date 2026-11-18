@@ -148,6 +148,8 @@ interface TakingRun {
   readonly all: ReadonlySet<string>;
   /** The graphs a `select()` leaves out: the layout and the manifest the build writes. */
   readonly built: readonly string[];
+  /** Every graph of a file the build writes, and the layout's. */
+  readonly rebuilt: ReadonlySet<string>;
 }
 
 let takingRuns: Promise<TakingRun[]> | undefined;
@@ -207,6 +209,10 @@ function runsTakingRecords(): Promise<TakingRun[]> {
         lent,
         all,
         built: [LAYOUT_GRAPH, pod.files.iri + laidOut.manifest],
+        rebuilt: new Set([
+          LAYOUT_GRAPH,
+          ...laidOut.rebuilt.map((path) => pod.files.iri + path),
+        ]),
       });
       return performed;
     });
@@ -606,11 +612,17 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       runs = await runsTakingRecords();
     });
 
-    it("puts back every quad of the kept dataset, each blank node the node it was, before the step writes a file", () => {
+    it("puts back every quad of the kept dataset but the files the build writes and the layout, each blank node the node it was, before the step writes a file; those stay out until a read, the next `dataset()`", () => {
       assert.ok(runs.length > 0);
       for (const run of runs) {
         assert.ok(run.wrote > 0 && run.dropped > 0, run.step);
-        assert.deepEqual(run.atFirstWrite, run.before, run.step);
+        assert.deepEqual(
+          run.atFirstWrite,
+          run.before.filter(
+            (quad) => !run.rebuilt.has(quad.slice(1, quad.indexOf(">"))),
+          ),
+          run.step,
+        );
       }
     });
   });
