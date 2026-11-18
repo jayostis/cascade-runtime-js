@@ -269,7 +269,19 @@ async function subjectRecords(
   subject: string,
   only?: readonly string[],
 ): Promise<TakenRecord[]> {
-  if (only?.length === 0) return [];
+  if (only === undefined) return subjectRecordsIn(dataset, subject);
+  if (only.length === 0) return [];
+  const found: TakenRecord[] = [];
+  for (const block of inBlocks(only))
+    found.push(...(await subjectRecordsIn(dataset, subject, block)));
+  return found;
+}
+
+async function subjectRecordsIn(
+  dataset: Dataset,
+  subject: string,
+  only?: readonly string[],
+): Promise<TakenRecord[]> {
   const named =
     only === undefined
       ? ""
@@ -596,8 +608,27 @@ export function readEveryRecord(every: boolean): void {
   everyRecordRead = every;
 }
 
+/** The most records a run reads, or binds a comparison to, in one VALUES block. */
+const RECORDS_IN_ONE_BLOCK = 4096;
+let recordsInABlock = RECORDS_IN_ONE_BLOCK;
+
 /** Sets how many records a run reads, or binds a comparison to, in one VALUES block; with none, the runtime's own. */
-export function recordsInOneBlock(_size?: number): void {}
+export function recordsInOneBlock(size = RECORDS_IN_ONE_BLOCK): void {
+  recordsInABlock = size;
+}
+
+/** The records in blocks of at most `recordsInOneBlock`, in order; none is one empty block. */
+function inBlocks(records: readonly string[]): string[][] {
+  const blocks: string[][] = [];
+  for (let at = 0; at < records.length || at === 0; at += recordsInABlock) {
+    const block = records.slice(at, at + recordsInABlock);
+    counted("matcher.valuesBlocks");
+    counted("matcher.valuesBlockRecords", block.length);
+    blocks.push(block);
+  }
+  if (blocks.length > 1) counted("matcher.valuesListsSplit");
+  return blocks;
+}
 
 /** The matcher's procedure, M1 to M11, and O1, over the pod as the steps before this one left it. */
 class Matcher {
@@ -765,9 +796,15 @@ class Matcher {
               );
           else {
             counted("matcher.boundRecords", bound.length);
-            rows = union
-              .select(boundToRecords(query, bound))
-              .then((answer) => answer.rows);
+            rows = (async () => {
+              const found: Row[] = [];
+              for (const block of inBlocks(bound))
+                for (const row of (
+                  await union.select(boundToRecords(query, block))
+                ).rows)
+                  found.push(row);
+              return found;
+            })();
           }
           selected.set(query, rows);
         }
