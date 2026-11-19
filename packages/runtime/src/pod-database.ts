@@ -28,8 +28,6 @@ const SCREEN_PARTS = ["tables", "fill", "finish"] as const;
 const RUN_PARTS = ["fill", "finish"] as const;
 /** The graphs one read of what a step loaded names: a long VALUES block joins in more than linear time. */
 const GRAPHS_AT_ONCE = 256;
-/** The statistics the screens' statements are planned by, taken once the statements are loaded. */
-const ANALYZED = "ANALYZE;";
 
 /** The vocabulary's statements schema and each view's screen, the parts of its `.sql`, sorted by path. */
 export interface Screens {
@@ -72,8 +70,9 @@ export interface BesideDatabase {
 }
 
 /**
- * Builds a pod's database whole on an empty database: each of the dump's graphs that the union reads loaded, statistics
- * taken for the screens' statements to be planned by, and every screen made and filled with every record and entry in
+ * Builds a pod's database whole on an empty database: each of the dump's graphs that the union reads loaded, the
+ * statistics the vocabulary ships read for the screens' statements to be planned by (never the pod's own, which a
+ * keyed run would then plan by), and every screen made and filled with every record and entry in
  * scope, in one transaction, so a database stopped part way names no fingerprint.
  */
 export function builtWholeIn(
@@ -87,7 +86,6 @@ export function builtWholeIn(
       graphsOfDump(whole.dump, new Set(whole.graphs)),
       whole.fingerprint,
     );
-    db.exec(ANALYZED);
     for (const part of SCREEN_PARTS)
       for (const view of whole.views) {
         const statements = view.get(part);

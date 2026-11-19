@@ -155,7 +155,7 @@ function dumpOf(graphs: number, each: number, broken = false): Uint8Array {
 /** A store's dump of one graph, `urn:x:file`, of `count` records. */
 const recordsDump = (count: number): Uint8Array =>
   new TextEncoder().encode(
-    `<urn:x:file> {\n${Array.from(
+    `# a dump\n<urn:x:file> {\n${Array.from(
       { length: count },
       (_, at) =>
         `<urn:x:r-${at}> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/cascade#Record> .`,
