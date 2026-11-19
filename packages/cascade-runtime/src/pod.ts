@@ -164,10 +164,12 @@ export interface Pod {
   /**
    * The open that gives the pod the app's newer tables (O1, O2), which runs after `openPod` returns, as the pod's first
    * step: it settles once the step and the rebuild after it have run, to undefined when the tables had not changed, and
-   * rejects as a step that fails rejects its call. The calls made as `openPod` returns, before the next turn of the event
-   * loop, run before the step, on the pod as it was opened. Once it runs, a question by name is answered with the rows
-   * kept for the pod as it was opened, where they were kept, `unheldTableVersions` with the versions read over the pod as
-   * it was opened, and any other call, `close` too, waits for the step. A browser's pod drawn from its kept answers
+   * rejects as a step that fails rejects its call. The step starts once the pod has no call queued or running at a turn
+   * of the timers, so the calls made as `openPod` returns, and those made from their answers, run before it, on the pod
+   * as it was opened; calls that keep the queue busy hold it back for at most 2 s of them, and `close` starts it. Once it
+   * runs, a question by name is answered with the rows kept for the pod as it was opened, where they were kept,
+   * `unheldTableVersions` with the versions read over the pod as it was opened, and any other call, `close` too, waits
+   * for the step. A browser's pod drawn from its kept answers
    * settles it once a call opens the pod with the engine, as that open's, or at `close`, to undefined.
    */
   readonly opened: Promise<Opened | undefined>;
@@ -687,6 +689,10 @@ class OpenPod implements Pod {
     | undefined;
   /** While the open's step has not settled, the unheld versions read over the pod as it was before it. */
   #unheldBefore: Promise<readonly string[]> | undefined;
+  /** The calls queued or running. */
+  #calls = 0;
+  /** While the open's step waits for the queue to go idle. */
+  #waiting: Waiting | undefined;
   readonly opened: Promise<Opened | undefined>;
 
   constructor(
@@ -714,22 +720,37 @@ class OpenPod implements Pod {
       revision.catch(() => undefined);
       this.#before = { revision, tables: adopting.before };
     }
-    // Queued after the calls made as the open returns, so that a screen's first questions are answered before it.
-    this.opened = new Promise((resolve) => setTimeout(resolve, 0))
-      .then(() => {
+    let settle!: (opened: Promise<Opened | undefined>) => void;
+    const queued = new Promise<Opened | undefined>((resolve) => {
+      settle = resolve;
+    });
+    const waiting: Waiting = {
+      due: false,
+      start: () => {
+        if (this.#waiting !== waiting) return;
+        this.#waiting = undefined;
+        clearTimeout(waiting.ceiling);
         const unheld = this.#next(() => core.unheldTableVersions());
         unheld.catch(() => undefined);
         this.#unheldBefore = unheld;
-        return this.#next(async () => {
-          const opened = await adopting.open();
-          await core.revision();
-          return opened;
-        });
-      })
-      .finally(() => {
-        this.#before = undefined;
-        this.#unheldBefore = undefined;
-      });
+        settle(
+          this.#next(async () => {
+            const opened = await adopting.open();
+            await core.revision();
+            return opened;
+          }),
+        );
+      },
+    };
+    this.#waiting = waiting;
+    setTimeout(() => {
+      waiting.due = true;
+      if (this.#calls === 0) waiting.start();
+    }, 0);
+    this.opened = queued.finally(() => {
+      this.#before = undefined;
+      this.#unheldBefore = undefined;
+    });
     this.opened.catch(() => undefined);
   }
 
@@ -934,6 +955,7 @@ class OpenPod implements Pod {
   }
 
   close(): Promise<void> {
+    this.#waiting?.start();
     return this.#next(async () => {
       this.#closed = true;
       await this.#core.keepBuild().catch(() => undefined);
@@ -946,12 +968,26 @@ class OpenPod implements Pod {
 
   /** The call, once every call made before it has finished. */
   #next<T>(call: () => Promise<T>): Promise<T> {
-    const run = (): Promise<T> =>
-      this.#closed
+    const deferring = this.#waiting?.due === true;
+    const run = (): Promise<T> => {
+      const waiting = this.#waiting;
+      if (deferring && waiting !== undefined && waiting.ceiling === undefined)
+        waiting.ceiling = setTimeout(waiting.start, DEFERRED_AT_MOST_MS);
+      return this.#closed
         ? Promise.reject(new Error(`the pod at ${this.address} is closed`))
         : call();
+    };
+    this.#calls += 1;
     const next = this.#queue.then(run, run);
     this.#queue = next.catch(() => undefined);
+    void this.#queue.then(() => {
+      this.#calls -= 1;
+      const waiting = this.#waiting;
+      if (this.#calls === 0 && waiting?.due === true)
+        setTimeout(() => {
+          if (this.#calls === 0) waiting.start();
+        }, 0);
+    });
     return next;
   }
 
@@ -1692,6 +1728,22 @@ async function tablesChanged(
       return { ...performed, unheld: performed.unheld ?? [] };
     },
   };
+}
+
+/**
+ * How long calls made after the open's step became due may run ahead of it, from the first of them to start: so an app
+ * whose calls always overlap cannot hold the newer tables back for good.
+ */
+const DEFERRED_AT_MOST_MS = 2000;
+
+/** The open's step, while it waits for the pod's queue to have no call queued or running at a turn of the timers. */
+interface Waiting {
+  /** Whether the calls made as the open returned have been queued, after which a call made defers the step. */
+  due: boolean;
+  /** Set once a call made after `due` starts: queues the step then, if the queue has not gone idle by then. */
+  ceiling?: ReturnType<typeof setTimeout>;
+  /** Queues the step now, once. */
+  readonly start: () => void;
 }
 
 /** The open an `OpenPod` runs as its first step, giving the pod the app's newer tables. */

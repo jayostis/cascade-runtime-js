@@ -776,8 +776,10 @@ newer version that verifies, however long the downloads take in all; a feed or
 download that has not answered in 10 s is left for a later check. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
 checks again ("Check now"); a feed that cannot be read now says `later`, and
 nothing is thrown. Opening a pod after its tables changed gives it them, in
-the background: `openPod` returns first, a question asked as it returns is
-answered over the pod as it was, and one asked later, while that runs, with the
+the background: `openPod` returns first, and that starts once the pod has no
+call waiting, so a question asked as it returns, or from those answers, is
+answered over the pod as it was (calls that keep it busy hold it back 2 s at
+most); one asked while that runs is answered with the
 rows kept for the pod as it was, or else once it is done; `pod.unheldTableVersions()`
 answers over the pod as it was, and any other call, `close()` too, waits for
 it. `await pod.opened` settles
