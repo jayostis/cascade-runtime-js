@@ -1515,6 +1515,60 @@ describe("Keeping reference tables up to date · tablesBeside(), tables.check()"
     });
   });
 
+  describe("given the check an open starts, whose bound is on each request, not on the whole check", () => {
+    const BOUND_MS = 100;
+
+    /** Tables over an empty store and the feed, each answer coming `ms` after it is asked for and `stalled` never, unless the request is aborted. */
+    function answeringAfter(ms: number, stalled?: string): Tables {
+      const serve = fetchOf(feed);
+      return new Tables({
+        files: new MemoryFiles("urn:test:tables/"),
+        feeds: [FEED],
+        vocabulary: parts.vocabulary,
+        newStore: parts.newStore,
+        fetch: (input, init) =>
+          new Promise((answer, fail) => {
+            const timer =
+              String(input) === stalled
+                ? undefined
+                : setTimeout(() => answer(serve(input, init)), ms);
+            init?.signal?.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer);
+                fail(init.signal?.reason);
+              },
+              { once: true },
+            );
+          }),
+      });
+    }
+
+    it("keeps every version an unbounded check keeps, though the downloads take longer in all than the bound", async () => {
+      const started = Date.now();
+      const [checked] = await answeringAfter(BOUND_MS / 2).checkOnOpen(
+        BOUND_MS,
+      );
+      assert.ok(Date.now() - started > 2 * BOUND_MS);
+      const [unbounded] = await tablesOver(feed).check();
+      assert.equal(checked?.later, undefined);
+      assert.deepEqual(
+        [...(checked?.kept ?? [])].sort(),
+        [...(unbounded?.kept ?? [])].sort(),
+      );
+      assert.ok((unbounded?.kept.length ?? 0) > 2);
+    });
+
+    it("gives up on a download that never answers, returning it in `later`", async () => {
+      const [checked] = await answeringAfter(
+        0,
+        rowsUrl(feed, groups.second),
+      ).checkOnOpen(BOUND_MS);
+      assert.match(checked?.later ?? "", /could not be read/);
+      assert.ok(!checked?.kept.includes(groups.second));
+    });
+  });
+
   describe("given a feed that goes back to a version the app's own does not descend from", () => {
     it("refuses the version, naming in `refused` the version the app holds", async () => {
       // The app holds the second version and never held the first, which a feed whose current version it is offers.
