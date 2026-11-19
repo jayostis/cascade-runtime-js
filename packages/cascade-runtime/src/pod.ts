@@ -3,8 +3,11 @@ import {
   clock,
   codeIri,
   CorePod,
+  DATABASE_BESIDE,
+  DATABASE_KEY_BESIDE,
   type DeriveKey,
   EncryptedFiles,
+  keptBesideName,
   type Files,
   type Head,
   type Importer,
@@ -373,8 +376,14 @@ export interface Parts {
   readonly answers?: AnswerStore;
   /** Where the build of a pod in a folder is kept beside it when its answers are not; none when it may not be. */
   readonly builtBeside?: (folder: string) => Files;
-  /** The database a pod in a folder keeps beside it, `pod.db`, by its path; none where nothing is kept beside it. */
-  readonly databaseBeside?: (folder: string) => BesideDatabase;
+  /**
+   * The database a pod in a folder keeps beside it, by its path: at `pod.db`, or at `name`, a path beside the pod, as a
+   * sealed pod keeps it under a keyed name; none where nothing is kept beside it.
+   */
+  readonly databaseBeside?: (
+    folder: string,
+    name?: string,
+  ) => BesideDatabase | Promise<BesideDatabase>;
   /** What the code that runs is, by its bytes, where the performer does not name it exactly; a kept build names it. */
   readonly builtCode?: string;
   /** The export or download at the path, as the files it is in and its name there, or why no path is read. */
@@ -1424,9 +1433,12 @@ function sealedParts(parts: Parts, index: SealedIndex): Parts {
     ...(databaseBeside === undefined
       ? {}
       : {
-          databaseBeside: (folder) => ({
-            ...databaseBeside(folder),
-            sealed: true,
+          databaseBeside: async (folder) => ({
+            ...(await databaseBeside(
+              folder,
+              await keptBesideName(key, DATABASE_BESIDE),
+            )),
+            keyAt: await keptBesideName(key, DATABASE_KEY_BESIDE),
           }),
         }),
   };
@@ -1470,7 +1482,7 @@ export async function openPodWith(
   const database =
     folder === undefined || beside === undefined
       ? undefined
-      : parts.databaseBeside?.(folder);
+      : await parts.databaseBeside?.(folder);
   const answers =
     beside === undefined || parts.answers === undefined
       ? undefined

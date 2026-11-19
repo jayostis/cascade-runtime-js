@@ -834,6 +834,9 @@ function lineTerms(line: string): [string, string, string] {
   return terms as [string, string, string];
 }
 
+/** Each index the schema makes: made once the statements are loaded, which sorts each once instead of keeping it sorted. */
+const INDEX = /^CREATE INDEX\b[^;]*;/gim;
+
 /** The SQLite version the schema says it needs, as numbers. */
 function minimumVersion(schema: string): number[] {
   const found = /SQLite (\d+)\.(\d+)\.(\d+)/.exec(schema);
@@ -946,7 +949,8 @@ export function loadStatements(
     throw new Error(
       `SQLite ${version.join(".")} is older than the ${minimumVersion(schema).join(".")} the schema needs`,
     );
-  db.exec(schema);
+  const indexes = schema.match(INDEX) ?? [];
+  db.exec(schema.replace(INDEX, ""));
   const putQuad = db.prepare(
     "INSERT OR IGNORE INTO quad (s, p, o, g) VALUES (?, ?, ?, ?)",
   );
@@ -971,6 +975,7 @@ export function loadStatements(
         putQuad.run(id(s), id(p), id(o), g);
       }
     }
+    for (const index of indexes) db.exec(index);
     ledgerNamed(db, fingerprint);
     wholeScope(db);
   });

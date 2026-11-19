@@ -798,8 +798,9 @@ export class CorePod {
     if (database.fingerprint !== hash) {
       this.#databaseHolds = undefined;
       try {
-        await timedAside("core-pod.keepDatabase.whole", async () =>
-          database.builtWhole(await dumped(), built.union.graphs, hash),
+        const dump = await dumped();
+        await timedAside("core-pod.keepDatabase.whole", () =>
+          database.builtWhole(dump, built.union.graphs, hash),
         );
       } catch {
         return;
@@ -810,9 +811,19 @@ export class CorePod {
 
   /**
    * The database beside the pod and the record of what the next rebuild changes of the kept build, when the database
-   * holds that build as it stands: its ledger names the build's hash.
+   * holds that build as it stands: its ledger names the build's hash. None where it does not, or where finding out
+   * fails, so the step goes on and the database is built whole when next kept.
    */
   async #recordingForDatabase(): Promise<DatabaseRecording | undefined> {
+    try {
+      return await this.#recordingFor();
+    } catch {
+      this.#databaseHolds = undefined;
+      return undefined;
+    }
+  }
+
+  async #recordingFor(): Promise<DatabaseRecording | undefined> {
     const built = this.#built;
     const hash = this.#builtHash;
     if (built === undefined || hash === undefined) return undefined;
@@ -1777,6 +1788,15 @@ export class CorePod {
     let change: Change | undefined = { written: [], everything };
     try {
       this.#performing = true;
+      if (
+        !deferred &&
+        !everything &&
+        this.#built === undefined &&
+        this.#head !== undefined
+      )
+        await timedAside("core-pod.step.readBack", () =>
+          this.#readBack().catch(() => undefined),
+        );
       const activity = await timedAside("core-pod.step.perform", () =>
         perform({
           address: options.address,

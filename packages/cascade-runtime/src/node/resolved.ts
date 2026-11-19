@@ -109,9 +109,12 @@ export function answersBeside(path: string): FolderFiles {
   return new FolderFiles(besideFolder(path), undefined, { refuseLinks: true });
 }
 
-/** The database of the pod in the folder, `pod.db` in the folder of its answers. */
-export function databaseBeside(path: string): BesideDatabase {
-  return databaseAt(join(besideFolder(path), DATABASE_BESIDE));
+/** The database of the pod in the folder, in the folder of its answers: `pod.db`, or the path `name` there. */
+export function databaseBeside(
+  path: string,
+  name: string = DATABASE_BESIDE,
+): BesideDatabase {
+  return databaseAt(join(besideFolder(path), ...name.split("/")));
 }
 
 const PACKAGE = fileURLToPath(new URL("../../../", import.meta.url));

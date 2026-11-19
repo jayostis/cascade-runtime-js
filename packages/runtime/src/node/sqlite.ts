@@ -1,11 +1,14 @@
-import { rm } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { Worker } from "node:worker_threads";
 import {
   type Database,
   type DatabaseFunction,
   DatabaseKeyRefused,
 } from "../database.js";
-import type { BesideDatabase } from "../pod-database.js";
+import type { BesideDatabase, WholeBuild } from "../pod-database.js";
 
 /** The bytes of a key `openDatabase` seals a database with. */
 export const DATABASE_KEY_BYTES = 32;
@@ -48,7 +51,15 @@ export interface DatabaseOptions {
   /** The 32 random bytes the file is sealed with. */
   readonly key?: Uint8Array;
   readonly functions?: readonly DatabaseFunction[];
+  /**
+   * A file a build writes once and that is put in place only when whole, so a stop part way loses nothing: kept with no
+   * journal and no syncs, and with half a gigabyte of page cache, in place of write-ahead mode.
+   */
+  readonly building?: boolean;
 }
+
+/** The page cache of a build, in KiB: the indexes of a large pod's statements are sorted in it rather than on disk. */
+const BUILDING_CACHE_KIB = 524_288;
 
 /** The key is copied once into a buffer the binding reads, and that copy is zeroed as soon as it has. */
 function keyed(db: Binding, key: Uint8Array): void {
@@ -71,7 +82,7 @@ function keyed(db: Binding, key: Uint8Array): void {
  */
 export function openDatabase(
   path: string,
-  { key, functions = [] }: DatabaseOptions = {},
+  { key, functions = [], building = false }: DatabaseOptions = {},
 ): Database {
   if (key !== undefined && key.length !== DATABASE_KEY_BYTES)
     throw new RangeError(
@@ -81,13 +92,17 @@ export function openDatabase(
   try {
     if (key !== undefined) keyed(db, key);
     try {
-      db.pragma("journal_mode=WAL");
+      db.pragma(building ? "journal_mode=OFF" : "journal_mode=WAL");
     } catch (error) {
       if ((error as { code?: unknown }).code === "SQLITE_NOTADB")
         throw new DatabaseKeyRefused(path, error);
       throw error;
     }
     db.pragma("temp_store=MEMORY");
+    if (building) {
+      db.pragma("synchronous=OFF");
+      db.pragma(`cache_size=-${BUILDING_CACHE_KIB}`);
+    }
     for (const { name, deterministic = false, apply } of functions)
       db.function(name, { deterministic, varargs: true }, apply);
   } catch (error) {
@@ -115,13 +130,85 @@ export function openDatabase(
   };
 }
 
-/** The database at `path` as a pod keeps it beside it: opened by `openDatabase`, and removed with its write-ahead log. */
+/** What the worker that builds a pod's database whole is given: the file to build, and what to build it from. */
+export interface WholeBuildJob {
+  readonly path: string;
+  readonly whole: WholeBuild;
+}
+
+/** What that worker answers once the file is built and closed, or why it was not. */
+export interface WholeBuildDone {
+  readonly error?: string;
+}
+
+/** A file and the two a connection in write-ahead mode keeps beside it. */
+const withLogs = (path: string): string[] => [
+  path,
+  `${path}-wal`,
+  `${path}-shm`,
+];
+
+async function removed(paths: readonly string[]): Promise<void> {
+  for (const file of paths) await rm(file, { force: true });
+}
+
+/** The bytes handed to another thread: moved where they are a buffer of their own, else a copy of them moved. */
+function moved(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  const { buffer } = bytes;
+  return buffer instanceof ArrayBuffer &&
+    bytes.byteOffset === 0 &&
+    bytes.byteLength === buffer.byteLength
+    ? (bytes as Uint8Array<ArrayBuffer>)
+    : bytes.slice();
+}
+
+/** The whole build run in a worker of its own, the dump moved to it; settles once the worker has ended. */
+function builtInWorker(job: WholeBuildJob): Promise<void> {
+  const dump = moved(job.whole.dump);
+  return new Promise((resolve, reject) => {
+    let done: WholeBuildDone | undefined;
+    const worker = new Worker(
+      new URL("./pod-database-worker.js", import.meta.url),
+      {
+        workerData: { ...job, whole: { ...job.whole, dump } },
+        transferList: [dump.buffer],
+      },
+    );
+    worker.once("message", (answer: WholeBuildDone) => (done = answer));
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (done?.error !== undefined) reject(new Error(done.error));
+      else if (done === undefined || code !== 0)
+        reject(new Error(`the build's worker ended with ${code}, unfinished`));
+      else resolve();
+    });
+  });
+}
+
+/**
+ * The database at `path` as a pod keeps it beside it: opened by `openDatabase`, in a folder made for it where there is
+ * none; built whole in a worker into a file beside it, `<path>-build`, renamed over it once built and closed; and
+ * removed with its write-ahead log and any build left part way.
+ */
 export function databaseAt(path: string): BesideDatabase {
+  const building = `${path}-build`;
   return {
-    open: (options) => openDatabase(path, options),
-    remove: async () => {
-      for (const file of [path, `${path}-wal`, `${path}-shm`])
-        await rm(file, { force: true });
+    open: (options) => {
+      mkdirSync(dirname(path), { recursive: true });
+      return openDatabase(path, options);
     },
+    builtWhole: async (whole) => {
+      await removed([building]);
+      await mkdir(dirname(path), { recursive: true });
+      try {
+        await builtInWorker({ path: building, whole });
+      } catch (error) {
+        await removed([building]);
+        throw error;
+      }
+      await removed(withLogs(path));
+      await rename(building, path);
+    },
+    remove: () => removed([...withLogs(path), building]),
   };
 }

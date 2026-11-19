@@ -744,6 +744,14 @@ async function keyedName(
   return `${SEALED}/${mac.slice(0, 2)}/${mac.slice(2)}`;
 }
 
+/**
+ * The name a sealed pod keeps a file beside it under that is written in place again and again, as its database is: its
+ * path's keyed name with no tag, the same at every write, which says nothing of what the file holds.
+ */
+export function keptBesideName(key: PodKey, path: string): Promise<string> {
+  return keyedName(key.names, path, new Uint8Array(0));
+}
+
 const tagOf = (sealed: Uint8Array): Uint8Array =>
   sealed.subarray(sealed.length - TAG);
 

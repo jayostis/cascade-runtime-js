@@ -1,9 +1,4 @@
-import {
-  type Database,
-  type DatabaseFunction,
-  DatabaseKeyRefused,
-  type Statement,
-} from "./database.js";
+import type { Database, DatabaseFunction, Statement } from "./database.js";
 import type { Files } from "./files.js";
 import type { BuildChange } from "./incremental.js";
 import { iri, type Triple, written } from "./rdf.js";
@@ -24,9 +19,9 @@ import type { Union } from "./store.js";
 
 /** The bytes of the key a sealed pod's database is sealed with. */
 const KEY_BYTES = 32;
-/** Where a pod's database is kept beside it. */
+/** Where a pod's database is kept beside it; a sealed pod's is kept under a keyed name of this path. */
 export const DATABASE_BESIDE = "pod.db";
-/** Where a sealed pod's database's key is kept beside it, sealed as everything beside it is. */
+/** The path a sealed pod's database's key is kept beside it under a keyed name of, sealed as everything beside it is. */
 export const DATABASE_KEY_BESIDE = "pod.db.key";
 const VIEWS = "queries/views";
 const SCREEN_PARTS = ["tables", "fill", "finish"] as const;
@@ -35,6 +30,22 @@ const RUN_PARTS = ["fill", "finish"] as const;
 const GRAPHS_AT_ONCE = 256;
 /** The statistics the screens' statements are planned by, taken once the statements are loaded. */
 const ANALYZED = "ANALYZE;";
+
+/** The vocabulary's statements schema and each view's screen, the parts of its `.sql`, sorted by path. */
+export interface Screens {
+  readonly schema: string;
+  readonly views: readonly ReadonlyMap<string, string>[];
+}
+
+/** What a whole build of a pod's database is made from: a store's dump, the graphs of it kept, and what it was built from. */
+export interface WholeBuild extends Screens {
+  /** The store's dump; a build on another thread is handed its bytes, and the caller keeps none of them. */
+  readonly dump: Uint8Array;
+  readonly graphs: readonly string[];
+  readonly fingerprint: string;
+  /** The key a sealed pod's database is sealed under. */
+  readonly key?: Uint8Array;
+}
 
 /**
  * The database a pod keeps beside it, `pod.db`, by its path: a cache of the pod's statements and screens that the
@@ -46,16 +57,44 @@ export interface BesideDatabase {
     readonly key?: Uint8Array;
     readonly functions: readonly DatabaseFunction[];
   }): Database;
-  /** Removes the database and its write-ahead log, so the next open makes it anew. */
+  /**
+   * Builds the database whole into a file of its own and puts it in place of the database, closed, once its ledger is
+   * written: off the caller's thread where the platform has threads, so the caller's work goes on meanwhile.
+   */
+  builtWhole(whole: WholeBuild): Promise<void>;
+  /** Removes the database, its write-ahead log and any build of it left part way, so the next open makes it anew. */
   remove(): Promise<void>;
-  /** Whether the pod is sealed, and so the database too, under a key of its own kept sealed beside the pod. */
-  readonly sealed?: boolean;
+  /**
+   * For a sealed pod, whose database is sealed too: the path beside the pod its key is kept at, a keyed name that
+   * says nothing of what it holds, and sealed as everything beside the pod is.
+   */
+  readonly keyAt?: string;
 }
 
-/** The vocabulary's statements schema and each view's screen, the parts of its `.sql`, sorted by path. */
-interface Screens {
-  readonly schema: string;
-  readonly views: readonly ReadonlyMap<string, string>[];
+/**
+ * Builds a pod's database whole on an empty database: each of the dump's graphs that the union reads loaded, statistics
+ * taken for the screens' statements to be planned by, and every screen made and filled with every record and entry in
+ * scope, in one transaction, so a database stopped part way names no fingerprint.
+ */
+export function builtWholeIn(
+  db: Database,
+  whole: Omit<WholeBuild, "key">,
+): void {
+  db.transaction(() => {
+    loadStatements(
+      db,
+      whole.schema,
+      graphsOfDump(whole.dump, new Set(whole.graphs)),
+      whole.fingerprint,
+    );
+    db.exec(ANALYZED);
+    for (const part of SCREEN_PARTS)
+      for (const view of whole.views) {
+        const statements = view.get(part);
+        if (statements === undefined) continue;
+        for (const text of sqlStatements(statements)) db.prepare(text).run();
+      }
+  });
 }
 
 const decoded = (bytes: Uint8Array | undefined, path: string): string => {
@@ -92,24 +131,21 @@ let functions: Promise<DatabaseFunction[]> | undefined;
  */
 export class PodDatabase {
   readonly #beside: BesideDatabase;
-  readonly #besidePod: Files;
   readonly #screens: Screens;
   readonly #functions: readonly DatabaseFunction[];
-  #key: Uint8Array | undefined;
+  readonly #key: Uint8Array | undefined;
   #db: Database;
   /** Each part run on this connection, its statements compiled the first time it runs and run again as compiled. */
   #compiled = new Map<string, Statement[]>();
 
   private constructor(
     beside: BesideDatabase,
-    besidePod: Files,
     screens: Screens,
     functionsGiven: readonly DatabaseFunction[],
     key: Uint8Array | undefined,
     db: Database,
   ) {
     this.#beside = beside;
-    this.#besidePod = besidePod;
     this.#screens = screens;
     this.#functions = functionsGiven;
     this.#key = key;
@@ -117,8 +153,9 @@ export class PodDatabase {
   }
 
   /**
-   * The database beside the pod opened, or made: for a sealed pod under the key kept beside it, and where that key is
-   * lost, or does not open the database, under a new one, the database made anew.
+   * The database beside the pod opened, or made: for a sealed pod under the key kept beside it. Where that key is lost
+   * or does not open the database, or the database does not open at all, it is made anew, a sealed pod's under a new
+   * key; a key file that cannot be read for another reason throws, and nothing is removed.
    */
   static async opened(
     beside: BesideDatabase,
@@ -128,15 +165,14 @@ export class PodDatabase {
     const screens = await screensOf(vocabulary);
     functions ??= sqlDatabaseFunctions();
     const given = await functions;
+    const { keyAt } = beside;
     let key: Uint8Array | undefined;
-    if (beside.sealed === true) {
-      const kept = await besidePod
-        .read(DATABASE_KEY_BESIDE)
-        .catch(() => undefined);
+    if (keyAt !== undefined) {
+      const kept = await besidePod.read(keyAt);
       key =
         kept?.length === KEY_BYTES
           ? kept
-          : await PodDatabase.#newKey(beside, besidePod);
+          : await PodDatabase.#newKey(beside, besidePod, keyAt);
     }
     let db: Database;
     try {
@@ -144,41 +180,45 @@ export class PodDatabase {
         ...(key === undefined ? {} : { key }),
         functions: given,
       });
-    } catch (error) {
-      if (!(error instanceof DatabaseKeyRefused)) throw error;
-      key =
-        beside.sealed === true
-          ? await PodDatabase.#newKey(beside, besidePod)
-          : undefined;
-      if (key === undefined) await beside.remove();
+    } catch {
+      if (keyAt === undefined) await beside.remove();
+      else key = await PodDatabase.#newKey(beside, besidePod, keyAt);
       db = beside.open({
         ...(key === undefined ? {} : { key }),
         functions: given,
       });
     }
-    return new PodDatabase(beside, besidePod, screens, given, key, db);
+    return new PodDatabase(beside, screens, given, key, db);
   }
 
   /** A new random key, kept beside the pod before anything is sealed under it, the database it cannot open removed. */
   static async #newKey(
     beside: BesideDatabase,
     besidePod: Files,
+    keyAt: string,
   ): Promise<Uint8Array> {
     await beside.remove();
     const key = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
-    await besidePod.write(DATABASE_KEY_BESIDE, key);
+    await besidePod.write(keyAt, key);
     return key;
   }
 
-  /** The fingerprint the ledger names, of the files the database was built from; none for one never built whole. */
+  /**
+   * The fingerprint the ledger names, of the files the database was built from; none for one never built whole, and
+   * none for one whose ledger does not read, which is built whole again.
+   */
   get fingerprint(): string | undefined {
-    return ledgerFingerprint(this.#db);
+    try {
+      return ledgerFingerprint(this.#db);
+    } catch {
+      return undefined;
+    }
   }
 
   /**
-   * Builds the database whole from a store's dump, the pod's under the lens as the build keeps it: each of its graphs
-   * the union reads loaded, every screen made and filled with every record and entry in scope, and the ledger naming the
-   * fingerprint, in one transaction, so a database stopped part way names none and is built whole again.
+   * Builds the database whole from a store's dump, the pod's under the lens as the build keeps it, into a file of its
+   * own put in place of the database once built (`BesideDatabase.builtWhole`), so a database stopped part way is never
+   * the one opened. The dump's bytes are handed over: the caller reads none of them after.
    */
   async builtWhole(
     dump: Uint8Array,
@@ -187,23 +227,20 @@ export class PodDatabase {
   ): Promise<void> {
     this.#db.close();
     this.#compiled = new Map();
-    await this.#beside.remove();
-    this.#db = this.#beside.open({
-      ...(this.#key === undefined ? {} : { key: this.#key }),
-      functions: this.#functions,
-    });
-    const db = this.#db;
-    db.transaction(() => {
-      loadStatements(
-        db,
-        this.#screens.schema,
-        graphsOfDump(dump, graphs),
+    try {
+      await this.#beside.builtWhole({
+        ...this.#screens,
+        dump,
+        graphs: [...graphs],
         fingerprint,
-      );
-      db.exec(ANALYZED);
-      for (const part of SCREEN_PARTS)
-        for (const view of this.#screens.views) this.#ran(view.get(part));
-    });
+        ...(this.#key === undefined ? {} : { key: this.#key }),
+      });
+    } finally {
+      this.#db = this.#beside.open({
+        ...(this.#key === undefined ? {} : { key: this.#key }),
+        functions: this.#functions,
+      });
+    }
   }
 
   /**
