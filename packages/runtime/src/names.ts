@@ -77,7 +77,7 @@ export async function contentName(triples: Iterable<Triple>): Promise<string> {
 }
 
 const DATE_TIME =
-  /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)?$/;
+  /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d+))?(Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))?$/;
 
 /**
  * An `xsd:dateTime`'s lexical form moved to UTC, written `YYYY-MM-DDThh:mm:ssZ` with any fraction of a second kept

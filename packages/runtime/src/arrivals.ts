@@ -114,11 +114,11 @@ interface Arrival {
   readonly pullSource?: string;
   /** Of a live pull that names no transmitter, the writer's own, when it was retrieved. */
   readonly retrievedByWriter?: string;
-  /** Each source change time (`pav:lastUpdateOn`) the arrival stated that is no `xsd:dateTime` stating its time zone, as written, which its revision does not carry. */
+  /** Each source change time (`pav:lastUpdateOn`) the arrival stated that is no `xsd:dateTime` stating a time zone from -14:00 to +14:00, or whose instant in UTC is outside the years 0001 to 9999, as written, which its revision does not carry. */
   readonly changeTimesDropped?: readonly string[];
 }
 
-/** A source change time a revision carries: an `xsd:dateTime` that states its time zone. */
+/** A source change time a revision carries: an `xsd:dateTime` that states a time zone from -14:00 to +14:00 and falls in UTC within the years 0001 to 9999 (`inUtc` throws on any other). */
 function zonedChangeTime(term: Term): boolean {
   if (term.termType !== "Literal" || term.datatype.value !== DATE_TIME)
     return false;
@@ -131,7 +131,7 @@ function zonedChangeTime(term: Term): boolean {
 }
 
 /** Whether `later` is an instant after `earlier`, two `xsd:dateTime` values; never where either states no time zone. */
-function laterInUtc(later: string, earlier: string): boolean {
+export function laterInUtc(later: string, earlier: string): boolean {
   try {
     return earlierInUtc(earlier, later);
   } catch {
@@ -190,7 +190,7 @@ function pullSourceOf(reached: Reached): string | undefined {
 }
 
 /** The whole days by which `earlier` precedes `later`, two xsd:dateTime values; none where either states no time zone. */
-function daysBefore(earlier: string, later: string): number {
+export function daysBefore(earlier: string, later: string): number {
   try {
     return Math.floor(
       (Date.parse(inUtc(later)) - Date.parse(inUtc(earlier))) / DAY,

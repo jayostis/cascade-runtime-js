@@ -193,7 +193,7 @@ export interface Performed {
   readonly arrived?: readonly string[];
   /** The patient profiles the versions of an import's new revisions name, sorted. */
   readonly profilesNamed?: readonly string[];
-  /** Each source change time an import's arrival stated and its revision does not carry, being no `xsd:dateTime` that states its time zone. */
+  /** Each source change time an import's arrival stated and its revision does not carry, being no `xsd:dateTime` that states a time zone from -14:00 to +14:00 or whose instant in UTC is outside the years 0001 to 9999. */
   readonly changeTimesDropped?: readonly ChangeTimeDropped[];
 }
 
