@@ -34,11 +34,19 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
   after(() => db.close());
 
   it("gives each vector's output from its input, and refuses each input a vector marks refused", async () => {
-    const { functions } = JSON.parse(await readText(await vocabulary(), SQL_FUNCTION_VECTORS)) as {
-      functions: Record<string, { vectors: Parameters<typeof vectorFailures>[1] }>;
+    const { functions } = JSON.parse(
+      await readText(await vocabulary(), SQL_FUNCTION_VECTORS),
+    ) as {
+      functions: Record<
+        string,
+        { vectors: Parameters<typeof vectorFailures>[1] }
+      >;
     };
     const implemented = await sqlFunctions();
-    assert.deepEqual(Object.keys(functions).sort(), Object.keys(implemented).sort());
+    assert.deepEqual(
+      Object.keys(functions).sort(),
+      Object.keys(implemented).sort(),
+    );
     for (const [name, { vectors }] of Object.entries(functions))
       assert.deepEqual(vectorFailures(implemented[name], vectors), [], name);
   });
@@ -73,7 +81,11 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
       "test",
     );
     assert.deepEqual(
-      pod.prepare("SELECT nt, kind, lex, datatype, lang, instant, day FROM term WHERE kind = 3 ORDER BY nt").all(),
+      pod
+        .prepare(
+          "SELECT nt, kind, lex, datatype, lang, instant, day FROM term WHERE kind = 3 ORDER BY nt",
+        )
+        .all(),
       [
         {
           nt: `"2025-03-27T07:00:00.5-05:00"^^<${XSD}dateTime>`,
@@ -95,8 +107,16 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
         },
       ],
     );
-    assert.deepEqual(pod.prepare("SELECT t.nt FROM scope JOIN term t ON t.id = scope.term").all(), [{ nt: "<urn:x:a>" }]);
-    assert.deepEqual(pod.prepare("SELECT built, fingerprint FROM ledger").all(), [{ built: "pod", fingerprint: "test" }]);
+    assert.deepEqual(
+      pod
+        .prepare("SELECT t.nt FROM scope JOIN term t ON t.id = scope.term")
+        .all(),
+      [{ nt: "<urn:x:a>" }],
+    );
+    assert.deepEqual(
+      pod.prepare("SELECT built, fingerprint FROM ledger").all(),
+      [{ built: "pod", fingerprint: "test" }],
+    );
     pod.close();
   });
 
@@ -114,18 +134,36 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
         openDatabase(":memory:", { functions }),
     };
     const held = await sqlCheckAssertions(options, ["which-judgments-count"]);
-    const mine = held.filter(({ name }) => name.startsWith(JUDGMENTS.replace(/\.rq$/, ".sql")));
+    const mine = held.filter(({ name }) =>
+      name.startsWith(JUDGMENTS.replace(/\.rq$/, ".sql")),
+    );
     assert.deepEqual(
       mine.map(({ outcome }) => outcome),
       ["passed", "passed"],
       mine.map(({ why }) => why ?? "").join("\n"),
     );
-    const found = await sqlCheckAssertions(options, ["which-judgments-count"], { [JUDGMENTS]: broken });
-    const everyday = found.find(({ name }) => name.endsWith("under everyday") && name.startsWith("queries/questions/pod/How many"));
+    const found = await sqlCheckAssertions(options, ["which-judgments-count"], {
+      [JUDGMENTS]: broken,
+    });
+    const everyday = found.find(
+      ({ name }) =>
+        name.endsWith("under everyday") &&
+        name.startsWith("queries/questions/pod/How many"),
+    );
     assert.equal(everyday?.outcome, "failed");
     const why = everyday?.why ?? "";
-    assert.match(why, new RegExp(`which-judgments-count, under everyday, ${JUDGMENTS}, against the \\.rq: missing: [^\\n]*\\?justification=${MAPPED.replace(/[.#]/g, "\\$&")}`));
-    assert.match(why, new RegExp(`how-many-count-everyday, under everyday, ${JUDGMENTS}: missing: [^\\n]*\\?justification=${MAPPED.replace(/[.#]/g, "\\$&")}`));
+    assert.match(
+      why,
+      new RegExp(
+        `which-judgments-count, under everyday, ${JUDGMENTS}, against the \\.rq: missing: [^\\n]*\\?justification=${MAPPED.replace(/[.#]/g, "\\$&")}`,
+      ),
+    );
+    assert.match(
+      why,
+      new RegExp(
+        `how-many-count-everyday, under everyday, ${JUDGMENTS}: missing: [^\\n]*\\?justification=${MAPPED.replace(/[.#]/g, "\\$&")}`,
+      ),
+    );
     const report = new TextDecoder().decode(earl(found, "cascade-runtime-js"));
     assert.ok(report.includes("<http://www.w3.org/ns/earl#failed>"));
   });

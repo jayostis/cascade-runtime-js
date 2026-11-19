@@ -1,5 +1,3 @@
-import { Refusal } from "./refusal.js";
-
 /** One row of an answer, by column name. */
 export type DatabaseRow = Readonly<Record<string, unknown>>;
 
@@ -11,6 +9,8 @@ export interface Statement {
   iterate(...parameters: readonly unknown[]): IterableIterator<DatabaseRow>;
   /** The first row the statement answers, or `undefined` for none. */
   get(...parameters: readonly unknown[]): DatabaseRow | undefined;
+  /** The names of the columns the statement answers, in their order. */
+  columns(): string[];
   /** Runs a statement that writes, and says how many rows it changed. */
   run(...parameters: readonly unknown[]): { readonly changes: number };
 }
@@ -40,9 +40,12 @@ export interface Database {
 
 /**
  * A database that did not open under the key it was given: a sealed file given another key or none, or a plain file given
- * one. SQLite cannot tell these from a file that is not a database at all; what it said is the `cause`.
+ * one. SQLite cannot tell these from a file that is not a database at all; what it said is the `cause`. It is no
+ * `Refusal`: no input of a step is bad, the database beside the pod is.
  */
-export class DatabaseKeyRefused extends Refusal {
+export class DatabaseKeyRefused extends Error {
+  override readonly name = "DatabaseKeyRefused";
+
   constructor(path: string, cause: unknown) {
     super(`the database ${path} does not open under the key it was given`, {
       cause,

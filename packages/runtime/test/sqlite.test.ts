@@ -65,11 +65,15 @@ describe("Opening a pod's SQLite database · openDatabase()", () => {
         {
           name: "twice",
           deterministic: true,
-          apply: (...values) => values.reduce<number>((sum, value) => sum + Number(value) * 2, 0),
+          apply: (...values) =>
+            values.reduce<number>((sum, value) => sum + Number(value) * 2, 0),
         },
       ],
     });
-    assert.deepEqual(db.prepare("SELECT twice(21) AS v, twice(20, 1) AS w").get(), { v: 42, w: 42 });
+    assert.deepEqual(
+      db.prepare("SELECT twice(21) AS v, twice(20, 1) AS w").get(),
+      { v: 42, w: 42 },
+    );
     db.close();
   });
 

@@ -62,6 +62,8 @@ import { ofMediaType } from "../load-adapter.js";
 import { WasmBridge } from "../wasm-bridge.js";
 import { checkouts } from "./components.js";
 import { bridgeRecord } from "./bridge-record.js";
+import { openDatabase } from "./sqlite.js";
+import { sqlCheckAssertions, sqlFunctionAssertions } from "../sql-check.js";
 
 const RUNTIME = "cascade-runtime-js";
 const KIT = "conformance/";
@@ -172,6 +174,11 @@ async function conformance(args: string[]): Promise<number> {
     values.feature === undefined && values.assertions === undefined
       ? await shardsOf(files, jobsOf(values.jobs))
       : [];
+  const checked =
+    values.feature === undefined && values.assertions === undefined
+      ? sqlAssertions(files)
+      : Promise.resolve([]);
+  checked.catch(() => undefined);
   const assertions =
     shards.length > 1
       ? await shardedRun(shards, values.folder, {
@@ -193,6 +200,7 @@ async function conformance(args: string[]): Promise<number> {
             { ...options, folders },
             bridge,
           )),
+          ...(await checked),
         ]
       : assertions,
     report,
@@ -236,6 +244,27 @@ async function kitFindingAssertions(
     for (const { adapter } of configured) await adapter.free();
     bridge.close();
   }
+}
+
+/**
+ * One assertion for each of the six SQL functions, that it gives each vector's output, and one for each fixture, each
+ * vocabulary `.sql` and each lens, that the `.sql` gives its `.rq`'s rows over the fixture as this runtime builds it.
+ */
+async function sqlAssertions(files: FolderFiles): Promise<Assertion[]> {
+  const started = performance.now();
+  const assertions = [
+    ...(await sqlFunctionAssertions(files)),
+    ...(await sqlCheckAssertions({
+      vocabulary: files,
+      newStore: () => new OxigraphStore(),
+      layout: await Layout.read(files, () => new OxigraphStore()),
+      open: (functions) => openDatabase(":memory:", { functions }),
+    })),
+  ];
+  log(
+    `the vocabulary's SQL: ${assertions.length} assertions in ${((performance.now() - started) / 1000).toFixed(1)} s`,
+  );
+  return assertions;
 }
 
 function jobsOf(given: string | undefined): number {
