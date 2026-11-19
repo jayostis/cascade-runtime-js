@@ -160,7 +160,7 @@ describe("Dependencies of the packed package · mergedDependencies(), undeclared
       });
     });
 
-    it("keeps of a package only the files it names, beside its manifest, and leaves what only builds it out of the copy and out of its manifest", async () => {
+    it("keeps only the files a package names, beside its manifest, and leaves what only builds it out of the copy and out of its manifest", async () => {
       const binding = join(modules, "binding");
       assert.deepEqual((await readdir(binding)).sort(), [
         "lib",
