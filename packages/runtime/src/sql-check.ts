@@ -15,6 +15,8 @@ import {
   askedWhole,
   graphsOfDump,
   loadStatements,
+  dayKey,
+  instantKey,
   parsedNt,
   sqlAnswer,
   sqlDatabaseFunctions,
@@ -31,7 +33,12 @@ import {
   IRI,
   sparqlCompare,
 } from "./statements.js";
-import { type Store, type StoreFactory, Union } from "./store.js";
+import {
+  RestorableUnion,
+  type Store,
+  type StoreFactory,
+  Union,
+} from "./store.js";
 
 /** The address a fixture's files are read under, as the vocabulary's tests read them. */
 export const FIXTURE_ADDRESS = "https://pod.example/";
@@ -39,6 +46,11 @@ export const FIXTURES = "tests/fixtures/";
 const QUERIES = "queries/";
 const MATCHER = "queries/matcher/";
 const LENSES = "queries/lenses/";
+const VIEWS = "queries/views/";
+const LABELS = "queries/labels.rq";
+const LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+const WRITTEN_BY = "https://ns.cascadeprotocol.org/cascade#writtenByQueryPath";
+const INSTANCE = "http://www.w3.org/ns/solid/terms#instance";
 const MF = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#";
 const QT = "http://www.w3.org/2001/sw/DataAccess/tests/test-query#";
 const CTM = "https://ns.cascadeprotocol.org/test-manifest#";
@@ -274,6 +286,7 @@ async function builtFixture(
         graphsOfDump(await store.dump(), union.graphs),
         `${fixture} under ${lens}`,
       );
+      if (labelsOf(context.ported) !== undefined) unlabelled(db);
     } catch (error) {
       db.close();
       throw error;
@@ -281,7 +294,10 @@ async function builtFixture(
     const screens = madeScreens(db, context.ported);
     const keyedFill = new Map<string, string[]>();
     const views = context.ported.filter(
-      ({ rq, sql }) => sqlParts(sql).size > 0 && !screens.has(rq),
+      ({ rq, sql }) =>
+        (rq.startsWith(VIEWS) || rq === LABELS) &&
+        sqlParts(sql).size > 0 &&
+        !screens.has(rq),
     );
     for (const { view, line } of keyedFillFound(db, views))
       keyedFill.set(view, [...(keyedFill.get(view) ?? []), line]);
@@ -318,10 +334,94 @@ function tablesOf(parts: ReadonlyMap<string, string>): string[] {
   ].flatMap((found) => found[1] ?? []);
 }
 
+/** Each view's `.sql` under `queries/views/` with its parts: a screen each. */
+function viewsOf(
+  ported: readonly Ported[],
+): { query: Ported; parts: ReadonlyMap<string, string> }[] {
+  return ported
+    .filter(({ rq }) => rq.startsWith(VIEWS))
+    .map((query) => ({ query, parts: sqlParts(query.sql) }))
+    .filter(({ parts }) => parts.size > 0);
+}
+
+/** labels.sql's parts, where it is ported in parts. */
+function labelsOf(
+  ported: readonly Ported[],
+): ReadonlyMap<string, string> | undefined {
+  const found = ported.find(({ rq }) => rq === LABELS);
+  const parts = found === undefined ? undefined : sqlParts(found.sql);
+  return parts === undefined || parts.size === 0 ? undefined : parts;
+}
+
+const LABELS_FILE =
+  "SELECT g.id AS id FROM quad w JOIN quad x ON x.s = w.s JOIN term i ON i.id = x.o JOIN term g ON g.nt = '<' || i.lex || '>' " +
+  "WHERE w.p = (SELECT id FROM term WHERE nt = ?) AND w.o = (SELECT id FROM term WHERE nt = ?) " +
+  "AND x.p = (SELECT id FROM term WHERE nt = ?)";
+
+/** The graph of the file the layout says labels.rq writes, or none where the pod holds no layout of it. */
+function labelsFile(db: Database): number | undefined {
+  const found = db
+    .prepare(LABELS_FILE)
+    .get(`<${WRITTEN_BY}>`, '"labels.rq"', `<${INSTANCE}>`)?.id;
+  return found === undefined ? undefined : Number(found);
+}
+
+/** Takes the labels file's rdfs:label statements out of the pod; its other statements stay. */
+function unlabelled(db: Database): void {
+  const file = labelsFile(db);
+  if (file === undefined) return;
+  db.prepare(
+    "DELETE FROM quad WHERE g = ? AND p = (SELECT id FROM term WHERE nt = ?)",
+  ).run(file, `<${LABEL}>`);
+}
+
+/** The id of the term the N-Triples text writes, made where the pod has none. */
+function termId(db: Database, nt: string): number {
+  const held = db.prepare("SELECT id FROM term WHERE nt = ?").get(nt)?.id;
+  if (held !== undefined) return Number(held);
+  const term = parsedNt(nt);
+  db.prepare(
+    "INSERT INTO term (nt, kind, lex, datatype, lang, instant, day) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    nt,
+    term.kind,
+    term.kind === BLANK ? null : term.value,
+    term.datatype ?? null,
+    term.lang ?? null,
+    instantKey(term),
+    dayKey(term),
+  );
+  return Number(db.prepare("SELECT id FROM term WHERE nt = ?").get(nt)?.id);
+}
+
 /**
- * Makes and fills each view's screen, every view's `tables`, then every `fill`, then every `finish`, and gives why
- * each ported `.sql` that cannot be answered cannot, by its `.rq`'s path: a view whose part throws, named with the part,
- * its later parts not run; and a `.sql` that reads a table of a screen that failed. The other screens are made whole.
+ * The labels file's rdfs:label statements made again from labels.sql, as a runtime writes the file: its `fill` run, the
+ * file's labels deleted and its `triples` rows put in the file's graph. Left as it is where the pod has no such graph.
+ */
+function labelled(db: Database, labels: ReadonlyMap<string, string>): void {
+  const file = labelsFile(db);
+  if (file === undefined) return;
+  db.exec(labels.get("fill") ?? "");
+  const { rows } = sqlAnswer(db, labels.get("triples") ?? "");
+  db.prepare(
+    "DELETE FROM quad WHERE g = ? AND p = (SELECT id FROM term WHERE nt = ?)",
+  ).run(file, `<${LABEL}>`);
+  const put = db.prepare(
+    "INSERT OR IGNORE INTO quad (s, p, o, g) VALUES (?, ?, ?, ?)",
+  );
+  for (const [s, p, o] of rows) {
+    if (s == null || p == null || o == null)
+      throw new Error("labels.sql gives a triple with an unbound term");
+    put.run(termId(db, s), termId(db, p), termId(db, o), file);
+  }
+}
+
+/**
+ * Makes and fills each view's screen, every view's `tables`, then every `fill`, then the labels from labels.sql, then
+ * every `finish`, and gives why each ported `.sql` that cannot be answered cannot, by its `.rq`'s path: a view whose part
+ * throws, named with the part, its later parts not run; labels.sql where its labels cannot be made; and a `.sql` that
+ * reads a table of a screen that failed. The other screens are made whole. Only a view under `queries/views/` is a
+ * screen.
  */
 export function madeScreens(
   db: Database,
@@ -329,10 +429,11 @@ export function madeScreens(
 ): Map<string, string> {
   const failed = new Map<string, string>();
   const thrown = new Set<string>();
-  const views = ported
-    .map((query) => ({ query, parts: sqlParts(query.sql) }))
-    .filter(({ parts }) => parts.size > 0)
-    .map((view) => ({ ...view, tables: tablesOf(view.parts) }));
+  const views = viewsOf(ported).map((view) => ({
+    ...view,
+    tables: tablesOf(view.parts),
+  }));
+  const labels = labelsOf(ported);
   const readsFailed = (text: string, self: string): string | undefined =>
     views.find(
       ({ query, tables }) =>
@@ -346,7 +447,7 @@ export function madeScreens(
       `reads the screen of ${sqlPath(read)}, which fails: ${failed.get(read) ?? ""}`,
     );
   };
-  for (const part of SCREEN_PARTS)
+  for (const part of SCREEN_PARTS) {
     for (const { query, parts } of views) {
       if (failed.has(query.rq)) continue;
       const read = readsFailed(query.sql, query.rq);
@@ -364,6 +465,24 @@ export function madeScreens(
         );
       }
     }
+    if (part !== "fill" || labels === undefined || failed.has(LABELS)) continue;
+    const read = readsFailed(
+      ported.find(({ rq }) => rq === LABELS)?.sql ?? "",
+      LABELS,
+    );
+    if (read !== undefined) {
+      reading(LABELS, read);
+      continue;
+    }
+    try {
+      labelled(db, labels);
+    } catch (error) {
+      failed.set(
+        LABELS,
+        `the labels of ${sqlPath(LABELS)} cannot be made: ${messageOf(error)}`,
+      );
+    }
+  }
   for (const { rq, sql } of ported) {
     if (failed.has(rq)) continue;
     const read = readsFailed(sql, rq);
@@ -713,11 +832,14 @@ function keyedChanges(db: Database, views: readonly Ported[]): KeyedChange[] {
   return changes;
 }
 
-/** Each view's `fill`, then each view's `finish`, for the entries in scope. */
+/** Each view's `fill`, then the labels from labels.sql where it is among them, then each view's `finish`, for the entries in scope. */
 function refilled(db: Database, views: readonly Ported[]): void {
-  const parts = views.map(({ sql }) => sqlParts(sql));
-  for (const part of ["fill", "finish"])
+  const parts = viewsOf(views).map(({ parts }) => parts);
+  const labels = labelsOf(views);
+  for (const part of ["fill", "finish"]) {
     for (const found of parts) db.exec(found.get(part) ?? "");
+    if (part === "fill" && labels !== undefined) labelled(db, labels);
+  }
 }
 
 /**
@@ -731,8 +853,8 @@ function keyedFillFound(
 ): { view: string; line: string }[] {
   if (views.length === 0) return [];
   const owner = new Map<string, string>();
-  for (const { rq, sql } of views)
-    for (const table of tablesOf(sqlParts(sql))) owner.set(table, rq);
+  for (const { query, parts } of viewsOf(views))
+    for (const table of tablesOf(parts)) owner.set(table, query.rq);
   const filled = screenTables(db);
   const found: { view: string; line: string }[] = [];
   for (const { name, make } of keyedChanges(db, views)) {
@@ -1205,6 +1327,33 @@ const lensOf = (path: string | undefined): string | undefined =>
     : undefined;
 
 /**
+ * What `read` gives of the union as labels.rq reads it, before it is run: without the rdfs:label statements of the file
+ * the layout says labels.rq writes, the file's other statements kept. The store is put back after.
+ */
+async function beforeLabels<T>(
+  union: Union,
+  read: (before: Union) => Promise<T>,
+): Promise<T> {
+  const { rows } = await union.select(
+    `SELECT ?file WHERE { ?placement <${WRITTEN_BY}> "labels.rq" ; <${INSTANCE}> ?file } LIMIT 1`,
+  );
+  const file = rows[0]?.get("file")?.value;
+  if (file === undefined) return read(union);
+  const before = new RestorableUnion(union.store, union.graphs);
+  try {
+    const kept = await union.store.construct(
+      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${file}> { ?s ?p ?o FILTER (?p != <${LABEL}>) } }`,
+      new Set(),
+    );
+    await before.drop(file);
+    await before.add(kept, file);
+    return await read(before);
+  } finally {
+    await before.restore();
+  }
+}
+
+/**
  * Why the `.sql`, over the fixture's pod under its lens, does not give the rows of the `.rq` beside it, as lines: in a
  * whole run, in its order where it has one, a CONSTRUCT's as a set of triples and a view's through its `triples` part;
  * for a question, asked through `asked` of each record a manifest entry binds, for a list question of each record in
@@ -1223,7 +1372,10 @@ export async function sqlFailures(
   const screen = built.screens.get(ported.rq);
   if (screen !== undefined) return [`${where}: ${screen}`];
   const construct = isConstruct(ported.rqText);
-  const wanted = await rqAnswer(union, ported.rqText);
+  const wanted =
+    ported.rq === LABELS && sqlParts(sql).size > 0
+      ? await beforeLabels(union, (before) => rqAnswer(before, ported.rqText))
+      : await rqAnswer(union, ported.rqText);
   let found: { columns: readonly string[]; rows: Row[] };
   try {
     found = sqlRows(db, sql);
