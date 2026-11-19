@@ -43,6 +43,7 @@
     "Keeping a pod's sealed files under keyed names · SealedIndex.open(), EncryptedFiles",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
     "Choosing and fetching Oxigraph's native or WebAssembly build · chooseOxigraph(), nativeOxigraph(), fetchNativeOxigraph(), OxigraphStore",
+    "Opening a pod's SQLite database · openDatabase()",
     "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"
   ],
   "glossary": [

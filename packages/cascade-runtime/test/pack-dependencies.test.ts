@@ -20,6 +20,24 @@ const write = async (path: string, text: string) => {
  */
 describe("Dependencies of the packed package · mergedDependencies(), undeclaredImports(), vendored()", () => {
   describe("mergedDependencies(declarers)", () => {
+    it("lists the SQLite binding, pinned, from the manifests the package is packed from", async () => {
+      const manifest = async (folder: string) =>
+        JSON.parse(
+          await readFile(
+            new URL(`../../../${folder}/package.json`, import.meta.url),
+            "utf8",
+          ),
+        ) as { name: string; dependencies?: Record<string, string> };
+      const merged = mergedDependencies([
+        await manifest("runtime"),
+        await manifest("cascade-runtime"),
+      ]);
+      assert.match(
+        merged["better-sqlite3-multiple-ciphers"] ?? "",
+        /^d+.d+.d+$/,
+      );
+    });
+
     it("returns the package's own dependencies beside those of the workspaces it bundles", () => {
       assert.deepEqual(
         mergedDependencies([
