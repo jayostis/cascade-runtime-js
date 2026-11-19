@@ -15,10 +15,12 @@ import {
   sqlTest,
   vectorFailures,
 } from "../src/sql-check.js";
+import { iri, literal } from "../src/rdf.js";
 import { Union } from "../src/store.js";
 import {
   askedOf,
   askedWhole,
+  heldNt,
   loadStatements,
   sparqlDecimal,
   sqlAnswer,
@@ -388,6 +390,35 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
       ]);
     } finally {
       pod.close();
+      store.free?.();
+    }
+  });
+
+  it("writes a time, date or dateTime the runtime made as Oxigraph's store holds it: trailing zeros of its seconds dropped, a zero offset as Z", async () => {
+    const made = [
+      ["dateTime", "2026-11-19T08:25:01.710Z"],
+      ["dateTime", "2026-11-19T08:25:01.000Z"],
+      ["dateTime", "2026-11-19T08:25:01+00:00"],
+      ["dateTime", "2026-11-19T08:25:01.500-05:00"],
+      ["time", "08:25:01.100Z"],
+      ["date", "2026-11-19-00:00"],
+    ].map(([type, value]) => literal(value ?? "", `${XSD}${type}`));
+    const store = new OxigraphStore();
+    try {
+      await store.add(
+        made.map((object, at) => [iri(`urn:x:s${at}`), iri("urn:x:p"), object]),
+        { graph: "urn:x:g" },
+      );
+      const held = new TextDecoder().decode(await store.dump()).split("\n");
+      assert.deepEqual(
+        made.map(
+          (object, at) => `<urn:x:s${at}> <urn:x:p> ${heldNt(object)} .`,
+        ),
+        made.map((_, at) =>
+          held.find((line) => line.startsWith(`<urn:x:s${at}> `)),
+        ),
+      );
+    } finally {
       store.free?.();
     }
   });
