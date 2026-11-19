@@ -123,14 +123,16 @@ function readDatabase<T>(
   }
 }
 
-/** The parts, each connection they open to a pod's database counted as it opens and as it closes. */
+/** The parts, each connection they open to a pod's database counted as it opens and as it closes, and each statement prepared on one. */
 function counted(): {
   given: Parts;
   opened: () => number;
   closed: () => number;
+  prepared: string[];
 } {
   let opened = 0;
   let closed = 0;
+  const prepared: string[] = [];
   const given: Parts = {
     ...parts,
     databaseBeside: async (path, name) => {
@@ -144,7 +146,10 @@ function counted(): {
           const db = beside.open(options);
           opened += 1;
           return {
-            prepare: (sql) => db.prepare(sql),
+            prepare: (sql) => {
+              prepared.push(sql);
+              return db.prepare(sql);
+            },
             exec: (sql) => db.exec(sql),
             transaction: (work) => db.transaction(work),
             close: () => {
@@ -156,7 +161,7 @@ function counted(): {
       };
     },
   };
-  return { given, opened: () => opened, closed: () => closed };
+  return { given, opened: () => opened, closed: () => closed, prepared };
 }
 
 /** Each statement the database holds, as Oxigraph's N-Triples writes it and then its graph, sorted. */
@@ -337,8 +342,8 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
       const pod = await openPodWith(given, folder, { title: "Annie Easley" });
       try {
         assert.equal(existsSync(database), false, "pod.db made at open");
-        await pod.import(syntheticPulls(1)[0]!, { claimProfiles: claiming });
         await pod.retitle("Annie J. Easley");
+        await pod.import(syntheticPulls(1)[0]!, { claimProfiles: claiming });
         assert.equal(existsSync(database), false, "pod.db made by a step");
         assert.equal(opened() - closed(), 0, "a connection to pod.db is open");
       } finally {
@@ -386,6 +391,52 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
         Object.values(keyed.screens).some((triples) => triples.length > 0),
       );
       assert.deepEqual(keyed, readDatabase(whole, asRead));
+    });
+  });
+
+  describe("given a retitle after a step, the pod closed and opened again", () => {
+    const title = "Retitled after a step";
+    let retitled: string;
+    before(async () => {
+      retitled = await copied(first, "retitled-after-step");
+      await session(retitled, async (pod) => {
+        await pod.import(laterPull()[0]!, { claimProfiles: claiming });
+        await pod.retitle(title);
+      });
+    });
+
+    it("keeps the build beside the pod equal to pod.db, graph by graph, the manifest with the new title among them", async () => {
+      const held = await canonicalGraphs(readDatabase(retitled, statementsIn));
+      const built = await canonicalGraphs(await builtStatements(retitled));
+      const manifest = [...held.keys()].find((graph) =>
+        graph.endsWith(`/${MANIFEST}`),
+      );
+      assert.ok(manifest !== undefined);
+      assert.ok(held.get(manifest)?.includes(`"${title}"`));
+      assert.deepEqual(held, built);
+    });
+
+    it("reads the build back with the manifest pod.db holds, as the pod's manifest file states it", async () => {
+      let read: Triple[] | undefined;
+      const dataset = CorePod.prototype.dataset;
+      CorePod.prototype.dataset = async function (this: CorePod, lens) {
+        const union = await dataset.call(this, lens);
+        read ??= await union.construct(
+          `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s ?p ?o } FILTER(STRENDS(STR(?g), "/${MANIFEST}")) }`,
+        );
+        return union;
+      };
+      try {
+        await session(retitled, (pod) => pod.ask(NO_SQL));
+      } finally {
+        CorePod.prototype.dataset = dataset;
+      }
+      assert.ok(read !== undefined, "no dataset was read");
+      const held = await canonicalGraphs(readDatabase(retitled, statementsIn));
+      const manifest = [...held.entries()].find(([graph]) =>
+        graph.endsWith(`/${MANIFEST}`),
+      );
+      assert.equal(await canonical(read), manifest?.[1]);
     });
   });
 
@@ -984,6 +1035,26 @@ describe("Answering a pod's questions from its database, a page at a time · pod
           line.includes(`"${title}"`),
         ),
         "pod.db does not hold the new title",
+      );
+    });
+
+    it("fills no screen again for a retitle, which changes only the manifest", async () => {
+      const { given, prepared } = counted();
+      let during: string[] = [];
+      await session(
+        await copied(first, "retitled-screens"),
+        async (pod) => {
+          await pod.askPage(LABS, { size: 1 });
+          const from = prepared.length;
+          await pod.retitle("Retitled, no screen filled");
+          during = prepared.slice(from);
+        },
+        given,
+      );
+      assert.ok(during.length > 0, "the retitle wrote nothing to pod.db");
+      assert.deepEqual(
+        during.filter((sql) => /\blab_result\b|\bscope\b/.test(sql)),
+        [],
       );
     });
 
