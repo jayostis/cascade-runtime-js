@@ -34,7 +34,7 @@ const RUN_PARTS = ["fill", "finish"] as const;
 /** The graphs one read of what a step loaded names: a long VALUES block joins in more than linear time. */
 const GRAPHS_AT_ONCE = 256;
 /** The statistics the screens' statements are planned by, taken once the statements are loaded. */
-const ANALYZED = "PRAGMA analysis_limit = 1000; ANALYZE;";
+const ANALYZED = "ANALYZE;";
 
 /**
  * The database a pod keeps beside it, `pod.db`, by its path: a cache of the pod's statements and screens that the
