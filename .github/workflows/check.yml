@@ -952,18 +952,25 @@ jobs:
         with:
           path: .rows-cache
           key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
-      # The performance history page that perf.yml keeps on the perf-data branch, served at /perf/. A site with no history yet
-      # (the branch does not exist) has no page, and that is not a failure.
+      # The performance history page that perf.yml keeps on the perf-data branch, served at /perf/. It is an optional page:
+      # a branch that does not exist yet, or a fetch that fails, skips it with a warning and never fails the deploy. It is
+      # copied after explorer-check and build:pages, so no check of a pull request sees it (the link check exempts it).
       - name: The performance history page
         shell: bash
         run: |
-          set -euo pipefail
-          if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}" perf-data >/dev/null 2>&1; then
-            git clone -q --depth 1 --branch perf-data "https://github.com/${GITHUB_REPOSITORY}" "$RUNNER_TEMP/perf-data"
-            if [ -f "$RUNNER_TEMP/perf-data/perf/index.html" ]; then
-              mkdir -p build/pages/perf
-              cp -r "$RUNNER_TEMP/perf-data/perf/." build/pages/perf/
-            fi
+          set -uo pipefail
+          remote="https://github.com/${GITHUB_REPOSITORY}"
+          git ls-remote --exit-code --heads "$remote" perf-data >/dev/null 2>&1
+          looked=$?
+          if [ "$looked" -ne 0 ]; then
+            echo "::warning::/perf/ is skipped: the perf-data branch could not be listed (git ls-remote exit ${looked}; 2 means there is no such branch yet)"
+          elif ! git clone -q --depth 1 --branch perf-data "$remote" "$RUNNER_TEMP/perf-data"; then
+            echo "::warning::/perf/ is skipped: the perf-data branch could not be cloned"
+          elif [ ! -f "$RUNNER_TEMP/perf-data/perf/index.html" ]; then
+            echo "::warning::/perf/ is skipped: perf-data holds no perf/index.html yet"
+          else
+            mkdir -p build/pages/perf
+            cp -r "$RUNNER_TEMP/perf-data/perf/." build/pages/perf/
           fi
       - uses: actions/upload-pages-artifact@v5
         with:

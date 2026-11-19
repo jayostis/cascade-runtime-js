@@ -267,11 +267,16 @@ jobs:
       # there is no threshold, no comment and nothing fails on a slowdown.
       - name: Keep the rows where the checkout will not clear them
         run: cp file/history.json "$RUNNER_TEMP/history.json"
+      # No credential stays on disk while the third-party action runs: it pushes with the `github-token` it is given.
       - uses: actions/checkout@v7
         with:
           ref: perf-data
+          persist-credentials: false
+      # `ref` names the commit the run measured: a schedule or hand-started run has no head commit, and the action would
+      # otherwise record whatever main is when this job publishes.
       - uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
+          ref: ${{ github.sha }}
           name: Runtime performance
           tool: customSmallerIsBetter
           output-file-path: ${{ runner.temp }}/history.json

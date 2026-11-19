@@ -27,20 +27,20 @@
     }
   },
   "measures": {
-    "total": "The headline: the whole scenario from start to finish, the middle of three runs.",
+    "total": "The headline: the whole scenario from start to finish, the median of the runs.",
     "open": "Opening the pod.",
     "import": "Importing the whole record into the pod.",
     "first-screen": "Asking the questions the first screen shows.",
     "first-read": "The first question asked of the reopened pod ('My active conditions').",
     "second-read": "A second question asked of the reopened pod ('My active medications').",
     "close": "Closing the pod, saving its database.",
-    "rss": "Memory the process was holding when the scenario's work was done, in bytes.",
+    "rss": "Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the second read for a reopened one, after a first read and before the pages for the question pages.",
     "peak-rss": "The most memory the process held at any moment, in bytes.",
     "probed-total": "The scenario's time in one run with the probe on, which slows some work; its stages are from this run and are for finding where time goes, never for adding up to the headline.",
     "phase-loading-the-adapter": "Import part: loading the adapter that knows this kind of record.",
     "phase-converting": "Import part: converting the source record into the pod's own format.",
     "phase-saving": "Import part: writing the converted records into the pod.",
-    "phase-judging": "Import part: judging which records are the same thing recorded twice."
+    "phase-judging": "Import part: claiming, as the pod's owner, the profiles the person confirmed are theirs."
   },
   "measureFamilies": [
     {
@@ -80,7 +80,7 @@
       "within": "scenario.import"
     },
     "core-pod.step.finished": {
-      "says": "The last bookkeeping of a step, once everything is written.",
+      "says": "Working out what an act's file holds beside its description: the runtime that did the work and a snapshot of the pod's files.",
       "within": "scenario.import"
     },
     "core-pod.step.keptafter": {
@@ -111,13 +111,13 @@
       "says": "Working out a fingerprint of everything a result depends on, to know when it can be reused."
     },
     "core-pod.matcherselect": {
-      "says": "Asking the pod's facts which records might be the same as each other."
+      "says": "A question the 'same record' matcher puts to the pod's facts, as the matcher reads them."
     },
     "core-pod.matcherview": {
       "says": "Preparing the pod's facts for the 'same record' matcher."
     },
     "core-pod.databaseanswers": {
-      "says": "Answering a question from the pod's saved database instead of the files."
+      "says": "Checking whether the saved database holds the pod as it stands now, so it can answer in place of a rebuild."
     },
     "core-pod.rebuild.writeall": {
       "says": "Writing every rebuilt file out to the pod."
@@ -149,15 +149,15 @@
       "says": "Tidying the pod's files into fewer, larger ones."
     },
     "arrivals.fileexport": {
-      "says": "Writing the pod's new files out of the import.",
-      "within": "core-pod.step.commit"
+      "says": "Taking in every document of the record: converting each, working out its records and writing them to the pod.",
+      "within": "core-pod.step.perform"
     },
     "arrivals.convert": {
       "says": "Converting the source record into the pod's own format with the adapter.",
       "within": "scenario.import"
     },
     "arrivals.accepting": {
-      "says": "Deciding which of the converted records the pod accepts.",
+      "says": "Finding which adapter accepts this document.",
       "within": "scenario.import"
     },
     "arrivals.parsegraph": {
@@ -213,16 +213,16 @@
       "within": "scenario.import"
     },
     "pod.unclaimedprofiles": {
-      "says": "Finding people in the records whom nobody has claimed as the pod's owner."
+      "says": "Finding the people named in an import's records whom the person has not yet said are, or are not, themselves."
     },
     "pod.judge": {
-      "says": "Applying a person's own decisions about which records are the same."
+      "says": "Claiming one confirmed profile as the pod's owner, by filing the judgment that says so."
     },
     "pod.profilestied": {
-      "says": "Working out which of the person's profiles are the same person."
+      "says": "Looking up which profiles the person has already said are, or are not, themselves."
     },
     "store.query": {
-      "says": "One question put to the pod's fact store; the time of every such question added up."
+      "says": "Questions put to the pod's fact store, many of them: the time one or more of them was in progress."
     },
     "union.loadfiles": {
       "says": "Loading the pod's files into memory as facts."
@@ -277,7 +277,7 @@
       "within": "kept.step"
     },
     "kept.reached.judged": {
-      "says": "Looking up the judgments that concern the reached records."
+      "says": "Finding what the judgment files a step wrote refer to."
     },
     "kept.rebuilt.filesof": {
       "says": "Finding the files of the records being re-derived."
@@ -317,7 +317,7 @@
       "within": "build.queried"
     },
     "build.queried.viewsheld": {
-      "says": "Setting aside answer files that did not need rebuilding.",
+      "says": "Working out which answer files the pod's records call for.",
       "within": "build.queried"
     },
     "build.queried.written": {
@@ -328,7 +328,7 @@
       "says": "Narrowing a question to only the records that changed."
     },
     "matcher.of": {
-      "says": "The whole 'same record' matching of one group of records."
+      "says": "Setting up the 'same record' matcher for one run: reading the records it compares and running its rules over them."
     },
     "matcher.of.read": {
       "says": "Reading the records to be compared.",
@@ -358,13 +358,13 @@
       "says": "Reading the records the matcher compares."
     },
     "matcher.actstaken": {
-      "says": "Reading what people have already decided about which records are the same."
+      "says": "Working out which acts (an import, an entry session, a connect or a sync) this run takes records from."
     },
     "matcher.take": {
-      "says": "Picking the records a rule will compare."
+      "says": "Judging which records this import, entry, connect or sync brought are the same as records the pod holds, and recording each match."
     },
     "matcher.filefindings": {
-      "says": "Reading what the matcher noted last time about each file."
+      "says": "Writing a finding for review for each pair of records one of the finding rules gives."
     },
     "matcher.view": {
       "says": "Building the matcher's working copy of the facts."
@@ -402,15 +402,15 @@
       "within": "core-pod.keepdatabase"
     },
     "bridge.stage-records": {
-      "says": "The Bridge turns the source record's entries into the pod's records.",
+      "says": "The Bridge makes the pod's records, with their versions, from what its mappings produced.",
       "within": "arrivals.convert"
     },
     "bridge.stage-mapping": {
-      "says": "The Bridge looks up how each source field maps to the pod's terms.",
+      "says": "The Bridge runs the adapter's mappings over the source record's facts to produce the pod's facts.",
       "within": "arrivals.convert"
     },
     "bridge.stage-index": {
-      "says": "The Bridge indexes the source record so entries can be found quickly.",
+      "says": "The Bridge builds a lookup index of the source facts for its compiled queries.",
       "within": "arrivals.convert"
     },
     "bridge.stage-lift": {
@@ -418,7 +418,7 @@
       "within": "arrivals.convert"
     },
     "bridge.stage-documenttable": {
-      "says": "The Bridge collects the documents the record refers to.",
+      "says": "The Bridge builds the table of documents that the source record contains.",
       "within": "arrivals.convert"
     },
     "bridge.stage-serialising": {
@@ -430,7 +430,7 @@
       "within": "arrivals.convert"
     },
     "bridge.stage-dataset": {
-      "says": "The Bridge assembles the converted facts.",
+      "says": "The Bridge sets up the facts its queries will read.",
       "within": "arrivals.convert"
     },
     "bridge.stage-detect": {
@@ -448,7 +448,7 @@
       "says": "Reading the pod files that fill in a half-built answer."
     },
     "core-pod.step.readback": {
-      "says": "Reading back what a step just wrote, to check it.",
+      "says": "Reading the pod's saved answers back in before a step, so the step can carry on from them.",
       "within": "scenario.import"
     },
     "core-pod.step.database": {
@@ -456,10 +456,10 @@
       "within": "scenario.import"
     },
     "core-pod.builtdigests": {
-      "says": "Fingerprinting the built answer files, to tell which changed."
+      "says": "Checking that each saved answer file is still the one the saved state was made with."
     },
     "core-pod.besidedigest": {
-      "says": "Fingerprinting the files kept beside the pod."
+      "says": "Fingerprinting the saved state kept beside the pod, to check it is intact when the pod opens."
     },
     "arrivals.records.podfiles": {
       "says": "Reading the pod files that hold the records an import compares with.",
@@ -474,7 +474,7 @@
       "within": "scenario.import"
     },
     "kept.reached.recordsofjudged": {
-      "says": "Finding the records a person has already judged."
+      "says": "Finding the records those judgments are about."
     },
     "kept.readback": {
       "says": "Reading the saved answers back in when the pod opens."
@@ -488,37 +488,25 @@
       "within": "kept.readback"
     },
     "kept.reached.written": {
-      "says": "Writing the answers of the reached records."
+      "says": "Finding the records whose files the step wrote."
     },
     "matcher.view.podfiles": {
       "says": "Reading the pod files the matcher compares."
     },
     "matcher.recheck": {
-      "says": "Checking again a match that may have changed."
+      "says": "Checking again each earlier 'same record' judgment made with a table or rule that has since changed."
     },
     "matcher.filenolongerreached": {
-      "says": "Noting a file the matcher no longer needs to look at."
-    },
-    "pod.ask": {
-      "says": "One question asked of the pod."
-    },
-    "pod.askpage": {
-      "says": "One page of the answer to a question asked of the pod."
-    },
-    "pod.connect": {
-      "says": "Connecting the pod to a source of records."
-    },
-    "pod.enter": {
-      "says": "A person entering something into the pod by hand."
+      "says": "Writing a finding for review that names the earlier 'same record' judgments the newer rule list no longer reaches."
     },
     "pod-database.keyed.graphs": {
-      "says": "Writing the saved database's facts, in the encrypted form."
+      "says": "Updating the saved database's facts, one group of facts at a time."
     },
     "pod-database.keyed.screens": {
-      "says": "Writing the saved database's answer tables, in the encrypted form."
+      "says": "Updating the saved database's ready-made answer tables."
     },
     "pod-database.keyed.ledger": {
-      "says": "Writing the saved database's list of what it holds, in the encrypted form."
+      "says": "Recording what the saved database now holds."
     }
   },
   "families": [
@@ -563,7 +551,7 @@
     },
     {
       "startsWith": "core-pod.step.rebuild-",
-      "says": "Re-deriving what the step's {name} changes.",
+      "says": "Re-deriving the pod's answers after a step of this kind: {name}.",
       "within": "scenario.import"
     }
   ],
@@ -579,7 +567,7 @@
     "built.lines.total": "How many lines the answer files hold in all.",
     "built.lines.written": "How many answer-file lines were written.",
     "built.lines.sorted": "How many answer-file lines had to be sorted.",
-    "view.quadsmoved": "How many facts were moved into answer files.",
+    "view.quadsmoved": "How many facts were set aside and put back while answer files were rebuilt.",
     "podfiles.files": "How many pod files were read.",
     "podfiles.calls": "How many times pod files were read.",
     "adapter.files.read": "How many adapter files were read.",
@@ -594,7 +582,7 @@
     "matcher.queriesrun": "How many questions the matcher asked.",
     "matcher.takenrecords": "How many records the matcher picked to compare.",
     "matcher.boundrecords": "How many records the matcher's questions were limited to.",
-    "shapes.machine-basis-check": "How many times the pod checked that its machine-made facts have a basis."
+    "shapes.machine-basis-check": "How many times a judgment's stated basis was checked against its shape (a repeat check over the same statements is not counted)."
   },
   "countFamilies": [
     {

@@ -126,7 +126,8 @@ export function glossaryMarkdown(): string {
   const family = (list: readonly Family[]) =>
     list.map((each): [string, string] => [
       `${each.startsWith ?? ""}*${each.endsWith ?? ""}`,
-      each.says + (each.within ? ` Sits inside \`${each.within}\`.` : ""),
+      each.says.replace("{name}", "`<name>`") +
+        (each.within ? ` Sits inside \`${each.within}\`.` : ""),
     ]);
   return [
     "# What the performance numbers mean",
