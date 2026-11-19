@@ -519,12 +519,7 @@ class Run {
         .then((bytes) =>
           bytes === undefined
             ? undefined
-            : References.of(
-                vocabulary,
-                path,
-                newStore,
-                open === undefined ? undefined : vocabulary,
-              ),
+            : References.of(vocabulary, path, newStore, vocabulary),
         );
       this.#held.set(path, found);
     }

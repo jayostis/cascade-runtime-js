@@ -1536,7 +1536,7 @@ describe("Keeping reference tables up to date · tablesBeside(), tables.check()"
   });
 
   describe("given a feed whose series are of several table kinds", () => {
-    const UNREAD = `${CASCADE}SubstanceIngredients`;
+    const UNREAD = `${CASCADE}ValueSetExpansions`;
     const MARKED = `${CASCADE}CodeNames`;
     const PUBLISHED = `${CASCADE}NdcDrugs`;
 
@@ -1579,7 +1579,7 @@ describe("Keeping reference tables up to date · tablesBeside(), tables.check()"
                   .decode(bytes)
                   .replace(
                     "cascade:VaccineGroups",
-                    "cascade:SubstanceIngredients",
+                    "cascade:ValueSetExpansions",
                   ),
               );
         },
@@ -3522,7 +3522,7 @@ describe("Starter copies of the reference tables, as the package is built with t
           feeds: [FEED],
           vocabulary: parts.vocabulary,
           newStore: parts.newStore,
-          fetch: fetchOf(retyped(`${CASCADE}SubstanceIngredients`)),
+          fetch: fetchOf(retyped(`${CASCADE}ValueSetExpansions`)),
         },
         (path, bytes) => written.write(path, bytes),
       );

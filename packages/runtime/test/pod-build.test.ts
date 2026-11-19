@@ -504,7 +504,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
    */
   describe("given a pod whose matcher Same used a table version that is no longer the current version, read with `podDataset()`", () => {
     /** The Same the example says counts on, by the name it gives it. */
-    const same = "urn:uuid:95e3d83c-1b6a-89a2-9178-c48ca77f23d5";
+    const same = "urn:uuid:5c813aec-207a-8263-a682-d934f4522827";
     const countedInOneEntry = `${PREFIXES}
       ASK {
         <${same}> prov:hadMember ?one , ?other .
@@ -1120,6 +1120,7 @@ describe("Matching a pod whose files repeat a statement · CorePod.match()", () 
             vocabularyFiles,
             `${storyFolder}/references/`,
             () => new OxigraphStore(),
+            vocabularyFiles,
           ),
         build: {
           lens: LENS,

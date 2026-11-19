@@ -378,6 +378,7 @@ export class Replay {
             options.source,
             inStory(options.folder, "references/"),
             options.newStore,
+            options.vocabulary,
           )),
       ...(options.build === undefined ? {} : { build: options.build }),
     });

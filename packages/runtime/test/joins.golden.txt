@@ -1,25 +1,23 @@
 conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:0f282f2d-4ceb-897a-bdb8-750d6e25db2d urn:uuid:58e34d36-550a-882e-b43a-9225dbdce037
-conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:173c9663-2406-8025-843b-5f9b19c1b9f3 urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4
-conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:3719cb66-c5be-8fac-a0bf-a6db7573fe71 urn:uuid:fdf1589d-bc02-8c0f-8874-4d377574cc8d
 conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:5a16d5f4-34b0-8fb6-9f5c-59b37aa6d4dc urn:uuid:828f3452-da1d-83e7-9fd4-23f49d355848
 conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:5a16d5f4-34b0-8fb6-9f5c-59b37aa6d4dc urn:uuid:b0492421-a1b7-8de4-817e-8940bf97f7df
 conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:7a11ba0d-eaa3-881d-a511-1f2ee8b8b0e9 urn:uuid:c6f34248-0b58-8e8a-8e52-f426d1a8be5c
 conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:7a11ba0d-eaa3-881d-a511-1f2ee8b8b0e9 urn:uuid:c6f34248-0b58-8e8a-8e52-f426d1a8be5c urn:uuid:cfe67786-af77-8fb0-8c99-3d9faedcf182
-conformance/alex-rivera/alex-rivera.feature | SameCode urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4 urn:uuid:fb6ea0ec-3fbb-865c-a044-01b708d547f1
 conformance/alex-rivera/alex-rivera.feature | SameCodeAndDate urn:uuid:7d77d9e0-5457-86f2-8d9d-827c65c11b21 urn:uuid:7e3decf1-6e9a-8e95-b982-c2e7d18be3f1
-conformance/alex-rivera/alex-rivera.feature | SameMappedCode urn:uuid:0f282f2d-4ceb-897a-bdb8-750d6e25db2d urn:uuid:69961a65-6383-84b7-96f1-0a88fb755c9c
+conformance/alex-rivera/alex-rivera.feature | SameCodeAndPeriod urn:uuid:173c9663-2406-8025-843b-5f9b19c1b9f3 urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4
+conformance/alex-rivera/alex-rivera.feature | SameCodeAndPeriod urn:uuid:3719cb66-c5be-8fac-a0bf-a6db7573fe71 urn:uuid:fdf1589d-bc02-8c0f-8874-4d377574cc8d
+conformance/alex-rivera/alex-rivera.feature | SameCodeAndPeriod urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4 urn:uuid:fb6ea0ec-3fbb-865c-a044-01b708d547f1
 conformance/alex-rivera/alex-rivera.feature | SameMappedCodeAndDate urn:uuid:7d77d9e0-5457-86f2-8d9d-827c65c11b21 urn:uuid:c0a85df6-e2ef-85a1-ac62-b6b454bac0c5
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > E9 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:0f282f2d-4ceb-897a-bdb8-750d6e25db2d urn:uuid:58e34d36-550a-882e-b43a-9225dbdce037
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > E9 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:173c9663-2406-8025-843b-5f9b19c1b9f3 urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > E9 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:3719cb66-c5be-8fac-a0bf-a6db7573fe71 urn:uuid:fdf1589d-bc02-8c0f-8874-4d377574cc8d
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > E9 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:5a16d5f4-34b0-8fb6-9f5c-59b37aa6d4dc urn:uuid:828f3452-da1d-83e7-9fd4-23f49d355848
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > E9 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:7a11ba0d-eaa3-881d-a511-1f2ee8b8b0e9 urn:uuid:c6f34248-0b58-8e8a-8e52-f426d1a8be5c urn:uuid:cfe67786-af77-8fb0-8c99-3d9faedcf182
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > E9 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameMappedCodeAndDate urn:uuid:7d77d9e0-5457-86f2-8d9d-827c65c11b21 urn:uuid:c0a85df6-e2ef-85a1-ac62-b6b454bac0c5
+conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:0f282f2d-4ceb-897a-bdb8-750d6e25db2d urn:uuid:58e34d36-550a-882e-b43a-9225dbdce037
+conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:5a16d5f4-34b0-8fb6-9f5c-59b37aa6d4dc urn:uuid:828f3452-da1d-83e7-9fd4-23f49d355848
+conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCode urn:uuid:7a11ba0d-eaa3-881d-a511-1f2ee8b8b0e9 urn:uuid:c6f34248-0b58-8e8a-8e52-f426d1a8be5c urn:uuid:cfe67786-af77-8fb0-8c99-3d9faedcf182
+conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCodeAndPeriod urn:uuid:173c9663-2406-8025-843b-5f9b19c1b9f3 urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4
+conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameCodeAndPeriod urn:uuid:3719cb66-c5be-8fac-a0bf-a6db7573fe71 urn:uuid:fdf1589d-bc02-8c0f-8874-4d377574cc8d
+conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 > E6 > M7 > E7 > J8 > J9 > J10 > M2 > E10 > M3 > J22 > E12 > J12 > E13 | SameMappedCodeAndDate urn:uuid:7d77d9e0-5457-86f2-8d9d-827c65c11b21 urn:uuid:c0a85df6-e2ef-85a1-ac62-b6b454bac0c5
 conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 | SameCode urn:uuid:5a16d5f4-34b0-8fb6-9f5c-59b37aa6d4dc urn:uuid:b0492421-a1b7-8de4-817e-8940bf97f7df
 conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 | SameCode urn:uuid:7a11ba0d-eaa3-881d-a511-1f2ee8b8b0e9 urn:uuid:c6f34248-0b58-8e8a-8e52-f426d1a8be5c
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 | SameCode urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4 urn:uuid:fb6ea0ec-3fbb-865c-a044-01b708d547f1
 conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 | SameCodeAndDate urn:uuid:7d77d9e0-5457-86f2-8d9d-827c65c11b21 urn:uuid:7e3decf1-6e9a-8e95-b982-c2e7d18be3f1
-conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 | SameMappedCode urn:uuid:0f282f2d-4ceb-897a-bdb8-750d6e25db2d urn:uuid:69961a65-6383-84b7-96f1-0a88fb755c9c
+conformance/alex-rivera/scripted-input/alex > E1 > E2 > M5 > J1 > E3 > M6 > E4 > J2 > E5 | SameCodeAndPeriod urn:uuid:e3889c3a-faa3-8a4f-a9f6-84d1dd1d85a4 urn:uuid:fb6ea0ec-3fbb-865c-a044-01b708d547f1
 conformance/martin-okafor/martin-okafor.feature | SameVariation urn:uuid:072bc795-3e58-8761-9c95-fda460ca7b1b urn:uuid:fc1d7f00-c8a8-8992-af16-5f59353f232a
 conformance/martin-okafor/martin-okafor.feature | SameVariationThroughTable urn:uuid:c75afec8-08d6-8438-893f-da794ec0a1ca urn:uuid:f15c3e70-dda1-8b63-bf74-cdeeba5ffe3b
 conformance/martin-okafor/scripted-input/martin > E1 > E2 > E3 > J1 > E4 > E5 > J2 > E6 | SameVariation urn:uuid:072bc795-3e58-8761-9c95-fda460ca7b1b urn:uuid:fc1d7f00-c8a8-8992-af16-5f59353f232a
@@ -49,22 +47,16 @@ runtime/scripted-input/cleo > pod > about-p > first-export > entry > matcher | S
 runtime/scripted-input/cleo > pod > about-p > first-export > entry > matcher | SameCode urn:uuid:13d721fb-b987-8c99-8a35-996a41bb164e urn:uuid:fe55cfcc-c2b1-80c9-94c0-35bf68292cfc
 runtime/scripted-input/cleo > pod > about-p > first-export > entry > matcher | SameCode urn:uuid:146e5e6c-b7c9-800a-9e8f-f2ec430aa76b urn:uuid:d5b0f070-7cd3-8e4c-952a-a8d608135a1d urn:uuid:de5fef39-300f-8fc0-aae0-89d9299ec849
 runtime/scripted-input/cleo > pod > about-p > first-export > entry > matcher | SameCode urn:uuid:bccb23ff-cf7f-83fb-928a-645915919943 urn:uuid:d5e8fd33-654f-8669-991f-9253dd59ef59
-runtime/scripted-input/cleo > pod > about-p > first-export > entry > matcher | SameMappedCode urn:uuid:5beb7e98-192f-87a2-9ab7-1233499be250 urn:uuid:bccb23ff-cf7f-83fb-928a-645915919943
-runtime/scripted-input/cleo > pod > about-p > first-export > entry > matcher | SameMappedCode urn:uuid:5beb7e98-192f-87a2-9ab7-1233499be250 urn:uuid:d5e8fd33-654f-8669-991f-9253dd59ef59
 runtime/scripted-input/cleo > pod > about-p > first-export > persons-different > persons-same > entry > matcher | SameCode urn:uuid:1205148c-d231-891f-b2a4-872910f104dd urn:uuid:21c34d40-b901-81fb-a3e9-9379ede7ea3c
 runtime/scripted-input/cleo > pod > about-p > first-export > persons-different > persons-same > entry > matcher | SameCode urn:uuid:1205148c-d231-891f-b2a4-872910f104dd urn:uuid:47afd546-e89d-8efe-ad3a-0796ae353ec1
 runtime/scripted-input/cleo > pod > about-p > first-export > persons-different > persons-same > entry > matcher | SameCode urn:uuid:13d721fb-b987-8c99-8a35-996a41bb164e urn:uuid:fe55cfcc-c2b1-80c9-94c0-35bf68292cfc
 runtime/scripted-input/cleo > pod > about-p > first-export > persons-different > persons-same > entry > matcher | SameCode urn:uuid:146e5e6c-b7c9-800a-9e8f-f2ec430aa76b urn:uuid:d5b0f070-7cd3-8e4c-952a-a8d608135a1d urn:uuid:de5fef39-300f-8fc0-aae0-89d9299ec849
 runtime/scripted-input/cleo > pod > about-p > first-export > persons-different > persons-same > entry > matcher | SameCode urn:uuid:bccb23ff-cf7f-83fb-928a-645915919943 urn:uuid:d5e8fd33-654f-8669-991f-9253dd59ef59
-runtime/scripted-input/cleo > pod > about-p > first-export > persons-different > persons-same > entry > matcher | SameMappedCode urn:uuid:5beb7e98-192f-87a2-9ab7-1233499be250 urn:uuid:bccb23ff-cf7f-83fb-928a-645915919943
-runtime/scripted-input/cleo > pod > about-p > first-export > persons-different > persons-same > entry > matcher | SameMappedCode urn:uuid:5beb7e98-192f-87a2-9ab7-1233499be250 urn:uuid:d5e8fd33-654f-8669-991f-9253dd59ef59
 runtime/scripted-input/cleo > pod > about-p > writer > first-export > second-import > entry > sync > matcher | SameCode urn:uuid:1205148c-d231-891f-b2a4-872910f104dd urn:uuid:21c34d40-b901-81fb-a3e9-9379ede7ea3c
 runtime/scripted-input/cleo > pod > about-p > writer > first-export > second-import > entry > sync > matcher | SameCode urn:uuid:1205148c-d231-891f-b2a4-872910f104dd urn:uuid:47afd546-e89d-8efe-ad3a-0796ae353ec1
 runtime/scripted-input/cleo > pod > about-p > writer > first-export > second-import > entry > sync > matcher | SameCode urn:uuid:13d721fb-b987-8c99-8a35-996a41bb164e urn:uuid:fe55cfcc-c2b1-80c9-94c0-35bf68292cfc
 runtime/scripted-input/cleo > pod > about-p > writer > first-export > second-import > entry > sync > matcher | SameCode urn:uuid:146e5e6c-b7c9-800a-9e8f-f2ec430aa76b urn:uuid:d5b0f070-7cd3-8e4c-952a-a8d608135a1d urn:uuid:de5fef39-300f-8fc0-aae0-89d9299ec849
 runtime/scripted-input/cleo > pod > about-p > writer > first-export > second-import > entry > sync > matcher | SameCode urn:uuid:bccb23ff-cf7f-83fb-928a-645915919943 urn:uuid:d5e8fd33-654f-8669-991f-9253dd59ef59
-runtime/scripted-input/cleo > pod > about-p > writer > first-export > second-import > entry > sync > matcher | SameMappedCode urn:uuid:5beb7e98-192f-87a2-9ab7-1233499be250 urn:uuid:bccb23ff-cf7f-83fb-928a-645915919943
-runtime/scripted-input/cleo > pod > about-p > writer > first-export > second-import > entry > sync > matcher | SameMappedCode urn:uuid:5beb7e98-192f-87a2-9ab7-1233499be250 urn:uuid:d5e8fd33-654f-8669-991f-9253dd59ef59
 runtime/scripted-input/cleo > pod > about-r > second-entry > matcher | SameCode urn:uuid:91fc8ed7-0ead-880a-ac1f-271f5f96de8a urn:uuid:fe0512ab-a71f-8c8e-8a82-571f9154f09b
 runtime/scripted-input/cleo > pod > entry > matcher | SameCode urn:uuid:1205148c-d231-891f-b2a4-872910f104dd urn:uuid:21c34d40-b901-81fb-a3e9-9379ede7ea3c
 runtime/scripted-input/cleo > pod > entry > matcher | SameCode urn:uuid:1205148c-d231-891f-b2a4-872910f104dd urn:uuid:47afd546-e89d-8efe-ad3a-0796ae353ec1
@@ -78,6 +70,9 @@ runtime/scripted-input/dev > pod > pairs > match-pairs | SameCodeAndDate urn:uui
 runtime/scripted-input/dev > pod > pairs > match-pairs | SameCodeAndDate urn:uuid:3dc7c789-629b-8c3d-bd56-1022c3b61370 urn:uuid:52a6821b-4f89-8890-9eb2-9ce535008383
 runtime/scripted-input/dev > pod > pairs > match-pairs | SameMappedCode urn:uuid:60c1f0e9-5953-8870-89a9-0af6610db9fe urn:uuid:d030edbd-ffed-80a5-95ee-97b5e3442ed9
 runtime/scripted-input/dev > pod > pairs > match-pairs | SameMappedCodeAndDate urn:uuid:3dc7c789-629b-8c3d-bd56-1022c3b61370 urn:uuid:d9f834de-8400-8ea3-919d-9ee5c0dc81c0
+runtime/scripted-input/dev > pod > pairs > matcher > later > match-later | SameCode urn:uuid:13eb3ce1-ec97-8f6b-b19d-60c9426391f3 urn:uuid:7d66eb39-5ec9-8123-bee4-1290346c2e63
+runtime/scripted-input/dev > pod > pairs > matcher > later > match-later | SameCode urn:uuid:3ec190fd-8c6a-8dbd-85b2-531cc74e416a urn:uuid:d030edbd-ffed-80a5-95ee-97b5e3442ed9
+runtime/scripted-input/dev > pod > pairs > matcher > later > match-later | SameMappedCode urn:uuid:3ec190fd-8c6a-8dbd-85b2-531cc74e416a urn:uuid:60c1f0e9-5953-8870-89a9-0af6610db9fe
 runtime/scripted-input/dev > pod > pairs > matcher > reference > later > match-later | SameCode urn:uuid:13eb3ce1-ec97-8f6b-b19d-60c9426391f3 urn:uuid:7d66eb39-5ec9-8123-bee4-1290346c2e63
 runtime/scripted-input/dev > pod > pairs > matcher > reference > later > match-later | SameCode urn:uuid:3ec190fd-8c6a-8dbd-85b2-531cc74e416a urn:uuid:d030edbd-ffed-80a5-95ee-97b5e3442ed9
 runtime/scripted-input/dev > pod > pairs > matcher > reference > later > match-later | SameMappedCode urn:uuid:13eb3ce1-ec97-8f6b-b19d-60c9426391f3 urn:uuid:f5d123cf-379d-8f70-bea0-7892f592a9b9
@@ -99,11 +94,12 @@ runtime/scripted-input/dev > pod > writer > later > pairs > sync > sync-back > s
 runtime/scripted-input/dev > pod > writer > later > pairs > sync > sync-back > settle > matcher | SameMappedCode urn:uuid:3ec190fd-8c6a-8dbd-85b2-531cc74e416a urn:uuid:60c1f0e9-5953-8870-89a9-0af6610db9fe
 runtime/scripted-input/dev > pod > writer > later > pairs > sync > sync-back > settle > matcher | SameMappedCode urn:uuid:60c1f0e9-5953-8870-89a9-0af6610db9fe urn:uuid:d030edbd-ffed-80a5-95ee-97b5e3442ed9
 runtime/scripted-input/dev > pod > writer > later > pairs > sync > sync-back > settle > matcher | SameMappedCodeAndDate urn:uuid:3dc7c789-629b-8c3d-bd56-1022c3b61370 urn:uuid:d9f834de-8400-8ea3-919d-9ee5c0dc81c0
-runtime/scripted-input/eve > pod > about-d > allergies > matcher > erythromycin > erythromycin-matched > reference > recheck | SameMappedCode urn:uuid:44d4717a-f761-84aa-b2a1-834031a5340b urn:uuid:f02eae39-2f8f-831c-9742-bdfbf95379b0
-runtime/scripted-input/eve > pod > about-d > allergies > matcher > erythromycin > erythromycin-matched | SameMappedCode urn:uuid:44d4717a-f761-84aa-b2a1-834031a5340b urn:uuid:bdcfc523-588c-8cd7-9056-b2f7ede68fab urn:uuid:f02eae39-2f8f-831c-9742-bdfbf95379b0
+runtime/scripted-input/eve > pod > about-d > allergies > matcher > hepatitis-a-and-polio > shots-matched > twinrix > twinrix-matched > reference > recheck | SameMappedCodeAndDate urn:uuid:b7990ac1-1931-82c0-8502-18dd9eabbf8a urn:uuid:e30f9d4f-b511-8586-bddd-d47f8a1793ce
+runtime/scripted-input/eve > pod > about-d > allergies > matcher > hepatitis-a-and-polio > shots-matched > twinrix > twinrix-matched | SameMappedCodeAndDate urn:uuid:5cbeab59-a3c7-809d-b41c-e7e6ba78c744 urn:uuid:b7990ac1-1931-82c0-8502-18dd9eabbf8a urn:uuid:e30f9d4f-b511-8586-bddd-d47f8a1793ce
 runtime/scripted-input/eve > pod > about-d > allergies > matcher | SameMappedCode urn:uuid:36353757-c971-8125-b462-6e8591c1f7ed urn:uuid:418a65e4-34b9-8c7e-9dab-25ef24ac6d77
 runtime/scripted-input/eve > pod > about-d > allergies > matcher | SameMappedCode urn:uuid:61325c5e-d5e6-8a1c-a7e9-fb8fc87a8fbe urn:uuid:74947bbc-0003-8ca2-b3b7-501bc45d60b3
 runtime/scripted-input/eve > pod > about-d > allergies > matcher | SameMappedCode urn:uuid:b6784348-d826-8c72-93d9-fdf7eba7d39e urn:uuid:ed2243f8-200d-8dbc-985a-a80c998eaf0e
+runtime/scripted-input/eve > pod > about-d > allergies > matcher | SameMappedCode urn:uuid:bdcfc523-588c-8cd7-9056-b2f7ede68fab urn:uuid:f02eae39-2f8f-831c-9742-bdfbf95379b0
 runtime/scripted-input/eve > pod > about-d > allergies > matcher | SameMappedCode urn:uuid:d76ba690-d024-8dbf-963a-34d470f2d31f urn:uuid:dacff517-f8f0-842d-a3c3-7be769fa6ea5
 runtime/scripted-input/eve > pod > about-d > allergies > matcher | SameMappedCode urn:uuid:e75aa93f-7492-8482-9cfa-074ac4b6bd51 urn:uuid:fe550572-f110-8cf9-a5b8-f3c0fdbd5c3f
 runtime/scripted-input/finn > pod > app-servers > hospital > hospital-at-a-new-path > matcher | SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost urn:uuid:2a9d950c-1569-8bcd-82c8-498ead29a162 urn:uuid:4461f3ef-4caf-8a24-93f1-da07a8455cc5
@@ -117,10 +113,10 @@ runtime/scripted-input/gus > pod > app-drug-products > product-codes > matcher |
 runtime/scripted-input/gus > pod > app-drug-products > two-courses > matcher | SameProductCode urn:uuid:6556ede4-e1b4-8345-b6d6-740a686f0127 urn:uuid:b870da7f-4b38-82ee-9647-b7b69006d472
 runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > app-drug-products | SameMedicationCode urn:uuid:43447c8b-c96a-847b-8322-ac36b1592400 urn:uuid:81388f55-b8dd-82cc-9cd8-7bcb39ba8a36
 runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > app-drug-products | SameProductCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
-runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > app-drug-products | finding MatcherJudgmentsNoLongerReached urn:uuid:4f5c11f2-1fd7-849a-859f-b9dead7c377b urn:uuid:eab831dd-72cd-8abb-8f50-893c78570c2e
+runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > app-drug-products | finding MatcherJudgmentsNoLongerReached urn:uuid:02a10a91-b358-8c4d-a0b6-c0d110ed1a9e urn:uuid:aec5975b-d279-8983-8dc0-164e34962de2
 runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > same-over-the-lisinopril-records > app-drug-products | SameMedicationCode urn:uuid:43447c8b-c96a-847b-8322-ac36b1592400 urn:uuid:81388f55-b8dd-82cc-9cd8-7bcb39ba8a36
 runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > same-over-the-lisinopril-records > app-drug-products | SameProductCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
-runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > same-over-the-lisinopril-records > app-drug-products | finding MatcherJudgmentsNoLongerReached urn:uuid:4f5c11f2-1fd7-849a-859f-b9dead7c377b urn:uuid:eab831dd-72cd-8abb-8f50-893c78570c2e
+runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher > same-over-the-lisinopril-records > app-drug-products | finding MatcherJudgmentsNoLongerReached urn:uuid:02a10a91-b358-8c4d-a0b6-c0d110ed1a9e urn:uuid:aec5975b-d279-8983-8dc0-164e34962de2
 runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher | SameMedicationCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
 runtime/scripted-input/gus > pod > app-drugs > earlier-sames > matcher | SameMedicationCode urn:uuid:cbffb586-ef65-8014-b074-74f1e191c429 urn:uuid:e353fb02-d4bd-819b-b7cd-7ab635c3633e
 runtime/scripted-input/gus > pod > app-identifiers > hospital-summary.xml > about-the-summaries > exchange-summary.xml > match-exchange | SameBusinessIdentifierAndTestCodeWithinOneOrganization urn:uuid:7105c83d-7aa2-8e23-8e6c-e228b4cf5b93 urn:uuid:a3a2b91c-7bfe-8df9-92c4-dcea3284bc80
@@ -137,8 +133,6 @@ runtime/scripted-input/gus > pod > app-results > lab-quantities > matcher | find
 runtime/scripted-input/gus > pod > flu-shots > matcher | SameMappedCodeAndDate urn:uuid:1b9f50a9-b6d0-8455-9fd7-fa029e3802bf urn:uuid:bc5177c0-c305-81c9-98a0-98519d693ac8
 runtime/scripted-input/gus > pod > flu-shots > matcher | SameMappedCodeAndDate urn:uuid:1b9f50a9-b6d0-8455-9fd7-fa029e3802bf urn:uuid:ce572ba1-b9ea-82e2-91c0-d65df87e9ddb
 runtime/scripted-input/gus > pod > flu-shots > matcher | SameMappedCodeAndDate urn:uuid:bc5177c0-c305-81c9-98a0-98519d693ac8 urn:uuid:ce572ba1-b9ea-82e2-91c0-d65df87e9ddb
-runtime/scripted-input/gus > pod > medicines-and-results > matcher | SameMedicationCode urn:uuid:a087441e-c8a8-85d6-ae5e-e0fb32544a91 urn:uuid:d8ef7d0f-32c4-8350-9b06-78486a79a341
-runtime/scripted-input/gus > pod > medicines-and-results > matcher | SameResult urn:uuid:98d52e01-ee36-8d1b-80e5-35ed72d78100 urn:uuid:9e904094-c427-8da8-9a25-6b3d7d7bda7e
 runtime/scripted-input/gus > pod > writer > app-drugs > earlier-sames > matcher | SameMedicationCode urn:uuid:39f37808-1b49-8b10-8200-e5bb53247c62 urn:uuid:f2ef2fde-8110-8e92-a085-efe0ee790701
 runtime/scripted-input/gus > pod > writer > app-drugs > earlier-sames > matcher | SameMedicationCode urn:uuid:cbffb586-ef65-8014-b074-74f1e191c429 urn:uuid:e353fb02-d4bd-819b-b7cd-7ab635c3633e
 runtime/scripted-input/hana > pod > app > flu-shots > matcher > allergies > match-allergies > app-rxnorm | SameMappedCode urn:uuid:b8adc39a-d1c7-87a6-ae5f-f40f113990f8 urn:uuid:c510eaba-1137-8cf9-9e83-465a8f1cdf5e
@@ -154,10 +148,10 @@ runtime/scripted-input/hana > pod > app-partial-dates > partial-dates > matcher 
 runtime/scripted-input/hana > pod > app-partial-dates > partial-dates > matcher | SameResultOnOneDay urn:uuid:66f8383d-4d68-8166-8297-043aa741bdd1 urn:uuid:c021933a-3a4c-8889-bea7-ec8ee5da4742
 runtime/scripted-input/hana > pod > app-periods > episodes > matcher | SameCodeAndPeriod urn:uuid:4f208350-6efe-8bfb-9f20-4e66e333d2f9 urn:uuid:921b760c-b966-893e-8f8d-24bbf0871f4d
 runtime/scripted-input/hana > pod > app-periods > episodes > matcher | SameCodeAndPeriod urn:uuid:5a1e7e90-5ce4-88dc-b97f-669044f16b0c urn:uuid:aa1ecbce-b319-83b2-9c6e-2e132787e97c
-runtime/scripted-input/hana > pod > flu-shots > match-kit > app > app-later > older > fluarix-again > matcher | SameCodeAndDate urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a urn:uuid:9cc860b2-6c37-8d19-97e4-0738b6aabd43
-runtime/scripted-input/hana > pod > flu-shots > match-kit > app > app-later | SameMappedCodeAndDate urn:uuid:399e6297-e250-87dd-a4a8-93f746abc56c urn:uuid:be778cf3-05ca-8bfd-9d7c-649cb56009c2
-runtime/scripted-input/hana > pod > flu-shots > match-kit > app | SameMappedCodeAndDate urn:uuid:0105c067-c295-89a9-a60a-6850fca971a5 urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a
-runtime/scripted-input/hana > pod > flu-shots > match-kit > app | SameMappedCodeAndDate urn:uuid:f089b3de-86c4-88cb-af90-ff0fb846ca67 urn:uuid:fb28b299-1760-869e-a5c0-d1810a6d194c
+runtime/scripted-input/hana > pod > flu-shots > match-kit > app-periods > app-later-on-19 > older > fluarix-again > matcher | SameCodeAndDate urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a urn:uuid:9cc860b2-6c37-8d19-97e4-0738b6aabd43
+runtime/scripted-input/hana > pod > flu-shots > match-kit > app-periods > app-later-on-19 | SameMappedCodeAndDate urn:uuid:399e6297-e250-87dd-a4a8-93f746abc56c urn:uuid:be778cf3-05ca-8bfd-9d7c-649cb56009c2
+runtime/scripted-input/hana > pod > flu-shots > match-kit > app-periods | SameMappedCodeAndDate urn:uuid:0105c067-c295-89a9-a60a-6850fca971a5 urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a
+runtime/scripted-input/hana > pod > flu-shots > match-kit > app-periods | SameMappedCodeAndDate urn:uuid:f089b3de-86c4-88cb-af90-ff0fb846ca67 urn:uuid:fb28b299-1760-869e-a5c0-d1810a6d194c
 runtime/scripted-input/hana > pod > flu-shots > match-kit | SameMappedCodeAndDate urn:uuid:0105c067-c295-89a9-a60a-6850fca971a5 urn:uuid:37896c6d-9e3a-8517-a86a-74148a47da5a
 runtime/scripted-input/ivo > pod > app-variants > id-and-expression > matcher | SameVariationThroughTable urn:uuid:b95afa09-5609-892e-b28a-12dc9b68a518 urn:uuid:e7a5020f-955d-8576-9d98-690607338ca7
 runtime/scripted-input/ivo > pod > app-variants > one-row > matcher | SameVariationThroughTable urn:uuid:bcc4fe16-48ae-8123-9145-5d1da587d2d7 urn:uuid:f95b6d27-c485-841d-9f35-fdbeb66c9a4f

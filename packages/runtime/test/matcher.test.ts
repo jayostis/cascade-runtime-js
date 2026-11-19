@@ -59,7 +59,11 @@ describe("Refusing a rule list a run cannot trust · matcherRules(), originsJoin
 
     before(async () => {
       files = await vocabulary();
-      sameCode = await row("a", "SameCode", "matcher/same-code.rq");
+      sameCode = await row(
+        "a",
+        "SameCode",
+        "matcher/same-code-key-joined-first.rq",
+      );
     });
 
     it("returns a rule for a row that names a query under `matcher/` and its hash", async () => {
@@ -107,7 +111,11 @@ describe("Refusing a rule list a run cannot trust · matcherRules(), originsJoin
         matcherRules(
           new Graph([
             ...sameCode,
-            ...(await row("b", "SameCode", "matcher/same-code-and-date.rq")),
+            ...(await row(
+              "b",
+              "SameCode",
+              "matcher/same-code-and-day-or-exact-time-key-joined-first.rq",
+            )),
           ]),
           files,
         ),
@@ -152,7 +160,7 @@ describe("Refusing a rule list a run cannot trust · matcherRules(), originsJoin
       term: CASCADE + "SameMappedCodeRule",
       justification: CASCADE + "SameMappedCode",
       appliesTo: new Set([CASCADE + "ProblemOrDiagnosis"]),
-      query: "matcher/same-mapped-code.rq",
+      query: "matcher/same-active-ingredient-key-joined-first.rq",
       hash: "ni:///sha-256;x",
     };
     const rule: MatcherRule = { ...kindless, kind: `${CASCADE}CodeMappings` };

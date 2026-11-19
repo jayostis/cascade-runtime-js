@@ -200,15 +200,15 @@ describe("Opening a pod with tables other than the ones it was matched with · C
       opened = last?.step.happened.kind;
       unheld = last?.unheld;
       refused = last?.refused;
+      const files = await vocabulary();
       const vector = await References.of(
-        await vocabulary(),
+        files,
         `${folder}/references/`,
         newStore,
+        files,
       );
-      used = [
-        await vector.ruleList(),
-        ...vector.seriesOfKind(`${CASCADE}VaccineGroups`),
-      ]
+      used = vector
+        .seriesOfKind(`${CASCADE}VaccineGroups`)
         .map((series) => vector.fallback(series))
         .sort();
     });
@@ -291,7 +291,7 @@ describe("Opening a pod with tables other than the ones it was matched with · C
           .encode(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix pav: <http://purl.org/pav/> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
-<urn:x:map> a cascade:ReferenceSeries ; cascade:tableKind cascade:SubstanceIngredients .
+<urn:x:map> a cascade:ReferenceSeries ; cascade:tableKind cascade:ProductIngredients .
 <urn:x:map-1> prov:specializationOf <urn:x:map> ; pav:version "1" .
 <urn:x:map-2> prov:specializationOf <urn:x:map> ; pav:version "2" ; prov:wasRevisionOf <urn:x:map-1> .
 <urn:x:matcher-judgment> a cascade:Judgment ; cascade:verdict cascade:Same ; prov:wasAttributedTo cascade:CascadeMatcher ;

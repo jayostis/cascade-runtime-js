@@ -494,10 +494,10 @@ SELECT ?s WHERE { ?s ?p ?o }
 SELECT ?s WHERE { ?s ?p ?o }
 `;
     const LIST = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
-[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code.rq" .
-[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination , cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-code-and-date.rq" .
-[] a cascade:RuleListRow ; cascade:appliesToClass cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-result.rq" .
-[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code-key-joined-first.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination , cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-code-and-day-or-exact-time-key-joined-first.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:LaboratoryTestResult ; cascade:queryPath "matcher/same-variation-key-joined-first.rq" .
+[] a cascade:RuleListRow ; cascade:appliesToClass cascade:Vaccination ; cascade:queryPath "matcher/same-code-key-joined-first.rq" .
 `;
     const folded = (html: string, summary: string) =>
       new RegExp(
@@ -516,23 +516,26 @@ SELECT ?s WHERE { ?s ?p ?o }
       );
       await files.write("runtime/rule-list/v1.ttl", text(LIST));
       for (const name of [
-        "same-code",
-        "same-code-and-date",
-        "same-result",
-        "same-ndc-code",
+        "same-code-key-joined-first",
+        "same-code-and-day-or-exact-time-key-joined-first",
+        "same-variation-key-joined-first",
+        "same-ndc-code-and-overlapping-exposure-periods",
       ])
         await files.write(`queries/matcher/${name}.rq`, text(run(name)));
       const html = read(await build(files, alex()), "queries/index.html");
       assert.deepEqual(
         names(folded(html, "Laboratory test result · 2 rules")),
-        ["same-code-and-date.html", "same-result.html"],
+        [
+          "same-code-and-day-or-exact-time-key-joined-first.html",
+          "same-variation-key-joined-first.html",
+        ],
       );
       assert.deepEqual(names(folded(html, "Vaccination · 2 rules")), [
-        "same-code.html",
-        "same-code-and-date.html",
+        "same-code-and-day-or-exact-time-key-joined-first.html",
+        "same-code-key-joined-first.html",
       ]);
       assert.deepEqual(names(folded(html, "Other · 1 rule")), [
-        "same-ndc-code.html",
+        "same-ndc-code-and-overlapping-exposure-periods.html",
       ]);
       const order = ["Laboratory test result", "Vaccination", "Other"].map(
         (label) => html.indexOf(`<summary>${label} · `),

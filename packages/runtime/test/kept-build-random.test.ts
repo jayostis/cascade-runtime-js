@@ -35,15 +35,18 @@ const IMPORTS = [
   ["pull-2024-unnamed", "downloads/north-2024-02", "bridge/E2-unnamed"],
   ["pull-2025", "downloads/north-2025-02", "bridge/E3"],
 ] as const;
-/** Version 2 of the ingredient map in Cleo's tables; version 1 is the one her pod is created with. */
-const MAP_2 = "ni:///sha-256;SFsendQJt_qOBLkrFOY_bAzqXh0YthSRPeWsdVqTyOM";
-/** Codes Cleo's export and the rules' entries already hold, which the matcher joins by code and by mapped code. */
+/** Version 2 of "RxNorm product ingredients" in Dev's references/, which the story gives Cleo's tables; version 1 is the one her pod is created with. */
+const MAP_2 = "ni:///sha-256;6O9grpBOtn1JytQ2CHoXRVqyKF0EOFfIzImVVybCZw0";
+/** The folder whose references/ hold that table. */
+const DEV = "runtime/scripted-input/dev/";
+/** Codes Cleo's export and the rules' entries already hold, which the matcher joins by code and by mapped code, RxNorm product codes among them. */
 const CODES = [
   "https://ns.cascadeprotocol.org/codes/rxnorm/7980",
   "https://ns.cascadeprotocol.org/codes/rxnorm/733",
   "https://ns.cascadeprotocol.org/codes/rxnorm/2670",
   "https://ns.cascadeprotocol.org/codes/rxnorm/10180",
-  "http://snomed.info/id/373270004",
+  "https://ns.cascadeprotocol.org/codes/rxnorm/204466",
+  "https://ns.cascadeprotocol.org/codes/rxnorm/1721474",
 ];
 const PREFIXES = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix dct: <http://purl.org/dc/terms/> .
@@ -122,6 +125,11 @@ async function story(seed: number) {
   for (const path of await local.files.list(FOLDER)) {
     const bytes = await local.files.read(path);
     if (bytes !== undefined) await source.write(path, bytes);
+  }
+  for (const path of await local.files.list(`${DEV}references/`)) {
+    const bytes = await local.files.read(path);
+    if (bytes !== undefined)
+      await source.write(FOLDER + path.slice(DEV.length), bytes);
   }
   for (const path of await local.files.list(TAMSIN)) {
     const bytes = await local.files.read(path);

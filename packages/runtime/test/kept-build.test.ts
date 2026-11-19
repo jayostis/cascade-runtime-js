@@ -468,7 +468,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
               await index.write(
                 "references.ttl",
                 new TextEncoder().encode(
-                  `<${SERIES}> a <${CASCADE}ReferenceSeries> ; <${CASCADE}tableKind> <${CASCADE}SubstanceIngredients> .
+                  `<${SERIES}> a <${CASCADE}ReferenceSeries> ; <${CASCADE}tableKind> <${CASCADE}ProductIngredients> .
 <${FILED}> <${PROV}specializationOf> <${SERIES}> .
 `,
                 ),
@@ -784,6 +784,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
           side.source,
           `${side.folder}/references/`,
           side.newStore,
+          side.source,
         );
         const before = await storeQuads(lentFrom.store);
         for (const failure of [new Refusal("refused"), new Error("failed")]) {
