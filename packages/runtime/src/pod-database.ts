@@ -92,6 +92,8 @@ export interface BesideDatabase {
   builtWhole(whole: WholeBuild): Promise<void>;
   /** Removes the database, its write-ahead log and any build of it left part way, so the next open makes it anew. */
   remove(): Promise<void>;
+  /** Whether the database is there to open, so that one never built is not made by asking what it holds. */
+  exists(): Promise<boolean>;
   /**
    * For a sealed pod, whose database is sealed too: the path beside the pod its key is kept at, a keyed name that
    * says nothing of what it holds, and sealed as everything beside the pod is.
@@ -347,19 +349,21 @@ export class PodDatabase {
 
   /**
    * Puts the triples in the graph in place of what it held, as a step's keyed write does, the ledger naming the
-   * fingerprint it named: for a file the build writes that changed outside a step, as the manifest's title. Nothing
-   * where the ledger names none, since the database is then built whole when next kept.
+   * fingerprint it named: for a file the build writes that no screen reads and that changed outside a step, as the
+   * manifest's title, so no screen is filled again. Nothing where the ledger names none, since the database is then
+   * built whole when next kept.
    */
   replaced(graph: string, triples: readonly Triple[]): void {
     const fingerprint = this.#shut ? undefined : this.fingerprint;
     if (fingerprint === undefined) return;
-    this.#keyed([{ graph, whole: triples }], new Map(), fingerprint);
+    this.#keyed([{ graph, whole: triples }], new Map(), fingerprint, false);
   }
 
   #keyed(
     changes: readonly BuildChange[],
     loaded: ReadonlyMap<string, [string, string, string][]>,
     fingerprint: string,
+    screened = true,
   ): void {
     const db = this.#db;
     db.transaction(() => {
@@ -376,9 +380,11 @@ export class PodDatabase {
           keyed.add(change.graph, held(change.fresh));
         }
       }
-      keyed.scoped();
-      for (const part of RUN_PARTS)
-        for (const view of this.#screens.views) this.#ran(view.get(part));
+      if (screened) {
+        keyed.scoped();
+        for (const part of RUN_PARTS)
+          for (const view of this.#screens.views) this.#ran(view.get(part));
+      }
       ledgerNamed(db, fingerprint);
     });
   }

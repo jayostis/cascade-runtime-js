@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { mkdir, open, rename, rm } from "node:fs/promises";
+import { access, mkdir, open, rename, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -222,5 +222,10 @@ export function databaseAt(path: string): BesideDatabase {
       if (process.platform !== "win32") await synced(dirname(path), "r");
     },
     remove: () => removed([...withLogs(path), building]),
+    exists: () =>
+      access(path).then(
+        () => true,
+        () => false,
+      ),
   };
 }

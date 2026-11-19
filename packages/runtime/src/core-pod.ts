@@ -270,7 +270,7 @@ class HeldFiles implements Files {
   #paths: Promise<Set<string>> | undefined;
   /** The paths of the listing it was sorted from, in code unit order, until one is added. */
   #sorted: { readonly of: Set<string>; readonly paths: string[] } | undefined;
-  /** How many writes that changed a file were begun, whether or not they held. */
+  /** Counts each write that changed a file as it begins and again once it has held or failed. */
   #written = 0;
 
   constructor(pod: Files) {
@@ -336,6 +336,7 @@ class HeldFiles implements Files {
     } catch (error) {
       this.#paths = undefined;
       this.#bytes.clear();
+      this.#written += 1;
       throw error;
     }
     for (const [path, bytes] of changed) {
@@ -343,6 +344,7 @@ class HeldFiles implements Files {
       if (!listed.has(path)) this.#sorted = undefined;
       listed.add(path);
     }
+    this.#written += 1;
   }
 
   /** The paths under the folder, found in the sorted listing: those under a folder are contiguous in it. */
@@ -661,12 +663,19 @@ export class CorePod {
     ) {
       const stated = await podStated(pod, layout, union.store);
       union.store.free?.();
-      const state = { address, at: stated.at ?? time.now(), title };
+      const state = {
+        address,
+        at: stated.at ?? time.now(),
+        title,
+        ...(stated.snapshot === undefined ? {} : { snapshot: stated.snapshot }),
+      };
       const paths = await this.#readPaths();
       const { inputsHash, back } = await this.#writtenBuild(
         build,
         build.incremental,
-        state,
+        stated.inputsHash === undefined
+          ? state
+          : { ...state, inputsHash: stated.inputsHash },
         stated.inputsHash,
         paths,
       );
@@ -721,17 +730,18 @@ export class CorePod {
   /**
    * Sets the title the pod's manifest takes, and writes the manifest again with it, as a build writes it. The manifest
    * is a rebuilt file, outside the set hash, and the revision hashes it but for its title, so no revision, set hash or
-   * kept answer changes. What is kept is dropped, since it holds the old title; the pod builds again when next read.
-   * The database beside the pod takes the manifest by a keyed write, as after a step, so it answers as it did.
+   * kept answer changes. What is kept is dropped, since it holds the old title, but for the build kept across steps,
+   * which takes the manifest in place of its own. The database beside the pod takes the manifest by a keyed write, as
+   * after a step, so it answers as it did.
    */
   async retitle(title: string): Promise<void> {
     await this.#settle();
     this.#options = { ...this.#options, title };
     const { pod, layout, address, build, time } = this.#options;
     this.#release();
-    this.#dropBuilt();
     const database = await this.#openDatabase();
     if (build === undefined) {
+      this.#dropBuilt();
       database?.forget();
       return;
     }
@@ -756,10 +766,22 @@ export class CorePod {
         builtFileBytes(layout, address, layout.manifest, triples),
       );
     } catch (error) {
+      this.#dropBuilt();
       this.#databaseAnswers = Promise.resolve(undefined);
       database?.forget();
       throw error;
     }
+    const built = this.#built;
+    if (built !== undefined)
+      try {
+        await built.manifestReplaced(triples);
+        this.#kept.set(
+          DATASET + build.lens,
+          Promise.resolve(built.unionAsItStands),
+        );
+      } catch {
+        this.#dropBuilt();
+      }
     try {
       database?.replaced(graph, triples);
     } catch {
@@ -856,8 +878,21 @@ export class CorePod {
     });
   }
 
-  /** The database beside the pod, opened once; none where none is kept, where it does not open, or once closed. */
-  #openDatabase(): Promise<PodDatabase | undefined> {
+  /**
+   * The database beside the pod, opened once; none where none is kept, where it does not open, or once closed. Only a
+   * whole build (`make`) makes one that is not there: one never built holds no fingerprint to answer by or keep current,
+   * and a connection to it would hold the folder beside the pod while the pod stays open.
+   */
+  async #openDatabase(make = false): Promise<PodDatabase | undefined> {
+    const { database } = this.#options;
+    if (this.#database === undefined && !make && database !== undefined) {
+      const there = await database.exists().catch(() => false);
+      if (!there) return undefined;
+    }
+    return this.#openedDatabase();
+  }
+
+  #openedDatabase(): Promise<PodDatabase | undefined> {
     const { database, besidePod, vocabulary } = this.#options;
     if (
       database === undefined ||
@@ -894,7 +929,7 @@ export class CorePod {
   ): Promise<void> {
     const hash = this.#builtHash;
     if (hash === undefined || this.#built !== built) return;
-    const database = await this.#openDatabase();
+    const database = await this.#openDatabase(true);
     if (database === undefined) return;
     if (database.fingerprint !== hash) {
       this.#databaseHolds = undefined;
