@@ -270,9 +270,15 @@ class HeldFiles implements Files {
   #paths: Promise<Set<string>> | undefined;
   /** The paths of the listing it was sorted from, in code unit order, until one is added. */
   #sorted: { readonly of: Set<string>; readonly paths: string[] } | undefined;
+  /** How many writes that changed a file were begun, whether or not they held. */
+  #written = 0;
 
   constructor(pod: Files) {
     this.#pod = pod;
+  }
+
+  get written(): number {
+    return this.#written;
   }
 
   get iri(): string {
@@ -324,6 +330,7 @@ class HeldFiles implements Files {
     }
     if (changed.length === 0) return;
     const listed = await this.#listed();
+    this.#written += 1;
     try {
       await writeAll(this.#pod, changed);
     } catch (error) {
@@ -598,6 +605,16 @@ export class CorePod {
    * it, and then set at the end of each step, so it never changes while a step runs; none where it holds another.
    */
   #databaseAnswers: Promise<PodDatabase | undefined> | undefined;
+  /** Whether `close` has run, after which the database beside the pod is never opened again. */
+  #databaseClosed = false;
+  /** The hash of what a build of the pod reads, by the paths it was found for, kept until the pod is next written. */
+  #inputsHashed:
+    | {
+        readonly writes: number;
+        readonly paths: string;
+        readonly hash: Promise<string | undefined>;
+      }
+    | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -705,6 +722,7 @@ export class CorePod {
    * Sets the title the pod's manifest takes, and writes the manifest again with it, as a build writes it. The manifest
    * is a rebuilt file, outside the set hash, and the revision hashes it but for its title, so no revision, set hash or
    * kept answer changes. What is kept is dropped, since it holds the old title; the pod builds again when next read.
+   * The database beside the pod takes the manifest by a keyed write, as after a step, so it answers as it did.
    */
   async retitle(title: string): Promise<void> {
     await this.#settle();
@@ -712,9 +730,11 @@ export class CorePod {
     const { pod, layout, address, build, time } = this.#options;
     this.#release();
     this.#dropBuilt();
-    this.#databaseAnswers = Promise.resolve(undefined);
-    (await this.#openDatabase())?.forget();
-    if (build === undefined) return;
+    const database = await this.#openDatabase();
+    if (build === undefined) {
+      database?.forget();
+      return;
+    }
     const store = this.#options.newStore();
     let stated: Awaited<ReturnType<typeof podStated>>;
     try {
@@ -722,21 +742,30 @@ export class CorePod {
     } finally {
       store.free?.();
     }
-    await pod.write(
-      layout.manifest,
-      builtFileBytes(
-        layout,
-        address,
-        layout.manifest,
-        manifest(
-          address + layout.manifest,
-          title,
-          stated.at ?? time.now(),
-          this.#head?.snapshot,
-          stated.inputsHash,
-        ),
-      ),
+    const graph = address + layout.manifest;
+    const triples = manifest(
+      graph,
+      title,
+      stated.at ?? time.now(),
+      this.#head?.snapshot,
+      stated.inputsHash,
     );
+    try {
+      await pod.write(
+        layout.manifest,
+        builtFileBytes(layout, address, layout.manifest, triples),
+      );
+    } catch (error) {
+      this.#databaseAnswers = Promise.resolve(undefined);
+      database?.forget();
+      throw error;
+    }
+    try {
+      database?.replaced(graph, triples);
+    } catch {
+      this.#databaseAnswers = Promise.resolve(undefined);
+      database?.forget();
+    }
   }
 
   /**
@@ -804,6 +833,7 @@ export class CorePod {
   }
 
   #answering(): Promise<PodDatabase | undefined> {
+    if (this.#databaseClosed) return Promise.resolve(undefined);
     this.#databaseAnswers ??= this.#databaseHoldsPod().catch(() => undefined);
     return this.#databaseAnswers;
   }
@@ -815,26 +845,35 @@ export class CorePod {
       return undefined;
     const { incremental } = build;
     return timedAside("core-pod.databaseAnswers", async () => {
+      const hashing = this.#readPaths().then((paths) =>
+        this.#inputsHash(build, incremental, paths),
+      );
+      hashing.catch(() => undefined);
       const database = await this.#openDatabase();
       const fingerprint = database?.fingerprint;
       if (fingerprint === undefined) return undefined;
-      const hash = await this.#inputsHash(
-        build,
-        incremental,
-        await this.#readPaths(),
-      );
-      return hash === fingerprint ? database : undefined;
+      return (await hashing) === fingerprint ? database : undefined;
     });
   }
 
-  /** The database beside the pod, opened once; none where none is kept, or where it does not open. */
+  /** The database beside the pod, opened once; none where none is kept, where it does not open, or once closed. */
   #openDatabase(): Promise<PodDatabase | undefined> {
     const { database, besidePod, vocabulary } = this.#options;
-    if (database === undefined || besidePod === undefined)
+    if (
+      database === undefined ||
+      besidePod === undefined ||
+      this.#databaseClosed
+    )
       return Promise.resolve(undefined);
     if (this.#database === undefined) {
       const opening = PodDatabase.opened(database, besidePod, vocabulary).then(
-        (opened) => (this.#databaseOpened = opened),
+        (opened) => {
+          if (this.#databaseClosed) {
+            opened.close();
+            return undefined;
+          }
+          return (this.#databaseOpened = opened);
+        },
         () => {
           if (this.#database === opening) this.#database = undefined;
           return undefined;
@@ -937,6 +976,7 @@ export class CorePod {
     this.#pending = undefined;
     this.#release();
     this.#dropBuilt();
+    this.#databaseClosed = true;
     this.#databaseOpened?.close();
     this.#databaseOpened = undefined;
     this.#database = undefined;
@@ -2222,7 +2262,27 @@ export class CorePod {
    * version's rows never change, and a series' current version is read from the pod's files, not the tables. None
    * without a place beside the pod to keep the build in.
    */
-  async #inputsHash(
+  #inputsHash(
+    build: PodBuildOption,
+    incremental: VocabularyBuild,
+    read: readonly string[],
+  ): Promise<string | undefined> {
+    const { pod } = this.#options;
+    const writes = pod instanceof HeldFiles ? pod.written : Number.NaN;
+    const paths = JSON.stringify([build.lens, read]);
+    const kept = this.#inputsHashed;
+    if (kept !== undefined && kept.writes === writes && kept.paths === paths)
+      return kept.hash;
+    const hash = this.#hashOfInputs(build, incremental, read);
+    const hashed = { writes, paths, hash };
+    this.#inputsHashed = hashed;
+    hash.catch(() => {
+      if (this.#inputsHashed === hashed) this.#inputsHashed = undefined;
+    });
+    return hash;
+  }
+
+  async #hashOfInputs(
     build: PodBuildOption,
     incremental: VocabularyBuild,
     read: readonly string[],

@@ -297,7 +297,10 @@ and `next`, the key of the page after it, none on the last; a page never splits 
 entry's rows, and the pages joined are `ask`'s rows. In Node, a question with a
 `.sql` beside its `.rq`, under the app's lens, is answered from `pod.db` beside
 the pod without waiting for a step that is running: it gives the pod as the last
-finished step left it, so ask again once the step's promise settles.
+finished step left it, so ask again once the step's promise settles. Any other
+question waits for that step, so a page that shows both kinds while a step runs
+mixes the pod before the step with the pod after it: ask them once the step
+settles, or ask again then.
 
 ```js
 const labPage = await pod.askPage("pod/My lab results", { size: 50 });

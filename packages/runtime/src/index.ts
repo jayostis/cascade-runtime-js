@@ -15,6 +15,7 @@ export {
   type PageAsked,
   DATABASE_BESIDE,
   DATABASE_KEY_BESIDE,
+  isPageKey,
 } from "./pod-database.js";
 export * from "./dataset.js";
 export * from "./features.js";

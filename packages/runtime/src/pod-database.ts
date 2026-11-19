@@ -33,6 +33,17 @@ const GRAPHS_AT_ONCE = 256;
 /** The statistics the screens' statements are planned by, taken once the statements are loaded. */
 const ANALYZED = "ANALYZE;";
 
+/**
+ * A screen's sort key: one or more conditions, each written ascending, as a kind's digit, hex of its text and '.', or
+ * descending, as hex of its text turned to the letters a to p and '~'.
+ */
+const SORT_KEY = /^(?:[0-3](?:[0-9A-F]{2})*\.|(?:[a-p]{2})*~)+$/;
+
+/** Whether the text is shaped as a screen's sort key, which a list question gives as its `page_key`. */
+export function isPageKey(text: string): boolean {
+  return SORT_KEY.test(text);
+}
+
 /** A page of a list question: how many entries, and the key of the entry it follows; none for the first page. */
 export interface PageAsked {
   readonly size: number;
@@ -331,6 +342,25 @@ export class PodDatabase {
       union,
       changes.flatMap((change) => ("loaded" in change ? [change.graph] : [])),
     );
+    this.#keyed(changes, loaded, fingerprint);
+  }
+
+  /**
+   * Puts the triples in the graph in place of what it held, as a step's keyed write does, the ledger naming the
+   * fingerprint it named: for a file the build writes that changed outside a step, as the manifest's title. Nothing
+   * where the ledger names none, since the database is then built whole when next kept.
+   */
+  replaced(graph: string, triples: readonly Triple[]): void {
+    const fingerprint = this.#shut ? undefined : this.fingerprint;
+    if (fingerprint === undefined) return;
+    this.#keyed([{ graph, whole: triples }], new Map(), fingerprint);
+  }
+
+  #keyed(
+    changes: readonly BuildChange[],
+    loaded: ReadonlyMap<string, [string, string, string][]>,
+    fingerprint: string,
+  ): void {
     const db = this.#db;
     db.transaction(() => {
       const keyed = new KeyedStatements(db);
