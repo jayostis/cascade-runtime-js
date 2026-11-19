@@ -292,6 +292,14 @@ export interface Opened extends Done {
 }
 
 export interface Imported extends Done {
+  /**
+   * Each source change time (`pav:lastUpdateOn`) an arrival stated that its revision does not carry, being no
+   * `xsd:dateTime` that states a time zone from -14:00 to +14:00 or whose instant in UTC is outside the years 0001 to 9999: the record, and the value as N-Triples writes it. Absent where there is none.
+   */
+  readonly changeTimesDropped?: readonly {
+    readonly record: string;
+    readonly changeTime: string;
+  }[];
   readonly claimedProfiles: readonly {
     readonly profile: string;
     readonly judgment: string;

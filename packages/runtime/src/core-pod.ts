@@ -1,5 +1,6 @@
 import { ConnectRefused, readConnect } from "@cascade-runtime/fhir-pull";
 import {
+  type ChangeTimeDropped,
   entryChecked,
   fileConnect,
   fileEntry,
@@ -192,6 +193,8 @@ export interface Performed {
   readonly arrived?: readonly string[];
   /** The patient profiles the versions of an import's new revisions name, sorted. */
   readonly profilesNamed?: readonly string[];
+  /** Each source change time an import's arrival stated and its revision does not carry, being no `xsd:dateTime` that states a time zone from -14:00 to +14:00 or whose instant in UTC is outside the years 0001 to 9999. */
+  readonly changeTimesDropped?: readonly ChangeTimeDropped[];
 }
 
 /** The steps whose perform reads none of what the build writes, so that within `deferring` they leave their rebuild to the next read. */
@@ -863,6 +866,7 @@ export class CorePod {
   ): Promise<Performed> {
     const { importers } = this.#options;
     let profilesNamed: readonly string[] = [];
+    let changeTimesDropped: readonly ChangeTimeDropped[] = [];
     let filesOf: ReadonlyMap<string, readonly string[]> | undefined;
     const performed = await this.#step(
       async (context) => {
@@ -889,6 +893,7 @@ export class CorePod {
           fileExport(context, documents, loaded, onProgress, budget),
         );
         profilesNamed = filed.patients;
+        changeTimesDropped = filed.changeTimesDropped;
         filesOf = filed.filesOf;
         await onProgress?.({ part: "saving" });
         return filed.activity;
@@ -898,7 +903,11 @@ export class CorePod {
       () => filesOf,
     );
     return performed.refused === undefined
-      ? { ...performed, profilesNamed }
+      ? {
+          ...performed,
+          profilesNamed,
+          ...(changeTimesDropped.length === 0 ? {} : { changeTimesDropped }),
+        }
       : performed;
   }
 
