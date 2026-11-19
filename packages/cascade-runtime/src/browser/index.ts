@@ -43,6 +43,7 @@ import { acceptOptions } from "../options.js";
 import {
   acceptAskOptions,
   acceptImportOptions,
+  acceptPageOptions,
   bridgeLoaded,
   type Done,
   type Exported,
@@ -53,6 +54,8 @@ import {
   type Opened,
   keptPod,
   openPodWith,
+  type Page,
+  pageOfRows,
   type Parts,
   type Pod,
   type Row,
@@ -70,6 +73,7 @@ export type {
   ImportOptions,
   ImportProgress,
   Opened,
+  Page,
   Pod,
   Row,
   TextRow,
@@ -722,6 +726,17 @@ class BrowserPod implements Pod {
       if (rows !== undefined) return rows;
     }
     return (await this.#pod()).ask(question, options);
+  }
+
+  /** A page of the rows `ask` gives: the browser keeps no database to page. */
+  async askPage(
+    question: string,
+    options: { size: number; after?: string; lens?: string },
+  ): Promise<Page> {
+    acceptPageOptions(options);
+    const { size, after, lens } = options;
+    const rows = await this.ask(question, lens === undefined ? {} : { lens });
+    return pageOfRows(question, rows, size, after);
   }
 
   async agreement(): Promise<TextRow[]> {

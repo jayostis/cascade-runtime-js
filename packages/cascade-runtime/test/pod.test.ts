@@ -120,7 +120,10 @@ type Imported = Awaited<ReturnType<Pod["import"]>>;
 let kit: string;
 let pods: string;
 let root: string;
-/** The parts a packed runtime opens a pod with: its answers kept beside it. */
+/**
+ * The parts a packed runtime opens a pod with, its answers kept beside it, but with no database beside it, as a
+ * browser and a published pod keep answers: every question is answered from the kept answers or the build.
+ */
 let kept: Parts;
 
 before(async () => {
@@ -130,6 +133,7 @@ before(async () => {
   kept = {
     ...(await resolved()),
     answers: { runtime: "test", at: answersBeside },
+    databaseBeside: undefined,
   };
 });
 

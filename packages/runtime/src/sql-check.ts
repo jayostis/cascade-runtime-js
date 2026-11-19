@@ -372,7 +372,14 @@ export function madeScreens(
   return failed;
 }
 
-const SCHEMA_TABLES = new Set(["term", "quad", "scope", "asked", "ledger"]);
+const SCHEMA_TABLES = new Set([
+  "term",
+  "quad",
+  "scope",
+  "asked",
+  "ledger",
+  "sqlite_stat1",
+]);
 
 /** The rows of each table a screen made, by table, each table's rows written and sorted. */
 function screenTables(db: Database): Map<string, string[]> {

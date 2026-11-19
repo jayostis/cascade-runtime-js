@@ -17,6 +17,8 @@ export interface VocabularyQuery {
   readonly text: string;
   /** The columns the crate declares for it as lists; none for a query that declares none. */
   readonly lists: readonly ListColumn[];
+  /** The text of the `.sql` beside it, which gives its rows from a pod's database; none where there is none. */
+  readonly sql?: string;
 }
 
 const CRATE = "ro-crate-metadata.json";
@@ -106,24 +108,29 @@ export function prose(text: string): string {
 export async function questions(
   vocabulary: Files,
 ): Promise<ReadonlyMap<string, VocabularyQuery>> {
-  const paths = (await vocabulary.list(QUESTIONS))
+  const listed = await vocabulary.list(QUESTIONS);
+  const sql = new Set(listed.filter((path) => path.endsWith(".sql")));
+  const paths = listed
     .filter((path) => path.endsWith(".rq"))
     .map((path) => ({ path, name: path.slice(QUESTIONS.length, -3) }))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const declared = await declaredLists(vocabulary);
   return new Map(
     await Promise.all(
-      paths.map(
-        async ({ path, name }) =>
-          [
-            name,
-            {
-              path,
-              text: await readText(vocabulary, path),
-              lists: declared.get(path) ?? [],
-            },
-          ] as const,
-      ),
+      paths.map(async ({ path, name }) => {
+        const beside = `${path.slice(0, -3)}.sql`;
+        return [
+          name,
+          {
+            path,
+            text: await readText(vocabulary, path),
+            lists: declared.get(path) ?? [],
+            ...(sql.has(beside)
+              ? { sql: await readText(vocabulary, beside) }
+              : {}),
+          },
+        ] as const;
+      }),
     ),
   );
 }

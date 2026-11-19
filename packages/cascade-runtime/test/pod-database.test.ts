@@ -18,10 +18,13 @@ import { after, before, describe, it } from "node:test";
 import {
   blank,
   canonical,
+  CorePod,
   type DeriveKey,
   EncryptedFiles,
+  type Files,
   iri,
   literal,
+  type Store,
   type Term,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -118,6 +121,47 @@ function readDatabase<T>(
   } finally {
     db.close();
   }
+}
+
+/** The parts, each connection they open to a pod's database counted as it opens and as it closes, and each statement prepared on one. */
+function counted(): {
+  given: Parts;
+  opened: () => number;
+  closed: () => number;
+  prepared: string[];
+} {
+  let opened = 0;
+  let closed = 0;
+  const prepared: string[] = [];
+  const given: Parts = {
+    ...parts,
+    databaseBeside: async (path, name) => {
+      const beside = await parts.databaseBeside!(path, name);
+      return {
+        ...beside,
+        exists: () => beside.exists(),
+        builtWhole: (whole) => beside.builtWhole(whole),
+        remove: () => beside.remove(),
+        open: (options) => {
+          const db = beside.open(options);
+          opened += 1;
+          return {
+            prepare: (sql) => {
+              prepared.push(sql);
+              return db.prepare(sql);
+            },
+            exec: (sql) => db.exec(sql),
+            transaction: (work) => db.transaction(work),
+            close: () => {
+              closed += 1;
+              db.close();
+            },
+          };
+        },
+      };
+    },
+  };
+  return { given, opened: () => opened, closed: () => closed, prepared };
 }
 
 /** Each statement the database holds, as Oxigraph's N-Triples writes it and then its graph, sorted. */
@@ -290,6 +334,26 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
     });
   });
 
+  describe("given a new pod, open and not yet closed", () => {
+    it("makes no pod.db and holds no connection to one while it is open, through its first steps, and builds it whole at close", async () => {
+      const { given, opened, closed } = counted();
+      const folder = join(pods, "new-unclosed");
+      const database = join(besideOf(folder), DATABASE);
+      const pod = await openPodWith(given, folder, { title: "Annie Easley" });
+      try {
+        assert.equal(existsSync(database), false, "pod.db made at open");
+        await pod.retitle("Annie J. Easley");
+        await pod.import(syntheticPulls(1)[0]!, { claimProfiles: claiming });
+        assert.equal(existsSync(database), false, "pod.db made by a step");
+        assert.equal(opened() - closed(), 0, "a connection to pod.db is open");
+      } finally {
+        await pod.close();
+      }
+      assert.equal(existsSync(database), true, "pod.db not built at close");
+      assert.equal(closed(), opened(), "a connection to pod.db is left open");
+    });
+  });
+
   describe("given a later import, in a later session", () => {
     let stepped: string;
     let spans: string[];
@@ -327,6 +391,52 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
         Object.values(keyed.screens).some((triples) => triples.length > 0),
       );
       assert.deepEqual(keyed, readDatabase(whole, asRead));
+    });
+  });
+
+  describe("given a retitle after a step, the pod closed and opened again", () => {
+    const title = "Retitled after a step";
+    let retitled: string;
+    before(async () => {
+      retitled = await copied(first, "retitled-after-step");
+      await session(retitled, async (pod) => {
+        await pod.import(laterPull()[0]!, { claimProfiles: claiming });
+        await pod.retitle(title);
+      });
+    });
+
+    it("keeps the build beside the pod equal to pod.db, graph by graph, the manifest with the new title among them", async () => {
+      const held = await canonicalGraphs(readDatabase(retitled, statementsIn));
+      const built = await canonicalGraphs(await builtStatements(retitled));
+      const manifest = [...held.keys()].find((graph) =>
+        graph.endsWith(`/${MANIFEST}`),
+      );
+      assert.ok(manifest !== undefined);
+      assert.ok(held.get(manifest)?.includes(`"${title}"`));
+      assert.deepEqual(held, built);
+    });
+
+    it("reads the build back with the manifest pod.db holds, as the pod's manifest file states it", async () => {
+      let read: Triple[] | undefined;
+      const dataset = CorePod.prototype.dataset;
+      CorePod.prototype.dataset = async function (this: CorePod, lens) {
+        const union = await dataset.call(this, lens);
+        read ??= await union.construct(
+          `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s ?p ?o } FILTER(STRENDS(STR(?g), "/${MANIFEST}")) }`,
+        );
+        return union;
+      };
+      try {
+        await session(retitled, (pod) => pod.ask(NO_SQL));
+      } finally {
+        CorePod.prototype.dataset = dataset;
+      }
+      assert.ok(read !== undefined, "no dataset was read");
+      const held = await canonicalGraphs(readDatabase(retitled, statementsIn));
+      const manifest = [...held.entries()].find(([graph]) =>
+        graph.endsWith(`/${MANIFEST}`),
+      );
+      assert.equal(await canonical(read), manifest?.[1]);
     });
   });
 
@@ -564,6 +674,457 @@ process.exit(0);`,
           `${file} holds the key`,
         );
       }
+    });
+  });
+});
+
+const LABS = "pod/My lab results";
+const CONDITIONS = "pod/My active conditions";
+/** A question of the vocabulary's that has no `.sql` beside its `.rq`. */
+const NO_SQL = "pod/What each folder holds";
+
+/** The parts with no database beside the pod and no answers kept: every question is asked of the store. */
+function storeOnly(given: Parts): Parts {
+  return {
+    ...given,
+    databaseBeside: undefined,
+    answers: undefined,
+    builtBeside: answersBeside,
+  };
+}
+
+/** The name of each question of the vocabulary with a `.sql` beside its `.rq`. */
+async function sqlQuestions(): Promise<string[]> {
+  const folder = "queries/questions/";
+  return (await parts.vocabulary.list(folder))
+    .filter((path) => path.endsWith(".sql"))
+    .map((path) => path.slice(folder.length, -".sql".length))
+    .sort();
+}
+
+/**
+ * The parts with each store they make counted as it loads statements, by a restore of a kept build, a file loaded or
+ * triples added, and each `CorePod.dataset()` counted, the store read whole.
+ */
+function counting(given: Parts) {
+  const loads = { restored: 0, files: 0, triples: 0, datasets: 0 };
+  const counted: Record<string, (args: readonly unknown[]) => void> = {
+    restore: () => (loads.restored += 1),
+    loadTurtle: () => (loads.files += 1),
+    loadFiles: ([files]) => (loads.files += [...(files as unknown[])].length),
+    add: ([triples]) => (loads.triples += [...(triples as unknown[])].length),
+  };
+  const newStore = (): Store =>
+    new Proxy(given.newStore(), {
+      get(target, name) {
+        const value: unknown = Reflect.get(target, name, target);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (typeof name === "string") counted[name]?.(args);
+          return (value as (...given: unknown[]) => unknown).apply(
+            target,
+            args,
+          );
+        };
+      },
+    });
+  const dataset = CorePod.prototype.dataset;
+  CorePod.prototype.dataset = function (this: CorePod, lens: string) {
+    loads.datasets += 1;
+    return dataset.call(this, lens);
+  };
+  return {
+    parts: { ...given, newStore },
+    loads,
+    restore: () => {
+      CorePod.prototype.dataset = dataset;
+    },
+  };
+}
+
+interface Paged {
+  readonly rows: unknown[];
+  readonly pages: number;
+}
+
+/** The question's pages of `size`, each asked after the key the one before gave, joined, until one names no next. */
+async function pagesJoined(
+  pod: Awaited<ReturnType<typeof openPodWith>>,
+  question: string,
+  size: number,
+  most: number,
+): Promise<Paged> {
+  const rows: unknown[] = [];
+  let after: string | undefined;
+  let pages = 0;
+  while (pages <= most) {
+    const page = await pod.askPage(question, {
+      size,
+      ...(after === undefined ? {} : { after }),
+    });
+    pages += 1;
+    rows.push(...page.rows);
+    after = page.next;
+    if (after === undefined) break;
+  }
+  return { rows, pages };
+}
+
+/** The parts with every write to a pod's files held at a gate, once `reached` says the first write came to it. */
+function writesHeld(given: Parts) {
+  let release = (): void => undefined;
+  const gate = new Promise<void>((open) => (release = open));
+  let reach = (): void => undefined;
+  const reached = new Promise<void>((came) => (reach = came));
+  const held = (files: Files): Files => ({
+    ...files,
+    iri: files.iri,
+    read: (path) => files.read(path),
+    list: (folder) => files.list(folder),
+    write: async (path, bytes) => {
+      reach();
+      await gate;
+      return files.write(path, bytes);
+    },
+    ...(files.writeAll === undefined
+      ? {}
+      : {
+          writeAll: async (written) => {
+            reach();
+            await gate;
+            return files.writeAll!(written);
+          },
+        }),
+  });
+  return {
+    parts: {
+      ...given,
+      folder: (path: string, iri?: string) => {
+        const folder = given.folder(path, iri);
+        return { ...folder, files: held(folder.files) };
+      },
+    } satisfies Parts,
+    reached,
+    release: () => release(),
+  };
+}
+
+/**
+ * A pod opened again answers a named question that has a `.sql` beside its `.rq` from `pod.db`, its rows those the store
+ * gives, a page at a time when asked for one, without building the store, waiting for a step, or keeping answers.
+ */
+describe("Answering a pod's questions from its database, a page at a time · pod.ask(), pod.askPage()", () => {
+  describe("given a pod imported into and closed, opened again", () => {
+    it("answers My lab results without reading the pod whole: no dataset is read and no store loads a statement", async () => {
+      const folder = await copied(first, "asked-unloaded");
+      const watched = counting(parts);
+      try {
+        const pod = await openPodWith(watched.parts, folder);
+        try {
+          const rows = await pod.ask(LABS);
+          assert.ok(rows.length > 0, "the pod has no lab results");
+          assert.deepEqual(watched.loads, {
+            restored: 0,
+            files: 0,
+            triples: 0,
+            datasets: 0,
+          });
+        } finally {
+          await pod.close();
+        }
+      } finally {
+        watched.restore();
+      }
+    });
+
+    it("gives, for each question with a .sql, the rows the store gives a pod with no database", async () => {
+      const named = await sqlQuestions();
+      assert.ok(named.includes(LABS) && named.includes(CONDITIONS));
+      const fromDatabase = await session(
+        await copied(first, "asked-database"),
+        async (pod) => {
+          const found: Record<string, unknown> = {};
+          for (const question of named)
+            found[question] = await pod.ask(question);
+          return found;
+        },
+      );
+      assert.ok(!fromDatabase.spans.includes(KEPT_WHOLE));
+      const fromStore = await session(
+        await copied(first, "asked-store"),
+        async (pod) => {
+          const found: Record<string, unknown> = {};
+          for (const question of named)
+            found[question] = await pod.ask(question);
+          return found;
+        },
+        storeOnly(parts),
+      );
+      for (const question of named)
+        assert.deepEqual(
+          fromDatabase.result[question],
+          fromStore.result[question],
+          question,
+        );
+    });
+
+    it("gives pages of 1, 2 and 50 that join, in order, to the whole list ask gives, the last naming no next page", async () => {
+      const { result } = await session(
+        await copied(first, "asked-pages"),
+        async (pod) => {
+          const whole = await pod.ask(LABS);
+          const joined: Record<number, Paged> = {};
+          for (const size of [1, 2, 50])
+            joined[size] = await pagesJoined(pod, LABS, size, whole.length);
+          return { whole, joined };
+        },
+      );
+      assert.ok(result.whole.length > 2, "too few lab results to page");
+      for (const size of [1, 2, 50])
+        assert.deepEqual(
+          result.joined[size]?.rows,
+          result.whole,
+          `pages of ${size}`,
+        );
+      assert.ok((result.joined[1]?.pages ?? 0) > 2);
+      assert.equal(result.joined[50]?.pages, 1);
+    });
+
+    it("pages a question with no .sql the same way, from the rows the store gives", async () => {
+      const { result } = await session(
+        await copied(first, "asked-pages-no-sql"),
+        async (pod) => {
+          const whole = await pod.ask(NO_SQL);
+          return {
+            whole,
+            ones: await pagesJoined(pod, NO_SQL, 1, whole.length),
+            twos: await pagesJoined(pod, NO_SQL, 2, whole.length),
+          };
+        },
+      );
+      assert.ok(result.whole.length > 2);
+      assert.deepEqual(result.ones.rows, result.whole);
+      assert.deepEqual(result.twos.rows, result.whole);
+      assert.ok(result.ones.pages > result.twos.pages);
+    });
+
+    it("refuses a page size that is no whole number above 0, and a key no page of a question with no .sql gave", async () => {
+      await session(await copied(first, "asked-pages-refused"), async (pod) => {
+        for (const size of [0, -1, 1.5, Number.NaN, "50"])
+          await assert.rejects(
+            pod.askPage(LABS, { size: size as number }),
+            { name: "Refusal" },
+            String(size),
+          );
+        await assert.rejects(
+          pod.askPage(NO_SQL, { size: 1, after: "34D69677." }),
+          { name: "Refusal" },
+        );
+        await assert.rejects(pod.askPage(NO_SQL, { size: 1, after: "@-1" }), {
+          name: "Refusal",
+        });
+      });
+    });
+
+    it("keeps no answers.json for a question with a .sql", async () => {
+      const folder = await copied(first, "asked-unkept");
+      await session(folder, async (pod) => {
+        await pod.ask(LABS);
+        await pod.ask(CONDITIONS);
+      });
+      assert.ok(!existsSync(join(besideOf(folder), "answers.json")));
+    });
+
+    it("answers a question with no .sql by building the store, the rows the store gives a pod with no database", async () => {
+      assert.ok(!(await sqlQuestions()).includes(NO_SQL));
+      const folder = await copied(first, "asked-no-sql");
+      const watched = counting(parts);
+      let rows: unknown;
+      try {
+        ({ result: rows } = await session(
+          folder,
+          (pod) => pod.ask(NO_SQL),
+          watched.parts,
+        ));
+        assert.equal(watched.loads.datasets, 1);
+      } finally {
+        watched.restore();
+      }
+      const { result: fromStore } = await session(
+        await copied(first, "asked-no-sql-store"),
+        (pod) => pod.ask(NO_SQL),
+        storeOnly(parts),
+      );
+      assert.ok(Array.isArray(rows) && rows.length > 0);
+      assert.deepEqual(rows, fromStore);
+    });
+  });
+
+  describe("when a later import is held part way, its files not yet written", () => {
+    it("answers a question with a .sql at once, with the rows from before the import, and after it with the rows of the pod it left", async () => {
+      const folder = await copied(first, "asked-held");
+      const holding = writesHeld(parts);
+      const pod = await openPodWith(holding.parts, folder);
+      try {
+        const before = await pod.ask(LABS);
+        const importing = pod.import(laterPull()[0]!, {
+          claimProfiles: claiming,
+        });
+        importing.catch(() => undefined);
+        await holding.reached;
+        const waited = Symbol("waited");
+        const during = await Promise.race([
+          pod.ask(LABS),
+          new Promise<typeof waited>((resolve) =>
+            setTimeout(() => resolve(waited), 20_000),
+          ),
+        ]);
+        holding.release();
+        await importing;
+        assert.notEqual(during, waited, "the question waited for the import");
+        assert.deepEqual(during, before);
+        const after = await pod.ask(LABS);
+        assert.ok(after.length > before.length, "the import added no lab");
+        await pod.close();
+        const { result: fromStore } = await session(
+          await copied(folder, "asked-held-store"),
+          (opened) => opened.ask(LABS),
+          storeOnly(parts),
+        );
+        assert.deepEqual(after, fromStore);
+      } finally {
+        holding.release();
+        await pod.close().catch(() => undefined);
+      }
+    });
+  });
+
+  describe("given a pod opened again and asked a page of a question with a .sql", () => {
+    it("pages on from pod.db after a retitle, reading no dataset, with the new title in pod.db and no build of it whole at close", async () => {
+      const folder = await copied(first, "asked-retitled");
+      const title = "Retitled for the test";
+      const watched = counting(parts);
+      try {
+        const { result, spans } = await session(
+          folder,
+          async (pod) => {
+            const page = await pod.askPage(LABS, { size: 2 });
+            assert.ok(page.next !== undefined, "too few lab results to page");
+            await pod.retitle(title);
+            const next = await pod.askPage(LABS, {
+              size: 2,
+              after: page.next,
+            });
+            return { next, loads: { ...watched.loads } };
+          },
+          watched.parts,
+        );
+        assert.ok(result.next.rows.length > 0);
+        assert.deepEqual(result.loads, {
+          restored: 0,
+          files: 0,
+          triples: 0,
+          datasets: 0,
+        });
+        assert.ok(!spans.includes(WHOLE), "pod.db was built whole at close");
+      } finally {
+        watched.restore();
+      }
+      assert.ok(
+        readDatabase(folder, statementsIn).some((line) =>
+          line.includes(`"${title}"`),
+        ),
+        "pod.db does not hold the new title",
+      );
+    });
+
+    it("fills no screen again for a retitle, which changes only the manifest", async () => {
+      const { given, prepared } = counted();
+      let during: string[] = [];
+      await session(
+        await copied(first, "retitled-screens"),
+        async (pod) => {
+          await pod.askPage(LABS, { size: 1 });
+          const from = prepared.length;
+          await pod.retitle("Retitled, no screen filled");
+          during = prepared.slice(from);
+        },
+        given,
+      );
+      assert.ok(during.length > 0, "the retitle wrote nothing to pod.db");
+      assert.deepEqual(
+        during.filter((sql) => /\blab_result\b|\bscope\b/.test(sql)),
+        [],
+      );
+    });
+
+    it("refuses a key of no page_key's shape rather than paging after it", async () => {
+      await session(await copied(first, "asked-made-up-key"), async (pod) => {
+        for (const after of ["zzzz-not-a-key", "", "34D696.", "mnm~"])
+          await assert.rejects(
+            pod.askPage(LABS, { size: 1, after }),
+            { name: "Refusal" },
+            after,
+          );
+      });
+    });
+
+    it("pages after a key of the rows ask gave from pod.db, as the store would, restoring no store", async () => {
+      const folder = await copied(first, "asked-rows-key");
+      const watched = counting(parts);
+      try {
+        const { result } = await session(
+          folder,
+          async (pod) => {
+            const second = await pod.askPage(LABS, {
+              size: 2,
+              after: (await pod.askPage(LABS, { size: 2 })).next!,
+            });
+            const counted = await pod.askPage(LABS, { size: 2, after: "@2" });
+            return { second, counted, loads: { ...watched.loads } };
+          },
+          watched.parts,
+        );
+        assert.deepEqual(result.counted, result.second);
+        assert.equal(result.loads.restored, 0);
+        assert.equal(result.loads.datasets, 0);
+      } finally {
+        watched.restore();
+      }
+    });
+
+    it("answers under a lens pod.db was not built for from the store, the rows the store gives", async () => {
+      const lens = "export";
+      const { result } = await session(
+        await copied(first, "asked-other-lens"),
+        (pod) => pod.ask(LABS, { lens }),
+      );
+      const { result: fromStore } = await session(
+        await copied(first, "asked-other-lens-store"),
+        (pod) => pod.ask(LABS, { lens }),
+        storeOnly(parts),
+      );
+      assert.ok(result.length > 0);
+      assert.deepEqual(result, fromStore);
+    });
+  });
+
+  describe("when the pod is closed as a question is asked", () => {
+    it("refuses the question, as it refuses any call after close, and leaves no connection to pod.db open", async () => {
+      const { given, opened, closed } = counted();
+      for (const askedBefore of [false, true]) {
+        const pod = await openPodWith(
+          given,
+          await copied(first, `asked-closing-${String(askedBefore)}`),
+        );
+        if (askedBefore) await pod.askPage(LABS, { size: 1 });
+        const closing = pod.close();
+        const asked = pod.ask(LABS);
+        await closing;
+        await assert.rejects(asked, /is closed/, String(askedBefore));
+      }
+      assert.ok(opened() > 0);
+      assert.equal(closed(), opened(), "a connection to pod.db is left open");
     });
   });
 });
