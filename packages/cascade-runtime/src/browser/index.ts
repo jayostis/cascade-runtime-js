@@ -596,9 +596,12 @@ class BrowserPod implements Pod {
     return this.#opened;
   }
 
-  /** The open that gave the pod newer tables, once the engine opened it; until then, none. */
-  get opened(): Opened | undefined {
-    return this.#opened?.opened;
+  /** The open that gives the pod newer tables, once the engine opens it; undefined while nothing has opened it. */
+  get opened(): Promise<Opened | undefined> {
+    const opening = this.#opened ?? this.#opening;
+    return opening === undefined
+      ? Promise.resolve(undefined)
+      : Promise.resolve(opening).then((pod) => pod.opened);
   }
 
   #known(): Pod | KeptPod {
