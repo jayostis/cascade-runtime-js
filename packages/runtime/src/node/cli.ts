@@ -62,6 +62,12 @@ import { ofMediaType } from "../load-adapter.js";
 import { WasmBridge } from "../wasm-bridge.js";
 import { checkouts } from "./components.js";
 import { bridgeRecord } from "./bridge-record.js";
+import { openDatabase } from "./sqlite.js";
+import {
+  fixtureNames,
+  sqlCheckAssertions,
+  sqlFunctionAssertions,
+} from "../sql-check.js";
 
 const RUNTIME = "cascade-runtime-js";
 const KIT = "conformance/";
@@ -146,6 +152,8 @@ async function conformance(args: string[]): Promise<number> {
       jobs: { type: "string" },
       // Set by a run that shards: where a shard writes its assertions, as JSON, instead of the report.
       assertions: { type: "string" },
+      // Set by a run that shards: the share of the fixtures this run checks the vocabulary's SQL over, as index/count.
+      sql: { type: "string" },
     },
   });
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -168,16 +176,37 @@ async function conformance(args: string[]): Promise<number> {
   );
   const bridge = await findBridgePackage(options);
   const files = new FolderFiles(vocabulary.folder, vocabulary.iri);
+  if (values.sql !== undefined && values.assertions !== undefined) {
+    await writeFile(
+      values.assertions,
+      JSON.stringify(await sqlCheckDealt(files, dealOf(values.sql))),
+    );
+    return 0;
+  }
   const shards =
     values.feature === undefined && values.assertions === undefined
       ? await shardsOf(files, jobsOf(values.jobs))
       : [];
+  const whole = values.feature === undefined && values.assertions === undefined;
+  // Sharded, the SQL check is dealt to runs of its own beside the feature shards; else it runs here, beside the features.
+  const checked = whole
+    ? shards.length > 1
+      ? sqlFunctionAssertions(files)
+      : sqlAssertions(files)
+    : Promise.resolve([]);
+  checked.catch(() => undefined);
   const assertions =
     shards.length > 1
-      ? await shardedRun(shards, values.folder, {
-          iri: files.iri,
-          features: await featuresOf(files),
-        })
+      ? await shardedRun(
+          [
+            ...shards.map((features) =>
+              features.flatMap((feature) => ["--feature", feature]),
+            ),
+            ...shards.map((_, index) => ["--sql", `${index}/${shards.length}`]),
+          ],
+          values.folder,
+          { iri: files.iri, features: await featuresOf(files) },
+        )
       : await conformed(files, values.feature, config.importers);
   if (values.assertions !== undefined) {
     await writeFile(values.assertions, JSON.stringify(assertions));
@@ -193,6 +222,7 @@ async function conformance(args: string[]): Promise<number> {
             { ...options, folders },
             bridge,
           )),
+          ...(await checked),
         ]
       : assertions,
     report,
@@ -238,6 +268,50 @@ async function kitFindingAssertions(
   }
 }
 
+/**
+ * One assertion for each of the six SQL functions, that it gives each vector's output, and one for each fixture, each
+ * vocabulary `.sql` and each lens, that the `.sql` gives its `.rq`'s rows over the fixture as this runtime builds it.
+ */
+async function sqlAssertions(files: FolderFiles): Promise<Assertion[]> {
+  const started = performance.now();
+  const assertions = [
+    ...(await sqlFunctionAssertions(files)),
+    ...(await sqlCheckDealt(files, [0, 1])),
+  ];
+  log(
+    `the vocabulary's SQL: ${assertions.length} assertions in ${((performance.now() - started) / 1000).toFixed(1)} s`,
+  );
+  return assertions;
+}
+
+/** The SQL check over the fixtures dealt to the run `index` of `count`: each `count`-th fixture from the `index`-th. */
+async function sqlCheckDealt(
+  files: FolderFiles,
+  [index, count]: readonly [number, number],
+): Promise<Assertion[]> {
+  return sqlCheckAssertions(
+    {
+      vocabulary: files,
+      newStore: () => new OxigraphStore(),
+      layout: await Layout.read(files, () => new OxigraphStore()),
+      open: (functions) => openDatabase(":memory:", { functions }),
+    },
+    (await fixtureNames(files)).filter((_, at) => at % count === index),
+  );
+}
+
+function dealOf(given: string): [number, number] {
+  const [index = -1, count = 0] = given.split("/").map(Number);
+  if (
+    !Number.isInteger(index) ||
+    !Number.isInteger(count) ||
+    index < 0 ||
+    index >= count
+  )
+    throw new Error(`--sql ${given} is not index/count, 0 <= index < count`);
+  return [index, count];
+}
+
 function jobsOf(given: string | undefined): number {
   const jobs = given === undefined ? availableParallelism() : Number(given);
   if (!Number.isInteger(jobs) || jobs < 1)
@@ -275,9 +349,10 @@ async function shardsOf(files: FolderFiles, jobs: number): Promise<string[][]> {
 }
 
 /**
- * Each shard run as a child of this command, beside the others, with the flags this process runs under; its assertions
- * come back in the order of `order`, the vocabulary's feature files, however many shards there are. When one fails the
- * others are stopped and have ended before the folder they write to is removed.
+ * Each shard, its arguments to this command, run as a child of it, beside the others, with the flags this process runs
+ * under; the assertions come back in the order of `order`, the vocabulary's feature files, however many shards there
+ * are, and those of no feature file after them. When one fails the others are stopped and have ended before the folder
+ * they write to is removed.
  */
 async function shardedRun(
   shards: readonly (readonly string[])[],
@@ -288,7 +363,7 @@ async function shardedRun(
   const stop = new AbortController();
   try {
     const ran = await Promise.allSettled(
-      shards.map(async (features, index) => {
+      shards.map(async (shard, index) => {
         const written = join(out, `${index}.json`);
         try {
           await promisify(execFile)(
@@ -299,7 +374,7 @@ async function shardedRun(
               "conformance",
               "--assertions",
               written,
-              ...features.flatMap((feature) => ["--feature", feature]),
+              ...shard,
               ...folders.flatMap((folder) => ["--folder", folder]),
             ],
             { maxBuffer: 64 * 1024 * 1024, signal: stop.signal },
@@ -308,7 +383,7 @@ async function shardedRun(
           stop.abort();
           const { stderr } = error as { stderr?: string };
           throw new Error(
-            `the conformance run of ${features.join(", ")} failed: ${stderr?.trim() || String(error)}`,
+            `the conformance run ${shard.join(" ")} failed:${stderr?.trim() || String(error)}`,
             { cause: error },
           );
         }

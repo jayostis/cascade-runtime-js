@@ -13,7 +13,7 @@ interface Binding {
   key(key: Buffer): number;
   function(
     name: string,
-    options: { deterministic: boolean },
+    options: { deterministic: boolean; varargs: boolean },
     apply: (...values: unknown[]) => unknown,
   ): unknown;
   prepare(sql: string): {
@@ -22,6 +22,7 @@ interface Binding {
       ...parameters: unknown[]
     ): IterableIterator<Record<string, unknown>>;
     get(...parameters: unknown[]): Record<string, unknown> | undefined;
+    columns(): { name: string }[];
     run(...parameters: unknown[]): { changes: number };
   };
   exec(sql: string): unknown;
@@ -86,7 +87,7 @@ export function openDatabase(
     }
     db.pragma("temp_store=MEMORY");
     for (const { name, deterministic = false, apply } of functions)
-      db.function(name, { deterministic }, apply);
+      db.function(name, { deterministic, varargs: true }, apply);
   } catch (error) {
     try {
       db.close();
@@ -96,7 +97,16 @@ export function openDatabase(
     throw error;
   }
   return {
-    prepare: (sql) => db.prepare(sql),
+    prepare: (sql) => {
+      const statement = db.prepare(sql);
+      return {
+        all: (...parameters) => statement.all(...parameters),
+        iterate: (...parameters) => statement.iterate(...parameters),
+        get: (...parameters) => statement.get(...parameters),
+        run: (...parameters) => statement.run(...parameters),
+        columns: () => statement.columns().map(({ name }) => name),
+      };
+    },
     exec: (sql) => void db.exec(sql),
     transaction: (work) => db.transaction(work)(),
     close: () => void db.close(),

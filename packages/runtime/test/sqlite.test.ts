@@ -59,17 +59,21 @@ describe("Opening a pod's SQLite database · openDatabase()", () => {
     db.close();
   });
 
-  it("registers each function it is given on the connection, for SQL to call", () => {
+  it("registers each function it is given on the connection, for SQL to call with any number of arguments", () => {
     const db = openDatabase(join(folder, "functions.db"), {
       functions: [
         {
           name: "twice",
           deterministic: true,
-          apply: (value) => Number(value) * 2,
+          apply: (...values) =>
+            values.reduce<number>((sum, value) => sum + Number(value) * 2, 0),
         },
       ],
     });
-    assert.deepEqual(db.prepare("SELECT twice(21) AS v").get(), { v: 42 });
+    assert.deepEqual(
+      db.prepare("SELECT twice(21) AS v, twice(20, 1) AS w").get(),
+      { v: 42, w: 42 },
+    );
     db.close();
   });
 
@@ -99,7 +103,7 @@ describe("Opening a pod's SQLite database · openDatabase()", () => {
     again.close();
   });
 
-  it("throws DatabaseKeyRefused, a Refusal carrying the engine's error, for a sealed file without its key or with another, and for a plain file given a key", () => {
+  it("throws DatabaseKeyRefused, no Refusal, carrying the engine's error, for a sealed file without its key or with another, and for a plain file given a key", () => {
     openDatabase(plain).close();
     for (const [name, path, key] of [
       ["another key", sealed, OTHER],
@@ -110,7 +114,7 @@ describe("Opening a pod's SQLite database · openDatabase()", () => {
         () => openDatabase(path, key === undefined ? {} : { key }),
         (error) =>
           error instanceof DatabaseKeyRefused &&
-          error instanceof Refusal &&
+          !(error instanceof Refusal) &&
           error.cause instanceof Error,
         name,
       );
