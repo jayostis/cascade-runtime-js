@@ -132,6 +132,18 @@ export function queried<T>(run: () => T): T {
   }
 }
 
+/**
+ * Records a span measured elsewhere (by another thread, or by the Bridge's own clock) as `calls` calls taking `ms`
+ * in all, while probing. Nothing when it is off.
+ */
+export function recorded(name: string, ms: number, calls = 1): void {
+  if (active === undefined) return;
+  const span = active.spans.get(name) ?? { calls: 0, ms: 0 };
+  span.calls += calls;
+  span.ms += ms;
+  active.spans.set(name, span);
+}
+
 /** `timed` for a function that is not async. */
 export function timedSync<T>(name: string, run: () => T): T {
   if (active === undefined) return run();

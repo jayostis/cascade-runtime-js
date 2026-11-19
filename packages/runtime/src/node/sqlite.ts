@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { access, mkdir, open, rename, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
+import { probed, recorded, timedAside } from "../probe.js";
 import { Worker } from "node:worker_threads";
 import {
   type Database,
@@ -134,11 +135,15 @@ export function openDatabase(
 export interface WholeBuildJob {
   readonly path: string;
   readonly whole: WholeBuild;
+  /** Asks the worker to time each step of the build into `WholeBuildDone.steps`: set only while probing. */
+  readonly profile?: boolean;
 }
 
 /** What that worker answers once the file is built and closed, or why it was not. */
 export interface WholeBuildDone {
   readonly error?: string;
+  /** Where the job asked: the milliseconds each step of the build took, by name. */
+  readonly steps?: readonly (readonly [string, number])[];
 }
 
 /** A file and the two a connection in write-ahead mode keeps beside it. */
@@ -190,7 +195,10 @@ function builtInWorker(job: WholeBuildJob): Promise<void> {
       if (done?.error !== undefined) reject(new Error(done.error));
       else if (done === undefined || code !== 0)
         reject(new Error(`the build's worker ended with ${code}, unfinished`));
-      else resolve();
+      else {
+        for (const [name, ms] of done.steps ?? []) recorded(name, ms);
+        resolve();
+      }
     });
   });
 }
@@ -211,10 +219,20 @@ export function databaseAt(path: string): BesideDatabase {
       await removed([building]);
       await mkdir(dirname(path), { recursive: true });
       try {
-        await builtInWorker({ path: building, whole });
-        await synced(building, "r+");
+        await timedAside("pod-database.build.worker", () =>
+          builtInWorker({
+            path: building,
+            whole,
+            ...(probed() && { profile: true }),
+          }),
+        );
+        await timedAside("pod-database.build.sync", () =>
+          synced(building, "r+"),
+        );
         await removed(withLogs(path));
-        await rename(building, path);
+        await timedAside("pod-database.build.rename", () =>
+          rename(building, path),
+        );
       } catch (error) {
         await removed([building]).catch(() => undefined);
         throw error;

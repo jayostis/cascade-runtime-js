@@ -96,6 +96,8 @@ export interface ConvertOptions extends ConvertBudget {
   readonly findings?: boolean;
   /** Asks for the census: a finding for each path of a record that the adapter's accounting does not name. */
   readonly census?: boolean;
+  /** Asks the Bridge to time its stages and queries into `Conversion.stages` and `queries`: for measuring only. */
+  readonly profile?: boolean;
 }
 
 /** Asks for every conversion finding, the census among them, as a kit saves them. */
@@ -107,6 +109,18 @@ export interface Conversion {
   readonly findings?: Uint8Array;
   /** Set when the adapter names vocabulary files and was loaded with none, so the graph went unvalidated. */
   readonly unvalidated?: string;
+  /** Where `ConvertOptions.profile` asked: the time of each of the Bridge's stages; stages and names may change. */
+  readonly stages?: readonly {
+    readonly stage: string;
+    readonly seconds: number;
+  }[];
+  /** Where `ConvertOptions.profile` asked: each query's executions, rows and time. */
+  readonly queries?: readonly {
+    readonly iri: string;
+    readonly executions: number;
+    readonly rows: number;
+    readonly seconds: number;
+  }[];
 }
 
 export interface LoadedAdapter {

@@ -3,6 +3,7 @@ import {
   type AdaptersOf,
   type BridgeDocument,
   type ConvertBudget,
+  type Conversion,
   conversionBudget,
   isBridgeError,
   type LoadedAdapter,
@@ -47,7 +48,14 @@ import {
 } from "./step.js";
 import type { Shapes } from "./shapes.js";
 import { podFiles } from "./dataset.js";
-import { scanned, timedAside, timedSync } from "./probe.js";
+import {
+  counted,
+  probed,
+  recorded,
+  scanned,
+  timedAside,
+  timedSync,
+} from "./probe.js";
 import { DERIVED, derivationsOf, QUERIES } from "./derive.js";
 import { type Dataset, Union } from "./store.js";
 
@@ -1135,6 +1143,16 @@ function read(found: ExportDocument, started: string): Uint8Array {
   }
 }
 
+/** The Bridge's own stages and queries of a profiled convert, recorded as spans that sit inside `arrivals.convert`. */
+function bridgeSpans(conversion: Conversion): void {
+  for (const { stage, seconds } of conversion.stages ?? [])
+    recorded(`bridge.stage:${stage}`, seconds * 1000);
+  for (const { iri, executions, rows, seconds } of conversion.queries ?? []) {
+    recorded(`bridge.query:${iri}`, seconds * 1000, executions);
+    counted("bridge.query.rows", rows);
+  }
+}
+
 /** The Bridge's answer, a document failure being the document refused (A14). */
 async function refusing<T>(path: string, call: () => Promise<T>): Promise<T> {
   try {
@@ -1238,9 +1256,14 @@ export async function fileExport(
     await onProgress?.({ part: "converting", done, of: documents.length });
     const conversion = await timedAside("arrivals.convert", () =>
       refusing(found.path, () =>
-        adapter.convert(document, conversionBudget(budget, found.bytes.length)),
+        adapter.convert(document, {
+          ...conversionBudget(budget, found.bytes.length),
+          // Only a probed run asks the Bridge to time its stages; any other converts as it always did.
+          ...(probed() && { profile: true }),
+        }),
       ),
     );
+    bridgeSpans(conversion);
     const graph = await timedAside("arrivals.parseGraph", () =>
       parseGraph(conversion.graph, documentIri, newStore),
     );

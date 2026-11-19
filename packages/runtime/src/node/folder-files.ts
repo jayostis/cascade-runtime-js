@@ -23,6 +23,7 @@ import {
 import { pid } from "node:process";
 import { pathToFileURL } from "node:url";
 import { type Files, relative, sameBytes } from "../files.js";
+import { timedAside } from "../probe.js";
 import { Refusal } from "../step.js";
 
 /** The name of a file being written, which is no file of the folder until it is renamed over its name. */
@@ -278,7 +279,9 @@ export class FolderFiles implements Files {
       const opening = await this.#opening(pathOrIri);
       if (opening === undefined) return undefined;
       return new Uint8Array(
-        await readFile(opening.path, { flag: opening.flag }),
+        await timedAside("files.read.file", () =>
+          readFile(opening.path, { flag: opening.flag }),
+        ),
       );
     } catch (error) {
       if (absent(error)) return undefined;
@@ -350,12 +353,14 @@ export class FolderFiles implements Files {
       `${basename(at)}.${pid}.${(writes += 1)}.writing`,
     );
     try {
-      await writeFile(writing, bytes, this.#refuse ? { flag: "wx" } : {});
+      await timedAside("files.write.file", () =>
+        writeFile(writing, bytes, this.#refuse ? { flag: "wx" } : {}),
+      );
       const state = await enter(local, () => false, "renames");
       try {
         while (state.reads > 0)
           await new Promise<void>((resolve) => state.changed.push(resolve));
-        await renamedOver(writing, at);
+        await timedAside("files.write.rename", () => renamedOver(writing, at));
       } finally {
         state.renames -= 1;
         settled(local, state);
@@ -378,7 +383,9 @@ export class FolderFiles implements Files {
       `${basename(at)}.${pid}.${(writes += 1)}.writing`,
     );
     try {
-      await writeFile(writing, bytes, this.#refuse ? { flag: "wx" } : {});
+      await timedAside("files.write.file", () =>
+        writeFile(writing, bytes, this.#refuse ? { flag: "wx" } : {}),
+      );
       await link(writing, at);
       return true;
     } catch (error) {
