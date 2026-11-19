@@ -504,7 +504,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
    */
   describe("given a pod whose matcher Same used a table version that is no longer the current version, read with `podDataset()`", () => {
     /** The Same the example says counts on, by the name it gives it. */
-    const same = "urn:uuid:45a3b5bd-3468-803d-9667-776702e11b83";
+    const same = "urn:uuid:5c813aec-207a-8263-a682-d934f4522827";
     const countedInOneEntry = `${PREFIXES}
       ASK {
         <${same}> prov:hadMember ?one , ?other .
