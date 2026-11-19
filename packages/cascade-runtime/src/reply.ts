@@ -103,16 +103,25 @@ export type ReplyContract = "pod" | "records";
 
 let ajv: Promise<Ajv2020> | undefined;
 const compiled = new Map<ReplyContract, ValidateFunction>();
-/** A contract's validator, compiled when a reply is first held to it, with Ajv loaded then rather than with the runtime. */
+/**
+ * A contract's validator, compiled when a reply is first held to it, with Ajv loaded then rather than with the runtime;
+ * a load that fails is tried again at the next reply.
+ */
 async function validator(contract: ReplyContract): Promise<ValidateFunction> {
-  ajv ??= import("ajv/dist/2020.js").then(
-    ({ Ajv2020 }) =>
-      new Ajv2020({
-        allErrors: true,
-        strict: false,
-        formats: { date: /^\d{4}-\d{2}-\d{2}$/ },
-      }),
-  );
+  if (ajv === undefined) {
+    const load = import("ajv/dist/2020.js").then(
+      ({ Ajv2020 }) =>
+        new Ajv2020({
+          allErrors: true,
+          strict: false,
+          formats: { date: /^\d{4}-\d{2}-\d{2}$/ },
+        }),
+    );
+    ajv = load;
+    load.catch(() => {
+      if (ajv === load) ajv = undefined;
+    });
+  }
   const made = await ajv;
   let validate = compiled.get(contract);
   if (validate === undefined) {

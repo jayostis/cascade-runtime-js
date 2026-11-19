@@ -25,15 +25,24 @@ interface Shacl {
 let loading: Promise<Shacl> | undefined;
 let loaded: Shacl | undefined;
 
-/** rdf-validate-shacl, loaded by the first read of shapes rather than with the runtime: an open checks no shape. */
+/**
+ * rdf-validate-shacl, loaded by the first read of shapes rather than with the runtime: an open checks no shape. A load
+ * that fails is tried again at the next read.
+ */
 function shaclLoaded(): Promise<Shacl> {
-  loading ??= Promise.all([
-    import("rdf-validate-shacl"),
-    import("rdf-validate-shacl/src/defaultEnv.js"),
-  ]).then(
-    ([validator, env]) =>
-      (loaded = { Validator: validator.default, factory: env.default }),
-  );
+  if (loading === undefined) {
+    const load = Promise.all([
+      import("rdf-validate-shacl"),
+      import("rdf-validate-shacl/src/defaultEnv.js"),
+    ]).then(
+      ([validator, env]) =>
+        (loaded = { Validator: validator.default, factory: env.default }),
+    );
+    loading = load;
+    load.catch(() => {
+      if (loading === load) loading = undefined;
+    });
+  }
   return loading;
 }
 

@@ -1876,25 +1876,34 @@ type Expressions = readonly (readonly [
 ])[];
 let expressions: Promise<Expressions> | undefined;
 
-/** The steps' expressions, made on the first step compiled, with Cucumber loaded then rather than with the runtime. */
+/**
+ * The steps' expressions, made on the first step compiled, with Cucumber loaded then rather than with the runtime; a
+ * load that fails is tried again at the next step.
+ */
 function expressionsMade(): Promise<Expressions> {
-  expressions ??= import("@cucumber/cucumber-expressions").then(
-    ({ CucumberExpression, ParameterType, ParameterTypeRegistry }) => {
-      const registry = new ParameterTypeRegistry();
-      for (const [name, regexp, transform] of PARAMETERS)
-        registry.defineParameterType(
-          new ParameterType(name, regexp, null, transform, false, false),
+  if (expressions === undefined) {
+    const load = import("@cucumber/cucumber-expressions").then(
+      ({ CucumberExpression, ParameterType, ParameterTypeRegistry }) => {
+        const registry = new ParameterTypeRegistry();
+        for (const [name, regexp, transform] of PARAMETERS)
+          registry.defineParameterType(
+            new ParameterType(name, regexp, null, transform, false, false),
+          );
+        return DEFINITIONS.map(
+          ([expression, act]) =>
+            [
+              new CucumberExpression(expression, registry),
+              act,
+              expression,
+            ] as const,
         );
-      return DEFINITIONS.map(
-        ([expression, act]) =>
-          [
-            new CucumberExpression(expression, registry),
-            act,
-            expression,
-          ] as const,
-      );
-    },
-  );
+      },
+    );
+    expressions = load;
+    load.catch(() => {
+      if (expressions === load) expressions = undefined;
+    });
+  }
   return expressions;
 }
 
