@@ -10,8 +10,10 @@ import { Refusal } from "../src/refusal.js";
 import { databaseAt, openDatabase } from "../src/node/sqlite.js";
 import { builtWholeIn, type Screens } from "../src/pod-database.js";
 import {
+  KeyedStatements,
   sqlDatabaseFunctions,
   sqlParts,
+  sqlStatements,
   STATEMENTS_SCHEMA,
 } from "../src/statements.js";
 import { vocabulary } from "./vocabulary.js";
@@ -180,33 +182,69 @@ async function screensOf(): Promise<Screens> {
 const WHOLE =
   /^SEARCH \w+ USING (?:COVERING )?INDEX (?:quad_pos \(p=\?|quad_osp \(o[<>]=?\?)(?: AND o[<>]=?\?)*\)$/;
 
+/** One value for each `?` of a statement, so it is planned as the statement it is: a plan does not depend on the values while only sqlite_stat1 is shipped. */
+const dummiesOf = (text: string): number[] =>
+  Array.from(
+    { length: text.replace(/'(?:[^']|'')*'/g, "").split("?").length - 1 },
+    () => 0,
+  );
+
 /**
- * The steps of the statement's plan that search quad's whole predicate range in a loop another loop runs once for
- * each row of: not the first loop of their select, or inside a subquery run for each row of the statement's.
+ * The b-trees of `term` and `quad`, each by its name, that the statement's bytecode reads from its first row or its
+ * last, in the order it opens them. EXPLAIN QUERY PLAN names a scan by the alias the statement gives the table, so
+ * `SCAN e` is no scan of `term` to a pattern over its detail; the cursor's root page is.
  */
-function wholeSearches(db: Database, text: string): string[] {
-  let plan: Record<string, unknown>[];
-  try {
-    plan = db.prepare(`EXPLAIN QUERY PLAN ${text}`).all();
-  } catch (error) {
-    // A statement with parameters, the loader's, is no screen's and is planned by its caller's values.
-    if (error instanceof RangeError) return [];
-    throw error;
-  }
-  const steps = new Map(plan.map((step) => [step.id, step]));
-  return plan
-    .filter((step) => {
-      let inside =
-        plan.find((other) => other.parent === step.parent)?.id !== step.id;
-      for (
-        let above = steps.get(step.parent);
-        above !== undefined;
-        above = steps.get(above.parent)
+function wholeScans(db: Database, text: string): string[] {
+  const roots = new Map(
+    db
+      .prepare(
+        "SELECT rootpage, name FROM sqlite_schema WHERE tbl_name IN ('term', 'quad') AND rootpage > 0",
       )
-        inside ||= String(above.detail).startsWith("CORRELATED");
-      return inside && WHOLE.test(String(step.detail));
-    })
-    .map((step) => `${String(step.detail)} in ${text.slice(0, 100)}`);
+      .all()
+      .map((row) => [Number(row.rootpage), String(row.name)]),
+  );
+  const reading = new Map<number, string | undefined>();
+  const found: string[] = [];
+  for (const row of db.prepare(`EXPLAIN ${text}`).all(...dummiesOf(text))) {
+    const cursor = Number(row.p1);
+    if (row.opcode === "OpenRead" || row.opcode === "ReopenIdx")
+      reading.set(
+        cursor,
+        Number(row.p3) === 0 ? roots.get(Number(row.p2)) : undefined,
+      );
+    else if (row.opcode === "Rewind" || row.opcode === "Last") {
+      const name = reading.get(cursor);
+      if (name !== undefined) found.push(name);
+    }
+  }
+  return found;
+}
+
+/**
+ * What the statement's plan does that the vocabulary's plan rule refuses: each step that searches quad's whole
+ * predicate range in a loop another loop runs once for each row of (not the first loop of their select, or inside a
+ * subquery run for each row of the statement's), and, of a screen's statement, a scan of `term` or `quad` from end to
+ * end under whatever alias. The runtime's own `SELECT max(id) FROM term` reads one row from the end and is no scan.
+ */
+function wholeFound(db: Database, text: string, screen: boolean): string[] {
+  const plan = db.prepare(`EXPLAIN QUERY PLAN ${text}`).all(...dummiesOf(text));
+  const steps = new Map(plan.map((step) => [step.id, step]));
+  return [
+    ...(screen ? wholeScans(db, text) : []).map((name) => `scans ${name}`),
+    ...plan
+      .filter((step) => {
+        let inside =
+          plan.find((other) => other.parent === step.parent)?.id !== step.id;
+        for (
+          let above = steps.get(step.parent);
+          above !== undefined;
+          above = steps.get(above.parent)
+        )
+          inside ||= String(above.detail).startsWith("CORRELATED");
+        return inside && WHOLE.test(String(step.detail));
+      })
+      .map((step) => String(step.detail)),
+  ].map((found) => `${found} in ${text.slice(0, 100)}`);
 }
 
 const GRAPHS = 200;
@@ -306,7 +344,7 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
     }
   });
 
-  it("plans every screen's statements by the statistics the vocabulary ships, taking none of the pod's: a build leaves its rows as shipped, and no statement searches a predicate's whole range of quad in a loop", async () => {
+  it("plans every statement of a whole build and of a keyed refill by the statistics the vocabulary ships, taking none of the pod's: a build leaves its rows as shipped, and none scans quad or term from end to end or searches a predicate's whole range of quad in a loop", async () => {
     const screens = await screensOf();
     const functions = await sqlDatabaseFunctions();
     const shipped = openDatabase(":memory:", { functions });
@@ -314,11 +352,16 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
     for (const view of screens.views) shipped.exec(view.get("tables") ?? "");
     const rows = (db: Database): unknown[] =>
       db.prepare("SELECT tbl, idx, stat FROM sqlite_stat1 ORDER BY 1, 2").all();
+    const ofScreens = new Set(
+      screens.views.flatMap((view) =>
+        [...view.values()].flatMap((part) => sqlStatements(part)),
+      ),
+    );
     const searched: string[] = [];
     const building = openDatabase(":memory:", { functions });
     const watched: Database = {
       prepare: (text) => {
-        searched.push(...wholeSearches(building, text));
+        searched.push(...wholeFound(building, text, ofScreens.has(text)));
         return building.prepare(text);
       },
       exec: (text) => building.exec(text),
@@ -332,15 +375,55 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
         graphs: ["urn:x:file"],
         fingerprint: "built",
       });
-      assert.deepEqual(searched, []);
-      assert.deepEqual(rows(building), rows(shipped));
       assert.equal(
         building.prepare("SELECT count(*) AS n FROM scope").get()?.n,
         40,
       );
+      // A keyed refill: a record's statements removed and written again, scope holding it, each screen filled again.
+      const keyed = new KeyedStatements(watched);
+      keyed.removeSubjects("urn:x:file", ["urn:x:r-0"]);
+      keyed.add("urn:x:file", [
+        [
+          "<urn:x:r-0>",
+          "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>",
+          "<https://ns.cascadeprotocol.org/cascade#Record>",
+        ],
+      ]);
+      keyed.scoped();
+      for (const part of ["fill", "finish"])
+        for (const view of screens.views)
+          for (const text of sqlStatements(view.get(part) ?? ""))
+            watched.prepare(text).run();
+      for (const view of screens.views)
+        for (const text of sqlStatements(view.get("triples") ?? ""))
+          searched.push(...wholeFound(building, text, true));
+      assert.deepEqual(searched, []);
+      assert.deepEqual(rows(building), rows(shipped));
     } finally {
       building.close();
       shipped.close();
+    }
+  });
+
+  it("reports a scan of term or quad under whatever alias a statement names it by, and a search of either or a scan of another table by none", async () => {
+    const db = openDatabase(":memory:");
+    try {
+      db.exec(schema);
+      db.exec("CREATE TABLE other (x INTEGER)");
+      for (const text of [
+        "SELECT e.nt FROM term e",
+        "SELECT p.s FROM quad p",
+        "SELECT k.x FROM other k CROSS JOIN term t",
+      ])
+        assert.notDeepEqual(wholeScans(db, text), [], text);
+      for (const text of [
+        "SELECT t.id FROM term t WHERE t.nt = 'x'",
+        "SELECT q.o FROM quad q WHERE q.s = 1 AND q.p = ?",
+        "SELECT x FROM other",
+      ])
+        assert.deepEqual(wholeScans(db, text), [], text);
+    } finally {
+      db.close();
     }
   });
 
