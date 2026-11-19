@@ -2763,6 +2763,7 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
     let during: Row[] | undefined;
     let after: Row[];
     let fromStore: Row[];
+    let reopened: Row[];
     let readWhole: number;
     let listings: number;
 
@@ -2844,21 +2845,27 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       try {
         await pod.opened;
         listings = listed;
-        const dataset = CorePod.prototype.dataset;
-        let reads = 0;
-        CorePod.prototype.dataset = function (this: CorePod, lens: string) {
-          reads += 1;
-          return dataset.call(this, lens);
-        };
-        try {
-          after = await pod.ask(IMMUNIZATIONS);
-        } finally {
-          CorePod.prototype.dataset = dataset;
-        }
-        readWhole = reads;
+        after = await pod.ask(IMMUNIZATIONS);
       } finally {
         await pod.close();
       }
+      const again = await openPodWith(
+        { ...beside, tables: tablesOver(feed, store) },
+        folder,
+      );
+      const dataset = CorePod.prototype.dataset;
+      let reads = 0;
+      CorePod.prototype.dataset = function (this: CorePod, lens: string) {
+        reads += 1;
+        return dataset.call(this, lens);
+      };
+      try {
+        reopened = await again.ask(IMMUNIZATIONS);
+      } finally {
+        CorePod.prototype.dataset = dataset;
+        await again.close();
+      }
+      readWhole = reads;
       const storeOnly = await openPodWith(
         {
           ...parts,
@@ -2883,10 +2890,11 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       assert.equal(listings, 1);
     });
 
-    it("answers a question with a .sql, once `pod.opened` settles, from pod.db as the run left it, reading no dataset", () => {
+    it("answers a question with a .sql, once `pod.opened` settles, with the rows the run left, which pod.db holds once the pod is closed", () => {
       assert.notDeepEqual(after, rowsBefore, "the run changed nothing asked");
       assert.deepEqual(after, fromStore);
-      assert.equal(readWhole, 0);
+      assert.deepEqual(reopened, after);
+      assert.equal(readWhole, 0, "the pod opened again read its store whole");
     });
   });
 });

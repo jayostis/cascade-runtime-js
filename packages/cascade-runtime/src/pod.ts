@@ -169,7 +169,8 @@ export interface Pod {
    * rejects as a step that fails rejects its call. The step starts once the pod has no call queued or running at a turn
    * of the timers, so the calls made as `openPod` returns, and those made from their answers, run before it, on the pod
    * as it was opened; calls that keep the queue busy hold it back for at most 2 s of them, and `close` starts it. Once it
-   * runs, a question by name is answered with the rows kept for the pod as it was opened, where they were kept,
+   * runs, a question by name is answered from `pod.db`, as during any step, or else with the rows kept for the pod as it
+   * was opened, where they were kept,
    * `unheldTableVersions` with the versions read over the pod as it was opened, and any other call, `close` too, waits
    * for the step. A browser's pod drawn from its kept answers
    * settles it once a call opens the pod with the engine, as that open's, or at `close`, to undefined.
