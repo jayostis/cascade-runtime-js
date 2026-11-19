@@ -1,5 +1,5 @@
 import { createSHA256, type IHasher } from "hash-wasm";
-import type { Database, DatabaseFunction } from "./database.js";
+import type { Database, DatabaseFunction, Statement } from "./database.js";
 import { codeIri, RDF_LANG_STRING, type Term, XSD, XSD_STRING } from "./rdf.js";
 
 /** The vocabulary's schema of a pod's statements in SQLite, beside its queries. */
@@ -866,6 +866,63 @@ function canonicalLexical(term: SqlTerm): string {
   return term.value;
 }
 
+/** Each term's id in a pod's statements, put in `term` the first time it is asked for. */
+class TermIds {
+  readonly #ids = new Map<string, number>();
+  readonly #put: Statement;
+  readonly #held: Statement | undefined;
+  #next: number;
+
+  /** Over a database that may hold terms already, unless `empty` says it holds none, so none is looked up. */
+  constructor(db: Database, empty: boolean) {
+    this.#put = db.prepare(
+      "INSERT INTO term (id, nt, kind, lex, datatype, lang, instant, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    );
+    this.#held = empty
+      ? undefined
+      : db.prepare("SELECT id FROM term WHERE nt = ?");
+    this.#next = empty
+      ? 1
+      : Number(db.prepare("SELECT max(id) AS id FROM term").get()?.id ?? 0) + 1;
+  }
+
+  /** The id of the term the N-Triples text writes, which is as Oxigraph writes it. */
+  id(nt: string, term?: SqlTerm): number {
+    let found = this.held(nt);
+    if (found !== undefined) return found;
+    const parsed = term ?? parsedNt(nt);
+    found = this.#next++;
+    this.#put.run(
+      found,
+      nt,
+      parsed.kind,
+      parsed.kind === BLANK ? null : parsed.value,
+      parsed.datatype ?? null,
+      parsed.lang ?? null,
+      instantKey(parsed),
+      dayKey(parsed),
+    );
+    this.#ids.set(nt, found);
+    return found;
+  }
+
+  /** The id of the term, if the pod's statements have one. */
+  held(nt: string): number | undefined {
+    const found = this.#ids.get(nt);
+    if (found !== undefined || this.#held === undefined) return found;
+    const held = this.#held.get(nt)?.id;
+    if (held === undefined) return undefined;
+    this.#ids.set(nt, Number(held));
+    return Number(held);
+  }
+}
+
+/** The term as Oxigraph's store holds it, in N-Triples: an integer, decimal or boolean in its canonical form. */
+export function heldNt(term: Term): string {
+  const sql = sqlTermOf(term);
+  return sqlNt({ ...sql, value: canonicalLexical(sql) });
+}
+
 /**
  * Makes the schema on an empty database and loads the graphs' statements into it: each term once, by its N-Triples as
  * Oxigraph writes it, with its kind, lexical form, datatype, language and calendar keys; every record and entry in
@@ -890,36 +947,20 @@ export function loadStatements(
       `SQLite ${version.join(".")} is older than the ${minimumVersion(schema).join(".")} the schema needs`,
     );
   db.exec(schema);
-  const putTerm = db.prepare(
-    "INSERT INTO term (id, nt, kind, lex, datatype, lang, instant, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-  );
   const putQuad = db.prepare(
     "INSERT OR IGNORE INTO quad (s, p, o, g) VALUES (?, ?, ?, ?)",
   );
-  const ids = new Map<string, number>();
+  const terms = new TermIds(db, true);
   const id = (nt: string): number => {
-    let found = ids.get(nt);
-    if (found === undefined) {
-      const term = parsedNt(nt);
-      const canonical = sqlNt({ ...term, value: canonicalLexical(term) });
-      if (canonical !== nt)
-        throw new Error(
-          `${nt} is written ${canonical} here, not as Oxigraph writes it`,
-        );
-      found = ids.size + 1;
-      ids.set(nt, found);
-      putTerm.run(
-        found,
-        nt,
-        term.kind,
-        term.kind === BLANK ? null : term.value,
-        term.datatype ?? null,
-        term.lang ?? null,
-        instantKey(term),
-        dayKey(term),
+    const known = terms.held(nt);
+    if (known !== undefined) return known;
+    const term = parsedNt(nt);
+    const canonical = sqlNt({ ...term, value: canonicalLexical(term) });
+    if (canonical !== nt)
+      throw new Error(
+        `${nt} is written ${canonical} here, not as Oxigraph writes it`,
       );
-    }
-    return found;
+    return terms.id(nt, term);
   };
   db.transaction(() => {
     for (const { graph, ntriples } of graphs) {
@@ -930,11 +971,129 @@ export function loadStatements(
         putQuad.run(id(s), id(p), id(o), g);
       }
     }
-    db.prepare("INSERT INTO ledger (built, fingerprint) VALUES ('pod', ?)").run(
-      fingerprint,
-    );
+    ledgerNamed(db, fingerprint);
     wholeScope(db);
   });
+}
+
+/** A graph's triples, each term as Oxigraph's store holds it, in N-Triples. */
+export type HeldTriples = Iterable<readonly [string, string, string]>;
+
+/**
+ * Keyed writes of a pod's statements loaded before: each a delete or an insert by key, never a table read whole, so a
+ * step writes what it changed and no more. Each subject removed or written is kept, for a keyed run's scope.
+ */
+export class KeyedStatements {
+  readonly #db: Database;
+  readonly #terms: TermIds;
+  readonly #touched = new Set<number>();
+  readonly #put: Statement;
+  readonly #removeSubject: Statement;
+  readonly #subjectsOf: Statement;
+  readonly #removeGraph: Statement;
+
+  constructor(db: Database) {
+    this.#db = db;
+    this.#terms = new TermIds(db, false);
+    this.#put = db.prepare(
+      "INSERT OR IGNORE INTO quad (s, p, o, g) VALUES (?, ?, ?, ?)",
+    );
+    this.#removeSubject = db.prepare("DELETE FROM quad WHERE g = ? AND s = ?");
+    this.#subjectsOf = db.prepare(
+      "SELECT DISTINCT s FROM quad INDEXED BY quad_g WHERE g = ?",
+    );
+    this.#removeGraph = db.prepare("DELETE FROM quad WHERE g = ?");
+  }
+
+  /** Removes from the graph every statement whose subject is one of the IRIs, as `Store.removeSubjects` does. */
+  removeSubjects(graph: string, subjects: Iterable<string>): void {
+    const g = this.#terms.held(`<${graph}>`);
+    for (const subject of subjects) {
+      const s = this.#terms.held(sqlNt({ kind: IRI, value: subject }));
+      if (s === undefined) continue;
+      this.#touched.add(s);
+      if (g !== undefined) this.#removeSubject.run(g, s);
+    }
+  }
+
+  /** Removes every statement of the graph. */
+  removeGraph(graph: string): void {
+    const g = this.#terms.held(`<${graph}>`);
+    if (g === undefined) return;
+    for (const { s } of this.#subjectsOf.all(g)) this.#touched.add(Number(s));
+    this.#removeGraph.run(g);
+  }
+
+  /** Puts the triples in the graph. */
+  add(graph: string, triples: HeldTriples): void {
+    const g = this.#terms.id(`<${graph}>`);
+    for (const [subject, predicate, object] of triples) {
+      const s = this.#terms.id(subject);
+      this.#touched.add(s);
+      this.#put.run(s, this.#terms.id(predicate), this.#terms.id(object), g);
+    }
+  }
+
+  /** Puts each subject removed or written in `scope`, and nothing else, as a keyed run is given them. */
+  scoped(): void {
+    this.#db.prepare("DELETE FROM scope").run();
+    if (hasAsked(this.#db)) this.#db.prepare("DELETE FROM asked").run();
+    const put = this.#db.prepare(
+      "INSERT OR IGNORE INTO scope (term) VALUES (?)",
+    );
+    for (const term of this.#touched) put.run(term);
+  }
+}
+
+/** The ledger's fingerprint of what the whole was built from; none for a database the schema was never made in. */
+export function ledgerFingerprint(db: Database): string | undefined {
+  const made =
+    db
+      .prepare(
+        "SELECT 1 AS found FROM sqlite_schema WHERE type = 'table' AND name = 'ledger'",
+      )
+      .get() !== undefined;
+  if (!made) return undefined;
+  const found = db
+    .prepare("SELECT fingerprint FROM ledger WHERE built = 'pod'")
+    .get()?.fingerprint;
+  return typeof found === "string" ? found : undefined;
+}
+
+/** Names in the ledger the fingerprint of what the whole now holds. */
+export function ledgerNamed(db: Database, fingerprint: string): void {
+  db.prepare(
+    "INSERT INTO ledger (built, fingerprint) VALUES ('pod', ?) ON CONFLICT (built) DO UPDATE SET fingerprint = excluded.fingerprint",
+  ).run(fingerprint);
+}
+
+/**
+ * The graphs a store's dump holds, those `kept` names, each block of it the N-Triples Oxigraph writes of a graph:
+ * decoded a block at a time, so the whole is never held as text.
+ */
+export function* graphsOfDump(
+  bytes: Uint8Array,
+  kept: ReadonlySet<string>,
+): Generator<GraphStatements> {
+  const decoder = new TextDecoder();
+  let at = bytes.indexOf(0x0a) + 1;
+  while (at > 0 && at < bytes.length) {
+    const opened = bytes.indexOf(0x0a, at);
+    if (opened < 0) return;
+    const graph = /^<(.*)> \{$/.exec(
+      decoder.decode(bytes.subarray(at, opened)),
+    )?.[1];
+    let close = opened;
+    while (close >= 0 && bytes[close + 1] !== 0x7d)
+      close = bytes.indexOf(0x0a, close + 1);
+    if (close < 0) return;
+    if (graph !== undefined && kept.has(graph))
+      yield {
+        graph,
+        ntriples: decoder.decode(bytes.subarray(opened + 1, close)),
+      };
+    at = close + 3;
+  }
 }
 
 /** Every record and entry in scope, as a whole run fills it, and a question asked of the whole pod. */

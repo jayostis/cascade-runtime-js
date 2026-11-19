@@ -1,9 +1,11 @@
+import { rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import {
   type Database,
   type DatabaseFunction,
   DatabaseKeyRefused,
 } from "../database.js";
+import type { BesideDatabase } from "../pod-database.js";
 
 /** The bytes of a key `openDatabase` seals a database with. */
 export const DATABASE_KEY_BYTES = 32;
@@ -110,5 +112,16 @@ export function openDatabase(
     exec: (sql) => void db.exec(sql),
     transaction: (work) => db.transaction(work)(),
     close: () => void db.close(),
+  };
+}
+
+/** The database at `path` as a pod keeps it beside it: opened by `openDatabase`, and removed with its write-ahead log. */
+export function databaseAt(path: string): BesideDatabase {
+  return {
+    open: (options) => openDatabase(path, options),
+    remove: async () => {
+      for (const file of [path, `${path}-wal`, `${path}-shm`])
+        await rm(file, { force: true });
+    },
   };
 }

@@ -2975,7 +2975,7 @@ describe("Opening a pod again · openPod()", () => {
   });
 
   describe("given a runtime packed, or run from a checkout · keptBeside()", () => {
-    it("keeps answers for a packed, committed runtime, and the build too wherever the runtime and its components are each at a commit, a checkout's under its built code", async () => {
+    it("keeps answers for a packed, committed runtime, and the build too wherever the runtime and its components are each at a commit, a checkout's under its built code, and the pod's database wherever either is kept", async () => {
       const COMMIT =
         "https://github.com/jayostis/cascade-runtime-js/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
       const rows: [
@@ -2983,36 +2983,42 @@ describe("Opening a pod again · openPod()", () => {
         string,
         string,
         number,
-        [boolean, boolean, string | undefined],
+        [boolean, boolean, string | undefined, boolean],
       ][] = [
         [
           "packed and committed",
           "0.0.0-commit-abc123",
           COMMIT,
           0,
-          [true, true, undefined],
+          [true, true, undefined, true],
         ],
-        ["a checkout at a commit", "0.0.0", COMMIT, 0, [false, true, "built"]],
+        [
+          "a checkout at a commit",
+          "0.0.0",
+          COMMIT,
+          0,
+          [false, true, "built", true],
+        ],
         [
           "a checkout with changes",
           "0.0.0",
           `${COMMIT}#uncommitted`,
           0,
-          [false, false, undefined],
+          [false, false, undefined, false],
         ],
         [
           "a checkout no commit names",
           "0.0.0",
           "https://github.com/jayostis/cascade-runtime-js#unidentified",
           0,
-          [false, false, undefined],
+          [false, false, undefined, false],
         ],
         [
           "components with changes",
           "0.0.0",
           COMMIT,
           2,
-          [false, false, undefined],
+          [false, false, undefined, false],
         ],
       ];
       const found = [];
@@ -3028,6 +3034,7 @@ describe("Opening a pod again · openPod()", () => {
             parts.answers !== undefined,
             (parts.answers?.at ?? parts.builtBeside) !== undefined,
             parts.builtCode,
+            parts.databaseBeside !== undefined,
           ],
         ]);
       }

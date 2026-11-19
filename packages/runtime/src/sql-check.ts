@@ -13,7 +13,7 @@ import { References } from "./references.js";
 import {
   askedOf,
   askedWhole,
-  type GraphStatements,
+  graphsOfDump,
   loadStatements,
   parsedNt,
   sqlAnswer,
@@ -167,27 +167,6 @@ async function manifestEntries(
               .map(({ value }) => value)
               .sort(),
     });
-  }
-  return found;
-}
-
-/** The graphs a store's dump holds, each block of it the N-Triples Oxigraph writes of a graph, those `kept` names. */
-function graphsOfDump(
-  bytes: Uint8Array,
-  kept: ReadonlySet<string>,
-): GraphStatements[] {
-  const lines = new TextDecoder().decode(bytes).split("\n").slice(1);
-  const found: GraphStatements[] = [];
-  let graph: string | undefined;
-  let held: string[] = [];
-  for (const line of lines) {
-    if (graph === undefined) {
-      graph = /^<(.*)> \{$/.exec(line)?.[1];
-      held = [];
-    } else if (line === "}") {
-      if (kept.has(graph)) found.push({ graph, ntriples: held.join("\n") });
-      graph = undefined;
-    } else held.push(line);
   }
   return found;
 }

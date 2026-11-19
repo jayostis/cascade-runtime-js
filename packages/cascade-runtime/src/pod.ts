@@ -1,4 +1,5 @@
 import {
+  type BesideDatabase,
   clock,
   codeIri,
   CorePod,
@@ -372,6 +373,8 @@ export interface Parts {
   readonly answers?: AnswerStore;
   /** Where the build of a pod in a folder is kept beside it when its answers are not; none when it may not be. */
   readonly builtBeside?: (folder: string) => Files;
+  /** The database a pod in a folder keeps beside it, `pod.db`, by its path; none where nothing is kept beside it. */
+  readonly databaseBeside?: (folder: string) => BesideDatabase;
   /** What the code that runs is, by its bytes, where the performer does not name it exactly; a kept build names it. */
   readonly builtCode?: string;
   /** The export or download at the path, as the files it is in and its name there, or why no path is read. */
@@ -1317,8 +1320,8 @@ class OpenPod implements Pod {
 
 /**
  * The core over the pod's files. `writer`, given for a pod kept in a folder, holds the head the app's tables store kept
- * for it, and each new head is kept there, and `beside` where its build is kept beside it with its answers; a pod in
- * memory keeps none.
+ * for it, and each new head is kept there, `beside` where its build is kept beside it with its answers, and `database`
+ * the database it keeps there; a pod in memory keeps none.
  */
 function coreOver(
   parts: Parts,
@@ -1329,6 +1332,7 @@ function coreOver(
   title: string | undefined,
   writer?: { readonly head: Head | undefined },
   beside?: Files,
+  database?: BesideDatabase,
 ): CorePod {
   const { build } = parts;
   return new CorePod({
@@ -1348,6 +1352,7 @@ function coreOver(
       : { keepHead: (kept: Head) => parts.tables.keepHead(address, kept) }),
     references: () => Promise.resolve(references),
     ...(beside === undefined ? {} : { besidePod: beside }),
+    ...(beside === undefined || database === undefined ? {} : { database }),
     ...(parts.builtCode === undefined ? {} : { builtCode: parts.builtCode }),
     build: {
       lens: parts.lens,
@@ -1390,7 +1395,7 @@ async function subjectsFiled(
 
 /** The parts with every file of a pod's folder, read through its sealed index, and of its kept answers and build sealed under the key. */
 function sealedParts(parts: Parts, index: SealedIndex): Parts {
-  const { answers, builtBeside } = parts;
+  const { answers, builtBeside, databaseBeside } = parts;
   const { key } = index;
   return {
     ...parts,
@@ -1415,6 +1420,14 @@ function sealedParts(parts: Parts, index: SealedIndex): Parts {
       : {
           builtBeside: (folder) =>
             new EncryptedFiles(builtBeside(folder), key, { kind: "answers" }),
+        }),
+    ...(databaseBeside === undefined
+      ? {}
+      : {
+          databaseBeside: (folder) => ({
+            ...databaseBeside(folder),
+            sealed: true,
+          }),
         }),
   };
 }
@@ -1454,6 +1467,10 @@ export async function openPodWith(
     folder === undefined
       ? undefined
       : (parts.answers?.at(folder) ?? parts.builtBeside?.(folder));
+  const database =
+    folder === undefined || beside === undefined
+      ? undefined
+      : parts.databaseBeside?.(folder);
   const answers =
     beside === undefined || parts.answers === undefined
       ? undefined
@@ -1483,6 +1500,7 @@ export async function openPodWith(
       title,
       folder === undefined ? undefined : { head: undefined },
       beside,
+      database,
     );
     const created = await core.create();
     if (created.refused !== undefined)
@@ -1536,6 +1554,7 @@ export async function openPodWith(
     title,
     { head: await parts.tables.headOf(address) },
     beside,
+    database,
   );
   return new OpenPod(
     parts,
