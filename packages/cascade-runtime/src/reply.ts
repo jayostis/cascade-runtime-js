@@ -3,7 +3,7 @@
 // names an entry and a field, and what a reader sees of it (its value, date, name and source) is read from the pod. A
 // reply about downloads copies what a file says, and the copy is checked. No Node; the one source that reads downloads
 // from disk is `node/downloads.ts`.
-import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
+import type { Ajv2020, ValidateFunction } from "ajv/dist/2020.js";
 import {
   type Absence,
   type Backing,
@@ -101,18 +101,22 @@ export interface Reply {
 /** Which contract a reply is held to: about a pod (it points), or about downloads (it cites a file and copies). */
 export type ReplyContract = "pod" | "records";
 
-let ajv: Ajv2020 | undefined;
+let ajv: Promise<Ajv2020> | undefined;
 const compiled = new Map<ReplyContract, ValidateFunction>();
-/** A contract's validator, compiled when a reply is first held to it. */
-function validator(contract: ReplyContract): ValidateFunction {
+/** A contract's validator, compiled when a reply is first held to it, with Ajv loaded then rather than with the runtime. */
+async function validator(contract: ReplyContract): Promise<ValidateFunction> {
+  ajv ??= import("ajv/dist/2020.js").then(
+    ({ Ajv2020 }) =>
+      new Ajv2020({
+        allErrors: true,
+        strict: false,
+        formats: { date: /^\d{4}-\d{2}-\d{2}$/ },
+      }),
+  );
+  const made = await ajv;
   let validate = compiled.get(contract);
   if (validate === undefined) {
-    ajv ??= new Ajv2020({
-      allErrors: true,
-      strict: false,
-      formats: { date: /^\d{4}-\d{2}-\d{2}$/ },
-    });
-    validate = ajv.compile(
+    validate = made.compile(
       contract === "pod" ? replySchema : recordsReplySchema,
     );
     compiled.set(contract, validate);
@@ -192,11 +196,11 @@ function beyondItsSchema(reply: Reply): string[] {
 }
 
 /** The contract's errors for `value`, one line each; empty when it is a reply. A reply is about a pod unless said. */
-export function replyErrors(
+export async function replyErrors(
   value: unknown,
   contract: ReplyContract = "pod",
-): string[] {
-  const validate = validator(contract);
+): Promise<string[]> {
+  const validate = await validator(contract);
   if (!validate(value))
     return (validate.errors ?? []).map(
       (error) => `${error.instancePath || "/"} ${error.message ?? ""}`,
@@ -523,7 +527,7 @@ async function checkReplyUnder(
       "checkReply needs `ask` (a reply about a pod) or `files` (a reply about downloads); it was given neither",
     );
   const copies = copied || ask === undefined;
-  const errors = replyErrors(value, copies ? "records" : "pod");
+  const errors = await replyErrors(value, copies ? "records" : "pod");
   if (errors.length > 0) return { errors, items: [] };
   const reply = numberedReply(value) as Reply;
   const pod = ask === undefined ? undefined : { ask };
