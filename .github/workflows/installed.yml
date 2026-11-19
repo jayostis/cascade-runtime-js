@@ -30,7 +30,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci
+      # The SQLite binding's binding.gyp sends a lock-based install to node-gyp, which finds no Visual Studio it knows on
+      # windows; the binding's prebuilt build is all the checkout needs.
+      - run: npm ci ${{ runner.os == 'Windows' && '--ignore-scripts' || '' }}
       - run: npm run build
       - uses: actions/download-artifact@v7
         with:

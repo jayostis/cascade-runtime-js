@@ -75,8 +75,10 @@ describe("Opening a pod's SQLite database · openDatabase()", () => {
 
   it("seals the file, its write-ahead log and its shared memory with ChaCha20-Poly1305 under the key as it is, and reopens it with that key", async () => {
     const first = openDatabase(sealed, { key: KEY });
-    assert.equal(first.prepare("PRAGMA cipher").get()?.cipher, "chacha20");
-    assert.equal(first.prepare("PRAGMA kdf_iter").get()?.kdf_iter, 1);
+    const setting = (name: string) =>
+      Object.values(first.prepare(`PRAGMA ${name}`).get() ?? {}).map(String);
+    assert.deepEqual(setting("cipher"), ["chacha20"]);
+    assert.deepEqual(setting("kdf_iter"), ["1"]);
     first.exec("CREATE TABLE t (v TEXT)");
     first.prepare("INSERT INTO t VALUES (?)").run(MARKER);
     const written = [sealed, `${sealed}-wal`, `${sealed}-shm`].filter((path) =>
@@ -117,8 +119,7 @@ describe("Opening a pod's SQLite database · openDatabase()", () => {
 
   it("refuses a key that is not 32 bytes", () => {
     assert.throws(
-      () =>
-        openDatabase(join(folder, "short.db"), { key: new Uint8Array(16) }),
+      () => openDatabase(join(folder, "short.db"), { key: new Uint8Array(16) }),
       /32 bytes/,
     );
   });

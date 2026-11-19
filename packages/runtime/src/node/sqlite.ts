@@ -1,13 +1,26 @@
 import { createRequire } from "node:module";
-import type { Database } from "../database.js";
+import {
+  type Database,
+  type DatabaseFunction,
+  DatabaseKeyRefused,
+} from "../database.js";
 
 /** The bytes of a key `openDatabase` seals a database with. */
 export const DATABASE_KEY_BYTES = 32;
 
 interface Binding {
   pragma(text: string, options?: { simple: boolean }): unknown;
+  key(key: Buffer): number;
+  function(
+    name: string,
+    options: { deterministic: boolean },
+    apply: (...values: unknown[]) => unknown,
+  ): unknown;
   prepare(sql: string): {
     all(...parameters: unknown[]): Record<string, unknown>[];
+    iterate(
+      ...parameters: unknown[]
+    ): IterableIterator<Record<string, unknown>>;
     get(...parameters: unknown[]): Record<string, unknown> | undefined;
     run(...parameters: unknown[]): { changes: number };
   };
@@ -27,29 +40,59 @@ function binding(): Constructor {
   return constructor;
 }
 
+/** What `openDatabase` opens a database with. */
+export interface DatabaseOptions {
+  /** The 32 random bytes the file is sealed with. */
+  readonly key?: Uint8Array;
+  readonly functions?: readonly DatabaseFunction[];
+}
+
+/** The key is copied once into a buffer the binding reads, and that copy is zeroed as soon as it has. */
+function keyed(db: Binding, key: Uint8Array): void {
+  db.pragma("cipher='chacha20'");
+  db.pragma("kdf_iter=1");
+  const copy = Buffer.from(key);
+  try {
+    db.key(copy);
+  } finally {
+    copy.fill(0);
+  }
+}
+
 /**
- * Opens the database at `path`, or makes it, in write-ahead mode with temporary tables kept in memory. Given a `key`, the
- * file is sealed page by page with ChaCha20-Poly1305 under it, so nothing of what it holds, its journal included, is
- * written in the clear; the key is the file's own random bytes, not a passphrase, so it is used as it is (`kdf_iter=1`).
- * A database opened without its key, or with another, throws at once, and a `key` that is not 32 bytes throws before
- * anything is opened.
+ * Opens the database at `path`, or makes it, in write-ahead mode with temporary tables kept in memory, with each of
+ * `functions` registered for its SQL to call. Given a `key`, the file is sealed page by page with ChaCha20-Poly1305 under
+ * it, so nothing of what it holds, its journal included, is written in the clear; the key is the file's own random bytes,
+ * not a passphrase, so it is used as it is (`kdf_iter=1`). A database that does not open under the key it is given, or
+ * without one, throws `DatabaseKeyRefused` at once, and a `key` that is not 32 bytes throws before anything is opened.
  */
-export function openDatabase(path: string, key?: Uint8Array): Database {
+export function openDatabase(
+  path: string,
+  { key, functions = [] }: DatabaseOptions = {},
+): Database {
   if (key !== undefined && key.length !== DATABASE_KEY_BYTES)
     throw new RangeError(
       `a database's key is ${DATABASE_KEY_BYTES} bytes, not ${key.length}`,
     );
   const db = new (binding())(path);
   try {
-    if (key !== undefined) {
-      db.pragma("cipher='chacha20'");
-      db.pragma("kdf_iter=1");
-      db.pragma(`hexkey='${Buffer.from(key).toString("hex")}'`);
+    if (key !== undefined) keyed(db, key);
+    try {
+      db.pragma("journal_mode=WAL");
+    } catch (error) {
+      if ((error as { code?: unknown }).code === "SQLITE_NOTADB")
+        throw new DatabaseKeyRefused(path, error);
+      throw error;
     }
-    db.pragma("journal_mode=WAL");
     db.pragma("temp_store=MEMORY");
+    for (const { name, deterministic = false, apply } of functions)
+      db.function(name, { deterministic }, apply);
   } catch (error) {
-    db.close();
+    try {
+      db.close();
+    } catch {
+      // What failed first is what the caller needs to see.
+    }
     throw error;
   }
   return {
