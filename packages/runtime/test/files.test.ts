@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -93,6 +93,42 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
         );
         assert.deepEqual(await files.list("records/b.ttl"), [], kind);
         assert.deepEqual(await files.list("nowhere"), [], kind);
+      }
+    });
+
+    it("lists a folder's files sorted by code unit, under a folder by its path and its IRI, with no file being written and nothing for an empty folder, whether or not it refuses links", async () => {
+      const tricky = await mkdtemp(join(tmpdir(), "files-sort-"));
+      try {
+        const writer = new FolderFiles(tricky, POD);
+        for (const path of [
+          "a.ttl",
+          "a/b.ttl",
+          "a/c/d.ttl",
+          "a-b/c.ttl",
+          "B/e.ttl",
+        ])
+          await writer.write(path, bytes(path));
+        await mkdir(join(tricky, "z", "y"), { recursive: true });
+        await writeFile(join(tricky, "a", "b.ttl.123.4.writing"), "partial");
+        for (const refuseLinks of [false, true]) {
+          const files = new FolderFiles(tricky, POD, { refuseLinks });
+          const kind = `refuseLinks ${refuseLinks}`;
+          assert.deepEqual(
+            await files.list(""),
+            ["B/e.ttl", "a-b/c.ttl", "a.ttl", "a/b.ttl", "a/c/d.ttl"],
+            kind,
+          );
+          assert.deepEqual(
+            await files.list("a"),
+            ["a/b.ttl", "a/c/d.ttl"],
+            kind,
+          );
+          assert.deepEqual(await files.list(`${POD}a/c`), ["a/c/d.ttl"], kind);
+          assert.deepEqual(await files.list("z/y"), [], kind);
+          assert.deepEqual(await files.list("z"), [], kind);
+        }
+      } finally {
+        await rm(tricky, { recursive: true, force: true });
       }
     });
 
