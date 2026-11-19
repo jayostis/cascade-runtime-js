@@ -776,8 +776,9 @@ newer version that verifies, however long the downloads take in all; a feed or
 download that has not answered in 10 s is left for a later check. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
 checks again ("Check now"); a feed that cannot be read now says `later`, and
 nothing is thrown. Opening a pod after its tables changed gives it them, in
-the background: `openPod` returns first, and a question asked meanwhile is
-answered with the rows kept for the pod as it was. `await pod.opened` settles
+the background: `openPod` returns first, a question asked as it returns is
+answered over the pod as it was, and one asked later, while that runs, with the
+rows kept for the pod as it was, or else once it is done. `await pod.opened` settles
 once that is done, saying what it wrote, and `unheld`, the versions the pod
 names that the app does not hold, which it is matched without; an app asks
 again then to show the newer answers. It rejects if that failed, and the pod
