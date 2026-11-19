@@ -16,6 +16,7 @@ export type {
   ImportOptions,
   ImportProgress,
   Opened,
+  Page,
   Pod,
   Row,
   TextRow,

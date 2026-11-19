@@ -11,6 +11,7 @@
     "Recording the owner's judgment · pod.judge()",
     "Opening a pod again · openPod()",
     "Keeping a pod's database beside it · openPod(), pod.close()",
+    "Answering a pod's questions from its database, a page at a time · pod.ask(), pod.askPage()",
     "Keeping an open pod's answers current · pod.ask()",
     "Encrypting a pod with six words · openPod(), sixWords(), typedWords()",
     "Encrypting a pod with an app's key · openPod()",
