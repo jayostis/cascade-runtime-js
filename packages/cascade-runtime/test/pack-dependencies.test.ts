@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
@@ -43,14 +43,14 @@ describe("Dependencies of the packed package · mergedDependencies(), undeclared
     });
   });
 
-  describe("undeclaredImports(folder, declared)", () => {
-    let dist: string;
+  describe("undeclaredImports(stage, workspaces, declared)", () => {
+    let stage: string;
     let undeclared: string[];
 
     before(async () => {
-      dist = await mkdtemp(join(tmpdir(), "cr-"));
+      stage = await mkdtemp(join(tmpdir(), "cr-"));
       await write(
-        join(dist, "a", "reply.js"),
+        join(stage, "dist", "src", "a", "reply.js"),
         [
           'import { Ajv2020 } from "ajv/dist/2020.js";',
           'import { readFile } from "node:fs/promises";',
@@ -60,29 +60,44 @@ describe("Dependencies of the packed package · mergedDependencies(), undeclared
           'const late = await import("lazy");',
         ].join("\n"),
       );
-      undeclared = await undeclaredImports(dist, { ajv: "8.20.0" });
+      await write(
+        join(stage, "node_modules", "@s", "w", "dist", "src", "node", "b.js"),
+        'const native = require("addon");',
+      );
+      await write(
+        join(stage, "node_modules", "ajv", "dist", "src", "c.js"),
+        'import "carried-with-its-own-manifest";',
+      );
+      undeclared = await undeclaredImports(stage, ["@s/w"], {
+        ajv: "8.20.0",
+      });
     });
 
-    it("returns each package the compiled code imports that is not declared, whether by an import, an export-from or a dynamic import", () => {
-      assert.deepEqual(undeclared, ["@s/p", "lazy"]);
+    it("returns each package the package's code or a bundled workspace's imports that is not declared, whether by an import, an export-from, a dynamic import or a require", () => {
+      assert.deepEqual(undeclared, ["@s/p", "addon", "lazy"]);
     });
 
     it("ignores Node's built-in modules and relative imports", () => {
-      assert.equal(undeclared.length, 2);
+      assert.equal(undeclared.length, 3);
       for (const name of ["node:fs/promises", "path", "./x.js"])
         assert.equal(undeclared.includes(name), false, name);
     });
 
     it("returns none once every import is declared", async () => {
-      assert.equal(undeclared.length, 2);
+      assert.equal(undeclared.length, 3);
       assert.deepEqual(
-        await undeclaredImports(dist, { ajv: "1", "@s/p": "1", lazy: "1" }),
+        await undeclaredImports(stage, ["@s/w"], {
+          ajv: "1",
+          "@s/p": "1",
+          addon: "1",
+          lazy: "1",
+        }),
         [],
       );
     });
   });
 
-  describe("vendored(names, from, modules)", () => {
+  describe("vendored(packages, from, modules)", () => {
     let modules: string;
     let copied: Record<string, string>;
 
@@ -104,12 +119,58 @@ describe("Dependencies of the packed package · mergedDependencies(), undeclared
         join(root, "node_modules", "traverse", "package.json"),
         manifest("traverse", "1.0.0"),
       );
+      await write(
+        join(own, "node_modules", "binding", "package.json"),
+        manifest("binding", "1.0.0", { headers: "^1", helper: "^1" }),
+      );
+      for (const file of [
+        "binding.gyp",
+        "src/a.cpp",
+        "build/Makefile",
+        "lib/index.js",
+        "prebuilds/x.node",
+      ])
+        await write(join(own, "node_modules", "binding", file), "");
+      for (const name of ["headers", "helper"])
+        await write(
+          join(root, "node_modules", name, "package.json"),
+          manifest(name, "1.0.0"),
+        );
       modules = join(root, "stage");
-      copied = await vendored(["ajv"], own, modules);
+      copied = await vendored(
+        [
+          { name: "ajv" },
+          {
+            name: "binding",
+            files: ["lib", "prebuilds"],
+            buildOnly: ["headers"],
+          },
+        ],
+        own,
+        modules,
+      );
     });
 
     it("copies a package with everything it depends on into one flat folder", () => {
-      assert.deepEqual(copied, { ajv: "8.20.0", traverse: "1.0.0" });
+      assert.deepEqual(copied, {
+        ajv: "8.20.0",
+        binding: "1.0.0",
+        helper: "1.0.0",
+        traverse: "1.0.0",
+      });
+    });
+
+    it("keeps only the files a package names, beside its manifest, and leaves what only builds it out of the copy and out of its manifest", async () => {
+      const binding = join(modules, "binding");
+      assert.deepEqual((await readdir(binding)).sort(), [
+        "lib",
+        "package.json",
+        "prebuilds",
+      ]);
+      const { dependencies } = JSON.parse(
+        await readFile(join(binding, "package.json"), "utf8"),
+      ) as { dependencies: Record<string, string> };
+      assert.deepEqual(dependencies, { helper: "^1" });
     });
 
     it("resolves each dependency from the package that needs it, not from another version above it", async () => {

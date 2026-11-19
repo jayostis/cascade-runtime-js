@@ -76,15 +76,16 @@ flowchart LR
 An adapter is data: mappings, schemas, fixtures and a manifest, with no code. A
 Bridge runs it, and there is one Bridge per language.
 
-The core in `packages/runtime/src` knows four interfaces and nothing behind
+The core in `packages/runtime/src` knows five interfaces and nothing behind
 them. That is how the same runtime runs in Node and in a browser:
 
-| Interface    | What it does                                                            | What plugs in today                             |
-| ------------ | ----------------------------------------------------------------------- | ----------------------------------------------- |
-| `Files`      | reads and writes bytes, by path or IRI                                  | a local folder, memory, the browser's IndexedDB |
-| `Bridge`     | describes and loads an adapter, asks if it accepts a document, converts | cascade-bridge-rs in a worker; saved output     |
-| `Store`      | runs SPARQL over named graphs, and reads Turtle as it is written        | Oxigraph's JavaScript build                     |
-| `IdsAndTime` | mints the ID of an import or an entry session, and gives the time       | random UUIDs; the clock or the story's times    |
+| Interface    | What it does                                                            | What plugs in today                                 |
+| ------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| `Files`      | reads and writes bytes, by path or IRI                                  | a local folder, memory, the browser's IndexedDB     |
+| `Bridge`     | describes and loads an adapter, asks if it accepts a document, converts | cascade-bridge-rs in a worker; saved output         |
+| `Store`      | runs SPARQL over named graphs, and reads Turtle as it is written        | Oxigraph's JavaScript build                         |
+| `IdsAndTime` | mints the ID of an import or an entry session, and gives the time       | random UUIDs; the clock or the story's times        |
+| `Database`   | prepares and runs SQL statements, in a transaction                      | SQLite3MC through `better-sqlite3-multiple-ciphers` |
 
 Code that needs Node (a local folder, git, the command line) is under
 `packages/runtime/src/node/`. The core knows an importer only by the name

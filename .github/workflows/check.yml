@@ -524,9 +524,9 @@ jobs:
           node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL" ${WITH:+--with "$WITH"}
 
   # The made app on the other systems, as the deleted installed.yml `starter` job ran it: windows on a pull request,
-  # windows and macos on a push, the nightly run and by hand. Like `other-systems`, nothing needs it and `compatibility`
-  # does not wait for it, so a slow system gates no merge, and a failure still fails the run. The starter is taken exactly
-  # as `starter-kit` takes it; only the build of the command and the app's check run, not the starter's suites.
+  # windows and macos on a push, the nightly run and by hand. `compatibility` waits for it: an app that does not install on
+  # windows is no pass. The starter is taken exactly as `starter-kit` takes it; only the build of the command and the
+  # app's check run, not the starter's suites.
   starter-systems:
     name: starter (${{ matrix.os }})
     if: ${{ !startsWith(github.base_ref, 'alpha/') }}
@@ -574,10 +574,79 @@ jobs:
           cd "$RUNNER_TEMP"
           node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
 
-  # The name branch protection requires. A part that was skipped is no pass, except starter-kit on a pull request into an alpha/ branch.
+  # The packed package's native SQLite binding, installed from the tarball on Node 22 as an app installs it, and opened
+  # sealed with a key, on linux and macos on arm and x64, on a pull request too. The app's second install is `npm ci` from
+  # the lock its first wrote, the install that ran node-gyp on the binding when it carried what builds it from source.
+  database-systems:
+    name: database (${{ matrix.os }})
+    if: ${{ !startsWith(github.base_ref, 'alpha/') }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions: {}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      - name: Install the tarball, again from its lock, and open a sealed database with it
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          mkdir app
+          cd app
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund --foreground-scripts "$(node -p "require('node:path').resolve(process.argv[1])" ../package/cascade-runtime-*.tgz)" 2>&1 | tee install.log
+          rm -rf node_modules
+          npm ci --no-audit --no-fund --foreground-scripts 2>&1 | tee -a install.log
+          if grep -q "gyp" install.log; then echo "::error title=database::an install ran node-gyp"; exit 1; fi
+          node --version
+          node --input-type=module -e '
+            import { createRequire } from "node:module";
+            import { pathToFileURL } from "node:url";
+            const app = createRequire(`${process.cwd()}/`);
+            const runtime = createRequire(app.resolve("cascade-runtime/package.json"));
+            const { openDatabase } = await import(pathToFileURL(runtime.resolve("@cascade-runtime/runtime/node")).href);
+            const { DatabaseKeyRefused } = await import(pathToFileURL(runtime.resolve("@cascade-runtime/runtime")).href);
+            const key = new Uint8Array(32).fill(7);
+            const first = openDatabase("pod.db", { key });
+            first.exec("CREATE TABLE t (v TEXT)");
+            first.prepare("INSERT INTO t VALUES (?)").run("sealed");
+            first.close();
+            const again = openDatabase("pod.db", { key });
+            const rows = again.prepare("SELECT v FROM t").all();
+            again.close();
+            if (JSON.stringify(rows) !== JSON.stringify([{ v: "sealed" }])) throw new Error("reopened with its key, got " + JSON.stringify(rows));
+            let refused;
+            try { openDatabase("pod.db", { key: new Uint8Array(32).fill(8) }).close(); } catch (error) { refused = error; }
+            if (!(refused instanceof DatabaseKeyRefused)) throw new Error("another key was not refused: " + refused);
+            console.log("sealed database reopened with its key and refused another");
+          '
+
+  # The name branch protection requires. A part that was skipped is no pass, except starter-kit, the starter on the other
+  # systems and the database on each system, on a pull request into an alpha/ branch.
   compatibility:
     name: compatibility
-    needs: [tests, tests-native, browser, starter-kit, runtime-tests]
+    needs:
+      [
+        tests,
+        tests-native,
+        browser,
+        starter-kit,
+        starter-systems,
+        database-systems,
+        runtime-tests,
+      ]
     if: ${{ !cancelled() && github.event_name != 'push' }}
     runs-on: ubuntu-latest
     permissions: {}
@@ -587,20 +656,24 @@ jobs:
           NATIVE: ${{ needs.tests-native.result }}
           BROWSER: ${{ needs.browser.result }}
           STARTER: ${{ needs.starter-kit.result }}
+          STARTER_SYSTEMS: ${{ needs.starter-systems.result }}
+          DATABASE: ${{ needs.database-systems.result }}
           RUNTIME_TESTS: ${{ needs.runtime-tests.result }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
         run: |
-          echo "tests and conformance: ${TESTS}; on the native build: ${NATIVE}; docs site: ${BROWSER}; starter-kit: ${STARTER}; runtime tests: ${RUNTIME_TESTS}"
+          echo "tests and conformance: ${TESTS}; on the native build: ${NATIVE}; docs site: ${BROWSER}; starter-kit: ${STARTER}; starter on the other systems: ${STARTER_SYSTEMS}; database on each system: ${DATABASE}; runtime tests: ${RUNTIME_TESTS}"
           [ "${TESTS}" = success ] && [ "${NATIVE}" = success ] && [ "${BROWSER}" = success ] || exit 1
           # The suite runs in `runtime-tests` on the nightly run, where `tests and conformance` leaves it out. On a pull
           # request or a hand-started run that job is skipped, and the suite ran in `tests and conformance`.
           if [ "${EVENT}" = schedule ]; then [ "${RUNTIME_TESTS}" = success ] || exit 1; fi
-          # starter-kit does not run on a pull request into an integration branch; it is skipped by that rule alone.
-          case "${BASE}" in
-            alpha/*) [ "${STARTER}" = skipped ] || [ "${STARTER}" = success ] ;;
-            *) [ "${STARTER}" = success ] ;;
-          esac
+          # These do not run on a pull request into an integration branch; they are skipped by that rule alone.
+          for result in "${STARTER}" "${STARTER_SYSTEMS}" "${DATABASE}"; do
+            case "${BASE}" in
+              alpha/*) [ "${result}" = skipped ] || [ "${result}" = success ] || exit 1 ;;
+              *) [ "${result}" = success ] || exit 1 ;;
+            esac
+          done
 
   # The conformance run of main that the Pages tree shows. `tests and conformance` is skipped on a push and its report is
   # not kept for the site, so this job runs the start action alone, on a push and nightly, and keeps the report with the

@@ -44,6 +44,7 @@ import { withKeptRows, pruneRows, ROWS_CACHE } from "../src/node/rowCache.js";
 import { LISTED, PUBLISHED_ROWS, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 import {
+  type Carried,
   mergedDependencies,
   undeclaredImports,
   vendored,
@@ -99,9 +100,17 @@ const TABLES_FOLDER = "tables";
 const OTHER_VOCABULARY = ["LICENSE", METADATA, "ontologies"];
 /**
  * What the package imports that is on a registry but is carried in it too, so that the staged package runs where nothing
- * is installed beside it, as the docs site reads it: a copy above it may be another version.
+ * is installed beside it, as the docs site reads it: a copy above it may be another version. The SQLite binding is
+ * carried with its prebuilt builds and none of what builds it from source, so that no install runs node-gyp on it.
  */
-const VENDORED = ["ajv"];
+const VENDORED: readonly Carried[] = [
+  { name: "ajv" },
+  {
+    name: "better-sqlite3-multiple-ciphers",
+    files: ["LICENSE", "README.md", "index.d.ts", "lib", "prebuilds"],
+    buildOnly: ["node-addon-api"],
+  },
+];
 const KEPT_BY_BUNDLED = ["name", "version", "type", "exports", "license"];
 const KEPT_BY_PACKAGE = [
   "name",
@@ -331,6 +340,7 @@ async function packCode(
   own: Manifest,
 ): Promise<{
   readonly bundled: Record<string, string>;
+  readonly workspaces: readonly string[];
   readonly dependencies: Record<string, string>;
 }> {
   const bundled: Record<string, string> = {};
@@ -357,7 +367,11 @@ async function packCode(
       a < b ? -1 : a > b ? 1 : 0,
     ),
   );
-  return { bundled, dependencies };
+  return {
+    bundled,
+    workspaces: declarers.map(({ name }) => name),
+    dependencies,
+  };
 }
 
 /** A Markdown file the package ships, with the install line where it asks for it. */
@@ -532,7 +546,10 @@ async function main(): Promise<void> {
   await rm(STAGE, { recursive: true, force: true });
   await mkdir(STAGE, { recursive: true });
   const { resolved, components, bridge, bridgeFolder } = await packComponents();
-  const { bundled, dependencies } = await packCode(bridgeFolder, manifest);
+  const { bundled, workspaces, dependencies } = await packCode(
+    bridgeFolder,
+    manifest,
+  );
   const dirty = head.uncommitted > 0;
   const browserBuildVersion = await bundleBrowser(BROWSER, {
     commit,
@@ -541,7 +558,7 @@ async function main(): Promise<void> {
     bridge: bridgeFolder,
   });
   await packOwnFiles(manifest, address);
-  const undeclared = await undeclaredImports(join(STAGE, "dist", "src"), {
+  const undeclared = await undeclaredImports(STAGE, workspaces, {
     ...dependencies,
     ...(manifest.peerDependencies as Record<string, string> | undefined),
   });
