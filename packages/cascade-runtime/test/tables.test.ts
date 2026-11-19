@@ -2558,6 +2558,8 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
     let retried: Awaited<Pod["opened"]>;
     let closedDuring: Awaited<Pod["opened"]>;
     let reopened: Awaited<Pod["opened"]>;
+    let matchedDuring: Awaited<ReturnType<Pod["match"]>>;
+    let askedAfterWrite: Row[];
 
     before(async () => {
       const folder = join(scratch, "pods", "held-open");
@@ -2652,6 +2654,12 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
           await held.reached;
           during = await whileHeld(pod.ask(IMMUNIZATIONS));
           unheldDuring = await whileHeld(pod.unheldTableVersions());
+          // A write called during the run, and the question asked after it, which is not to be answered from before the run.
+          const matching = pod.match();
+          const asking = pod.ask(IMMUNIZATIONS);
+          held.release();
+          matchedDuring = await matching;
+          askedAfterWrite = await asking;
         }
       } finally {
         held.release();
@@ -2754,6 +2762,13 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       assert.ok(closedDuring);
       assert.equal(closedDuring.refused, undefined);
       assert.equal(reopened, undefined);
+    });
+
+    it("answers a question asked after a write was called during the run with the pod after both, not the rows kept before it", () => {
+      assert.ok(matchedDuring, "it waited for the run");
+      assert.equal(matchedDuring.refused, undefined);
+      assert.notDeepEqual(askedAfterWrite, rowsBefore);
+      assert.deepEqual(askedAfterWrite, after);
     });
   });
 
@@ -2895,6 +2910,45 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       assert.deepEqual(after, fromStore);
       assert.deepEqual(reopened, after);
       assert.equal(readWhole, 0, "the pod opened again read its store whole");
+    });
+  });
+
+  describe("given a new pod, made and closed, then opened with the app's tables, asked once and closed, as the starter kit's `ask` does", () => {
+    let database: boolean;
+
+    before(async () => {
+      const folder = join(scratch, "pods", "new-asked");
+      const store = new MemoryFiles("urn:test:tables-new-asked/");
+      const beside = {
+        ...parts,
+        answers: { runtime: "test", at: answersBeside },
+        databaseBeside,
+      };
+      await tablesOver(first, store).check();
+      const made = await openPodWith(
+        { ...beside, tables: tablesOver(first, store) },
+        folder,
+      );
+      await made.close();
+      const pod = await openPodWith(
+        { ...beside, tables: tablesOver(first, store) },
+        folder,
+      );
+      try {
+        await pod.ask("pod/My active allergies");
+      } finally {
+        await pod.close();
+      }
+      database = await readFile(
+        join(scratch, "pods", ".answers", "new-asked", "pod.db"),
+      ).then(
+        () => true,
+        () => false,
+      );
+    });
+
+    it("leaves pod.db beside the pod", () => {
+      assert.equal(database, true, "no pod.db was kept");
     });
   });
 });
