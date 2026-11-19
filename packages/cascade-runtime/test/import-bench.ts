@@ -6,7 +6,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { openPod, type Pod, pullFiles, tablesBeside } from "cascade-runtime";
-import { answersBeside, resolved } from "../src/node/resolved.js";
+import {
+  answersBeside,
+  databaseBeside,
+  resolved,
+} from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 
@@ -401,6 +405,15 @@ export interface Measured {
   readonly rssMb: number;
   /** The most the resident set was seen at: sampled at each progress report and every 100 ms, so a long synchronous step can hide a higher one. */
   readonly peakRssMb: number;
+  /** Each close of a pod on disk, which keeps its build and its database beside it, timed with its spans. */
+  readonly closes?: readonly Closed[];
+}
+
+/** A close of a pod on disk, timed. */
+export interface Closed {
+  readonly name: string;
+  readonly ms: number;
+  readonly spans: Measured["spans"];
 }
 
 /** The measurements of one pod that was imported into again and again, and opened again. */
@@ -479,16 +492,24 @@ async function benchFolder(): Promise<string> {
   return join(await mkdtemp(join(tmpdir(), "import-bench-")), "pod");
 }
 
-/** The pod in the folder as a packed runtime opens it, keeping its answers and its build beside it, and its app's tables beside the folder. */
+/** The pod in the folder as a packed runtime opens it, keeping its answers, its build and its database beside it, and its app's tables beside the folder. */
 async function openPacked(folder: string): Promise<Pod> {
   return openPodWith(
     {
       ...(await resolved()),
       answers: { runtime: "bench", at: answersBeside },
+      databaseBeside,
       tables: await tablesBeside(dirname(folder)),
     },
     folder,
   );
+}
+
+/** The pod closed, timed with its spans. */
+async function closed(pod: Pod, name: string): Promise<Closed> {
+  const at = performance.now();
+  const { seen } = await probing(() => pod.close());
+  return { name, ms: round(performance.now() - at), ...tabulated(seen) };
 }
 
 /**
@@ -508,16 +529,25 @@ export async function importBench(
   const folder = reopen ? await benchFolder() : undefined;
   const claiming = await profileOf(second ? "second" : "first");
   let pod = folder === undefined ? await openPod() : await openPacked(folder);
+  let open = true;
   try {
     if (second)
       await importAll(pod, syntheticPulls(resources), await profileOf("first"));
     if (reopen && folder !== undefined) {
-      await pod.close();
+      open = false;
+      const before = await closed(pod, "before the import");
       pod = await openPacked(folder);
+      open = true;
+      const run = await measured(pod, pulls, claiming, resources, true);
+      open = false;
+      return {
+        ...run,
+        closes: [before, await closed(pod, "after the import")],
+      };
     }
     return await measured(pod, pulls, claiming, resources, true);
   } finally {
-    await pod.close();
+    if (open) await pod.close();
     if (folder !== undefined)
       await rm(dirname(folder), { recursive: true, force: true });
   }
@@ -804,6 +834,15 @@ export function againstBudget(
 export function tableOf(run: Measured): string {
   const lines = [
     `${run.resources} resources: import ${run.importMs} ms, ${run.wrote} files written, rss ${run.rssMb} MB${run.refused === undefined ? "" : `, REFUSED: ${run.refused}`}`,
+    ...(run.closes ?? []).flatMap(({ name, ms, spans }) => [
+      `close ${name}: ${ms} ms`,
+      ...spans
+        .filter(({ name: span }) => span.startsWith("core-pod.keep"))
+        .map(
+          ({ name: span, calls, ms: spent }) =>
+            `  ${span.padEnd(34)} ${String(calls).padStart(8)} ${String(spent).padStart(10)}`,
+        ),
+    ]),
     "",
     "phase of the import (ms)",
     ...run.phases.map(

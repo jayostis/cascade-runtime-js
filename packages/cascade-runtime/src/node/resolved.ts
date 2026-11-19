@@ -5,6 +5,8 @@ import { basename, dirname, join, resolve as absolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   appTablesSettings,
+  type BesideDatabase,
+  DATABASE_BESIDE,
   type Files,
   importersNamed,
   MemoryFiles,
@@ -18,6 +20,7 @@ import {
   argon2id,
   CONFIG_FILE,
   compiledBridge,
+  databaseAt,
   type Components,
   componentsOf,
   findRoot,
@@ -95,14 +98,23 @@ export function configureTables(
   configuredFetch = fetching;
 }
 
+/** The folder of what is kept beside the pod in the folder, `.answers/<name>`. */
+function besideFolder(path: string): string {
+  const folder = absolute(path);
+  return join(dirname(folder), ".answers", basename(folder));
+}
+
 /** The answers of the pod in the folder: a folder of their own, `.answers/<name>`, beside the pod's. */
 export function answersBeside(path: string): FolderFiles {
-  const folder = absolute(path);
-  return new FolderFiles(
-    join(dirname(folder), ".answers", basename(folder)),
-    undefined,
-    { refuseLinks: true },
-  );
+  return new FolderFiles(besideFolder(path), undefined, { refuseLinks: true });
+}
+
+/** The database of the pod in the folder, in the folder of its answers: `pod.db`, or the path `name` there. */
+export function databaseBeside(
+  path: string,
+  name: string = DATABASE_BESIDE,
+): BesideDatabase {
+  return databaseAt(join(besideFolder(path), ...name.split("/")));
 }
 
 const PACKAGE = fileURLToPath(new URL("../../../", import.meta.url));
@@ -151,8 +163,8 @@ async function resolve(): Promise<ResolvedParts> {
  * The parts with what a pod in a folder keeps beside it: its answers, when a packed build of the runtime at a commit
  * computes them, and its build wherever the runtime (N7) and the components it runs are each at a commit, since the
  * build's hash names the runtime by its IRI; a checkout's build under its built code too, which no commit holds, so code
- * built before a pull or a switch of branch keeps no build under the new commit's name. A runtime with changes outside a
- * commit keeps neither.
+ * built before a pull or a switch of branch keeps no build under the new commit's name. Wherever either is kept, so is the
+ * pod's database. A runtime with changes outside a commit keeps none of them.
  */
 export async function keptBeside<
   P extends {
@@ -163,12 +175,23 @@ export async function keptBeside<
   parts: P,
   version: string,
   code: () => Promise<string>,
-): Promise<P & Pick<Parts, "answers" | "builtBeside" | "builtCode">> {
+): Promise<
+  P & Pick<Parts, "answers" | "builtBeside" | "builtCode" | "databaseBeside">
+> {
   const clean = parts.local.resolved.uncommitted === 0;
   if (clean && /-commit-[0-9a-f]+$/.test(version))
-    return { ...parts, answers: { runtime: version, at: answersBeside } };
+    return {
+      ...parts,
+      answers: { runtime: version, at: answersBeside },
+      databaseBeside,
+    };
   return clean && !parts.performer.includes("#")
-    ? { ...parts, builtBeside: answersBeside, builtCode: await code() }
+    ? {
+        ...parts,
+        builtBeside: answersBeside,
+        builtCode: await code(),
+        databaseBeside,
+      }
     : parts;
 }
 

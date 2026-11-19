@@ -9,6 +9,11 @@ export * from "./crate.js";
 export type { KeptSet } from "./kept-set.js";
 export { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
 export * from "./database.js";
+export {
+  type BesideDatabase,
+  DATABASE_BESIDE,
+  DATABASE_KEY_BESIDE,
+} from "./pod-database.js";
 export * from "./dataset.js";
 export * from "./features.js";
 export * from "./derive.js";

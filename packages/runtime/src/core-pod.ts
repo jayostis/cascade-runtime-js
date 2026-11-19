@@ -46,7 +46,13 @@ import {
   fileDigest,
   snapshotName,
 } from "./names.js";
-import { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
+import {
+  type BuildChange,
+  type Change,
+  KeptBuild,
+  type Rebuilding,
+} from "./incremental.js";
+import { type BesideDatabase, PodDatabase } from "./pod-database.js";
 import { type Act, same, StepWrites } from "./pod.js";
 import {
   iri,
@@ -126,6 +132,12 @@ export interface CorePodOptions {
    */
   readonly besidePod?: Files;
   /**
+   * The database kept beside the pod, `pod.db`, by its path. Given, with `besidePod` and a build kept across steps, it is
+   * built whole from the build at `keepBuild` when it is absent or its ledger names another hash than the build's, and
+   * kept current after each step, once the step's files are written; a failure only leaves it to be built whole.
+   */
+  readonly database?: BesideDatabase;
+  /**
    * What the code that runs is, by its bytes, where `runtime` does not name it exactly, as for a runtime run from a
    * checkout, whose built code is not committed; the hash of what a build read names it too.
    */
@@ -170,6 +182,13 @@ export interface PodBuildOption {
   readonly verify?: boolean;
   /** The quads the matcher's views may remove from the kept build's store and add again before it is renewed. */
   readonly renewAfterMoved?: number;
+}
+
+/** What the next rebuild changes of the kept build, recorded for the database beside the pod that holds it. */
+interface DatabaseRecording {
+  readonly built: KeptBuild;
+  readonly database: PodDatabase;
+  readonly changes: BuildChange[];
 }
 
 /** A writer's last snapshot: its name and its set hash, and what it keeps of the set it hashed. */
@@ -563,6 +582,11 @@ export class CorePod {
    * was built from and the digest of each file the build wrote.
    */
   #besideKept: string | undefined;
+  /** The database beside the pod, opened when first needed; none where it is not kept or does not open. */
+  #database: Promise<PodDatabase | undefined> | undefined;
+  #databaseOpened: PodDatabase | undefined;
+  /** The kept build the database beside the pod holds as it stands, under `#builtHash`; none when it may hold another. */
+  #databaseHolds: KeptBuild | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -677,6 +701,7 @@ export class CorePod {
     const { pod, layout, address, build, time } = this.#options;
     this.#release();
     this.#dropBuilt();
+    (await this.#openDatabase())?.forget();
     if (build === undefined) return;
     const store = this.#options.newStore();
     let stated: Awaited<ReturnType<typeof podStated>>;
@@ -726,11 +751,116 @@ export class CorePod {
     await this.#withBuilt();
     const inputsHash = this.#toKeep;
     const built = this.#built;
-    if (inputsHash === undefined || built === undefined) return;
-    await timedAside("core-pod.keepBuild", () =>
-      this.#keepBeside(inputsHash, built),
+    if (built === undefined) return;
+    let dumping: Promise<Uint8Array> | undefined;
+    const dumped = () => (dumping ??= built.union.store.dump());
+    if (inputsHash !== undefined) {
+      await timedAside("core-pod.keepBuild", () =>
+        this.#keepBeside(inputsHash, built, dumped),
+      );
+      if (this.#built === built) this.#toKeep = undefined;
+    }
+    await timedAside("core-pod.keepDatabase", () =>
+      this.#keepDatabase(built, dumped),
     );
-    if (this.#built === built) this.#toKeep = undefined;
+  }
+
+  /** The database beside the pod, opened once; none where none is kept, or where it does not open. */
+  #openDatabase(): Promise<PodDatabase | undefined> {
+    const { database, besidePod, vocabulary } = this.#options;
+    if (database === undefined || besidePod === undefined)
+      return Promise.resolve(undefined);
+    if (this.#database === undefined) {
+      const opening = PodDatabase.opened(database, besidePod, vocabulary).then(
+        (opened) => (this.#databaseOpened = opened),
+        () => {
+          if (this.#database === opening) this.#database = undefined;
+          return undefined;
+        },
+      );
+      this.#database = opening;
+    }
+    return this.#database;
+  }
+
+  /**
+   * Builds the database beside the pod whole from the kept build, when its ledger names another hash than the build's
+   * or it was never built; a failure leaves it to be built whole the next time.
+   */
+  async #keepDatabase(
+    built: KeptBuild,
+    dumped: () => Promise<Uint8Array>,
+  ): Promise<void> {
+    const hash = this.#builtHash;
+    if (hash === undefined || this.#built !== built) return;
+    const database = await this.#openDatabase();
+    if (database === undefined) return;
+    if (database.fingerprint !== hash) {
+      this.#databaseHolds = undefined;
+      try {
+        const dump = await dumped();
+        await timedAside("core-pod.keepDatabase.whole", () =>
+          database.builtWhole(dump, built.union.graphs, hash),
+        );
+      } catch {
+        return;
+      }
+    }
+    this.#databaseHolds = built;
+  }
+
+  /**
+   * The database beside the pod and the record of what the next rebuild changes of the kept build, when the database
+   * holds that build as it stands: its ledger names the build's hash. None where it does not, or where finding out
+   * fails, so the step goes on and the database is built whole when next kept.
+   */
+  async #recordingForDatabase(): Promise<DatabaseRecording | undefined> {
+    try {
+      return await this.#recordingFor();
+    } catch {
+      this.#databaseHolds = undefined;
+      return undefined;
+    }
+  }
+
+  async #recordingFor(): Promise<DatabaseRecording | undefined> {
+    const built = this.#built;
+    const hash = this.#builtHash;
+    if (built === undefined || hash === undefined) return undefined;
+    const database = await this.#openDatabase();
+    if (database === undefined) return undefined;
+    if (this.#databaseHolds !== built) {
+      if (database.fingerprint !== hash) return undefined;
+      this.#databaseHolds = built;
+    }
+    const changes: BuildChange[] = [];
+    built.recording = changes;
+    return { built, database, changes };
+  }
+
+  /**
+   * After the rebuild, whose files are written, the database beside the pod kept current by keyed writes of what it
+   * changed, in one transaction with its ledger; where the build was made whole instead, or the write fails, the
+   * ledger still names the hash before the step and the database is built whole when next kept.
+   */
+  async #databaseKeptCurrent(
+    recorded: DatabaseRecording | undefined,
+  ): Promise<void> {
+    if (recorded === undefined) return;
+    const { built, database, changes } = recorded;
+    built.recording = undefined;
+    const hash = this.#builtHash;
+    if (this.#built !== built || hash === undefined) {
+      this.#databaseHolds = undefined;
+      return;
+    }
+    try {
+      await timedAside("core-pod.step.database", () =>
+        database.applied(changes, built.unionAsItStands, hash),
+      );
+    } catch {
+      this.#databaseHolds = undefined;
+    }
   }
 
   /**
@@ -743,6 +873,9 @@ export class CorePod {
     this.#pending = undefined;
     this.#release();
     this.#dropBuilt();
+    this.#databaseOpened?.close();
+    this.#databaseOpened = undefined;
+    this.#database = undefined;
   }
 
   /**
@@ -792,7 +925,10 @@ export class CorePod {
     );
   }
 
-  /** The build rebuilt after a step, or after the steps that left it. */
+  /**
+   * The build rebuilt after a step, or after the steps that left it; then, its files written, the database beside the
+   * pod kept current with it.
+   */
   async #rebuilt(
     kind: string,
     at: string | undefined,
@@ -801,6 +937,11 @@ export class CorePod {
   ): Promise<void> {
     const { build } = this.#options;
     if (build === undefined) return;
+    if (this.#built === undefined && change.written.length === 0)
+      await timedAside("core-pod.step.readBack", () =>
+        this.#readBack().catch(() => undefined),
+      );
+    const recorded = await this.#recordingForDatabase();
     try {
       await timedAside(`core-pod.step.rebuild:${kind}`, () =>
         this.#rebuild(build, at, change),
@@ -811,7 +952,9 @@ export class CorePod {
       throw new BuildFailure(performed, error);
     } finally {
       this.#builtBefore = undefined;
+      if (recorded !== undefined) recorded.built.recording = undefined;
     }
+    await this.#databaseKeptCurrent(recorded);
   }
 
   /** Each built file's lines by the triple each writes, kept while the build is: a step's rebuild hands back the triples that did not change as they were. */
@@ -826,6 +969,7 @@ export class CorePod {
     this.#builtDigests = new Map();
     this.#toKeep = undefined;
     this.#movedInBuilt = 0;
+    this.#databaseHolds = undefined;
   }
 
   /**
@@ -1535,6 +1679,7 @@ export class CorePod {
       -readonly [K in keyof CorePodOptions]: CorePodOptions[K];
     } = { ...this.#options };
     delete options.besidePod;
+    delete options.database;
     const fork = new CorePod({
       ...options,
       pod: await copied(this.#options.pod),
@@ -1558,6 +1703,7 @@ export class CorePod {
       pod: await copied(this.#options.pod),
       head: undefined,
       keepHead: undefined,
+      database: undefined,
     });
     writer.#references = this.#references;
     writer.#hashed = this.#hashed?.copy();
@@ -1646,6 +1792,15 @@ export class CorePod {
     let change: Change | undefined = { written: [], everything };
     try {
       this.#performing = true;
+      if (
+        !deferred &&
+        !everything &&
+        this.#built === undefined &&
+        this.#head !== undefined
+      )
+        await timedAside("core-pod.step.readBack", () =>
+          this.#readBack().catch(() => undefined),
+        );
       const activity = await timedAside("core-pod.step.perform", () =>
         perform({
           address: options.address,
@@ -2320,7 +2475,11 @@ export class CorePod {
    * bytes, and the union's graphs; a failure keeps nothing, and so does a build that does not know those bytes, and the
    * pod is built whole when next opened.
    */
-  async #keepBeside(inputsHash: string, built: KeptBuild): Promise<void> {
+  async #keepBeside(
+    inputsHash: string,
+    built: KeptBuild,
+    dumped: () => Promise<Uint8Array>,
+  ): Promise<void> {
     const { besidePod, layout } = this.#options;
     if (besidePod === undefined) return;
     const views = new Set(layout.views.map(({ file }) => file));
@@ -2335,9 +2494,7 @@ export class CorePod {
     if (kept === this.#besideKept) return;
     let store: Uint8Array;
     try {
-      store = await timedAside("core-pod.keepBuild.dump", () =>
-        built.union.store.dump(),
-      );
+      store = await timedAside("core-pod.keepBuild.dump", dumped);
     } catch {
       return;
     }
