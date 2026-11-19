@@ -18,10 +18,13 @@ import { after, before, describe, it } from "node:test";
 import {
   blank,
   canonical,
+  CorePod,
   type DeriveKey,
   EncryptedFiles,
+  type Files,
   iri,
   literal,
+  type Store,
   type Term,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -563,6 +566,273 @@ process.exit(0);`,
           !bytes.includes(Buffer.from(key ?? [])),
           `${file} holds the key`,
         );
+      }
+    });
+  });
+});
+
+const LABS = "pod/My lab results";
+const CONDITIONS = "pod/My active conditions";
+/** A question of the vocabulary's that has no `.sql` beside its `.rq`. */
+const NO_SQL = "pod/What each folder holds";
+
+/** The parts with no database beside the pod and no answers kept: every question is asked of the store. */
+function storeOnly(given: Parts): Parts {
+  const {
+    databaseBeside: _database,
+    answers: _answers,
+    ...rest
+  } = given;
+  return { ...rest, builtBeside: answersBeside };
+}
+
+/** The name of each question of the vocabulary with a `.sql` beside its `.rq`. */
+async function sqlQuestions(): Promise<string[]> {
+  const folder = "queries/questions/";
+  return (await parts.vocabulary.list(folder))
+    .filter((path) => path.endsWith(".sql"))
+    .map((path) => path.slice(folder.length, -".sql".length))
+    .sort();
+}
+
+/**
+ * The parts with each store they make counted as it loads statements, by a restore of a kept build, a file loaded or
+ * triples added, and each `CorePod.dataset()` counted, the store read whole.
+ */
+function counting(given: Parts) {
+  const loads = { restored: 0, files: 0, triples: 0, datasets: 0 };
+  const counted: Record<string, (args: readonly unknown[]) => void> = {
+    restore: () => (loads.restored += 1),
+    loadTurtle: () => (loads.files += 1),
+    loadFiles: ([files]) => (loads.files += [...(files as unknown[])].length),
+    add: ([triples]) => (loads.triples += [...(triples as unknown[])].length),
+  };
+  const newStore = (): Store =>
+    new Proxy(given.newStore(), {
+      get(target, name) {
+        const value: unknown = Reflect.get(target, name, target);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (typeof name === "string") counted[name]?.(args);
+          return (value as (...given: unknown[]) => unknown).apply(
+            target,
+            args,
+          );
+        };
+      },
+    });
+  const dataset = CorePod.prototype.dataset;
+  CorePod.prototype.dataset = function (this: CorePod, lens: string) {
+    loads.datasets += 1;
+    return dataset.call(this, lens);
+  };
+  return {
+    parts: { ...given, newStore },
+    loads,
+    restore: () => {
+      CorePod.prototype.dataset = dataset;
+    },
+  };
+}
+
+/** The parts with every write to a pod's files held at a gate, once `reached` says the first write came to it. */
+function writesHeld(given: Parts) {
+  let release = (): void => undefined;
+  const gate = new Promise<void>((open) => (release = open));
+  let reach = (): void => undefined;
+  const reached = new Promise<void>((came) => (reach = came));
+  const held = (files: Files): Files => ({
+    ...files,
+    iri: files.iri,
+    read: (path) => files.read(path),
+    list: (folder) => files.list(folder),
+    write: async (path, bytes) => {
+      reach();
+      await gate;
+      return files.write(path, bytes);
+    },
+    ...(files.writeAll === undefined
+      ? {}
+      : {
+          writeAll: async (written) => {
+            reach();
+            await gate;
+            return files.writeAll!(written);
+          },
+        }),
+  });
+  return {
+    parts: {
+      ...given,
+      folder: (path: string, iri?: string) => {
+        const folder = given.folder(path, iri);
+        return { ...folder, files: held(folder.files) };
+      },
+    } satisfies Parts,
+    reached,
+    release: () => release(),
+  };
+}
+
+/**
+ * A pod opened again answers a named question that has a `.sql` beside its `.rq` from `pod.db`, its rows those the store
+ * gives, a page at a time when asked for one, without building the store, waiting for a step, or keeping answers.
+ */
+describe("Answering a pod's questions from its database, a page at a time · pod.ask(), pod.askPage()", () => {
+  describe("given a pod imported into and closed, opened again", () => {
+    it("answers My lab results without reading the pod whole: no dataset is read and no store loads a statement", async () => {
+      const folder = await copied(first, "asked-unloaded");
+      const watched = counting(parts);
+      try {
+        const pod = await openPodWith(watched.parts, folder);
+        try {
+          const rows = await pod.ask(LABS);
+          assert.ok(rows.length > 0, "the pod has no lab results");
+          assert.deepEqual(watched.loads, {
+            restored: 0,
+            files: 0,
+            triples: 0,
+            datasets: 0,
+          });
+        } finally {
+          await pod.close();
+        }
+      } finally {
+        watched.restore();
+      }
+    });
+
+    it("gives, for each question with a .sql, the rows the store gives a pod with no database", async () => {
+      const named = await sqlQuestions();
+      assert.ok(named.includes(LABS) && named.includes(CONDITIONS));
+      const fromDatabase = await session(
+        await copied(first, "asked-database"),
+        async (pod) => {
+          const found: Record<string, unknown> = {};
+          for (const question of named)
+            found[question] = await pod.ask(question);
+          return found;
+        },
+      );
+      assert.ok(!fromDatabase.spans.includes(KEPT_WHOLE));
+      const fromStore = await session(
+        await copied(first, "asked-store"),
+        async (pod) => {
+          const found: Record<string, unknown> = {};
+          for (const question of named)
+            found[question] = await pod.ask(question);
+          return found;
+        },
+        storeOnly(parts),
+      );
+      for (const question of named)
+        assert.deepEqual(
+          fromDatabase.result[question],
+          fromStore.result[question],
+          question,
+        );
+    });
+
+    it("gives pages of 1, 2 and 50 that join, in order, to the whole list ask gives, the last naming no next page", async () => {
+      const { result } = await session(
+        await copied(first, "asked-pages"),
+        async (pod) => {
+          const whole = await pod.ask(LABS);
+          const joined: Record<number, unknown[]> = {};
+          for (const size of [1, 2, 50]) {
+            const rows: unknown[] = [];
+            let after: string | undefined;
+            for (let asked = 0; asked <= whole.length; asked += 1) {
+              const page = await pod.askPage(LABS, {
+                size,
+                ...(after === undefined ? {} : { after }),
+              });
+              rows.push(...page.rows);
+              after = page.next;
+              if (after === undefined) break;
+            }
+            joined[size] = rows;
+          }
+          const first50 = await pod.askPage(LABS, { size: 50 });
+          return { whole, joined, first50 };
+        },
+      );
+      assert.ok(result.whole.length > 2, "too few lab results to page");
+      for (const size of [1, 2, 50])
+        assert.deepEqual(result.joined[size], result.whole, `pages of ${size}`);
+      const entries = new Set(result.first50.rows.map((row) => row.entry));
+      assert.ok(entries.size <= 50);
+    });
+
+    it("keeps no answers.json for a question with a .sql", async () => {
+      const folder = await copied(first, "asked-unkept");
+      await session(folder, async (pod) => {
+        await pod.ask(LABS);
+        await pod.ask(CONDITIONS);
+      });
+      assert.ok(!existsSync(join(besideOf(folder), "answers.json")));
+    });
+
+    it("answers a question with no .sql by building the store, the rows the store gives a pod with no database", async () => {
+      assert.ok(!(await sqlQuestions()).includes(NO_SQL));
+      const folder = await copied(first, "asked-no-sql");
+      const watched = counting(parts);
+      let rows: unknown;
+      try {
+        ({ result: rows } = await session(
+          folder,
+          (pod) => pod.ask(NO_SQL),
+          watched.parts,
+        ));
+        assert.equal(watched.loads.datasets, 1);
+      } finally {
+        watched.restore();
+      }
+      const { result: fromStore } = await session(
+        await copied(first, "asked-no-sql-store"),
+        (pod) => pod.ask(NO_SQL),
+        storeOnly(parts),
+      );
+      assert.ok(Array.isArray(rows) && rows.length > 0);
+      assert.deepEqual(rows, fromStore);
+    });
+  });
+
+  describe("while a later import is held part way, its files not yet written", () => {
+    it("answers a question with a .sql at once, with the rows from before the import, and after it with the rows of the pod it left", async () => {
+      const folder = await copied(first, "asked-held");
+      const holding = writesHeld(parts);
+      const pod = await openPodWith(holding.parts, folder);
+      try {
+        const before = await pod.ask(LABS);
+        const importing = pod.import(laterPull()[0]!, {
+          claimProfiles: claiming,
+        });
+        importing.catch(() => undefined);
+        await holding.reached;
+        const waited = Symbol("waited");
+        const during = await Promise.race([
+          pod.ask(LABS),
+          new Promise<typeof waited>((resolve) =>
+            setTimeout(() => resolve(waited), 20_000),
+          ),
+        ]);
+        holding.release();
+        await importing;
+        assert.notEqual(during, waited, "the question waited for the import");
+        assert.deepEqual(during, before);
+        const after = await pod.ask(LABS);
+        assert.ok(after.length > before.length, "the import added no lab");
+        await pod.close();
+        const { result: fromStore } = await session(
+          await copied(folder, "asked-held-store"),
+          (opened) => opened.ask(LABS),
+          storeOnly(parts),
+        );
+        assert.deepEqual(after, fromStore);
+      } finally {
+        holding.release();
+        await pod.close().catch(() => undefined);
       }
     });
   });
