@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
@@ -242,5 +242,21 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("leaves no file of the build when the database it would replace cannot be removed", async () => {
+    const path = join(folder, "taken.db");
+    await mkdir(path);
+    await writeFile(join(path, "held"), "");
+    await assert.rejects(
+      databaseAt(path).builtWhole({
+        schema,
+        views: [],
+        dump: dumpOf(2, 3),
+        graphs: graphsOf(2),
+        fingerprint: "after",
+      }),
+    );
+    assert.equal(existsSync(`${path}-build`), false);
   });
 });

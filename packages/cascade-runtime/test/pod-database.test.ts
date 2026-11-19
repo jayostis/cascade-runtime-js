@@ -353,6 +353,22 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
     });
   });
 
+  describe("given an import refused for want of its export, the first act of a later session", () => {
+    it("rebuilds from the build kept beside the pod, building neither the pod nor pod.db whole", async () => {
+      const refused = await copied(first, "refused");
+      const { result, spans } = await session(refused, (pod) =>
+        pod.import(join(pods, "no-such-export")),
+      );
+      assert.ok(result.refused !== undefined, JSON.stringify(result));
+      assert.ok(!spans.includes(KEPT_WHOLE), spans.join(", "));
+      assert.ok(!spans.includes(WHOLE), spans.join(", "));
+      assert.deepEqual(
+        await canonicalGraphs(readDatabase(refused, statementsIn)),
+        await canonicalGraphs(await builtStatements(refused)),
+      );
+    });
+  });
+
   describe("given a fingerprint other than the one pod.db was built under", () => {
     it("builds pod.db whole again, holding each statement of the build kept beside the pod", async () => {
       const refingered = await copied(first, "refingered");

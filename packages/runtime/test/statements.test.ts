@@ -15,7 +15,7 @@ import {
   sqlTest,
   vectorFailures,
 } from "../src/sql-check.js";
-import { iri, literal } from "../src/rdf.js";
+import { iri, literal, type Term } from "../src/rdf.js";
 import { Union } from "../src/store.js";
 import {
   askedOf,
@@ -63,6 +63,123 @@ CREATE TABLE IF NOT EXISTS asked (term INTEGER PRIMARY KEY) STRICT;`,
     "test",
   );
   return pod;
+}
+
+/** Literals of each datatype Oxigraph's store reads into a value, each `[datatype, lexical form]`, some it cannot read. */
+const LITERALS: readonly (readonly [string, string])[] = [
+  ["dateTime", "2026-11-19T08:25:01.710Z"],
+  ["dateTime", "2026-11-19T08:25:01.000+00:00"],
+  ["dateTime", "2026-11-19T08:25:01.500-00:00"],
+  ["dateTime", "2026-11-19T08:25:01.500+05:30"],
+  ["dateTime", "2026-11-19T08:25:01"],
+  ["dateTime", "2024-02-29T10:00:00.000Z"],
+  ["dateTime", "2025-02-29T10:00:00.000Z"],
+  ["dateTime", "2025-02-29T10:00:00+00:00"],
+  ["dateTime", "1900-02-29T00:00:00.10Z"],
+  ["dateTime", "2000-02-29T00:00:00.10Z"],
+  ["dateTime", "0000-02-29T00:00:00.10Z"],
+  ["dateTime", "-0004-02-29T00:00:00.10Z"],
+  ["dateTime", "-0001-02-29T00:00:00.10Z"],
+  ["dateTime", "-0001-01-01T00:00:00Z"],
+  ["dateTime", "-0000-01-01T00:00:00Z"],
+  ["dateTime", "12026-01-01T00:00:00.10Z"],
+  ["dateTime", "02026-01-01T00:00:00.10Z"],
+  ["dateTime", "-02026-01-01T00:00:00.10Z"],
+  ["dateTime", "2026-01-01T24:00:00Z"],
+  ["dateTime", "2026-12-31T24:00:00.0Z"],
+  ["dateTime", "2026-01-01T24:00:00.1Z"],
+  ["dateTime", "2026-01-01T00:00:60Z"],
+  ["dateTime", "2026-01-01T00:00:00.123456789012345678Z"],
+  ["dateTime", "2026-01-01T00:00:00.1234567890123456780Z"],
+  ["dateTime", "2026-01-01T00:00:00.1234567890123456789Z"],
+  ["dateTime", "2026-01-01T10:00:00.50+14:00"],
+  ["dateTime", "2026-01-01T10:00:00.50-14:00"],
+  ["dateTime", "2026-01-01T10:00:00.50+14:01"],
+  ["dateTime", "2026-01-01T10:00:00.50+15:00"],
+  ["dateTime", "2026-01-01T10:00:00.50+05:59"],
+  ["dateTime", "2026-01-01T10:00:00.50+05:60"],
+  ["dateTime", "2026-11-19T08:25:01.710z"],
+  ["dateTime", "2026-01-01T00:00:00."],
+  ["dateTimeStamp", "2026-11-19T08:25:01.710+00:00"],
+  ["dateTimeStamp", "2025-02-29T00:00:00.10Z"],
+  ["time", "08:25:01.100Z"],
+  ["time", "08:25:01.00-00:00"],
+  ["time", "24:00:00"],
+  ["time", "24:00:00.5"],
+  ["time", "10:00:00.10+15:00"],
+  ["date", "2026-11-19-00:00"],
+  ["date", "2026-11-19+05:00"],
+  ["date", "2024-02-29-00:00"],
+  ["date", "2026-02-29-00:00"],
+  ["date", "2025-02-30+00:00"],
+  ["date", "2026-04-31"],
+  ["date", "-0000-01-01"],
+  ["gYear", "2026+00:00"],
+  ["gYear", "-0001-00:00"],
+  ["gYear", "02026+00:00"],
+  ["gYear", "2026+15:00"],
+  ["gYearMonth", "2026-01+00:00"],
+  ["gYearMonth", "2026-13+00:00"],
+  ["gMonth", "--12-00:00"],
+  ["gMonth", "--13+00:00"],
+  ["gDay", "---01+00:00"],
+  ["gDay", "---00+00:00"],
+  ["gMonthDay", "--02-29+00:00"],
+  ["gMonthDay", "--02-28+00:00"],
+  ["gMonthDay", "--04-31+00:00"],
+  ["integer", "+5"],
+  ["integer", "-0"],
+  ["integer", "99999999999999999999"],
+  ["integer", " 5"],
+  ["int", "05"],
+  ["int", "abc"],
+  ["long", "9223372036854775807"],
+  ["long", "9223372036854775808"],
+  ["nonNegativeInteger", "5"],
+  ["byte", "1000"],
+  ["decimal", "+1.50"],
+  ["decimal", ".5"],
+  ["decimal", "1.1234567890123456789"],
+  ["boolean", "1"],
+  ["boolean", "True"],
+  ["double", "1.0E0"],
+  ["double", "1.0E2"],
+  ["double", "1e21"],
+  ["double", "-0"],
+  ["double", "1E400"],
+  ["double", "abc"],
+  ["float", "1.50"],
+  ["float", "16777217"],
+  ["duration", "P1Y0M"],
+  ["duration", "P1DT24H"],
+  ["dayTimeDuration", "PT60S"],
+  ["dayTimeDuration", "P1Y"],
+  ["yearMonthDuration", "P12M"],
+  ["string", "2026-01-01T00:00:00.10Z"],
+  ["anyURI", "urn:x:a"],
+];
+
+/** Each of `LITERALS` as the runtime makes it, and each as a statement of Oxigraph's own N-Triples once its store holds it. */
+async function heldByOxigraph(): Promise<{ made: Term[]; held: string[] }> {
+  const made = LITERALS.map(([type, value]) => literal(value, `${XSD}${type}`));
+  const store = new OxigraphStore();
+  try {
+    await store.add(
+      made.map((object, at) => [iri(`urn:x:s${at}`), iri("urn:x:p"), object]),
+      { graph: "urn:x:g" },
+    );
+    const lines = new TextDecoder().decode(await store.dump()).split("\n");
+    return {
+      made,
+      held: made.map((_, at) => {
+        const line = lines.find((found) => found.startsWith(`<urn:x:s${at}> `));
+        assert.ok(line !== undefined, `the store holds no statement of ${at}`);
+        return line.replace(/ <urn:x:g> \.$/, " .");
+      }),
+    };
+  } finally {
+    store.free?.();
+  }
 }
 
 /** A screen of one table, each entry and its record, whose fill clears the whole table when `clearsAll`. */
@@ -394,32 +511,39 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
     }
   });
 
-  it("writes a time, date or dateTime the runtime made as Oxigraph's store holds it: trailing zeros of its seconds dropped, a zero offset as Z", async () => {
-    const made = [
-      ["dateTime", "2026-11-19T08:25:01.710Z"],
-      ["dateTime", "2026-11-19T08:25:01.000Z"],
-      ["dateTime", "2026-11-19T08:25:01+00:00"],
-      ["dateTime", "2026-11-19T08:25:01.500-05:00"],
-      ["time", "08:25:01.100Z"],
-      ["date", "2026-11-19-00:00"],
-    ].map(([type, value]) => literal(value ?? "", `${XSD}${type}`));
-    const store = new OxigraphStore();
+  it("writes each literal the runtime made as Oxigraph's store holds it, and one Oxigraph cannot read as it was written", async () => {
+    const { made, held } = await heldByOxigraph();
+    assert.deepEqual(
+      made.map((object, at) => `<urn:x:s${at}> <urn:x:p> ${heldNt(object)} .`),
+      made.map((_, at) =>
+        held.find((line) => line.startsWith(`<urn:x:s${at}> `)),
+      ),
+    );
+  });
+
+  it("loads Oxigraph's own N-Triples of each literal, a calendar value it keeps as written among them", async () => {
+    const { held } = await heldByOxigraph();
+    const pod = openDatabase(":memory:");
     try {
-      await store.add(
-        made.map((object, at) => [iri(`urn:x:s${at}`), iri("urn:x:p"), object]),
-        { graph: "urn:x:g" },
+      loadStatements(
+        pod,
+        await readText(await vocabulary(), STATEMENTS_SCHEMA),
+        [{ graph: "urn:x:g", ntriples: held.join("\n") }],
+        "test",
       );
-      const held = new TextDecoder().decode(await store.dump()).split("\n");
-      assert.deepEqual(
-        made.map(
-          (object, at) => `<urn:x:s${at}> <urn:x:p> ${heldNt(object)} .`,
-        ),
-        made.map((_, at) =>
-          held.find((line) => line.startsWith(`<urn:x:s${at}> `)),
-        ),
+      const objects = new Set(
+        pod
+          .prepare("SELECT t.nt AS nt FROM quad JOIN term t ON t.id = quad.o")
+          .all()
+          .map((row) => String(row.nt)),
       );
+      for (const line of held)
+        assert.ok(
+          objects.has(line.slice(line.indexOf("> <urn:x:p> ") + 12, -2)),
+          line,
+        );
     } finally {
-      store.free?.();
+      pod.close();
     }
   });
 
