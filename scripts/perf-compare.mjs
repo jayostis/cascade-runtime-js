@@ -8,28 +8,29 @@
 //   perf-compare.mjs history --name <glob> [--since 7d] [--dir <folder of files>]
 //
 // A name's glob uses `*` for any run of characters, `/` included. History reads every `*.json` under the folder (the
-// `perf-data` branch's `runtime/YYYY/MM/DD/<run>-<sha7>.json`), oldest first.
+// `perf-data` branch's `runtime/YYYY/MM/DD/<run>-<sha7>-<event>.json`), oldest first.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-/** What a row is, from its name: a stage of the probed run, a count, or a headline time or size. */
+/** What a row is, from its name: a stage of the probed run (its total included), a count, or a headline time or size. */
 export function kindOf(name) {
-  if (/\/stage\//.test(name)) return "stage";
+  if (/\/stage\//.test(name) || /\/probed-total$/.test(name)) return "stage";
   if (/\/count\//.test(name)) return "count";
   return "headline";
 }
 
-/** A value as a person reads it: seconds with a unit that fits, bytes as MB, counts with thousands separators. */
+/** A value as a person reads it: seconds with a unit that fits, bytes as MiB, counts with thousands separators. */
 export function shown(value, unit) {
   if (value === undefined) return "";
-  if (unit === "By") return `${(value / 1048576).toFixed(0)} MB`;
+  if (unit === "By") return `${(value / 1048576).toFixed(0)} MiB`;
   if (unit === "{count}") return value.toLocaleString("en-US");
   if (value >= 100) return `${value.toFixed(0)} s`;
   if (value >= 10) return `${value.toFixed(1)} s`;
   if (value >= 1) return `${value.toFixed(2)} s`;
+  if (value < 0.001) return `${(value * 1_000_000).toFixed(0)} us`;
   return `${(value * 1000).toFixed(value >= 0.1 ? 0 : 1)} ms`;
 }
 
@@ -62,14 +63,21 @@ export function read(path) {
 
 const byName = (file) => new Map(file.results.map((row) => [row.name, row]));
 
-/** The sentence about two files' environments, empty when they match: a comparison across machines says so. */
+/**
+ * The sentence about two files' environments, empty when they match: a comparison across machines says so. Machines are
+ * told apart by operating system, processor count and processor model: the kernel's release, the job's name and the
+ * node patch version differ between runs on one kind of machine and say nothing about the time.
+ */
 export function environmentNote(before, after) {
-  const differs = ["os", "cpus", "node"].filter(
-    (key) => before.env?.[key] !== after.env?.[key],
-  );
-  const machine = (file) =>
-    (file.env?.runner ?? "").split(";").slice(0, 2).join(";");
-  if (machine(before) !== machine(after)) differs.push("runner");
+  const system = (file) => (file.env?.os ?? "").split(" ")[0];
+  const model = (file) => (file.env?.runner ?? "").split(";")[1]?.trim();
+  const major = (file) => (file.env?.node ?? "").split(".")[0];
+  const differs = [
+    ...(system(before) !== system(after) ? ["os"] : []),
+    ...(before.env?.cpus !== after.env?.cpus ? ["cpus"] : []),
+    ...(model(before) !== model(after) ? ["cpu model"] : []),
+    ...(major(before) !== major(after) ? ["node"] : []),
+  ];
   return differs.length === 0
     ? ""
     : `The two files were taken on different ${differs.join(", ")}; times do not compare across them.`;
@@ -114,11 +122,25 @@ function table(header, lines, markdown) {
 
 /** The report of two files: headline rows, then the counts that changed, then the stages that changed most. */
 export function compare(before, after, { markdown = false, stages = 15 } = {}) {
-  const was = byName(before);
+  // A scenario and size the after file did not run (the nightly's large one, against a pull request's) is not a row gone.
+  const ran = new Set(after.results.map(({ name }) => name.split("/")[0]));
+  const left = before.results.filter(
+    ({ name }) => !ran.has(name.split("/")[0]),
+  );
+  const was = byName({
+    results: before.results.filter(({ name }) => ran.has(name.split("/")[0])),
+  });
   const now = byName(after);
   const out = [];
   const note = environmentNote(before, after);
   if (note) out.push(markdown ? `> ${note}` : note, "");
+  if (left.length > 0) {
+    const sizes = [...new Set(left.map(({ name }) => name.split("/")[0]))];
+    out.push(
+      `${markdown ? "> " : ""}Not compared, because the after file did not run them: ${sizes.join(", ")}.`,
+      "",
+    );
+  }
   const head = (title) =>
     out.push(markdown ? `**${title}**` : title.toUpperCase(), "");
   const rowsOf = (kind) => {
@@ -225,7 +247,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
     .slice(0, stages);
   if (moved.length > 0) {
     head(
-      `Stages that moved most (one probed run each: a stage is slower than the same work unprobed, and is one sample)`,
+      `Stages that moved most (one probed run each, so one sample, and slower than the same work unprobed; a stage's time is the time some call of it was in progress)`,
     );
     out.push(
       table(
@@ -280,7 +302,7 @@ export function summary(file, { markdown = false, stages = 10 } = {}) {
     const top = rows
       .filter((row) => !/\/stage\/scenario\./.test(row.name))
       .sort((a, b) => b.value - a.value)
-      .slice(0, stages);
+      .slice(0, stages + 1);
     out.push(
       markdown
         ? `**${group}: slowest stages (one probed run)**`
@@ -291,7 +313,7 @@ export function summary(file, { markdown = false, stages = 10 } = {}) {
       table(
         ["stage", "time"],
         top.map((row) => [
-          row.name.split("/stage/")[1],
+          row.name.split("/stage/")[1] ?? "(probed total of the run's steps)",
           shown(row.value, row.unit),
         ]),
         markdown,

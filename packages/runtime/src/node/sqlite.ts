@@ -139,6 +139,11 @@ export interface WholeBuildJob {
   readonly profile?: boolean;
 }
 
+/** The job for building `path`: it asks for the steps to be timed only while probing, and carries no such flag otherwise. */
+export function wholeBuildJob(path: string, whole: WholeBuild): WholeBuildJob {
+  return { path, whole, ...(probed() && { profile: true }) };
+}
+
 /** What that worker answers once the file is built and closed, or why it was not. */
 export interface WholeBuildDone {
   readonly error?: string;
@@ -220,11 +225,7 @@ export function databaseAt(path: string): BesideDatabase {
       await mkdir(dirname(path), { recursive: true });
       try {
         await timedAside("pod-database.build.worker", () =>
-          builtInWorker({
-            path: building,
-            whole,
-            ...(probed() && { profile: true }),
-          }),
+          builtInWorker(wholeBuildJob(building, whole)),
         );
         await timedAside("pod-database.build.sync", () =>
           synced(building, "r+"),
