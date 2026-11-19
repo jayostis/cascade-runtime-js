@@ -10,6 +10,8 @@ import {
   ledgerFingerprint,
   ledgerNamed,
   loadStatements,
+  PAGE_KEY,
+  parsedNt,
   sqlDatabaseFunctions,
   sqlParts,
   sqlStatements,
@@ -30,6 +32,21 @@ const RUN_PARTS = ["fill", "finish"] as const;
 const GRAPHS_AT_ONCE = 256;
 /** The statistics the screens' statements are planned by, taken once the statements are loaded. */
 const ANALYZED = "ANALYZE;";
+
+/** A page of a list question: how many entries, and the key of the entry it follows; none for the first page. */
+export interface PageAsked {
+  readonly size: number;
+  readonly after?: string;
+}
+
+/**
+ * A question's rows as its `.sql` gives them from the database: each a term's value by its column, an unbound one left
+ * out; for a page of a list question, the key to ask the next page after, none on the last.
+ */
+export interface DatabaseAnswer {
+  readonly rows: Readonly<Record<string, string>>[];
+  readonly next?: string;
+}
 
 /** The vocabulary's statements schema and each view's screen, the parts of its `.sql`, sorted by path. */
 export interface Screens {
@@ -137,6 +154,10 @@ export class PodDatabase {
   #db: Database;
   /** Each part run on this connection, its statements compiled the first time it runs and run again as compiled. */
   #compiled = new Map<string, Statement[]>();
+  /** Each question's statement, by its `.sql`, prepared on this connection the first time the question is asked. */
+  #asked = new Map<string, Statement>();
+  /** Whether the connection is closed, for a build whole or for good, so that nothing is asked of it. */
+  #shut = false;
 
   private constructor(
     beside: BesideDatabase,
@@ -225,8 +246,10 @@ export class PodDatabase {
     graphs: ReadonlySet<string>,
     fingerprint: string,
   ): Promise<void> {
+    this.#shut = true;
     this.#db.close();
     this.#compiled = new Map();
+    this.#asked = new Map();
     try {
       await this.#beside.builtWhole({
         ...this.#screens,
@@ -240,7 +263,57 @@ export class PodDatabase {
         ...(this.#key === undefined ? {} : { key: this.#key }),
         functions: this.#functions,
       });
+      this.#shut = false;
     }
+  }
+
+  /**
+   * The rows a question's `.sql` gives, asked of the whole pod: a list question's whole list, or, given a page, its
+   * first `size` entries after the key, and the key of the last of them when another entry follows; a question that
+   * is no list gives all its rows whatever the page. The statement is prepared the first time the question is asked.
+   * None while the connection is closed, as during a build whole.
+   */
+  answer(sql: string, page?: PageAsked): DatabaseAnswer | undefined {
+    if (this.#shut) return undefined;
+    let statement = this.#asked.get(sql);
+    if (statement === undefined) {
+      statement = this.#db.prepare(sql);
+      this.#asked.set(sql, statement);
+    }
+    const named = statement.columns();
+    const paged = named.at(-1) === PAGE_KEY;
+    const columns = paged ? named.slice(0, -1) : named;
+    const found = paged
+      ? statement.all({
+          page_size: page === undefined ? null : page.size + 1,
+          after: page?.after ?? null,
+        })
+      : statement.all();
+    const keys = found.map((row) => row[PAGE_KEY]);
+    let next: string | undefined;
+    let end = found.length;
+    if (paged && page !== undefined) {
+      const entries = [...new Set(keys)];
+      if (entries.length > page.size) {
+        const beyond = entries[page.size];
+        end = keys.indexOf(beyond);
+        next = String(entries[page.size - 1]);
+      }
+    }
+    const rows = found.slice(0, end).map((row) => {
+      const values: Record<string, string> = {};
+      for (const column of columns) {
+        const value = row[column];
+        if (value === null || value === undefined) continue;
+        if (typeof value !== "string")
+          throw new TypeError(
+            `the column ${column} gives ${String(value)}, no N-Triples term`,
+          );
+        values[column] = parsedNt(value).value;
+      }
+      return values;
+    });
+    return next === undefined ? { rows } : { rows, next };
   }
 
   /**
@@ -308,6 +381,7 @@ export class PodDatabase {
 
   /** Ends the connection, writing back what the write-ahead log holds. */
   close(): void {
+    this.#shut = true;
     this.#db.close();
   }
 }

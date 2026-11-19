@@ -52,7 +52,12 @@ import {
   KeptBuild,
   type Rebuilding,
 } from "./incremental.js";
-import { type BesideDatabase, PodDatabase } from "./pod-database.js";
+import {
+  type BesideDatabase,
+  type DatabaseAnswer,
+  type PageAsked,
+  PodDatabase,
+} from "./pod-database.js";
 import { type Act, same, StepWrites } from "./pod.js";
 import {
   iri,
@@ -587,6 +592,12 @@ export class CorePod {
   #databaseOpened: PodDatabase | undefined;
   /** The kept build the database beside the pod holds as it stands, under `#builtHash`; none when it may hold another. */
   #databaseHolds: KeptBuild | undefined;
+  /**
+   * The database beside the pod when it holds the pod as the last step left it, or as it was opened: its ledger names
+   * the hash of what a build of the pod as it stands reads (S10). Found before the first step or question that needs
+   * it, and then set at the end of each step, so it never changes while a step runs; none where it holds another.
+   */
+  #databaseAnswers: Promise<PodDatabase | undefined> | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -701,6 +712,7 @@ export class CorePod {
     const { pod, layout, address, build, time } = this.#options;
     this.#release();
     this.#dropBuilt();
+    this.#databaseAnswers = Promise.resolve(undefined);
     (await this.#openDatabase())?.forget();
     if (build === undefined) return;
     const store = this.#options.newStore();
@@ -763,6 +775,56 @@ export class CorePod {
     await timedAside("core-pod.keepDatabase", () =>
       this.#keepDatabase(built, dumped),
     );
+  }
+
+  /** Whether a database is kept beside the pod, whatever it holds. */
+  get keepsDatabase(): boolean {
+    const { database, besidePod, build } = this.#options;
+    return (
+      database !== undefined &&
+      besidePod !== undefined &&
+      build?.incremental !== undefined
+    );
+  }
+
+  /**
+   * A question's rows by its `.sql`, from the database beside the pod, as `PodDatabase.answer` gives them: the pod as
+   * the last step left it, without waiting for a step that runs, whose rows it gives once that step ends. None under
+   * any lens but the build's, which is the one the database is built for, and none where the database holds another
+   * pod than the one the last step left, or none is kept; the question is then asked of the store.
+   */
+  async answered(
+    lens: string,
+    sql: string,
+    page?: PageAsked,
+  ): Promise<DatabaseAnswer | undefined> {
+    if (lens !== this.#options.build?.lens) return undefined;
+    const database = await this.#answering();
+    return database?.answer(sql, page);
+  }
+
+  #answering(): Promise<PodDatabase | undefined> {
+    this.#databaseAnswers ??= this.#databaseHoldsPod().catch(() => undefined);
+    return this.#databaseAnswers;
+  }
+
+  /** The database beside the pod when its ledger names the hash of what a build of the pod as it stands reads. */
+  async #databaseHoldsPod(): Promise<PodDatabase | undefined> {
+    const { build } = this.#options;
+    if (!this.keepsDatabase || build?.incremental === undefined)
+      return undefined;
+    const { incremental } = build;
+    return timedAside("core-pod.databaseAnswers", async () => {
+      const database = await this.#openDatabase();
+      const fingerprint = database?.fingerprint;
+      if (fingerprint === undefined) return undefined;
+      const hash = await this.#inputsHash(
+        build,
+        incremental,
+        await this.#readPaths(),
+      );
+      return hash === fingerprint ? database : undefined;
+    });
   }
 
   /** The database beside the pod, opened once; none where none is kept, or where it does not open. */
@@ -845,14 +907,14 @@ export class CorePod {
    */
   async #databaseKeptCurrent(
     recorded: DatabaseRecording | undefined,
-  ): Promise<void> {
-    if (recorded === undefined) return;
+  ): Promise<PodDatabase | undefined> {
+    if (recorded === undefined) return undefined;
     const { built, database, changes } = recorded;
     built.recording = undefined;
     const hash = this.#builtHash;
     if (this.#built !== built || hash === undefined) {
       this.#databaseHolds = undefined;
-      return;
+      return undefined;
     }
     try {
       await timedAside("core-pod.step.database", () =>
@@ -860,7 +922,9 @@ export class CorePod {
       );
     } catch {
       this.#databaseHolds = undefined;
+      return undefined;
     }
+    return database;
   }
 
   /**
@@ -876,6 +940,7 @@ export class CorePod {
     this.#databaseOpened?.close();
     this.#databaseOpened = undefined;
     this.#database = undefined;
+    this.#databaseAnswers = undefined;
   }
 
   /**
@@ -948,13 +1013,16 @@ export class CorePod {
       );
     } catch (error) {
       this.#dropBuilt();
+      this.#databaseAnswers = Promise.resolve(undefined);
       if (error instanceof Unopened) throw error;
       throw new BuildFailure(performed, error);
     } finally {
       this.#builtBefore = undefined;
       if (recorded !== undefined) recorded.built.recording = undefined;
     }
-    await this.#databaseKeptCurrent(recorded);
+    this.#databaseAnswers = Promise.resolve(
+      await this.#databaseKeptCurrent(recorded),
+    );
   }
 
   /** Each built file's lines by the triple each writes, kept while the build is: a step's rebuild hands back the triples that did not change as they were. */
@@ -1786,6 +1854,7 @@ export class CorePod {
     const options = this.#options;
     const deferred = this.#deferring > 0 && DEFERRABLE.has(kind);
     if (!deferred) await this.#settle();
+    if (this.keepsDatabase) await this.#answering();
     const at = options.build === undefined ? undefined : options.time.now();
     const writes = new StepWrites();
     let performed: Performed;
@@ -1859,6 +1928,7 @@ export class CorePod {
       if (change === undefined) {
         this.#dropBuilt();
         this.#builtBefore = undefined;
+        this.#databaseAnswers = Promise.resolve(undefined);
       } else {
         const filesOf =
           writes.committed.length === 0

@@ -578,12 +578,12 @@ const NO_SQL = "pod/What each folder holds";
 
 /** The parts with no database beside the pod and no answers kept: every question is asked of the store. */
 function storeOnly(given: Parts): Parts {
-  const {
-    databaseBeside: _database,
-    answers: _answers,
-    ...rest
-  } = given;
-  return { ...rest, builtBeside: answersBeside };
+  return {
+    ...given,
+    databaseBeside: undefined,
+    answers: undefined,
+    builtBeside: answersBeside,
+  };
 }
 
 /** The name of each question of the vocabulary with a `.sql` beside its `.rq`. */
