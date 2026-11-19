@@ -415,10 +415,11 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
     });
   });
 
-  describe("given an arrival whose source change time states no time zone, or is a date", () => {
+  describe("given an arrival whose source change time states no time zone, an impossible one, or is a date", () => {
     const changeTimes = [
       '"2026-05-01T00:00:00"^^<http://www.w3.org/2001/XMLSchema#dateTime>',
       '"2026-05-01"^^<http://www.w3.org/2001/XMLSchema#date>',
+      '"2026-05-01T09:30:00+14:30"^^<http://www.w3.org/2001/XMLSchema#dateTime>',
     ];
     let replays: Replayed[];
 
