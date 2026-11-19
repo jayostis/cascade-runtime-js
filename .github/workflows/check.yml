@@ -952,6 +952,19 @@ jobs:
         with:
           path: .rows-cache
           key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
+      # The performance history page that perf.yml keeps on the perf-data branch, served at /perf/. A site with no history yet
+      # (the branch does not exist) has no page, and that is not a failure.
+      - name: The performance history page
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}" perf-data >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch perf-data "https://github.com/${GITHUB_REPOSITORY}" "$RUNNER_TEMP/perf-data"
+            if [ -f "$RUNNER_TEMP/perf-data/perf/index.html" ]; then
+              mkdir -p build/pages/perf
+              cp -r "$RUNNER_TEMP/perf-data/perf/." build/pages/perf/
+            fi
+          fi
       - uses: actions/upload-pages-artifact@v5
         with:
           path: build/pages

@@ -6,7 +6,10 @@ name: perf
 #
 # - A pull request runs the per-build size and comments the comparison against main (one comment, updated).
 # - A push to main and the nightly run write their file to the orphan branch `perf-data`, at
-#   runtime/YYYY/MM/DD/<run>-<sha7>.json, and put the table in the job summary. The nightly run and a hand-started
+#   runtime/YYYY/MM/DD/<run>-<sha7>.json, and put the table in the job summary. The same job feeds the file's headline
+#   rows and slowest stages to github-action-benchmark, which keeps the history page's data and index.html under perf/ on
+#   that branch; the `build-pages` job of check.yml copies perf/ into the site, so the page is served at /perf/ by the
+#   next deploy (the nightly run is early enough for the 03:17 deploy to hold it). The nightly run and a hand-started
 #   run add the large size, plain and encrypted.
 # - A hand-started run can name one scenario and one size.
 
@@ -16,7 +19,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   schedule:
-    - cron: "47 3 * * *"
+    - cron: "17 1 * * *"
   workflow_dispatch:
     inputs:
       scenario:
@@ -106,11 +109,16 @@ jobs:
           if [ -f "$RUNNER_TEMP/perf.json" ]; then
             node scripts/perf-compare.mjs summary "$RUNNER_TEMP/perf.json" --markdown >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: The rows for the history page
+        shell: bash
+        run: node scripts/perf-history.mjs "$RUNNER_TEMP/perf.json" > "$RUNNER_TEMP/history.json"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: perf
-          path: ${{ runner.temp }}/perf.json
+          path: |
+            ${{ runner.temp }}/perf.json
+            ${{ runner.temp }}/history.json
           if-no-files-found: error
 
   # A pull request: the file against the newest one of main on `perf-data`, in one comment that each push updates. A
@@ -159,6 +167,8 @@ jobs:
               node scripts/perf-compare.mjs compare "$base" pr/perf.json --markdown
             fi
             echo
+            echo "What each row means: [the glossary](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/perf-glossary.md). Every main build over time: [performance history](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/)."
+            echo
             echo "[Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } > comment.md
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
@@ -173,8 +183,8 @@ jobs:
           fi
 
   # A push to main, the nightly run and a hand-started run: the file is committed to the orphan branch `perf-data`.
-  # The only job that writes to the repository, and it runs no code of this repository's: a shell script over the
-  # artifact. A push that races another is retried.
+  # The only job that writes to the repository, and it runs no code of this repository's: a shell script and
+  # github-action-benchmark (pinned to a commit) over the artifact. A push that races another is retried.
   publish:
     name: keep the file
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
@@ -227,3 +237,25 @@ jobs:
           done
           echo "::error::the file could not be pushed to perf-data after six attempts"
           exit 1
+
+      # The history page: github-action-benchmark adds this run's rows to perf/data.js on `perf-data` and keeps perf/index.html,
+      # a chart for each measurement over the commits, whose hover shows each row's `extra` (its plain meaning, the data set
+      # and the range). The checkout is the data branch alone, so no code of this repository runs here. Nothing alerts:
+      # there is no threshold, no comment and nothing fails on a slowdown.
+      - name: Keep the rows where the checkout will not clear them
+        run: cp file/history.json "$RUNNER_TEMP/history.json"
+      - uses: actions/checkout@v7
+        with:
+          ref: perf-data
+      - uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+        with:
+          name: Runtime performance
+          tool: customSmallerIsBetter
+          output-file-path: ${{ runner.temp }}/history.json
+          gh-pages-branch: perf-data
+          benchmark-data-dir-path: perf
+          auto-push: true
+          github-token: ${{ github.token }}
+          fail-on-alert: false
+          comment-on-alert: false
+          summary-always: false
