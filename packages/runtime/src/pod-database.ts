@@ -2,6 +2,7 @@ import {
   type Database,
   type DatabaseFunction,
   DatabaseKeyRefused,
+  type Statement,
 } from "./database.js";
 import type { Files } from "./files.js";
 import type { BuildChange } from "./incremental.js";
@@ -16,6 +17,7 @@ import {
   loadStatements,
   sqlDatabaseFunctions,
   sqlParts,
+  sqlStatements,
   STATEMENTS_SCHEMA,
 } from "./statements.js";
 import type { Union } from "./store.js";
@@ -31,6 +33,8 @@ const SCREEN_PARTS = ["tables", "fill", "finish"] as const;
 const RUN_PARTS = ["fill", "finish"] as const;
 /** The graphs one read of what a step loaded names: a long VALUES block joins in more than linear time. */
 const GRAPHS_AT_ONCE = 256;
+/** The statistics the screens' statements are planned by, taken once the statements are loaded. */
+const ANALYZED = "PRAGMA analysis_limit = 1000; ANALYZE;";
 
 /**
  * The database a pod keeps beside it, `pod.db`, by its path: a cache of the pod's statements and screens that the
@@ -93,6 +97,8 @@ export class PodDatabase {
   readonly #functions: readonly DatabaseFunction[];
   #key: Uint8Array | undefined;
   #db: Database;
+  /** Each part run on this connection, its statements compiled the first time it runs and run again as compiled. */
+  #compiled = new Map<string, Statement[]>();
 
   private constructor(
     beside: BesideDatabase,
@@ -180,6 +186,7 @@ export class PodDatabase {
     fingerprint: string,
   ): Promise<void> {
     this.#db.close();
+    this.#compiled = new Map();
     await this.#beside.remove();
     this.#db = this.#beside.open({
       ...(this.#key === undefined ? {} : { key: this.#key }),
@@ -193,8 +200,9 @@ export class PodDatabase {
         graphsOfDump(dump, graphs),
         fingerprint,
       );
+      db.exec(ANALYZED);
       for (const part of SCREEN_PARTS)
-        for (const view of this.#screens.views) db.exec(view.get(part) ?? "");
+        for (const view of this.#screens.views) this.#ran(view.get(part));
     });
   }
 
@@ -230,9 +238,29 @@ export class PodDatabase {
       }
       keyed.scoped();
       for (const part of RUN_PARTS)
-        for (const view of this.#screens.views) db.exec(view.get(part) ?? "");
+        for (const view of this.#screens.views) this.#ran(view.get(part));
       ledgerNamed(db, fingerprint);
     });
+  }
+
+  /**
+   * Runs a part's statements in order, each compiled when the part first runs on this connection, once those before it
+   * have made what it names, and run again as compiled after.
+   */
+  #ran(part: string | undefined): void {
+    if (part === undefined) return;
+    const compiled = this.#compiled.get(part);
+    if (compiled !== undefined) {
+      for (const statement of compiled) statement.run();
+      return;
+    }
+    const made: Statement[] = [];
+    for (const text of sqlStatements(part)) {
+      const statement = this.#db.prepare(text);
+      statement.run();
+      made.push(statement);
+    }
+    this.#compiled.set(part, made);
   }
 
   /** Makes the ledger name no fingerprint, so the database is built whole when next kept. */

@@ -25,6 +25,7 @@ import {
   SQL_FUNCTION_VECTORS,
   sqlDatabaseFunctions,
   sqlFunctions,
+  sqlStatements,
   STATEMENTS_SCHEMA,
 } from "../src/statements.js";
 import type { Database, DatabaseFunction } from "../src/database.js";
@@ -240,6 +241,18 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
         rows: [["<urn:x:a>"], [null]],
         keys: ["34D69677.", "mnmp~"],
       },
+    );
+  });
+
+  it("splits a part into its statements at each ; outside a string, a quoted name and a comment, so each is compiled once and run again", () => {
+    assert.deepEqual(
+      sqlStatements(
+        `-- a; comment\nCREATE TABLE "a;b" (v TEXT);\nINSERT INTO [a;b] VALUES ('x;''y') /* ; */;\n-- the end\n`,
+      ).map((statement) => statement.trim()),
+      [
+        `-- a; comment\nCREATE TABLE "a;b" (v TEXT)`,
+        "INSERT INTO [a;b] VALUES ('x;''y') /* ; */",
+      ],
     );
   });
 

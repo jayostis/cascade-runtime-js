@@ -1201,3 +1201,45 @@ export function sqlAnswer(
   );
   return paged ? { columns, rows, keys } : { columns, rows };
 }
+
+/**
+ * The statements of a script, each without its closing `;`: split where a `;` stands outside a string, a quoted name
+ * and a comment. A script that makes a trigger, whose body holds `;`, is not split right.
+ */
+export function sqlStatements(script: string): string[] {
+  const found: string[] = [];
+  let start = 0;
+  let at = 0;
+  const closing: Readonly<Record<string, string>> = {
+    "'": "'",
+    '"': '"',
+    "`": "`",
+    "[": "]",
+  };
+  while (at < script.length) {
+    const character = script[at] ?? "";
+    const close = closing[character];
+    if (close !== undefined) {
+      const end = script.indexOf(close, at + 1);
+      at = end < 0 ? script.length : end + 1;
+    } else if (script.startsWith("--", at)) {
+      const end = script.indexOf("\n", at);
+      at = end < 0 ? script.length : end + 1;
+    } else if (script.startsWith("/*", at)) {
+      const end = script.indexOf("*/", at + 2);
+      at = end < 0 ? script.length : end + 2;
+    } else if (character === ";") {
+      found.push(script.slice(start, at));
+      at += 1;
+      start = at;
+    } else at += 1;
+  }
+  found.push(script.slice(start));
+  return found.filter(
+    (statement) =>
+      statement
+        .replace(/--[^\n]*/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .trim() !== "",
+  );
+}
