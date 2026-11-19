@@ -838,6 +838,9 @@ function lineTerms(line: string): [string, string, string] {
 /** Each index the schema makes: made once the statements are loaded, which sorts each once instead of keeping it sorted. */
 const INDEX = /^CREATE INDEX\b[^;]*;/gim;
 
+/** Reads the `sqlite_stat1` rows the vocabulary ships into the connection's planner, for the indexes that exist. */
+const SHIPPED_STATISTICS = "ANALYZE sqlite_schema;";
+
 /** The SQLite version the schema says it needs, as numbers. */
 function minimumVersion(schema: string): number[] {
   const found = /SQLite (\d+)\.(\d+)\.(\d+)/.exec(schema);
@@ -1108,6 +1111,9 @@ export function loadStatements(
       }
     }
     for (const index of indexes) db.exec(index);
+    // The schema's shipped statistics were read before these indexes existed, and a row for an index that does not
+    // exist is ignored: read again, they plan on the indexes. No full ANALYZE is ever run, which would replace them.
+    db.exec(SHIPPED_STATISTICS);
     ledgerNamed(db, fingerprint);
     wholeScope(db);
   });
