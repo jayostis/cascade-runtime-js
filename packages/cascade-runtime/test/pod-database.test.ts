@@ -853,7 +853,7 @@ describe("Answering a pod's questions from its database, a page at a time · pod
     });
   });
 
-  describe("while a later import is held part way, its files not yet written", () => {
+  describe("when a later import is held part way, its files not yet written", () => {
     it("answers a question with a .sql at once, with the rows from before the import, and after it with the rows of the pod it left", async () => {
       const folder = await copied(first, "asked-held");
       const holding = writesHeld(parts);
