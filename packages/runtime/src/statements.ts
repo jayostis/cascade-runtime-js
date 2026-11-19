@@ -850,12 +850,32 @@ const XSD_INTEGER = `${XSD}integer`;
 const XSD_DECIMAL = `${XSD}decimal`;
 const XSD_BOOLEAN = `${XSD}boolean`;
 
+/** A time, date or dateTime: what comes before its seconds' fraction, the fraction's digits, and its offset. */
+const CALENDAR_LEXICAL: Readonly<Record<string, RegExp>> = {
+  [`${XSD}dateTime`]:
+    /^(-?\d{4,}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)?$/,
+  [`${XSD}time`]:
+    /^((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)?$/,
+  [`${XSD}date`]:
+    /^(-?\d{4,}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))()(Z|[+-]\d\d:\d\d)?$/,
+};
+
 /**
  * A valid xsd:integer's, xsd:decimal's or xsd:boolean's lexical form as Oxigraph's store holds it ("01" as "1", "1.50"
- * as "1.5", "1" as "true"); any other term's as it is.
+ * as "1.5", "1" as "true"), and a time's, date's or dateTime's ("01.710Z" as "01.71Z", "+00:00" as "Z"); any other
+ * term's as it is.
  */
 function canonicalLexical(term: SqlTerm): string {
   if (term.kind !== LITERAL) return term.value;
+  const calendar =
+    term.datatype === undefined
+      ? undefined
+      : CALENDAR_LEXICAL[term.datatype]?.exec(term.value);
+  if (calendar) {
+    const [, before = "", fraction = "", zone = ""] = calendar;
+    const digits = fraction.replace(/0+$/, "");
+    return `${before}${digits === "" ? "" : `.${digits}`}${zone === "+00:00" || zone === "-00:00" ? "Z" : zone}`;
+  }
   if (term.datatype === XSD_INTEGER && INTEGER.test(term.value)) {
     const value = BigInt(term.value);
     return value >= -LONG && value < LONG ? value.toString() : term.value;
