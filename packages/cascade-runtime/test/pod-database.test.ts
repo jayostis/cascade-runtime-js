@@ -123,6 +123,42 @@ function readDatabase<T>(
   }
 }
 
+/** The parts, each connection they open to a pod's database counted as it opens and as it closes. */
+function counted(): {
+  given: Parts;
+  opened: () => number;
+  closed: () => number;
+} {
+  let opened = 0;
+  let closed = 0;
+  const given: Parts = {
+    ...parts,
+    databaseBeside: async (path, name) => {
+      const beside = await parts.databaseBeside!(path, name);
+      return {
+        ...beside,
+        exists: () => beside.exists(),
+        builtWhole: (whole) => beside.builtWhole(whole),
+        remove: () => beside.remove(),
+        open: (options) => {
+          const db = beside.open(options);
+          opened += 1;
+          return {
+            prepare: (sql) => db.prepare(sql),
+            exec: (sql) => db.exec(sql),
+            transaction: (work) => db.transaction(work),
+            close: () => {
+              closed += 1;
+              db.close();
+            },
+          };
+        },
+      };
+    },
+  };
+  return { given, opened: () => opened, closed: () => closed };
+}
+
 /** Each statement the database holds, as Oxigraph's N-Triples writes it and then its graph, sorted. */
 const statementsIn = (db: ReturnType<typeof openDatabase>): string[] =>
   db
@@ -290,6 +326,26 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
       );
       assert.ok(labEntries.size > 0, "the pod holds no lab result entry");
       assert.equal(held.labRows, labEntries.size);
+    });
+  });
+
+  describe("given a new pod, open and not yet closed", () => {
+    it("makes no pod.db and holds no connection to one while it is open, through its first steps, and builds it whole at close", async () => {
+      const { given, opened, closed } = counted();
+      const folder = join(pods, "new-unclosed");
+      const database = join(besideOf(folder), DATABASE);
+      const pod = await openPodWith(given, folder, { title: "Annie Easley" });
+      try {
+        assert.equal(existsSync(database), false, "pod.db made at open");
+        await pod.import(syntheticPulls(1)[0]!, { claimProfiles: claiming });
+        await pod.retitle("Annie J. Easley");
+        assert.equal(existsSync(database), false, "pod.db made by a step");
+        assert.equal(opened() - closed(), 0, "a connection to pod.db is open");
+      } finally {
+        await pod.close();
+      }
+      assert.equal(existsSync(database), true, "pod.db not built at close");
+      assert.equal(closed(), opened(), "a connection to pod.db is left open");
     });
   });
 
@@ -984,32 +1040,7 @@ describe("Answering a pod's questions from its database, a page at a time · pod
 
   describe("when the pod is closed as a question is asked", () => {
     it("refuses the question, as it refuses any call after close, and leaves no connection to pod.db open", async () => {
-      let opened = 0;
-      let closed = 0;
-      const given: Parts = {
-        ...parts,
-        databaseBeside: async (path, name) => {
-          const beside = await parts.databaseBeside!(path, name);
-          return {
-            ...beside,
-            builtWhole: (whole) => beside.builtWhole(whole),
-            remove: () => beside.remove(),
-            open: (options) => {
-              const db = beside.open(options);
-              opened += 1;
-              return {
-                prepare: (sql) => db.prepare(sql),
-                exec: (sql) => db.exec(sql),
-                transaction: (work) => db.transaction(work),
-                close: () => {
-                  closed += 1;
-                  db.close();
-                },
-              };
-            },
-          };
-        },
-      };
+      const { given, opened, closed } = counted();
       for (const askedBefore of [false, true]) {
         const pod = await openPodWith(
           given,
@@ -1021,8 +1052,8 @@ describe("Answering a pod's questions from its database, a page at a time · pod
         await closing;
         await assert.rejects(asked, /is closed/, String(askedBefore));
       }
-      assert.ok(opened > 0);
-      assert.equal(closed, opened, "a connection to pod.db is left open");
+      assert.ok(opened() > 0);
+      assert.equal(closed(), opened(), "a connection to pod.db is left open");
     });
   });
 });
