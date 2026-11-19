@@ -31,9 +31,9 @@ function packageOf(specifier: string): string {
   return first!.startsWith("@") ? `${first}/${second}` : first!;
 }
 
-/** A bare specifier of a static import or export-from at a line's start, or of a dynamic `import("...")`. */
+/** A bare specifier of a static import or export-from at a line's start, or of a dynamic `import("...")` or a `require("...")`. */
 const IMPORTED =
-  /^(?:import|export)\b[^;"']*?\bfrom\s*["']([^"'./][^"']*)["']|^import\s*["']([^"'./][^"']*)["']|\bimport\(\s*["']([^"'./][^"']*)["']\s*\)/gm;
+  /^(?:import|export)\b[^;"']*?\bfrom\s*["']([^"'./][^"']*)["']|^import\s*["']([^"'./][^"']*)["']|\b(?:import|require)\(\s*["']([^"'./][^"']*)["']\s*\)/gm;
 
 /** The packages the compiled `.js` files under `folder` import by a bare specifier, which Node does not provide. */
 export async function importedPackages(folder: string): Promise<string[]> {

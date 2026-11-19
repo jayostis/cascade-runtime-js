@@ -8,8 +8,8 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
 
 ## The rules
 
-- **The core knows four interfaces, `Files`, `Bridge`, `Store` and
-  `IdsAndTime`, and nothing behind them.** What needs Node is under
+- **The core knows five interfaces, `Files`, `Bridge`, `Store`, `IdsAndTime`
+  and `Database`, and nothing behind them.** What needs Node is under
   `packages/runtime/src/node/`; nothing else imports from there. What needs a
   browser is under `packages/runtime/src/web/`; only the package's browser
   entry, `packages/cascade-runtime/src/browser/`, imports from there.

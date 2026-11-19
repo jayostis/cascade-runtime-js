@@ -34,7 +34,7 @@ describe("Dependencies of the packed package · mergedDependencies(), undeclared
       ]);
       assert.match(
         merged["better-sqlite3-multiple-ciphers"] ?? "",
-        /^d+.d+.d+$/,
+        /^\d+\.\d+\.\d+$/,
       );
     });
 
@@ -76,25 +76,31 @@ describe("Dependencies of the packed package · mergedDependencies(), undeclared
           'import { x } from "./x.js";',
           'export * from "@s/p/sub.js";',
           'const late = await import("lazy");',
+          'const native = require("addon");',
         ].join("\n"),
       );
       undeclared = await undeclaredImports(dist, { ajv: "8.20.0" });
     });
 
-    it("returns each package the compiled code imports that is not declared, whether by an import, an export-from or a dynamic import", () => {
-      assert.deepEqual(undeclared, ["@s/p", "lazy"]);
+    it("returns each package the compiled code imports that is not declared, whether by an import, an export-from a dynamic import or a require", () => {
+      assert.deepEqual(undeclared, ["@s/p", "addon", "lazy"]);
     });
 
     it("ignores Node's built-in modules and relative imports", () => {
-      assert.equal(undeclared.length, 2);
+      assert.equal(undeclared.length, 3);
       for (const name of ["node:fs/promises", "path", "./x.js"])
         assert.equal(undeclared.includes(name), false, name);
     });
 
     it("returns none once every import is declared", async () => {
-      assert.equal(undeclared.length, 2);
+      assert.equal(undeclared.length, 3);
       assert.deepEqual(
-        await undeclaredImports(dist, { ajv: "1", "@s/p": "1", lazy: "1" }),
+        await undeclaredImports(dist, {
+          ajv: "1",
+          "@s/p": "1",
+          addon: "1",
+          lazy: "1",
+        }),
         [],
       );
     });

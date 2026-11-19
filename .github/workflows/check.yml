@@ -574,6 +574,58 @@ jobs:
           cd "$RUNNER_TEMP"
           node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
 
+  # The packed package's native SQLite binding, installed from the tarball on Node 22 and opened sealed with a key, on linux
+  # and macos, on a pull request too. Nothing needs it and `compatibility` does not wait for it, as with `other-systems`.
+  database-systems:
+    name: database (${{ matrix.os }})
+    if: ${{ !startsWith(github.base_ref, 'alpha/') }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions: {}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      - name: Install the tarball, and open a sealed database with it
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          mkdir app
+          cd app
+          npm install --no-audit --no-fund "$(node -p "require('node:path').resolve(process.argv[1])" ../package/cascade-runtime-*.tgz)"
+          node --version
+          node --input-type=module -e '
+            import { join } from "node:path";
+            import { pathToFileURL } from "node:url";
+            const opener = join(process.cwd(), "node_modules/cascade-runtime/node_modules/@cascade-runtime/runtime/dist/src/node/sqlite.js");
+            const { openDatabase } = await import(pathToFileURL(opener).href);
+            const key = new Uint8Array(32).fill(7);
+            const first = openDatabase("pod.db", key);
+            first.exec("CREATE TABLE t (v TEXT)");
+            first.prepare("INSERT INTO t VALUES (?)").run("sealed");
+            first.close();
+            const again = openDatabase("pod.db", key);
+            const rows = again.prepare("SELECT v FROM t").all();
+            again.close();
+            if (JSON.stringify(rows) !== JSON.stringify([{ v: "sealed" }])) throw new Error("reopened with its key, got " + JSON.stringify(rows));
+            let refused = false;
+            try { openDatabase("pod.db", new Uint8Array(32).fill(8)).close(); } catch { refused = true; }
+            if (!refused) throw new Error("another key opened the database");
+            console.log("sealed database reopened with its key and refused another");
+          '
+
   # The name branch protection requires. A part that was skipped is no pass, except starter-kit on a pull request into an alpha/ branch.
   compatibility:
     name: compatibility
