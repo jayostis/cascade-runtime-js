@@ -39,8 +39,12 @@ const XSD = "http://www.w3.org/2001/XMLSchema#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const IN_ENTRY = `<${CASCADE}inEntry>`;
 
-/** A pod of two records, each the one record of its entry, in the vocabulary's schema with an `asked` table. */
-async function twoEntries(): Promise<Database> {
+const LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+
+/** A pod of two records, each the one record of its entry, and the graphs given, in the vocabulary's schema with an `asked` table. */
+async function twoEntries(
+  graphs: readonly { graph: string; ntriples: string }[] = [],
+): Promise<Database> {
   const pod = openDatabase(":memory:", {
     functions: await sqlDatabaseFunctions(),
   });
@@ -59,6 +63,7 @@ CREATE TABLE IF NOT EXISTS asked (term INTEGER PRIMARY KEY) STRICT;`,
           ])
           .join("\n"),
       },
+      ...graphs,
     ],
     "test",
   );
@@ -447,6 +452,73 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
     );
     assert.equal(pod.prepare("SELECT count(*) AS n FROM good").get()?.n, 2);
     pod.close();
+  });
+
+  it("makes the labels file's labels from labels.sql after every view's fill and before any finish, and takes it for no screen", async () => {
+    const pod = await twoEntries([
+      {
+        graph: "urn:x:layout",
+        ntriples: [
+          `_:placement <${CASCADE}writtenByQueryPath> "labels.rq" .`,
+          "_:placement <http://www.w3.org/ns/solid/terms#instance> <urn:x:labels> .",
+        ].join("\n"),
+      },
+      {
+        graph: "urn:x:labels",
+        ntriples: `<urn:x:entry-a> <${LABEL}> "stale" .`,
+      },
+    ]);
+    const labelsIn = (graph: string): string[] =>
+      pod
+        .prepare(
+          "SELECT s.nt || ' ' || o.nt AS row FROM quad JOIN term s ON s.id = quad.s JOIN term o ON o.id = quad.o " +
+            "WHERE quad.g = (SELECT id FROM term WHERE nt = ?) AND quad.p = (SELECT id FROM term WHERE nt = ?) ORDER BY 1",
+        )
+        .all(`<${graph}>`, `<${LABEL}>`)
+        .map(({ row }) => String(row));
+    const named = ['<urn:x:entry-a> "named"', '<urn:x:entry-b> "named"'];
+    const ported = [
+      {
+        rq: "queries/labels.rq",
+        rqText: "",
+        sql: [
+          "-- part: fill",
+          "DROP TABLE IF EXISTS temp.named;",
+          "CREATE TEMP TABLE named AS SELECT entry FROM s;",
+          "-- part: triples",
+          `SELECT t.nt AS s, '<${LABEL}>' AS p, '"named"' AS o FROM named JOIN term t ON t.id = named.entry`,
+        ].join("\n"),
+      },
+      {
+        rq: "queries/views/s.rq",
+        rqText: "",
+        sql: [
+          "-- part: tables",
+          "CREATE TABLE s (entry INTEGER PRIMARY KEY, record INTEGER NOT NULL) STRICT;",
+          "CREATE TABLE s_named (entry INTEGER PRIMARY KEY, label TEXT NOT NULL) STRICT;",
+          "-- part: fill",
+          "DELETE FROM s; DELETE FROM s_named;",
+          FILLED("s"),
+          "-- part: finish",
+          `INSERT INTO s_named SELECT s.entry, o.nt FROM s JOIN quad q ON q.s = s.entry AND q.p = (SELECT id FROM term WHERE nt = '<${LABEL}>') JOIN term o ON o.id = q.o;`,
+          "-- part: triples",
+          "SELECT NULL AS s, NULL AS p, NULL AS o FROM s",
+        ].join("\n"),
+      },
+    ];
+    try {
+      assert.deepEqual([...madeScreens(pod, ported)], []);
+      assert.deepEqual(labelsIn("urn:x:labels"), named);
+      assert.deepEqual(
+        pod
+          .prepare("SELECT label FROM s_named ORDER BY entry")
+          .all()
+          .map(({ label }) => label),
+        ['"named"', '"named"'],
+      );
+    } finally {
+      pod.close();
+    }
   });
 
   it("reports a screen whose fill, keyed to a record, does not give the tables a whole fill gives", async () => {
