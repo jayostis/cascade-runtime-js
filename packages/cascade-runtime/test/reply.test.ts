@@ -540,12 +540,12 @@ describe("Checking a model's reply against a person's records · checkReply(), r
     const broken = { answer: "x", short: "y", items: [] };
 
     it("returns the contract's errors, one line for each, saying where in the reply", async () => {
-      assert.deepEqual(replyErrors(broken), [
+      assert.deepEqual(await replyErrors(broken), [
         "/items must NOT have fewer than 1 items",
       ]);
       assert.deepEqual(
         (await checkReply(broken, { ask, ran })).errors,
-        replyErrors(broken),
+        await replyErrors(broken),
       );
     });
 
@@ -553,7 +553,7 @@ describe("Checking a model's reply against a person's records · checkReply(), r
       assert.deepEqual((await checkReply(broken, { ask, ran })).items, []);
     });
 
-    it("returns an error for what `replySchema` cannot say: a blank `answer`, an eleventh item, two items numbered alike", () => {
+    it("returns an error for what `replySchema` cannot say: a blank `answer`, an eleventh item, two items numbered alike", async () => {
       const item = (n?: number) => ({
         says: "…",
         why: "…",
@@ -584,7 +584,7 @@ describe("Checking a model's reply against a person's records · checkReply(), r
           ],
         ],
       ] as const)
-        assert.deepEqual(replyErrors(given), expected, what);
+        assert.deepEqual(await replyErrors(given), expected, what);
     });
   });
 
@@ -604,9 +604,9 @@ describe("Checking a model's reply against a person's records · checkReply(), r
     });
     const says = "the later copy closes the earlier one";
 
-    it("returns no error for a link from a fact of one item to a fact of another", () => {
+    it("returns no error for a link from a fact of one item to a fact of another", async () => {
       assert.deepEqual(
-        replyErrors(
+        await replyErrors(
           linked({
             from: { item: 1, fact: 0 },
             to: { item: 2, fact: 0 },
@@ -617,13 +617,16 @@ describe("Checking a model's reply against a person's records · checkReply(), r
       );
     });
 
-    it("returns an error for a link that names its facts by number, not by their item and place", () => {
-      assert.notDeepEqual(replyErrors(linked({ from: 1, to: 2, says })), []);
+    it("returns an error for a link that names its facts by number, not by their item and place", async () => {
+      assert.notDeepEqual(
+        await replyErrors(linked({ from: 1, to: 2, says })),
+        [],
+      );
     });
 
-    it("returns an error, at the link, for a link that names item 0 or a fact before the first", () => {
+    it("returns an error, at the link, for a link that names item 0 or a fact before the first", async () => {
       assert.deepEqual(
-        replyErrors(
+        await replyErrors(
           linked({
             from: { item: 0, fact: 0 },
             to: { item: 2, fact: 0 },
@@ -633,7 +636,7 @@ describe("Checking a model's reply against a person's records · checkReply(), r
         ["/links/0 must name items from 1 and facts from 0"],
       );
       assert.deepEqual(
-        replyErrors(
+        await replyErrors(
           linked({
             from: { item: 1, fact: 0 },
             to: { item: 2, fact: -1 },
@@ -644,22 +647,22 @@ describe("Checking a model's reply against a person's records · checkReply(), r
       );
     });
 
-    it("returns an error, at the link, for a link within an item that names a fact before the first", () => {
+    it("returns an error, at the link, for a link within an item that names a fact before the first", async () => {
       const within = {
         answer: "x",
         short: "y",
         items: [{ ...item(1), links: [{ from: -1, to: 0, says }] }],
       };
-      assert.deepEqual(replyErrors(within), [
+      assert.deepEqual(await replyErrors(within), [
         "/items/0/links/0 must name facts from 0",
       ]);
     });
   });
 
   describe("given a reply with an item that rests on no fact and no absence", () => {
-    it("returns no error for an item that gives only the model's own knowledge", () => {
+    it("returns no error for an item that gives only the model's own knowledge", async () => {
       assert.deepEqual(
-        replyErrors({
+        await replyErrors({
           answer: "x",
           short: "y",
           items: [

@@ -466,53 +466,54 @@ export class FolderFiles implements Files {
   }
 
   async list(folder: string): Promise<string[]> {
-    let root = this.folder;
-    let files;
+    const parts = this.#parts(folder).filter((part) => part !== ".");
+    const prefix = parts.map((part) => `${part}/`).join("");
+    let paths: string[];
     try {
       if (this.#refuse) {
         const resolved = await this.#resolved(false);
-        const parts = this.#parts(folder);
         if (resolved === undefined || !(await this.#isFolder(resolved, parts)))
           return [];
-        root = resolved;
-        files = await filesUnder(join(root, ...parts), (found) =>
-          this.#checked.set(
-            relativePath(resolved, found).split(sep).join("/"),
-            Promise.resolve(true),
-          ),
+        paths = await filesUnder(join(resolved, ...parts), prefix, (found) =>
+          this.#checked.set(found.slice(0, -1), Promise.resolve(true)),
         );
-      } else files = await filesUnder(this.#local(folder));
+      } else paths = await filesUnder(join(this.folder, ...parts), prefix);
     } catch (error) {
       if (absent(error)) return [];
       throw error;
     }
-    const paths = files.map((file) =>
-      relativePath(root, file).split(sep).join("/"),
-    );
     if (this.#refuse) for (const path of paths) this.#listed.add(path);
     return paths.sort();
   }
 }
 
 /**
- * Every file under the folder, its subfolders read in parallel: on Windows a third of a recursive `readdir`'s time. A
- * subfolder another process removed once it was empty, while this one read, holds nothing.
+ * The path, under the folder's root, of every file under the folder, `prefix` naming the folder there with a slash
+ * after it; its subfolders read in parallel: on Windows a third of a recursive `readdir`'s time. A path is built as a
+ * string, which on Windows is several times faster than `join` and `relative` for each of tens of thousands of files.
+ * A subfolder another process removed once it was empty, while this one read, holds nothing.
  */
 async function filesUnder(
   folder: string,
-  seen?: (folder: string) => void,
+  prefix: string,
+  seen?: (prefix: string) => void,
 ): Promise<string[]> {
   const entries = await readdir(folder, { withFileTypes: true });
-  seen?.(folder);
+  seen?.(prefix);
   const found = await Promise.all(
     entries.map((entry) => {
-      const path = join(folder, entry.name);
       if (entry.isDirectory())
-        return filesUnder(path, seen).catch((error: unknown) => {
+        return filesUnder(
+          folder + sep + entry.name,
+          `${prefix}${entry.name}/`,
+          seen,
+        ).catch((error: unknown) => {
           if (absent(error)) return [];
           throw error;
         });
-      return entry.isFile() && !WRITING.test(entry.name) ? [path] : [];
+      return entry.isFile() && !WRITING.test(entry.name)
+        ? [prefix + entry.name]
+        : [];
     }),
   );
   return found.flat();

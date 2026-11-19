@@ -1,10 +1,4 @@
-import {
-  AstBuilder,
-  compile,
-  GherkinClassicTokenMatcher,
-  Parser,
-} from "@cucumber/gherkin";
-import { type GherkinDocument, IdGenerator } from "@cucumber/messages";
+import type { GherkinDocument } from "@cucumber/messages";
 import { type Files, folderOf, readText } from "./files.js";
 
 /** One step as an example states it: its text, and the table or the text beneath it. */
@@ -81,6 +75,13 @@ export async function readFeature(
   files: Files,
   path: string,
 ): Promise<Feature> {
+  const [
+    { AstBuilder, GherkinClassicTokenMatcher, Parser, compile },
+    { IdGenerator },
+  ] = await Promise.all([
+    import("@cucumber/gherkin"),
+    import("@cucumber/messages"),
+  ]);
   const newId = IdGenerator.incrementing();
   const document = new Parser(
     new AstBuilder(newId),
@@ -170,6 +171,11 @@ export async function readWrittenFeature(
   files: Files,
   path: string,
 ): Promise<WrittenFeature> {
+  const [{ AstBuilder, GherkinClassicTokenMatcher, Parser }, { IdGenerator }] =
+    await Promise.all([
+      import("@cucumber/gherkin"),
+      import("@cucumber/messages"),
+    ]);
   const text = await readText(files, path);
   const lines = text.split(/\r?\n/);
   const document = new Parser(

@@ -1,8 +1,4 @@
-import {
-  CucumberExpression,
-  ParameterType,
-  ParameterTypeRegistry,
-} from "@cucumber/cucumber-expressions";
+import type { CucumberExpression } from "@cucumber/cucumber-expressions";
 import { compared, differences } from "./compare.js";
 import { QUERIES } from "./derive.js";
 import type { StatedStep } from "./features.js";
@@ -141,15 +137,13 @@ const then = (
   (compiled, args, stated) => check(args, stated, compiled),
 ];
 
-const registry = new ParameterTypeRegistry();
+const PARAMETERS: [string, RegExp, (text: string) => unknown][] = [];
 const parameter = (
   name: string,
   regexp: RegExp,
   transform: (text: string) => unknown = (text) => text,
 ): void => {
-  registry.defineParameterType(
-    new ParameterType(name, regexp, null, transform, false, false),
-  );
+  PARAMETERS.push([name, regexp, transform]);
 };
 const unquoted = (text: string): string => text.slice(1, -1);
 
@@ -1875,10 +1869,43 @@ const DEFINITIONS: Definition[] = [
   ),
 ];
 
-const EXPRESSIONS = DEFINITIONS.map(
-  ([expression, act]) =>
-    [new CucumberExpression(expression, registry), act, expression] as const,
-);
+type Expressions = readonly (readonly [
+  CucumberExpression,
+  Definition[1],
+  string,
+])[];
+let expressions: Promise<Expressions> | undefined;
+
+/**
+ * The steps' expressions, made on the first step compiled, with Cucumber loaded then rather than with the runtime; a
+ * load that fails is tried again at the next step.
+ */
+function expressionsMade(): Promise<Expressions> {
+  if (expressions === undefined) {
+    const load = import("@cucumber/cucumber-expressions").then(
+      ({ CucumberExpression, ParameterType, ParameterTypeRegistry }) => {
+        const registry = new ParameterTypeRegistry();
+        for (const [name, regexp, transform] of PARAMETERS)
+          registry.defineParameterType(
+            new ParameterType(name, regexp, null, transform, false, false),
+          );
+        return DEFINITIONS.map(
+          ([expression, act]) =>
+            [
+              new CucumberExpression(expression, registry),
+              act,
+              expression,
+            ] as const,
+        );
+      },
+    );
+    expressions = load;
+    load.catch(() => {
+      if (expressions === load) expressions = undefined;
+    });
+  }
+  return expressions;
+}
 
 const LABEL = / \(([A-Za-z0-9][\w-]*)\)$/;
 
@@ -1891,10 +1918,12 @@ async function compileStep(
   const label = LABEL.exec(stated.text)?.[1];
   const text =
     label === undefined ? stated.text : stated.text.replace(LABEL, "");
-  const matches = EXPRESSIONS.flatMap(([expression, act, source]) => {
-    const args = expression.match(text);
-    return args === null ? [] : [{ act, source, args }];
-  });
+  const matches = (await expressionsMade()).flatMap(
+    ([expression, act, source]) => {
+      const args = expression.match(text);
+      return args === null ? [] : [{ act, source, args }];
+    },
+  );
   if (matches.length !== 1)
     throw new Error(
       matches.length === 0

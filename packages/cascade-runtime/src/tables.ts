@@ -71,7 +71,10 @@ export type {
   WithheldClass,
 } from "./tables/types.js";
 
-/** How long the check an open starts may take: a network that stalls must not hold a local pod closed. */
+/**
+ * How long a check an open starts waits for each answer, and a set-up step that waits for a check waits for all of them:
+ * a network that stalls must not hold a check, or the opens queued behind it, forever.
+ */
 export const CHECK_ON_OPEN_MS = 10_000;
 
 /** A version's name (N12): over its series, the version it revises and its rows. */
@@ -171,9 +174,26 @@ export class Tables {
 
   /** Runs the local builders, then reads each feed and keeps each current version it does not hold that verifies. */
   check(init: RequestInit = {}): Promise<Checked[]> {
+    return this.#check(init);
+  }
+
+  /**
+   * The check an open starts and does not wait for: it keeps every version that verifies however long the downloads
+   * take in all, and gives up on a request not answered whole in `stallMs`, and on the builders after that long.
+   */
+  checkOnOpen(stallMs: number = CHECK_ON_OPEN_MS): Promise<Checked[]> {
+    return this.#check({}, stallMs);
+  }
+
+  #check(init: RequestInit, stallMs?: number): Promise<Checked[]> {
     return this.#next(async () => {
       const { feeds, builds } = this.#options;
-      const built = (await builds?.run(init)) ?? new Map();
+      const built =
+        (await builds?.run(
+          stallMs === undefined
+            ? init
+            : { ...init, signal: AbortSignal.timeout(stallMs) },
+        )) ?? new Map();
       const context = {
         ...this.#context,
         held: this.#held,
@@ -183,7 +203,9 @@ export class Tables {
       };
       const checked: Checked[] = [];
       for (const feed of [...feeds, ...(builds?.feeds ?? [])])
-        checked.push(withBuilt(await checkFeed(context, feed, init), built));
+        checked.push(
+          withBuilt(await checkFeed(context, feed, init, stallMs), built),
+        );
       return checked;
     });
   }

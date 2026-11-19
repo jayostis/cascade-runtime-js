@@ -68,7 +68,7 @@ export async function askedIn(folder: string): Promise<Asked[]> {
 /** What is wrong with an answer file as an answer, in the schema of the contract it was asked under; empty when it holds to it. */
 async function answerErrors(path: string, copies: boolean): Promise<string[]> {
   try {
-    return replyErrors(
+    return await replyErrors(
       JSON.parse(await readFile(path, "utf8")),
       copies ? "records" : "pod",
     );
