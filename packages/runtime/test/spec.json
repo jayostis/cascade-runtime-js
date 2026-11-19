@@ -44,6 +44,7 @@
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
     "Choosing and fetching Oxigraph's native or WebAssembly build · chooseOxigraph(), nativeOxigraph(), fetchNativeOxigraph(), OxigraphStore",
     "Opening a pod's SQLite database · openDatabase()",
+    "Building a pod's database whole beside it · databaseAt()",
     "Answering the vocabulary's SQL from a pod's statements · loadStatements(), sqlFunctions(), sqlCheckAssertions()",
     "Finding the vocabulary and adapters a run uses · resolve(), siblingsOf(), packed()"
   ],

@@ -4,23 +4,34 @@ import { existsSync } from "node:fs";
 import {
   cp,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
-import { type DeriveKey, EncryptedFiles } from "@cascade-runtime/runtime";
+import {
+  blank,
+  canonical,
+  type DeriveKey,
+  EncryptedFiles,
+  iri,
+  literal,
+  type Term,
+  type Triple,
+} from "@cascade-runtime/runtime";
 import {
   FolderFiles,
   headerIn,
   openDatabase,
 } from "@cascade-runtime/runtime/node";
 import { probing } from "@cascade-runtime/runtime/probe";
-import { tablesBeside } from "cascade-runtime";
+import { ownerAbout, tablesBeside } from "cascade-runtime";
 import { podKey } from "../src/encrypted.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
 import {
@@ -32,15 +43,21 @@ import { openPodWith, type Parts } from "../src/pod.js";
 import { profileOf, syntheticPulls } from "./import-bench.js";
 
 const DATABASE = "pod.db";
-const DATABASE_KEY = "pod.db.key";
+/** What a sealed pod keeps beside it under names that say only what kind of file each is, as its build and answers. */
+const ANSWERS_KEPT = ["answers.json", "pod.json", "build.trig", "build.nt"];
+/** A keyed name, as a sealed pod's files are stored under: a keyed hash, in a folder of its first two letters. */
+const SEALED_NAME = /^sealed\/[0-9a-f]{2}\/[0-9a-f]{62}$/;
 const BUILT_BESIDE = "build.trig";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const LAB_RESULTS = "clinical/lab-results.ttl";
 const MANIFEST = "manifest.ttl";
 const WHOLE = "core-pod.keepDatabase.whole";
 const STEP = "core-pod.step.database";
+const KEPT_WHOLE = "kept.whole";
 const WORDS = "t-shirt abacus yo-yo zoom drop-down felt-tip";
 const MARK = `PLAINTEXT-MARKER-${"x".repeat(40)}`;
+/** SQLite's page, the first of which holds the schema. */
+const PAGE = 4096;
 
 let pods: string;
 let parts: Parts;
@@ -145,6 +162,45 @@ const blind = (lines: readonly string[]): string[] =>
     .map((line) => line.replace(/_:\S+/g, "_:"))
     .sort();
 
+const TERM =
+  /<[^>]*>|_:\S+|"((?:[^"\\]|\\[\s\S])*)"(?:@([A-Za-z0-9-]+)|\^\^<([^>]*)>)?/g;
+
+/** A term as N-Triples writes it, its literal's lexical form kept escaped as written, which both sides compared share. */
+function termOf(written: RegExpExecArray): Term {
+  const [text, lexical, language, datatype] = written;
+  if (text.startsWith("<")) return iri(text.slice(1, -1));
+  if (text.startsWith("_:")) return blank(text.slice(2));
+  return literal(
+    lexical ?? "",
+    language === undefined ? datatype : { language },
+  );
+}
+
+/** Each graph's statements, from lines of a statement and its graph, in canonical N-Quads by RDFC-1.0, by the graph. */
+async function canonicalGraphs(
+  lines: readonly string[],
+): Promise<Map<string, string>> {
+  const graphs = new Map<string, Triple[]>();
+  for (const line of lines) {
+    const [s, p, o, g] = [...line.matchAll(TERM)].map(termOf);
+    assert.ok(
+      s !== undefined &&
+        s.termType !== "Literal" &&
+        p?.termType === "NamedNode" &&
+        o !== undefined &&
+        g !== undefined,
+      line,
+    );
+    const triples = graphs.get(g.value) ?? [];
+    triples.push([s, p, o]);
+    graphs.set(g.value, triples);
+  }
+  const found = new Map<string, string>();
+  for (const graph of [...graphs.keys()].sort())
+    found.set(graph, await canonical(graphs.get(graph) ?? []));
+  return found;
+}
+
 /** What the database holds as a reader of it sees it: its statements blind to blank nodes' labels, each screen's triples, and its order. */
 function asRead(db: ReturnType<typeof openDatabase>) {
   const screens: Record<string, string[]> = {};
@@ -235,12 +291,28 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
   });
 
   describe("given a later import, in a later session", () => {
-    it("keeps pod.db equal to one built whole from the same pod, by its step and without building it whole", async () => {
-      const stepped = await copied(first, "stepped");
-      const { spans } = await session(stepped, async (pod) => {
+    let stepped: string;
+    let spans: string[];
+    before(async () => {
+      stepped = await copied(first, "stepped");
+      ({ spans } = await session(stepped, async (pod) => {
         for (const pull of laterPull())
           await pod.import(pull, { claimProfiles: claiming });
-      });
+      }));
+    });
+
+    it("keeps pod.db equal, graph by graph and its manifest with them, to the build kept beside the pod at the same close", async () => {
+      assert.ok(spans.includes(STEP), spans.join(", "));
+      assert.ok(!spans.includes(WHOLE), spans.join(", "));
+      const held = await canonicalGraphs(readDatabase(stepped, statementsIn));
+      const built = await canonicalGraphs(await builtStatements(stepped));
+      assert.ok(
+        [...held.keys()].some((graph) => graph.endsWith(`/${MANIFEST}`)),
+      );
+      assert.deepEqual(held, built);
+    });
+
+    it("keeps pod.db equal to one built whole from the same pod, by its step and without building it whole", async () => {
       assert.ok(spans.includes(STEP), spans.join(", "));
       assert.ok(!spans.includes(WHOLE), spans.join(", "));
 
@@ -258,6 +330,29 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
     });
   });
 
+  describe("given the owner's claim of another hospital's patient, the first act of a later session", () => {
+    it("keeps pod.db by the claim's step, from the build kept beside the pod, without building either whole", async () => {
+      const claimed = await copied(first, "claimed");
+      const { result: imported } = await session(claimed, (pod) =>
+        pod.import(syntheticPulls(5, { hospital: "second" })[0]!, {
+          match: false,
+        }),
+      );
+      const [profile] = imported.unclaimedProfiles;
+      assert.ok(profile !== undefined);
+      const { spans } = await session(claimed, (pod) =>
+        pod.judge(ownerAbout(pod, profile)),
+      );
+      assert.ok(spans.includes(STEP), spans.join(", "));
+      assert.ok(!spans.includes(KEPT_WHOLE), spans.join(", "));
+      assert.ok(!spans.includes(WHOLE), spans.join(", "));
+      assert.deepEqual(
+        await canonicalGraphs(readDatabase(claimed, statementsIn)),
+        await canonicalGraphs(await builtStatements(claimed)),
+      );
+    });
+  });
+
   describe("given a fingerprint other than the one pod.db was built under", () => {
     it("builds pod.db whole again, holding each statement of the build kept beside the pod", async () => {
       const refingered = await copied(first, "refingered");
@@ -272,6 +367,34 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
       assert.deepEqual(
         readDatabase(refingered, statementsIn),
         await builtStatements(refingered),
+      );
+    });
+  });
+
+  describe("given a pod.db damaged past its first page, which opens and names its ledger but does not read", () => {
+    it("takes the next step as if pod.db named no fingerprint, and builds pod.db whole again at the close", async () => {
+      const damaged = await copied(first, "damaged");
+      const path = join(besideOf(damaged), DATABASE);
+      const size = (await stat(path)).size;
+      const handle = await open(path, "r+");
+      try {
+        await handle.write(
+          Buffer.alloc(size - PAGE, 0xab),
+          0,
+          size - PAGE,
+          PAGE,
+        );
+      } finally {
+        await handle.close();
+      }
+      const { spans } = await session(damaged, async (pod) => {
+        for (const pull of laterPull())
+          await pod.import(pull, { claimProfiles: claiming });
+      });
+      assert.ok(spans.includes(WHOLE), spans.join(", "));
+      assert.deepEqual(
+        blind(readDatabase(damaged, statementsIn)),
+        blind(await builtStatements(damaged)),
       );
     });
   });
@@ -305,36 +428,85 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
   });
 
   describe("given a sealed pod", () => {
-    it("seals pod.db, its log, its shared memory and its key file: none holds the pod's statements, its key, or a marker a transaction killed part way wrote", async () => {
-      const at = join(pods, "sealed");
-      const opened = await openFolderPod({ ...parts, derive: fastDerive }, at, {
-        secret: WORDS,
-      });
+    const at = () => join(pods, "sealed");
+    /** The files kept beside the sealed pod once it is closed, by their paths there. */
+    let kept: string[];
+    /** The database's key, and the paths of the database and of its key file beside the pod. */
+    let sealedKey: Uint8Array | undefined;
+    let databaseAt: string | undefined;
+    let keyAt: string | undefined;
+
+    before(async () => {
+      const opened = await openFolderPod(
+        { ...parts, derive: fastDerive },
+        at(),
+        { secret: WORDS },
+      );
       try {
         for (const pull of syntheticPulls(40))
           await opened.import(pull, { claimProfiles: claiming });
       } finally {
         await opened.close();
       }
+      kept = (
+        await readdir(besideOf(at()), { recursive: true, withFileTypes: true })
+      )
+        .filter((entry) => entry.isFile())
+        .map((entry) =>
+          join(entry.parentPath, entry.name)
+            .slice(besideOf(at()).length + 1)
+            .replaceAll("\\", "/"),
+        )
+        .sort();
       const podsKey = await podKey(
         {
-          files: new FolderFiles(at),
-          header: await headerIn(at),
-          reread: () => headerIn(at),
+          files: new FolderFiles(at()),
+          header: await headerIn(at()),
+          reread: () => headerIn(at()),
           held: async () => true,
         },
         WORDS,
         fastDerive,
       );
       assert.ok(podsKey);
-      const key = await new EncryptedFiles(answersBeside(at), podsKey, {
+      const sealed = new EncryptedFiles(answersBeside(at()), podsKey, {
         kind: "answers",
-      }).read(DATABASE_KEY);
+      });
+      for (const path of kept.filter((path) => SEALED_NAME.test(path))) {
+        const opens = await sealed.read(path);
+        if (opens === undefined) databaseAt = path;
+        else {
+          keyAt = path;
+          sealedKey = opens;
+        }
+      }
+    });
+
+    it("names no file beside it by what it holds: the database and its key are each under a keyed name, as a sealed pod's own files are", () => {
+      assert.deepEqual(
+        kept.filter(
+          (path) => !ANSWERS_KEPT.includes(path) && !SEALED_NAME.test(path),
+        ),
+        [],
+      );
+      assert.ok(databaseAt !== undefined, kept.join(", "));
+      assert.ok(keyAt !== undefined, kept.join(", "));
+    });
+
+    it("seals pod.db, its log, its shared memory and its key file: none holds the pod's statements, its key, or a marker a transaction killed part way wrote", async () => {
+      assert.ok(databaseAt !== undefined && keyAt !== undefined);
+      const key = sealedKey;
       assert.equal(key?.length, 32);
-      const statements = readDatabase(at, statementsIn, key);
+      const path = join(besideOf(at()), databaseAt);
+      const db = openDatabase(path, { key });
+      let statements: string[];
+      try {
+        statements = statementsIn(db);
+      } finally {
+        db.close();
+      }
       assert.ok(statements.some((line) => line.includes(CASCADE)));
 
-      const path = join(besideOf(at), DATABASE);
       const opener = import.meta.resolve("@cascade-runtime/runtime/node");
       await promisify(execFile)(process.execPath, [
         "--input-type=module",
@@ -355,7 +527,7 @@ process.exit(0);`,
         path,
         `${path}-wal`,
         `${path}-shm`,
-        join(besideOf(at), DATABASE_KEY),
+        join(besideOf(at()), keyAt),
       ];
       assert.ok(
         existsSync(`${path}-wal`),
