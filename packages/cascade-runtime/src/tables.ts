@@ -46,7 +46,7 @@ import { conceptLabels, variantClassification } from "./tables/variants.js";
 import { VersionIndexes } from "./tables/version-indexes.js";
 
 export { HELD, PAGE_SIZE } from "./tables/constants.js";
-export { currentOf, shipped } from "./tables/references-index.js";
+export { currentOf, ofKinds, shipped } from "./tables/references-index.js";
 export { LISTED, PUBLISHED_ROWS } from "./tables/starter.js";
 export type {
   About,

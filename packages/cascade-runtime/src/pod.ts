@@ -59,7 +59,7 @@ import { checkJudgment, judged } from "./judging.js";
 import { acceptOptions } from "./options.js";
 import { THIS_JUDGMENT } from "./proposals.js";
 import type { Row, TextRow } from "./row-text.js";
-import { currentOf, shipped, type Tables } from "./tables.js";
+import { currentOf, ofKinds, shipped, type Tables } from "./tables.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -163,8 +163,19 @@ export interface Pod {
   readonly subject: string;
   /** The owner's profile's #me. */
   readonly owner: string;
-  /** The open that gave the pod the app's newer tables when it was opened (O1, O2); none when they had not changed. */
-  readonly opened?: Opened;
+  /**
+   * The open that gives the pod the app's newer tables (O1, O2), which runs after `openPod` returns, as the pod's first
+   * step: it settles once the step and the rebuild after it have run, to undefined when the tables had not changed, and
+   * rejects as a step that fails rejects its call. The step starts once the pod has no call queued or running at a turn
+   * of the timers, so the calls made as `openPod` returns, and those made from their answers, run before it, on the pod
+   * as it was opened; calls that keep the queue busy hold it back for at most 2 s of them, and `close` starts it. Once it
+   * runs, a question by name is answered from `pod.db`, as during any step, or else with the rows kept for the pod as it
+   * was opened, where they were kept,
+   * `unheldTableVersions` with the versions read over the pod as it was opened, and any other call, `close` too, waits
+   * for the step. A browser's pod drawn from its kept answers
+   * settles it once a call opens the pod with the engine, as that open's, or at `close`, to undefined.
+   */
+  readonly opened: Promise<Opened | undefined>;
   /** Whether its files and its kept answers are sealed under a key only its secret opens. */
   readonly encrypted: boolean;
   /**
@@ -207,6 +218,9 @@ export interface Pod {
    * The named question's rows. One with a `.sql` beside its `.rq`, under the app's lens, is answered from the database
    * kept beside a pod in a folder when that holds the pod as it stands, without waiting for a call made before it: its
    * rows are those of the pod as the last finished step left it, so ask after awaiting a step for the rows it changed.
+   * While the open's matcher run is held, a question without a database answer gets the rows kept before the run until
+   * a write is called, and between the end of the run's rebuild and `pod.opened` settling `ask` still gives those rows
+   * where `askPage` waits for the run's.
    */
   ask(question: string, options?: { lens?: string }): Promise<Row[]>;
   /** A query of your own gives text in every column: the vocabulary declares no list column for it. */
@@ -264,8 +278,9 @@ export interface Pod {
   /**
    * The current table versions the pod names that the app's tables do not hold, of each series a matcher Same used
    * another version of: such a Same counts where a device holds the version and its rows join the members, and not on
-   * this one (M7). It reads the pod and writes nothing. Undefined while they are not known: a browser's pod drawn from
-   * its kept answers knows them once the engine has opened it.
+   * this one (M7). It reads the pod and writes nothing, and, while `opened` is pending, answers over the pod as it was
+   * opened, without waiting for it. Undefined while they are not known: a browser's pod drawn from its kept answers knows
+   * them once the engine has opened it.
    */
   unheldTableVersions(): Promise<readonly string[] | undefined>;
   /**
@@ -766,6 +781,17 @@ class OpenPod implements Pod {
   /** Whether `close` was called, from the moment it is: a question asked after it is refused, as every call is. */
   #closing = false;
   #titled: boolean;
+  /** While the open's step has not settled, the revision and the versions the answers kept before it are keyed by. */
+  #before:
+    | { readonly revision: Promise<string>; readonly tables: readonly string[] }
+    | undefined;
+  /** While the open's step has not settled, the unheld versions read over the pod as it was before it. */
+  #unheldBefore: Promise<readonly string[]> | undefined;
+  /** The calls queued or running. */
+  #calls = 0;
+  /** While the open's step waits for the queue to go idle. */
+  #waiting: Waiting | undefined;
+  readonly opened: Promise<Opened | undefined>;
 
   constructor(
     parts: Parts,
@@ -776,13 +802,54 @@ class OpenPod implements Pod {
     answers: Answers | undefined,
     readonly encrypted: boolean,
     titled: boolean,
-    readonly opened?: Opened,
+    adopting?: Adopting,
   ) {
     this.#titled = titled;
     this.#parts = parts;
     this.#core = core;
     this.#answers = answers;
     this.#tables = tables;
+    if (adopting === undefined) {
+      this.opened = Promise.resolve(undefined);
+      return;
+    }
+    if (adopting.before !== undefined && answers !== undefined) {
+      const revision = this.#next(() => core.revision());
+      revision.catch(() => undefined);
+      this.#before = { revision, tables: adopting.before };
+    }
+    let settle!: (opened: Promise<Opened | undefined>) => void;
+    const queued = new Promise<Opened | undefined>((resolve) => {
+      settle = resolve;
+    });
+    const waiting: Waiting = {
+      due: false,
+      start: () => {
+        if (this.#waiting !== waiting) return;
+        this.#waiting = undefined;
+        clearTimeout(waiting.ceiling);
+        const unheld = this.#next(() => core.unheldTableVersions());
+        unheld.catch(() => undefined);
+        this.#unheldBefore = unheld;
+        settle(
+          this.#next(async () => {
+            const opened = await adopting.open();
+            await core.revision();
+            return opened;
+          }),
+        );
+      },
+    };
+    this.#waiting = waiting;
+    setTimeout(() => {
+      waiting.due = true;
+      if (this.#calls === 0) waiting.start();
+    }, 0);
+    this.opened = queued.finally(() => {
+      this.#before = undefined;
+      this.#unheldBefore = undefined;
+    });
+    this.opened.catch(() => undefined);
   }
 
   get owner(): string {
@@ -821,6 +888,7 @@ class OpenPod implements Pod {
     options: ImportOptions = {},
   ): Promise<Imported> {
     acceptImportOptions(options);
+    this.#writing();
     return this.#next(() => this.#import(exported, options));
   }
 
@@ -829,6 +897,7 @@ class OpenPod implements Pod {
     options: { match?: boolean } = {},
   ): Promise<Done> {
     acceptOptions("pod.connect", options, { match: true });
+    this.#writing();
     return this.#next(async () => {
       let names: string[];
       try {
@@ -863,6 +932,7 @@ class OpenPod implements Pod {
     options: { match?: boolean } = {},
   ): Promise<Done> {
     acceptOptions("pod.enter", options, { match: true });
+    this.#writing();
     return this.#next(async () => {
       const entered = await this.#core.enter({
         bytes: new TextEncoder().encode(turtle),
@@ -894,6 +964,7 @@ class OpenPod implements Pod {
   }
 
   judge(turtle: string): Promise<Done> {
+    this.#writing();
     return this.#next(() => this.#judge(turtle));
   }
 
@@ -913,6 +984,7 @@ class OpenPod implements Pod {
   }
 
   match(activity?: string): Promise<Done> {
+    this.#writing();
     return this.#next(() => this.#core.match(activity));
   }
 
@@ -929,10 +1001,44 @@ class OpenPod implements Pod {
     if (typeof question !== "string")
       return this.#next(() => this.#ask(question, options));
     return this.#databaseFirst(
-      () => this.#fromDatabase(question, options.lens),
+      async () =>
+        (await this.#fromDatabase(question, options.lens)) ??
+        (await this.#keptBefore(question, options).then(
+          (rows) => (rows === undefined ? undefined : { rows }),
+          () => undefined,
+        )),
       () => this.#ask(question, options),
       (page) => page.rows,
     );
+  }
+
+  /**
+   * While the open's step has not settled and no write has been called on the pod, the rows kept for the question
+   * before it, if they were.
+   */
+  async #keptBefore(
+    question: string,
+    options: { lens?: string },
+  ): Promise<Row[] | undefined> {
+    const before = this.#before;
+    const answers = this.#answers;
+    if (before === undefined || answers === undefined || this.#closed)
+      return undefined;
+    const revision = await before.revision.catch(() => undefined);
+    if (revision === undefined) return undefined;
+    const lens = options.lens ?? this.#parts.lens;
+    const offered = await askable(this.#parts.vocabulary);
+    offeredLens(offered, lens);
+    const key = await keyOf(this.#parts.build, offered.layout, {
+      runtime: answers.runtime,
+      question,
+      text: questionText(offered, question),
+      lists: questionLists(offered, question),
+      lens,
+      revision,
+      tables: before.tables,
+    });
+    return answers.rows(lens, question, key);
   }
 
   async askPage(
@@ -1052,10 +1158,12 @@ class OpenPod implements Pod {
   }
 
   unheldTableVersions(): Promise<readonly string[]> {
-    return this.#next(() => this.#core.unheldTableVersions());
+    const queued = () => this.#next(() => this.#core.unheldTableVersions());
+    return this.#unheldBefore?.catch(queued) ?? queued();
   }
 
   close(): Promise<void> {
+    this.#waiting?.start();
     this.#closing = true;
     return this.#next(async () => {
       this.#closed = true;
@@ -1067,14 +1175,36 @@ class OpenPod implements Pod {
     });
   }
 
+  /**
+   * The call of a write, from the moment it is made: the rows kept before the open's step are those of the pod before
+   * it, and a question asked after the write is to see it, which it queues behind.
+   */
+  #writing(): void {
+    this.#before = undefined;
+  }
+
   /** The call, once every call made before it has finished. */
   #next<T>(call: () => Promise<T>): Promise<T> {
-    const run = (): Promise<T> =>
-      this.#closed
+    const deferring = this.#waiting?.due === true;
+    const run = (): Promise<T> => {
+      const waiting = this.#waiting;
+      if (deferring && waiting !== undefined && waiting.ceiling === undefined)
+        waiting.ceiling = setTimeout(waiting.start, DEFERRED_AT_MOST_MS);
+      return this.#closed
         ? Promise.reject(new Error(`the pod at ${this.address} is closed`))
         : call();
+    };
+    this.#calls += 1;
     const next = this.#queue.then(run, run);
     this.#queue = next.catch(() => undefined);
+    void this.#queue.then(() => {
+      this.#calls -= 1;
+      const waiting = this.#waiting;
+      if (this.#calls === 0 && waiting?.due === true)
+        setTimeout(() => {
+          if (this.#calls === 0) waiting.start();
+        }, 0);
+    });
     return next;
   }
 
@@ -1798,24 +1928,22 @@ export async function openPodWith(
     title !== undefined,
     options.adopt === false
       ? undefined
-      : await openedWithTables(
-          parts.tables,
-          references,
-          core,
-          address,
-          disk.name,
-        ),
+      : await tablesChanged(parts.tables, references, core, address, disk.name),
   );
 }
 
-/** The pod given the app's tables when they changed since it was last opened, or it never was (O1, O2). */
-async function openedWithTables(
+/**
+ * When the app's tables changed since the pod was last opened, or it never was, the open that gives it them (O1, O2),
+ * to run as the pod's first step, and the versions of a kind it was last opened with, which its kept answers are keyed
+ * by until that step has run.
+ */
+async function tablesChanged(
   tables: Tables,
   references: References,
   core: CorePod,
   address: string,
   name: string,
-): Promise<Opened | undefined> {
+): Promise<Adopting | undefined> {
   const current = shipped(references);
   const before = await tables.openedWith(address);
   if (
@@ -1826,8 +1954,36 @@ async function openedWithTables(
     await tables.recordName(address, name);
     return undefined;
   }
-  const performed = await core.open(references);
-  if (performed.refused === undefined)
-    await tables.recordOpen(address, current, name);
-  return { ...performed, unheld: performed.unheld ?? [] };
+  return {
+    before: before === undefined ? undefined : ofKinds(references, before),
+    open: async () => {
+      const performed = await core.open(references);
+      if (performed.refused === undefined)
+        await tables.recordOpen(address, current, name);
+      return { ...performed, unheld: performed.unheld ?? [] };
+    },
+  };
+}
+
+/**
+ * How long calls made after the open's step became due may run ahead of it, from the first of them to start: so an app
+ * whose calls always overlap cannot hold the newer tables back for good.
+ */
+const DEFERRED_AT_MOST_MS = 2000;
+
+/** The open's step, while it waits for the pod's queue to have no call queued or running at a turn of the timers. */
+interface Waiting {
+  /** Whether the calls made as the open returned have been queued, after which a call made defers the step. */
+  due: boolean;
+  /** Set once a call made after `due` starts: queues the step then, if the queue has not gone idle by then. */
+  ceiling?: ReturnType<typeof setTimeout>;
+  /** Queues the step now, once. */
+  readonly start: () => void;
+}
+
+/** The open an `OpenPod` runs as its first step, giving the pod the app's newer tables. */
+interface Adopting {
+  /** The versions of a kind the pod was last opened with; none for a pod no app's tables record. */
+  readonly before: readonly string[] | undefined;
+  readonly open: () => Promise<Opened>;
 }

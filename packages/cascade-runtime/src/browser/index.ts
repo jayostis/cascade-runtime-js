@@ -563,6 +563,13 @@ class BrowserPod implements Pod {
   readonly #lookups: () => Promise<Lookups | undefined>;
   #opened: Pod | undefined;
   #opening: Promise<Pod> | undefined;
+  /** `opened` as it was read before the engine opened the pod, and what settles it. */
+  #openedLater:
+    | {
+        readonly promise: Promise<Opened | undefined>;
+        readonly settle: (opened: Promise<Opened | undefined>) => void;
+      }
+    | undefined;
   #closed = false;
 
   constructor(
@@ -592,6 +599,7 @@ class BrowserPod implements Pod {
   async #pod(): Promise<Pod> {
     if (!this.#closed && this.#opened === undefined) {
       this.#opening = this.#open();
+      this.#openedLater?.settle(this.#opening.then((pod) => pod.opened));
       const opened = await this.#opening;
       if (!this.#closed) this.#opened = opened;
     }
@@ -600,9 +608,23 @@ class BrowserPod implements Pod {
     return this.#opened;
   }
 
-  /** The open that gave the pod newer tables, once the engine opened it; until then, none. */
-  get opened(): Opened | undefined {
-    return this.#opened?.opened;
+  /**
+   * The engine's open that gives the pod newer tables: for a pod drawn from its kept answers, settled once a call opens
+   * it with the engine, as that open's, or at `close`, to undefined.
+   */
+  get opened(): Promise<Opened | undefined> {
+    const opening = this.#opened ?? this.#opening;
+    if (opening !== undefined)
+      return Promise.resolve(opening).then((pod) => pod.opened);
+    if (this.#closed) return Promise.resolve(undefined);
+    if (this.#openedLater === undefined) {
+      let settle!: (opened: Promise<Opened | undefined>) => void;
+      const promise = new Promise<Opened | undefined>((resolve) => {
+        settle = resolve;
+      });
+      this.#openedLater = { promise, settle };
+    }
+    return this.#openedLater.promise;
   }
 
   #known(): Pod | KeptPod {
@@ -751,6 +773,7 @@ class BrowserPod implements Pod {
 
   async close(): Promise<void> {
     this.#closed = true;
+    this.#openedLater?.settle(Promise.resolve(undefined));
     try {
       const opened =
         this.#opened ?? (await this.#opening?.catch(() => undefined));
