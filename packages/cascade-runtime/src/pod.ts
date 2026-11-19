@@ -218,6 +218,9 @@ export interface Pod {
    * The named question's rows. One with a `.sql` beside its `.rq`, under the app's lens, is answered from the database
    * kept beside a pod in a folder when that holds the pod as it stands, without waiting for a call made before it: its
    * rows are those of the pod as the last finished step left it, so ask after awaiting a step for the rows it changed.
+   * While the open's matcher run is held, a question without a database answer gets the rows kept before the run until
+   * a write is called, and between the end of the run's rebuild and `pod.opened` settling `ask` still gives those rows
+   * where `askPage` waits for the run's.
    */
   ask(question: string, options?: { lens?: string }): Promise<Row[]>;
   /** A query of your own gives text in every column: the vocabulary declares no list column for it. */
@@ -885,6 +888,7 @@ class OpenPod implements Pod {
     options: ImportOptions = {},
   ): Promise<Imported> {
     acceptImportOptions(options);
+    this.#writing();
     return this.#next(() => this.#import(exported, options));
   }
 
@@ -893,6 +897,7 @@ class OpenPod implements Pod {
     options: { match?: boolean } = {},
   ): Promise<Done> {
     acceptOptions("pod.connect", options, { match: true });
+    this.#writing();
     return this.#next(async () => {
       let names: string[];
       try {
@@ -927,6 +932,7 @@ class OpenPod implements Pod {
     options: { match?: boolean } = {},
   ): Promise<Done> {
     acceptOptions("pod.enter", options, { match: true });
+    this.#writing();
     return this.#next(async () => {
       const entered = await this.#core.enter({
         bytes: new TextEncoder().encode(turtle),
@@ -958,6 +964,7 @@ class OpenPod implements Pod {
   }
 
   judge(turtle: string): Promise<Done> {
+    this.#writing();
     return this.#next(() => this.#judge(turtle));
   }
 
@@ -977,6 +984,7 @@ class OpenPod implements Pod {
   }
 
   match(activity?: string): Promise<Done> {
+    this.#writing();
     return this.#next(() => this.#core.match(activity));
   }
 
@@ -1004,14 +1012,18 @@ class OpenPod implements Pod {
     );
   }
 
-  /** While the open's step has not settled, the rows kept for the question before it, if they were. */
+  /**
+   * While the open's step has not settled and no write has been called on the pod, the rows kept for the question
+   * before it, if they were.
+   */
   async #keptBefore(
     question: string,
     options: { lens?: string },
   ): Promise<Row[] | undefined> {
     const before = this.#before;
     const answers = this.#answers;
-    if (before === undefined || answers === undefined) return undefined;
+    if (before === undefined || answers === undefined || this.#closed)
+      return undefined;
     const revision = await before.revision.catch(() => undefined);
     if (revision === undefined) return undefined;
     const lens = options.lens ?? this.#parts.lens;
@@ -1161,6 +1173,14 @@ class OpenPod implements Pod {
       this.#bridge = undefined;
       if (bridge !== undefined) await (await bridge).close();
     });
+  }
+
+  /**
+   * The call of a write, from the moment it is made: the rows kept before the open's step are those of the pod before
+   * it, and a question asked after the write is to see it, which it queues behind.
+   */
+  #writing(): void {
+    this.#before = undefined;
   }
 
   /** The call, once every call made before it has finished. */
