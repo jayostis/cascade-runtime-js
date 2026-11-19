@@ -160,8 +160,9 @@ export interface Pod {
   /**
    * The open that gives the pod the app's newer tables (O1, O2), which runs after `openPod` returns, as the pod's first
    * step: it settles once the step and the rebuild after it have run, to undefined when the tables had not changed, and
-   * rejects as a step that fails rejects its call. Until it settles, a question by name is answered with the rows kept
-   * for the pod as it was opened, where they were kept, and any other call waits for the step.
+   * rejects as a step that fails rejects its call. The calls made as `openPod` returns, before the next turn of the event
+   * loop, run before the step, on the pod as it was opened. Once it runs, a question by name is answered with the rows
+   * kept for the pod as it was opened, where they were kept, and any other call waits for the step.
    */
   readonly opened: Promise<Opened | undefined>;
   /** Whether its files and its kept answers are sealed under a key only its secret opens. */
@@ -696,15 +697,18 @@ class OpenPod implements Pod {
       revision.catch(() => undefined);
       this.#before = { revision, tables: adopting.before };
     }
-    this.opened = this.#next(async () => {
-      try {
-        const opened = await adopting.open();
-        await core.revision();
-        return opened;
-      } finally {
+    // Queued after the calls made as the open returns, so that a screen's first questions are answered before it.
+    this.opened = new Promise((resolve) => setTimeout(resolve, 0))
+      .then(() =>
+        this.#next(async () => {
+          const opened = await adopting.open();
+          await core.revision();
+          return opened;
+        }),
+      )
+      .finally(() => {
         this.#before = undefined;
-      }
-    });
+      });
     this.opened.catch(() => undefined);
   }
 
@@ -849,11 +853,17 @@ class OpenPod implements Pod {
     options: { lens?: string } = {},
   ): Promise<Row[]> {
     acceptAskOptions(options);
-    if (typeof question === "string" && !this.#closed) {
-      const kept = await this.#keptBefore(question, options);
-      if (kept !== undefined) return kept;
-    }
-    return this.#next(() => this.#ask(question, options));
+    if (typeof question !== "string" || this.#before === undefined)
+      return this.#next(() => this.#ask(question, options));
+    // Takes its place in the queue now, and answers from there unless the rows kept before the open's step are found.
+    const kept = this.#keptBefore(question, options).catch(() => undefined);
+    const queued = this.#next(
+      async () => (await kept) ?? this.#ask(question, options),
+    );
+    const found = await kept;
+    if (found === undefined) return queued;
+    queued.catch(() => undefined);
+    return found;
   }
 
   /** While the open's step runs, the rows kept for the question before it, if they were. */
