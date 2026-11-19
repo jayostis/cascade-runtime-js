@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -152,6 +152,16 @@ async function removed(paths: readonly string[]): Promise<void> {
   for (const file of paths) await rm(file, { force: true });
 }
 
+/** Flushes the file or folder at the path to its disk, as a build written with synchronous=OFF needs before its rename is relied on. */
+async function synced(path: string, flags: "r" | "r+"): Promise<void> {
+  const handle = await open(path, flags);
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
 /** The bytes handed to another thread: moved where they are a buffer of their own, else a copy of them moved. */
 function moved(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   const { buffer } = bytes;
@@ -187,8 +197,8 @@ function builtInWorker(job: WholeBuildJob): Promise<void> {
 
 /**
  * The database at `path` as a pod keeps it beside it: opened by `openDatabase`, in a folder made for it where there is
- * none; built whole in a worker into a file beside it, `<path>-build`, renamed over it once built and closed; and
- * removed with its write-ahead log and any build left part way.
+ * none; built whole in a worker into a file beside it, `<path>-build`, renamed over it once built, closed and flushed to
+ * disk, and removed if that fails; and removed with its write-ahead log and any build left part way.
  */
 export function databaseAt(path: string): BesideDatabase {
   const building = `${path}-build`;
@@ -202,12 +212,14 @@ export function databaseAt(path: string): BesideDatabase {
       await mkdir(dirname(path), { recursive: true });
       try {
         await builtInWorker({ path: building, whole });
+        await synced(building, "r+");
+        await removed(withLogs(path));
+        await rename(building, path);
       } catch (error) {
-        await removed([building]);
+        await removed([building]).catch(() => undefined);
         throw error;
       }
-      await removed(withLogs(path));
-      await rename(building, path);
+      if (process.platform !== "win32") await synced(dirname(path), "r");
     },
     remove: () => removed([...withLogs(path), building]),
   };

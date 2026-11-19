@@ -362,9 +362,14 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
       assert.ok(result.refused !== undefined, JSON.stringify(result));
       assert.ok(!spans.includes(KEPT_WHOLE), spans.join(", "));
       assert.ok(!spans.includes(WHOLE), spans.join(", "));
+      // The step stamps the manifest afresh; no file the build's queries wrote changed, so the build is not kept again.
+      const unstamped = (lines: readonly string[]) =>
+        canonicalGraphs(
+          lines.filter((line) => !line.endsWith(`/${MANIFEST}>`)),
+        );
       assert.deepEqual(
-        await canonicalGraphs(readDatabase(refused, statementsIn)),
-        await canonicalGraphs(await builtStatements(refused)),
+        await unstamped(readDatabase(refused, statementsIn)),
+        await unstamped(await builtStatements(refused)),
       );
     });
   });

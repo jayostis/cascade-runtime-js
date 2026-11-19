@@ -937,6 +937,10 @@ export class CorePod {
   ): Promise<void> {
     const { build } = this.#options;
     if (build === undefined) return;
+    if (this.#built === undefined && change.written.length === 0)
+      await timedAside("core-pod.step.readBack", () =>
+        this.#readBack().catch(() => undefined),
+      );
     const recorded = await this.#recordingForDatabase();
     try {
       await timedAside(`core-pod.step.rebuild:${kind}`, () =>

@@ -1,4 +1,5 @@
 import { createSHA256, type IHasher } from "hash-wasm";
+import * as oxigraph from "oxigraph";
 import type { Database, DatabaseFunction, Statement } from "./database.js";
 import { codeIri, RDF_LANG_STRING, type Term, XSD, XSD_STRING } from "./rdf.js";
 
@@ -850,43 +851,155 @@ const XSD_INTEGER = `${XSD}integer`;
 const XSD_DECIMAL = `${XSD}decimal`;
 const XSD_BOOLEAN = `${XSD}boolean`;
 
-/** A time, date or dateTime: what comes before its seconds' fraction, the fraction's digits, and its offset. */
-const CALENDAR_LEXICAL: Readonly<Record<string, RegExp>> = {
-  [`${XSD}dateTime`]:
-    /^(-?\d{4,}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)?$/,
-  [`${XSD}time`]:
-    /^((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)?$/,
-  [`${XSD}date`]:
-    /^(-?\d{4,}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))()(Z|[+-]\d\d:\d\d)?$/,
-};
+const YEAR = String.raw`(?<year>-?\d{4})`;
+const CLOCK = String.raw`(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d`;
+
+/** A calendar lexical form: its part before any fraction of its seconds, the fraction's digits, and its zone. */
+function calendarForm(head: string, seconds = false): RegExp {
+  return new RegExp(
+    String.raw`^(?<head>${head})${seconds ? String.raw`(?:\.(?<fraction>\d+))?` : ""}(?<zone>Z|[+-]\d\d:[0-5]\d)?$`,
+  );
+}
+
+const DATE_TIME_FORM = calendarForm(
+  String.raw`${YEAR}-(?<month>\d\d)-(?<day>\d\d)T${CLOCK}`,
+  true,
+);
 
 /**
- * A valid xsd:integer's, xsd:decimal's or xsd:boolean's lexical form as Oxigraph's store holds it ("01" as "1", "1.50"
- * as "1.5", "1" as "true"), and a time's, date's or dateTime's ("01.710Z" as "01.71Z", "+00:00" as "Z"); any other
- * term's as it is.
+ * Each calendar datatype's lexical form in the shape the runtime makes it, a year of four digits and no 24:00:00, and
+ * the datatype Oxigraph's store holds a value of it as.
  */
-function canonicalLexical(term: SqlTerm): string {
-  if (term.kind !== LITERAL) return term.value;
-  const calendar =
-    term.datatype === undefined
-      ? undefined
-      : CALENDAR_LEXICAL[term.datatype]?.exec(term.value);
-  if (calendar) {
-    const [, before = "", fraction = "", zone = ""] = calendar;
-    const digits = fraction.replace(/0+$/, "");
-    return `${before}${digits === "" ? "" : `.${digits}`}${zone === "+00:00" || zone === "-00:00" ? "Z" : zone}`;
-  }
-  if (term.datatype === XSD_INTEGER && INTEGER.test(term.value)) {
+const CALENDAR_FORMS: ReadonlyMap<
+  string,
+  { readonly form: RegExp; readonly as: string }
+> = new Map([
+  [DATE_TIME_TYPE, { form: DATE_TIME_FORM, as: DATE_TIME_TYPE }],
+  [`${XSD}dateTimeStamp`, { form: DATE_TIME_FORM, as: DATE_TIME_TYPE }],
+  [`${XSD}time`, { form: calendarForm(CLOCK, true), as: `${XSD}time` }],
+  [
+    DATE_TYPE,
+    {
+      form: calendarForm(String.raw`${YEAR}-(?<month>\d\d)-(?<day>\d\d)`),
+      as: DATE_TYPE,
+    },
+  ],
+  [`${XSD}gYear`, { form: calendarForm(YEAR), as: `${XSD}gYear` }],
+  [
+    `${XSD}gYearMonth`,
+    {
+      form: calendarForm(String.raw`${YEAR}-(?<month>\d\d)`),
+      as: `${XSD}gYearMonth`,
+    },
+  ],
+  [
+    `${XSD}gMonth`,
+    { form: calendarForm(String.raw`--(?<month>\d\d)`), as: `${XSD}gMonth` },
+  ],
+  [
+    `${XSD}gDay`,
+    { form: calendarForm(String.raw`---(?<day>\d\d)`), as: `${XSD}gDay` },
+  ],
+  [
+    `${XSD}gMonthDay`,
+    {
+      form: calendarForm(String.raw`--(?<month>\d\d)-(?<day>\d\d)`),
+      as: `${XSD}gMonthDay`,
+    },
+  ],
+]);
+
+/**
+ * A calendar value as Oxigraph's store holds it, when its lexical form is one `CALENDAR_FORMS` gives naming a real
+ * date (a February of no year in one that is not leap, as Oxigraph reads it) and an offset of at most 14:00, with at most eighteen digits of its seconds' fraction once its trailing zeros
+ * are dropped: those dropped, a zero offset as Z. Otherwise none, though Oxigraph may read it.
+ */
+function calendarHeld(term: SqlTerm): SqlTerm | undefined {
+  const calendar = CALENDAR_FORMS.get(term.datatype ?? "");
+  const found = calendar?.form.exec(term.value)?.groups;
+  if (calendar === undefined || found === undefined) return undefined;
+  const { head = "", year, month, day, fraction = "", zone = "" } = found;
+  if (year === "-0000") return undefined;
+  const most =
+    month === undefined ? 31n : daysIn(BigInt(year ?? "1"), BigInt(month));
+  if (most === 0n) return undefined;
+  if (day !== undefined && (BigInt(day) < 1n || BigInt(day) > most))
+    return undefined;
+  if (zoneMinutes(zone === "" ? undefined : zone) === undefined)
+    return undefined;
+  const digits = fraction.replace(/0+$/, "");
+  if (digits.length > 18) return undefined;
+  return {
+    ...term,
+    value: `${head}${digits === "" ? "" : `.${digits}`}${zone === "+00:00" || zone === "-00:00" ? "Z" : zone}`,
+    datatype: calendar.as,
+  };
+}
+
+/** The datatypes whose literals Oxigraph's store holds as values, written back in a canonical form. */
+const HELD_AS_VALUES = new Set([
+  ...NUMERIC,
+  XSD_BOOLEAN,
+  ...CALENDAR_FORMS.keys(),
+  ...["duration", "dayTimeDuration", "yearMonthDuration"].map(
+    (name) => XSD + name,
+  ),
+]);
+
+/** What `oxigraphHeld` has found, by datatype and lexical form; cleared once it holds `HELD_KEPT`. */
+const heldByOxigraph = new Map<string, SqlTerm>();
+const HELD_KEPT = 10_000;
+let heldIn: oxigraph.Store | undefined;
+
+/** The literal as Oxigraph's store holds it, asked of a store of Oxigraph's own. */
+function oxigraphHeld(term: SqlTerm): SqlTerm {
+  const key = `${term.datatype ?? ""} ${term.value}`;
+  const known = heldByOxigraph.get(key);
+  if (known !== undefined) return known;
+  heldIn ??= new oxigraph.Store();
+  const subject = oxigraph.namedNode("urn:x:held");
+  const predicate = oxigraph.namedNode("urn:x:as");
+  const given = oxigraph.quad(
+    subject,
+    predicate,
+    oxigraph.literal(term.value, oxigraph.namedNode(term.datatype ?? "")),
+  );
+  heldIn.add(given);
+  const [stored] = heldIn.match(subject, predicate, null, null);
+  heldIn.delete(stored ?? given);
+  const object = stored?.object;
+  const held: SqlTerm =
+    object?.termType === "Literal"
+      ? { ...term, value: object.value, datatype: object.datatype.value }
+      : term;
+  if (heldByOxigraph.size >= HELD_KEPT) heldByOxigraph.clear();
+  heldByOxigraph.set(key, held);
+  return held;
+}
+
+/**
+ * The term as Oxigraph's store holds it: a literal of a datatype it holds as a value in the canonical form it writes it
+ * in, under the datatype it writes ("01"^^xsd:int as "1"^^xsd:integer, "01.710+00:00" as "01.71Z"), and one it cannot
+ * read, as "2025-02-29", as it was written; any other term as it is. The forms the runtime makes are written here; any
+ * other is asked of Oxigraph, so the two cannot differ.
+ */
+function heldTerm(term: SqlTerm): SqlTerm {
+  if (term.kind !== LITERAL || !HELD_AS_VALUES.has(term.datatype ?? ""))
+    return term;
+  const calendar = calendarHeld(term);
+  if (calendar !== undefined) return calendar;
+  if (INTEGERS.has(term.datatype ?? "") && INTEGER.test(term.value)) {
     const value = BigInt(term.value);
-    return value >= -LONG && value < LONG ? value.toString() : term.value;
+    if (value >= -LONG && value < LONG)
+      return { ...term, value: value.toString(), datatype: XSD_INTEGER };
   }
   if (term.datatype === XSD_DECIMAL) {
     const value = scaled(term.value);
-    return value === undefined ? term.value : decimalText(value);
+    if (value !== undefined) return { ...term, value: decimalText(value) };
   }
   if (term.datatype === XSD_BOOLEAN && Object.hasOwn(BOOLEAN, term.value))
-    return BOOLEAN[term.value] === 1 ? "true" : "false";
-  return term.value;
+    return { ...term, value: BOOLEAN[term.value] === 1 ? "true" : "false" };
+  return oxigraphHeld(term);
 }
 
 /** Each term's id in a pod's statements, put in `term` the first time it is asked for. */
@@ -940,18 +1053,17 @@ class TermIds {
   }
 }
 
-/** The term as Oxigraph's store holds it, in N-Triples: an integer, decimal or boolean in its canonical form. */
+/** The term as Oxigraph's store holds it, in N-Triples. */
 export function heldNt(term: Term): string {
-  const sql = sqlTermOf(term);
-  return sqlNt({ ...sql, value: canonicalLexical(sql) });
+  return sqlNt(heldTerm(sqlTermOf(term)));
 }
 
 /**
  * Makes the schema on an empty database and loads the graphs' statements into it: each term once, by its N-Triples as
  * Oxigraph writes it, with its kind, lexical form, datatype, language and calendar keys; every record and entry in
  * scope, as a whole run fills it; and the ledger's one row naming what the whole was built from. A term written
- * otherwise than Oxigraph writes it, escaped otherwise or an integer, decimal or boolean not in the canonical form its
- * store holds, is refused, as is an SQLite older than the schema needs. The graphs given are a `Union`'s, so the default
+ * otherwise than Oxigraph writes it, escaped otherwise or a literal of a value not in the form and datatype its store
+ * holds it in, is refused, as is an SQLite older than the schema needs. The graphs given are a `Union`'s, so the default
  * graph a query reads is their union by construction, which the vocabulary's loader has to check of an Oxigraph store.
  */
 export function loadStatements(
@@ -979,7 +1091,7 @@ export function loadStatements(
     const known = terms.held(nt);
     if (known !== undefined) return known;
     const term = parsedNt(nt);
-    const canonical = sqlNt({ ...term, value: canonicalLexical(term) });
+    const canonical = sqlNt(heldTerm(term));
     if (canonical !== nt)
       throw new Error(
         `${nt} is written ${canonical} here, not as Oxigraph writes it`,
