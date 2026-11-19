@@ -772,7 +772,8 @@ export default defineConfig({ plugins: [react(), cascadeRuntime()] });
 The matcher's reference tables come from the feeds `cascade-runtime.json`
 names. The pods in a folder share `.tables/` in it: the first `openPod` in a
 process reads the feeds, unless `tables.checkOnOpen` is `false`, and keeps each
-newer version that verifies. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
+newer version that verifies, however long the downloads take in all; a feed or
+download that has not answered in 10 s is left for a later check. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
 checks again ("Check now"); a feed that cannot be read now says `later`, and
 nothing is thrown. Opening a pod after its tables changed gives it them:
 `pod.opened` says what that wrote, and `pod.opened.unheld` the versions it

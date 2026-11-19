@@ -133,9 +133,7 @@ export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
       if (phase === undefined) {
         void tables.start().catch(() => undefined);
         if (parts.local.config.tables.checkOnOpen)
-          void tables
-            .check({ signal: AbortSignal.timeout(CHECK_ON_OPEN_MS) })
-            .catch(() => undefined);
+          void tables.checkOnOpen().catch(() => undefined);
         return tables;
       }
       await phase(

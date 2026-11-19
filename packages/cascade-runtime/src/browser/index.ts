@@ -60,7 +60,7 @@ import {
 } from "../pod.js";
 import { IN_THIS_THREAD, type RowsWork } from "../rows.js";
 import type { RowsAnswer, RowsCall } from "./tables-worker.js";
-import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
+import { type Checked, Tables } from "../tables.js";
 
 export type {
   Done,
@@ -434,10 +434,9 @@ const IN_A_WORKER: RowsWork = {
 
 /** A check, asking the browser to keep the site's storage once it has kept a version. */
 async function checkedAndKept(
-  tables: Tables,
-  init: RequestInit,
+  checking: Promise<Checked[]>,
 ): Promise<Checked[]> {
-  const checked = await tables.check(init);
+  const checked = await checking;
   if (checked.some(({ kept }) => kept.length > 0))
     await globalThis.navigator?.storage?.persist?.().catch(() => false);
   return checked;
@@ -445,7 +444,7 @@ async function checkedAndKept(
 
 /** "Check now": reads every feed past any cache and keeps what verifies. */
 export async function checkTables(): Promise<Checked[]> {
-  return checkedAndKept((await resolved()).tables, { cache: "no-cache" });
+  return checkedAndKept((await resolved()).tables.check({ cache: "no-cache" }));
 }
 
 /**
@@ -477,9 +476,7 @@ const resolved = once(async (): Promise<Resolved> => {
   const { config, vocabulary, carried } = read;
   const newStore = () => new OxigraphStore();
   if (config.tables.checkOnOpen)
-    void checkedAndKept(read.tables, {
-      signal: AbortSignal.timeout(CHECK_ON_OPEN_MS),
-    }).catch(() => undefined);
+    void checkedAndKept(read.tables.checkOnOpen()).catch(() => undefined);
   return {
     vocabulary,
     layout: read.layout,
