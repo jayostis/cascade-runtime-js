@@ -1,0 +1,229 @@
+name: perf
+
+# The runtime's performance file (packages/cascade-runtime/test/perf-report.ts): fixed scenarios over one Synthea
+# patient's record, rows in the Bridge spec's result format. Nothing here fails on a slowdown: the files are kept, and a
+# pull request is shown its before -> after against the newest file of main.
+#
+# - A pull request runs the per-build size and comments the comparison against main (one comment, updated).
+# - A push to main and the nightly run write their file to the orphan branch `perf-data`, at
+#   runtime/YYYY/MM/DD/<run>-<sha7>.json, and put the table in the job summary. The nightly run and a hand-started
+#   run add the large size, plain and encrypted.
+# - A hand-started run can name one scenario and one size.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "One scenario (fresh-first-screen, reopen-first-answer, question-page, close), or empty for all"
+        required: false
+        default: ""
+      size:
+        description: "One size (synthea-10y, synthea-lifetime), or empty for the per-build size and, with `large`, the large one"
+        required: false
+        default: ""
+      large:
+        description: "Also run the large size"
+        type: boolean
+        default: false
+
+concurrency:
+  group: perf-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # The measurement. It writes nothing to the repository: the file is kept as an artifact for the two jobs after it.
+  perf:
+    name: performance file
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CASCADE_TEST_OFFLINE: "1"
+      # Read by the file's environment: the runner is a hosted one, which other jobs share the machine of.
+      PERF_OTHER_LOAD: "a shared hosted runner"
+    defaults:
+      run:
+        working-directory: cascade-runtime-js
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          persist-credentials: false
+      - id: tables-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: jayostis/cascade-reference-tables
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.tables-at.outputs.repository }}
+          ref: ${{ steps.tables-at.outputs.ref }}
+          path: cascade-reference-tables
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: cascade-runtime-js/package-lock.json
+      # The vocabulary, the adapters (the record measured is the fhir-r4 adapter's bench/ input) and the Bridge's
+      # sources, beside this checkout, as `runtime tests` has them.
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: "true"
+      - run: npm ci
+      - run: npm run --silent bridge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - id: what
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          SCENARIO: ${{ inputs.scenario }}
+          SIZE: ${{ inputs.size }}
+          LARGE: ${{ inputs.large }}
+        run: |
+          set -euo pipefail
+          sizes="synthea-10y"
+          if [ "$EVENT" = schedule ] || [ "$LARGE" = true ]; then sizes="synthea-10y,synthea-lifetime"; fi
+          if [ -n "$SIZE" ]; then sizes="$SIZE"; fi
+          args="--size $sizes"
+          if [ -n "$SCENARIO" ]; then args="$args --scenario $SCENARIO"; fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+      - name: The performance file
+        run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json"
+      - name: The summary
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/perf.json" ]; then
+            node scripts/perf-compare.mjs summary "$RUNNER_TEMP/perf.json" --markdown >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: perf
+          path: ${{ runner.temp }}/perf.json
+          if-no-files-found: error
+
+  # A pull request: the file against the newest one of main on `perf-data`, in one comment that each push updates. A
+  # comment that cannot be posted (a pull request from a fork has a read-only token) is a warning, never a failure.
+  compare:
+    name: against main
+    if: ${{ github.event_name == 'pull_request' }}
+    needs: perf
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: perf
+          path: pr
+      - name: Newest file of main, and the comparison
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker='<!-- perf-compare -->'
+          if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}" perf-data >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch perf-data "https://github.com/${GITHUB_REPOSITORY}" data
+            base=$(find data/runtime -name '*.json' | sort | tail -n 1)
+          else
+            base=""
+          fi
+          {
+            echo "$marker"
+            echo "### Performance against main"
+            echo
+            if [ -z "$base" ]; then
+              echo "main has no performance file yet, so there is nothing to compare with. This pull request's:"
+              echo
+              node scripts/perf-compare.mjs summary pr/perf.json --markdown
+            else
+              echo "Against \`${base#data/}\`. Unprobed medians; no threshold, nothing here fails the run."
+              echo
+              node scripts/perf-compare.mjs compare "$base" pr/perf.json --markdown
+            fi
+            echo
+            echo "[Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          } > comment.md
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PULL}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"${marker}\")) | .id" | head -n 1 || true)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -F body=@comment.md >/dev/null \
+              || echo "::warning::the comparison comment could not be updated"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PULL}/comments" -F body=@comment.md >/dev/null \
+              || echo "::warning::the comparison comment could not be posted"
+          fi
+
+  # A push to main, the nightly run and a hand-started run: the file is committed to the orphan branch `perf-data`.
+  # The only job that writes to the repository, and it runs no code of this repository's: a shell script over the
+  # artifact. A push that races another is retried.
+  publish:
+    name: keep the file
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    needs: perf
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: perf-data
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: perf
+          path: file
+      - name: Commit it to perf-data
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha7="${GITHUB_SHA::7}"
+          path="runtime/$(date -u +%Y/%m/%d)/${GITHUB_RUN_ID}-${sha7}.json"
+          remote="https://github.com/${GITHUB_REPOSITORY}"
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          echo "::add-mask::$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          git init -q data
+          cd data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "$remote"
+          for attempt in 1 2 3 4 5 6; do
+            if git -c http.extraheader="$auth" fetch -q --depth 1 origin perf-data 2>/dev/null; then
+              git checkout -q -B perf-data FETCH_HEAD
+            else
+              git checkout -q --orphan perf-data
+              git rm -rfq . 2>/dev/null || true
+            fi
+            mkdir -p "$(dirname "$path")"
+            cp ../file/perf.json "$path"
+            git add "$path"
+            git commit -q -m "runtime ${sha7}: ${GITHUB_EVENT_NAME} run ${GITHUB_RUN_ID}"
+            if git -c http.extraheader="$auth" push -q origin HEAD:perf-data; then
+              echo "kept as ${path}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "push raced; attempt ${attempt}"
+            sleep $((RANDOM % 8 + 3))
+            git reset -q --hard
+          done
+          echo "::error::the file could not be pushed to perf-data after six attempts"
+          exit 1

@@ -848,6 +848,7 @@
     "pack-breaking.test.ts",
     "pack-dependencies.test.ts",
     "people-copies.test.ts",
+    "perf-report.test.ts",
     "pod-database.test.ts",
     "pod-links.test.ts",
     "pod-tools.test.ts",
@@ -867,6 +868,7 @@
   ],
   "build": [
     "Timing an import by mechanism · importBench(), syntheticPull(), probing()",
+    "The performance file · perf-report.ts, perf-compare.mjs",
     "The launcher check, when the launcher itself is down",
     "The launcher check, when the launcher responds",
     "The launcher check, when the runtime's failure is not one the launcher's silence explains",
@@ -897,6 +899,7 @@
     "pack-breaking.test.ts",
     "pack-dependencies.test.ts",
     "people-copies.test.ts",
+    "perf-report.test.ts",
     "pod-database.test.ts",
     "pod-links.test.ts",
     "pod-tools.test.ts",

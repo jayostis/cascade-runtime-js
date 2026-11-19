@@ -499,7 +499,7 @@ export function probedRows(
       kind: "clock",
       samples: 1,
       range: `${(ms / 1000).toFixed(4)}-${(ms / 1000).toFixed(4)}`,
-      extra: `probed run, ${calls} calls, inclusive of the spans inside it; ${name.slice(0, 140)}`,
+      extra: `probed run, ${calls} calls, inclusive of the spans inside it, each call timed on its own so overlapping calls add up past the wall time; ${name.slice(0, 140)}`,
     });
   const counted = new Set<string>();
   for (const [name, value] of Object.entries(seen.counts)

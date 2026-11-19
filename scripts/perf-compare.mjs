@@ -12,6 +12,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 /** What a row is, from its name: a stage of the probed run, a count, or a headline time or size. */
@@ -368,6 +369,12 @@ function duration(text) {
   );
 }
 
+/** Writes the text and a newline. */
+function say(text) {
+  process.stdout.write(`${text}
+`);
+}
+
 function main(args) {
   const [command, ...rest] = args;
   const flag = (name) => {
@@ -383,17 +390,15 @@ function main(args) {
     flag("--stages") === undefined ? undefined : Number(flag("--stages"));
   const options = { markdown, ...(stages !== undefined && { stages }) };
   if (command === "compare" && positional.length === 2)
-    return console.log(
-      compare(read(positional[0]), read(positional[1]), options),
-    );
+    return say(compare(read(positional[0]), read(positional[1]), options));
   if (command === "summary" && positional.length === 1)
-    return console.log(summary(read(positional[0]), options));
+    return say(summary(read(positional[0]), options));
   if (command === "history" && flag("--name") !== undefined)
-    return console.log(
+    return say(
       history(flag("--dir") ?? "perf-data", flag("--name"), flag("--since")),
     );
-  console.error(
-    "usage: perf-compare.mjs compare <before.json> <after.json> | summary <file.json> | history --name <glob> [--since 7d] [--dir folder]",
+  process.stderr.write(
+    "usage: perf-compare.mjs compare <before.json> <after.json> | summary <file.json> | history --name <glob> [--since 7d] [--dir folder]\n",
   );
   process.exitCode = 2;
 }
