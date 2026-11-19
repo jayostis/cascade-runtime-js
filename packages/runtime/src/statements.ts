@@ -1,5 +1,6 @@
 import { createSHA256, type IHasher } from "hash-wasm";
-import type { Database, DatabaseFunction } from "./database.js";
+import * as oxigraph from "oxigraph";
+import type { Database, DatabaseFunction, Statement } from "./database.js";
 import { codeIri, RDF_LANG_STRING, type Term, XSD, XSD_STRING } from "./rdf.js";
 
 /** The vocabulary's schema of a pod's statements in SQLite, beside its queries. */
@@ -834,6 +835,9 @@ function lineTerms(line: string): [string, string, string] {
   return terms as [string, string, string];
 }
 
+/** Each index the schema makes: made once the statements are loaded, which sorts each once instead of keeping it sorted. */
+const INDEX = /^CREATE INDEX\b[^;]*;/gim;
+
 /** The SQLite version the schema says it needs, as numbers. */
 function minimumVersion(schema: string): number[] {
   const found = /SQLite (\d+)\.(\d+)\.(\d+)/.exec(schema);
@@ -847,31 +851,219 @@ const XSD_INTEGER = `${XSD}integer`;
 const XSD_DECIMAL = `${XSD}decimal`;
 const XSD_BOOLEAN = `${XSD}boolean`;
 
+const YEAR = String.raw`(?<year>-?\d{4})`;
+const CLOCK = String.raw`(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d`;
+
+/** A calendar lexical form: its part before any fraction of its seconds, the fraction's digits, and its zone. */
+function calendarForm(head: string, seconds = false): RegExp {
+  return new RegExp(
+    String.raw`^(?<head>${head})${seconds ? String.raw`(?:\.(?<fraction>\d+))?` : ""}(?<zone>Z|[+-]\d\d:[0-5]\d)?$`,
+  );
+}
+
+const DATE_TIME_FORM = calendarForm(
+  String.raw`${YEAR}-(?<month>\d\d)-(?<day>\d\d)T${CLOCK}`,
+  true,
+);
+
 /**
- * A valid xsd:integer's, xsd:decimal's or xsd:boolean's lexical form as Oxigraph's store holds it ("01" as "1", "1.50"
- * as "1.5", "1" as "true"); any other term's as it is.
+ * Each calendar datatype's lexical form in the shape the runtime makes it, a year of four digits and no 24:00:00, and
+ * the datatype Oxigraph's store holds a value of it as.
  */
-function canonicalLexical(term: SqlTerm): string {
-  if (term.kind !== LITERAL) return term.value;
-  if (term.datatype === XSD_INTEGER && INTEGER.test(term.value)) {
+const CALENDAR_FORMS: ReadonlyMap<
+  string,
+  { readonly form: RegExp; readonly as: string }
+> = new Map([
+  [DATE_TIME_TYPE, { form: DATE_TIME_FORM, as: DATE_TIME_TYPE }],
+  [`${XSD}dateTimeStamp`, { form: DATE_TIME_FORM, as: DATE_TIME_TYPE }],
+  [`${XSD}time`, { form: calendarForm(CLOCK, true), as: `${XSD}time` }],
+  [
+    DATE_TYPE,
+    {
+      form: calendarForm(String.raw`${YEAR}-(?<month>\d\d)-(?<day>\d\d)`),
+      as: DATE_TYPE,
+    },
+  ],
+  [`${XSD}gYear`, { form: calendarForm(YEAR), as: `${XSD}gYear` }],
+  [
+    `${XSD}gYearMonth`,
+    {
+      form: calendarForm(String.raw`${YEAR}-(?<month>\d\d)`),
+      as: `${XSD}gYearMonth`,
+    },
+  ],
+  [
+    `${XSD}gMonth`,
+    { form: calendarForm(String.raw`--(?<month>\d\d)`), as: `${XSD}gMonth` },
+  ],
+  [
+    `${XSD}gDay`,
+    { form: calendarForm(String.raw`---(?<day>\d\d)`), as: `${XSD}gDay` },
+  ],
+  [
+    `${XSD}gMonthDay`,
+    {
+      form: calendarForm(String.raw`--(?<month>\d\d)-(?<day>\d\d)`),
+      as: `${XSD}gMonthDay`,
+    },
+  ],
+]);
+
+/**
+ * A calendar value as Oxigraph's store holds it, when its lexical form is one `CALENDAR_FORMS` gives naming a real
+ * date (a February of no year in one that is not leap, as Oxigraph reads it) and an offset of at most 14:00, with at most eighteen digits of its seconds' fraction once its trailing zeros
+ * are dropped: those dropped, a zero offset as Z. Otherwise none, though Oxigraph may read it.
+ */
+function calendarHeld(term: SqlTerm): SqlTerm | undefined {
+  const calendar = CALENDAR_FORMS.get(term.datatype ?? "");
+  const found = calendar?.form.exec(term.value)?.groups;
+  if (calendar === undefined || found === undefined) return undefined;
+  const { head = "", year, month, day, fraction = "", zone = "" } = found;
+  if (year === "-0000") return undefined;
+  const most =
+    month === undefined ? 31n : daysIn(BigInt(year ?? "1"), BigInt(month));
+  if (most === 0n) return undefined;
+  if (day !== undefined && (BigInt(day) < 1n || BigInt(day) > most))
+    return undefined;
+  if (zoneMinutes(zone === "" ? undefined : zone) === undefined)
+    return undefined;
+  const digits = fraction.replace(/0+$/, "");
+  if (digits.length > 18) return undefined;
+  return {
+    ...term,
+    value: `${head}${digits === "" ? "" : `.${digits}`}${zone === "+00:00" || zone === "-00:00" ? "Z" : zone}`,
+    datatype: calendar.as,
+  };
+}
+
+/** The datatypes whose literals Oxigraph's store holds as values, written back in a canonical form. */
+const HELD_AS_VALUES = new Set([
+  ...NUMERIC,
+  XSD_BOOLEAN,
+  ...CALENDAR_FORMS.keys(),
+  ...["duration", "dayTimeDuration", "yearMonthDuration"].map(
+    (name) => XSD + name,
+  ),
+]);
+
+/** What `oxigraphHeld` has found, by datatype and lexical form; cleared once it holds `HELD_KEPT`. */
+const heldByOxigraph = new Map<string, SqlTerm>();
+const HELD_KEPT = 10_000;
+let heldIn: oxigraph.Store | undefined;
+
+/** The literal as Oxigraph's store holds it, asked of a store of Oxigraph's own. */
+function oxigraphHeld(term: SqlTerm): SqlTerm {
+  const key = `${term.datatype ?? ""} ${term.value}`;
+  const known = heldByOxigraph.get(key);
+  if (known !== undefined) return known;
+  heldIn ??= new oxigraph.Store();
+  const subject = oxigraph.namedNode("urn:x:held");
+  const predicate = oxigraph.namedNode("urn:x:as");
+  const given = oxigraph.quad(
+    subject,
+    predicate,
+    oxigraph.literal(term.value, oxigraph.namedNode(term.datatype ?? "")),
+  );
+  heldIn.add(given);
+  const [stored] = heldIn.match(subject, predicate, null, null);
+  heldIn.delete(stored ?? given);
+  const object = stored?.object;
+  const held: SqlTerm =
+    object?.termType === "Literal"
+      ? { ...term, value: object.value, datatype: object.datatype.value }
+      : term;
+  if (heldByOxigraph.size >= HELD_KEPT) heldByOxigraph.clear();
+  heldByOxigraph.set(key, held);
+  return held;
+}
+
+/**
+ * The term as Oxigraph's store holds it: a literal of a datatype it holds as a value in the canonical form it writes it
+ * in, under the datatype it writes ("01"^^xsd:int as "1"^^xsd:integer, "01.710+00:00" as "01.71Z"), and one it cannot
+ * read, as "2025-02-29", as it was written; any other term as it is. The forms the runtime makes are written here; any
+ * other is asked of Oxigraph, so the two cannot differ.
+ */
+function heldTerm(term: SqlTerm): SqlTerm {
+  if (term.kind !== LITERAL || !HELD_AS_VALUES.has(term.datatype ?? ""))
+    return term;
+  const calendar = calendarHeld(term);
+  if (calendar !== undefined) return calendar;
+  if (INTEGERS.has(term.datatype ?? "") && INTEGER.test(term.value)) {
     const value = BigInt(term.value);
-    return value >= -LONG && value < LONG ? value.toString() : term.value;
+    if (value >= -LONG && value < LONG)
+      return { ...term, value: value.toString(), datatype: XSD_INTEGER };
   }
   if (term.datatype === XSD_DECIMAL) {
     const value = scaled(term.value);
-    return value === undefined ? term.value : decimalText(value);
+    if (value !== undefined) return { ...term, value: decimalText(value) };
   }
   if (term.datatype === XSD_BOOLEAN && Object.hasOwn(BOOLEAN, term.value))
-    return BOOLEAN[term.value] === 1 ? "true" : "false";
-  return term.value;
+    return { ...term, value: BOOLEAN[term.value] === 1 ? "true" : "false" };
+  return oxigraphHeld(term);
+}
+
+/** Each term's id in a pod's statements, put in `term` the first time it is asked for. */
+class TermIds {
+  readonly #ids = new Map<string, number>();
+  readonly #put: Statement;
+  readonly #held: Statement | undefined;
+  #next: number;
+
+  /** Over a database that may hold terms already, unless `empty` says it holds none, so none is looked up. */
+  constructor(db: Database, empty: boolean) {
+    this.#put = db.prepare(
+      "INSERT INTO term (id, nt, kind, lex, datatype, lang, instant, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    );
+    this.#held = empty
+      ? undefined
+      : db.prepare("SELECT id FROM term WHERE nt = ?");
+    this.#next = empty
+      ? 1
+      : Number(db.prepare("SELECT max(id) AS id FROM term").get()?.id ?? 0) + 1;
+  }
+
+  /** The id of the term the N-Triples text writes, which is as Oxigraph writes it. */
+  id(nt: string, term?: SqlTerm): number {
+    let found = this.held(nt);
+    if (found !== undefined) return found;
+    const parsed = term ?? parsedNt(nt);
+    found = this.#next++;
+    this.#put.run(
+      found,
+      nt,
+      parsed.kind,
+      parsed.kind === BLANK ? null : parsed.value,
+      parsed.datatype ?? null,
+      parsed.lang ?? null,
+      instantKey(parsed),
+      dayKey(parsed),
+    );
+    this.#ids.set(nt, found);
+    return found;
+  }
+
+  /** The id of the term, if the pod's statements have one. */
+  held(nt: string): number | undefined {
+    const found = this.#ids.get(nt);
+    if (found !== undefined || this.#held === undefined) return found;
+    const held = this.#held.get(nt)?.id;
+    if (held === undefined) return undefined;
+    this.#ids.set(nt, Number(held));
+    return Number(held);
+  }
+}
+
+/** The term as Oxigraph's store holds it, in N-Triples. */
+export function heldNt(term: Term): string {
+  return sqlNt(heldTerm(sqlTermOf(term)));
 }
 
 /**
  * Makes the schema on an empty database and loads the graphs' statements into it: each term once, by its N-Triples as
  * Oxigraph writes it, with its kind, lexical form, datatype, language and calendar keys; every record and entry in
  * scope, as a whole run fills it; and the ledger's one row naming what the whole was built from. A term written
- * otherwise than Oxigraph writes it, escaped otherwise or an integer, decimal or boolean not in the canonical form its
- * store holds, is refused, as is an SQLite older than the schema needs. The graphs given are a `Union`'s, so the default
+ * otherwise than Oxigraph writes it, escaped otherwise or a literal of a value not in the form and datatype its store
+ * holds it in, is refused, as is an SQLite older than the schema needs. The graphs given are a `Union`'s, so the default
  * graph a query reads is their union by construction, which the vocabulary's loader has to check of an Oxigraph store.
  */
 export function loadStatements(
@@ -889,37 +1081,22 @@ export function loadStatements(
     throw new Error(
       `SQLite ${version.join(".")} is older than the ${minimumVersion(schema).join(".")} the schema needs`,
     );
-  db.exec(schema);
-  const putTerm = db.prepare(
-    "INSERT INTO term (id, nt, kind, lex, datatype, lang, instant, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-  );
+  const indexes = schema.match(INDEX) ?? [];
+  db.exec(schema.replace(INDEX, ""));
   const putQuad = db.prepare(
     "INSERT OR IGNORE INTO quad (s, p, o, g) VALUES (?, ?, ?, ?)",
   );
-  const ids = new Map<string, number>();
+  const terms = new TermIds(db, true);
   const id = (nt: string): number => {
-    let found = ids.get(nt);
-    if (found === undefined) {
-      const term = parsedNt(nt);
-      const canonical = sqlNt({ ...term, value: canonicalLexical(term) });
-      if (canonical !== nt)
-        throw new Error(
-          `${nt} is written ${canonical} here, not as Oxigraph writes it`,
-        );
-      found = ids.size + 1;
-      ids.set(nt, found);
-      putTerm.run(
-        found,
-        nt,
-        term.kind,
-        term.kind === BLANK ? null : term.value,
-        term.datatype ?? null,
-        term.lang ?? null,
-        instantKey(term),
-        dayKey(term),
+    const known = terms.held(nt);
+    if (known !== undefined) return known;
+    const term = parsedNt(nt);
+    const canonical = sqlNt(heldTerm(term));
+    if (canonical !== nt)
+      throw new Error(
+        `${nt} is written ${canonical} here, not as Oxigraph writes it`,
       );
-    }
-    return found;
+    return terms.id(nt, term);
   };
   db.transaction(() => {
     for (const { graph, ntriples } of graphs) {
@@ -930,11 +1107,130 @@ export function loadStatements(
         putQuad.run(id(s), id(p), id(o), g);
       }
     }
-    db.prepare("INSERT INTO ledger (built, fingerprint) VALUES ('pod', ?)").run(
-      fingerprint,
-    );
+    for (const index of indexes) db.exec(index);
+    ledgerNamed(db, fingerprint);
     wholeScope(db);
   });
+}
+
+/** A graph's triples, each term as Oxigraph's store holds it, in N-Triples. */
+export type HeldTriples = Iterable<readonly [string, string, string]>;
+
+/**
+ * Keyed writes of a pod's statements loaded before: each a delete or an insert by key, never a table read whole, so a
+ * step writes what it changed and no more. Each subject removed or written is kept, for a keyed run's scope.
+ */
+export class KeyedStatements {
+  readonly #db: Database;
+  readonly #terms: TermIds;
+  readonly #touched = new Set<number>();
+  readonly #put: Statement;
+  readonly #removeSubject: Statement;
+  readonly #subjectsOf: Statement;
+  readonly #removeGraph: Statement;
+
+  constructor(db: Database) {
+    this.#db = db;
+    this.#terms = new TermIds(db, false);
+    this.#put = db.prepare(
+      "INSERT OR IGNORE INTO quad (s, p, o, g) VALUES (?, ?, ?, ?)",
+    );
+    this.#removeSubject = db.prepare("DELETE FROM quad WHERE g = ? AND s = ?");
+    this.#subjectsOf = db.prepare(
+      "SELECT DISTINCT s FROM quad INDEXED BY quad_g WHERE g = ?",
+    );
+    this.#removeGraph = db.prepare("DELETE FROM quad WHERE g = ?");
+  }
+
+  /** Removes from the graph every statement whose subject is one of the IRIs, as `Store.removeSubjects` does. */
+  removeSubjects(graph: string, subjects: Iterable<string>): void {
+    const g = this.#terms.held(`<${graph}>`);
+    for (const subject of subjects) {
+      const s = this.#terms.held(sqlNt({ kind: IRI, value: subject }));
+      if (s === undefined) continue;
+      this.#touched.add(s);
+      if (g !== undefined) this.#removeSubject.run(g, s);
+    }
+  }
+
+  /** Removes every statement of the graph. */
+  removeGraph(graph: string): void {
+    const g = this.#terms.held(`<${graph}>`);
+    if (g === undefined) return;
+    for (const { s } of this.#subjectsOf.all(g)) this.#touched.add(Number(s));
+    this.#removeGraph.run(g);
+  }
+
+  /** Puts the triples in the graph. */
+  add(graph: string, triples: HeldTriples): void {
+    const g = this.#terms.id(`<${graph}>`);
+    for (const [subject, predicate, object] of triples) {
+      const s = this.#terms.id(subject);
+      this.#touched.add(s);
+      this.#put.run(s, this.#terms.id(predicate), this.#terms.id(object), g);
+    }
+  }
+
+  /** Puts each subject removed or written in `scope`, and nothing else, as a keyed run is given them. */
+  scoped(): void {
+    this.#db.prepare("DELETE FROM scope").run();
+    if (hasAsked(this.#db)) this.#db.prepare("DELETE FROM asked").run();
+    const put = this.#db.prepare(
+      "INSERT OR IGNORE INTO scope (term) VALUES (?)",
+    );
+    for (const term of this.#touched) put.run(term);
+  }
+}
+
+/** The ledger's fingerprint of what the whole was built from; none for a database the schema was never made in. */
+export function ledgerFingerprint(db: Database): string | undefined {
+  const made =
+    db
+      .prepare(
+        "SELECT 1 AS found FROM sqlite_schema WHERE type = 'table' AND name = 'ledger'",
+      )
+      .get() !== undefined;
+  if (!made) return undefined;
+  const found = db
+    .prepare("SELECT fingerprint FROM ledger WHERE built = 'pod'")
+    .get()?.fingerprint;
+  return typeof found === "string" ? found : undefined;
+}
+
+/** Names in the ledger the fingerprint of what the whole now holds. */
+export function ledgerNamed(db: Database, fingerprint: string): void {
+  db.prepare(
+    "INSERT INTO ledger (built, fingerprint) VALUES ('pod', ?) ON CONFLICT (built) DO UPDATE SET fingerprint = excluded.fingerprint",
+  ).run(fingerprint);
+}
+
+/**
+ * The graphs a store's dump holds, those `kept` names, each block of it the N-Triples Oxigraph writes of a graph:
+ * decoded a block at a time, so the whole is never held as text.
+ */
+export function* graphsOfDump(
+  bytes: Uint8Array,
+  kept: ReadonlySet<string>,
+): Generator<GraphStatements> {
+  const decoder = new TextDecoder();
+  let at = bytes.indexOf(0x0a) + 1;
+  while (at > 0 && at < bytes.length) {
+    const opened = bytes.indexOf(0x0a, at);
+    if (opened < 0) return;
+    const graph = /^<(.*)> \{$/.exec(
+      decoder.decode(bytes.subarray(at, opened)),
+    )?.[1];
+    let close = opened;
+    while (close >= 0 && bytes[close + 1] !== 0x7d)
+      close = bytes.indexOf(0x0a, close + 1);
+    if (close < 0) return;
+    if (graph !== undefined && kept.has(graph))
+      yield {
+        graph,
+        ntriples: decoder.decode(bytes.subarray(opened + 1, close)),
+      };
+    at = close + 3;
+  }
 }
 
 /** Every record and entry in scope, as a whole run fills it, and a question asked of the whole pod. */
@@ -1041,4 +1337,46 @@ export function sqlAnswer(
     }),
   );
   return paged ? { columns, rows, keys } : { columns, rows };
+}
+
+/**
+ * The statements of a script, each without its closing `;`: split where a `;` stands outside a string, a quoted name
+ * and a comment. A script that makes a trigger, whose body holds `;`, is not split right.
+ */
+export function sqlStatements(script: string): string[] {
+  const found: string[] = [];
+  let start = 0;
+  let at = 0;
+  const closing: Readonly<Record<string, string>> = {
+    "'": "'",
+    '"': '"',
+    "`": "`",
+    "[": "]",
+  };
+  while (at < script.length) {
+    const character = script[at] ?? "";
+    const close = closing[character];
+    if (close !== undefined) {
+      const end = script.indexOf(close, at + 1);
+      at = end < 0 ? script.length : end + 1;
+    } else if (script.startsWith("--", at)) {
+      const end = script.indexOf("\n", at);
+      at = end < 0 ? script.length : end + 1;
+    } else if (script.startsWith("/*", at)) {
+      const end = script.indexOf("*/", at + 2);
+      at = end < 0 ? script.length : end + 2;
+    } else if (character === ";") {
+      found.push(script.slice(start, at));
+      at += 1;
+      start = at;
+    } else at += 1;
+  }
+  found.push(script.slice(start));
+  return found.filter(
+    (statement) =>
+      statement
+        .replace(/--[^\n]*/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .trim() !== "",
+  );
 }

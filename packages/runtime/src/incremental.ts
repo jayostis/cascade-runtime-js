@@ -127,6 +127,16 @@ function flat(groups: ReadonlyMap<string, readonly Triple[]>): Triple[] {
   return [...groups.values()].flat();
 }
 
+/** A change a step made to a graph of a kept build's union: subjects replaced, the graph replaced whole, or a file loaded. */
+export type BuildChange =
+  | {
+      readonly graph: string;
+      readonly gone: readonly string[];
+      readonly fresh: readonly Triple[];
+    }
+  | { readonly graph: string; readonly whole: readonly Triple[] }
+  | { readonly graph: string; readonly loaded: true };
+
 /**
  * The build of a pod kept across its steps (currency.md, row "view"): the pod's files, the lens's derived state and
  * the files the build writes, in one union. A step rebuilds only the records it wrote revisions for and those its
@@ -157,6 +167,11 @@ export class KeptBuild {
   /** The quads the steps have put in the union in place of others since `moved` was last read. */
   #moved = 0;
   #held: ReadonlySet<string>;
+  /**
+   * Given, each change the steps make to the union's graphs is put in it, in order, as made; a graph lent out with the
+   * files the build writes is changed here as it is in the maps that stand for it.
+   */
+  recording: BuildChange[] | undefined;
   /** The subjects of the derived state that are no record's, its version's or revision's, or its entry's. */
   #globalDerived: Set<string>;
   /** Every judgment and every retraction the scope holds. */
@@ -686,6 +701,7 @@ export class KeptBuild {
     gone: readonly string[],
     fresh: readonly Triple[],
   ): Promise<void> {
+    this.recording?.push({ graph, gone, fresh });
     if (this.#builtOut) return;
     await this.#union.removeSubjects(graph, gone);
     await this.#union.add(fresh, graph);
@@ -698,6 +714,7 @@ export class KeptBuild {
       graph.slice(this.#rebuilding.address.length),
       triples,
     );
+    this.recording?.push({ graph, whole: triples });
     if (this.#builtOut) return;
     await this.#union.drop(graph);
     await this.#union.add(triples, graph);
@@ -809,7 +826,10 @@ export class KeptBuild {
     const scope = await timedAside("kept.step.scoped", () => this.#scoped());
     await timedAside("kept.step.podFiles", async () => {
       await podFiles(this.#rebuilding.pod, layout, address, this.#union, fresh);
-      for (const path of fresh) this.#loaded.add(path);
+      for (const path of fresh) {
+        this.#loaded.add(path);
+        this.recording?.push({ graph: address + path, loaded: true });
+      }
       const newShared = sharedPaths.filter(
         (path) => !this.#scopeLoaded.has(path),
       );
@@ -1232,18 +1252,24 @@ export class KeptBuild {
       `?bound cascade:revisionOf ?record . ?record a cascade:Record BIND (?bound AS ?found)`,
     ]))
       candidates.delete(recordish);
-    await union.removeSubjects(derivedGraph, [
+    const derivedGone = [
       ...records,
       ...owned,
       ...oldLeftOut,
       ...oldEntries,
       ...this.#globalDerived,
-    ]);
+    ];
+    await union.removeSubjects(derivedGraph, derivedGone);
     const derivedAdded = added.filter(
       ([subject]) =>
         inScope.has(subject.value) || candidates.has(subject.value),
     );
     await union.add(derivedAdded, derivedGraph);
+    this.recording?.push({
+      graph: derivedGraph,
+      gone: derivedGone,
+      fresh: derivedAdded,
+    });
     this.#moved += derivedAdded.length;
     this.#globalDerived = candidates;
 
