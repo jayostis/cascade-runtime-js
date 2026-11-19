@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import {
+  CorePod,
   type Files,
   fileStem,
   iri,
@@ -43,7 +45,9 @@ import { keptPod, openPodWith, type Pod, type Row } from "../src/pod.js";
 import { Answers } from "../src/answers.js";
 // Parts over the repository's checkouts, and an app's file, which the package reads once in a process and nine files cannot be read through.
 import {
+  answersBeside,
   appSettings,
+  databaseBeside,
   partsOf,
   type ResolvedParts,
 } from "../src/node/resolved.js";
@@ -1081,7 +1085,7 @@ function draft(
 /** What a pod opened over several sets of tables did: the opens that matter to its capabilities. */
 interface Hana {
   /** The open that gave the pod the newer versions. */
-  readonly adopted: Pod["opened"];
+  readonly adopted: Awaited<Pod["opened"]>;
   /** The versions cited by the view entry of an allergy to ibuprofen, of CVX 150 and of CVX 140 at that open. */
   readonly cited: {
     readonly ibuprofen: readonly string[];
@@ -1090,12 +1094,12 @@ interface Hana {
   };
   /** The open after, with the same tables. */
   readonly again: {
-    readonly opened: Pod["opened"];
+    readonly opened: Awaited<Pod["opened"]>;
     readonly unheld: readonly string[] | undefined;
   };
   /** The first and the second open with tables that lack the newer versions. */
   readonly lacking: readonly {
-    readonly opened: Pod["opened"];
+    readonly opened: Awaited<Pod["opened"]>;
     readonly unheld: readonly string[] | undefined;
   }[];
   /** The product ingredients version the pod first held, and the one it adopted. */
@@ -1156,6 +1160,7 @@ function hanaPod(): Promise<Hana> {
     const later = tablesOver(ingredientsLater.served, store);
     await later.check({ cache: "no-cache" });
     const adopting = await opening(later, folder, async (pod) => {
+      const opened = await pod.opened;
       const joined = new Map<string, string[]>();
       for (const { entry = "", used = "" } of await pod.joinedBy())
         joined.set(entry, [...(joined.get(entry) ?? []), used]);
@@ -1174,7 +1179,7 @@ function hanaPod(): Promise<Hana> {
         return joined.get(entries[0]?.entry ?? "") ?? [];
       };
       return {
-        opened: pod.opened,
+        opened,
         cited: {
           ibuprofen: await citedBy("allergenCode", `<${RXNORM}5640>`),
           cvx150: await citedBy("vaccineCode", `<${CVX}150>`),
@@ -1183,7 +1188,7 @@ function hanaPod(): Promise<Hana> {
       };
     });
     const again = await opening(later, folder, async (pod) => ({
-      opened: pod.opened,
+      opened: await pod.opened,
       unheld: await pod.unheldTableVersions(),
     }));
 
@@ -1194,7 +1199,7 @@ function hanaPod(): Promise<Hana> {
     await older.check();
     const lackingOpen = () =>
       opening(older, folder, async (pod) => ({
-        opened: pod.opened,
+        opened: await pod.opened,
         unheld: await pod.unheldTableVersions(),
       }));
     const lacking = [await lackingOpen(), await lackingOpen()];
@@ -2363,7 +2368,7 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
   });
 
   describe("given only a newer version of the vocabulary's rule list", () => {
-    let revised: Pod["opened"];
+    let revised: Awaited<Pod["opened"]>;
 
     before(async () => {
       const store = await checkedStore(feed);
@@ -2532,7 +2537,478 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       );
     });
   });
+
+  describe("given a newer version of a series the pod uses, while the open's matcher run is held", () => {
+    const IMMUNIZATIONS = "pod/My immunizations";
+    const KINDS = "pod/How many of each kind";
+    const ALLERGIES = "pod/My active allergies";
+    let settledFirst: "opened" | "held";
+    let rowsBefore: Row[];
+    let asOpened: Row[] | undefined;
+    let followedUp: Row[] | undefined;
+    let kindsBefore: Row[];
+    let during: Row[] | undefined;
+    let after: Row[];
+    let waited: Row[];
+    let opened: Awaited<Pod["opened"]>;
+    let failedOpen: "opened" | "held";
+    let failure: unknown;
+    let unheldBefore: readonly string[] | undefined;
+    let unheldDuring: readonly string[] | undefined;
+    let retried: Awaited<Pod["opened"]>;
+    let closedDuring: Awaited<Pod["opened"]>;
+    let reopened: Awaited<Pod["opened"]>;
+    let matchedDuring: Awaited<ReturnType<Pod["match"]>>;
+    let askedAfterWrite: Row[];
+
+    before(async () => {
+      const folder = join(scratch, "pods", "held-open");
+      const store = new MemoryFiles("urn:test:tables-held-open/");
+      const answers = new MemoryFiles("urn:test:answers-held-open/");
+      const answering = {
+        ...parts,
+        answers: { runtime: "test", at: () => answers },
+      };
+      await tablesOver(first, store).check();
+      await opening(tablesOver(first, store), folder, async (pod) => {
+        const entered = await pod.enter(
+          entering(
+            pod,
+            [
+              ["141", "2025-10-01"],
+              ["150", "2025-10-01"],
+              ["140", "2024-10-01"],
+              ["141", "2024-10-01"],
+            ].map(([code, date], index) =>
+              draft(
+                index,
+                "cascade:Vaccination",
+                `cascade:vaccineCode <${CVX}${code}> ; cascade:vaccinationOccurrenceTime "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+                pod,
+              ),
+            ),
+          ),
+        );
+        assert.equal(entered.refused, undefined);
+      });
+      const asking = await openPodWith(
+        { ...answering, tables: tablesOver(first, store) },
+        folder,
+      );
+      rowsBefore = await asking.ask(IMMUNIZATIONS);
+      await asking.close();
+      await tablesOver(feed, store).check({ cache: "no-cache" });
+
+      // The same pod and tables, for an open that waits for its matcher run before it is asked.
+      const copy = join(scratch, "pods", "held-open-waited");
+      await cp(folder, copy, { recursive: true });
+      const waiting = tablesOver(
+        feed,
+        await copied(store, "urn:test:tables-held-open-waited/"),
+      );
+      const unadopted = await openPodWith({ ...parts, tables: waiting }, copy, {
+        adopt: false,
+      });
+      kindsBefore = await unadopted.ask(KINDS);
+      unheldBefore = await unadopted.unheldTableVersions();
+      await unadopted.close();
+      await opening(waiting, copy, async (pod) => {
+        await pod.opened;
+        waited = await pod.ask(IMMUNIZATIONS);
+      });
+      const failing = join(scratch, "pods", "held-open-failing");
+      await cp(folder, failing, { recursive: true });
+      const failingStore = await copied(
+        store,
+        "urn:test:tables-held-open-failing/",
+      );
+      const closing = join(scratch, "pods", "held-open-closing");
+      await cp(folder, closing, { recursive: true });
+      const closingStore = await copied(
+        store,
+        "urn:test:tables-held-open-closing/",
+      );
+
+      const held = writesHeld();
+      const heldOpen = openPodWith(
+        {
+          ...answering,
+          tables: tablesOver(feed, store),
+          folder: held.folder,
+        },
+        folder,
+      );
+      try {
+        settledFirst = await Promise.race([
+          heldOpen.then(() => "opened" as const),
+          held.reached.then(() => "held" as const),
+        ]);
+        if (settledFirst === "opened") {
+          const pod = await heldOpen;
+          // KINDS was never asked, so nothing is kept for it: it is answered ahead of the run, or not until it is released.
+          const first = pod.ask(KINDS);
+          // ALLERGIES is never asked either: asked from KINDS's answer, as a screen asks what its first answers call for.
+          const following = first.then(() => pod.ask(ALLERGIES));
+          asOpened = await whileHeld(first);
+          followedUp = await whileHeld(following);
+          await held.reached;
+          during = await whileHeld(pod.ask(IMMUNIZATIONS));
+          unheldDuring = await whileHeld(pod.unheldTableVersions());
+          // A write called during the run, and the question asked after it, which is not to be answered from before the run.
+          const matching = pod.match();
+          const asking = pod.ask(IMMUNIZATIONS);
+          held.release();
+          matchedDuring = await matching;
+          askedAfterWrite = await asking;
+        }
+      } finally {
+        held.release();
+      }
+      const pod = await heldOpen;
+      opened = await pod.opened;
+      after = await pod.ask(IMMUNIZATIONS);
+      await pod.close();
+
+      const refusing = writesHeld(new Error("the disk is full"));
+      const failingOpen = openPodWith(
+        {
+          ...parts,
+          tables: tablesOver(feed, failingStore),
+          folder: refusing.folder,
+        },
+        failing,
+      );
+      failedOpen = await Promise.race([
+        failingOpen.then(() => "opened" as const),
+        refusing.reached.then(() => "held" as const),
+      ]);
+      refusing.release();
+      const failed = await failingOpen.catch(() => undefined);
+      failure = await Promise.resolve(failed?.opened).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await failed?.close();
+      retried = await opening(
+        tablesOver(feed, failingStore),
+        failing,
+        (pod) => pod.opened,
+      );
+
+      const closingHeld = writesHeld();
+      const closingPod = await openPodWith(
+        {
+          ...parts,
+          tables: tablesOver(feed, closingStore),
+          folder: closingHeld.folder,
+        },
+        closing,
+      );
+      await closingHeld.reached;
+      const closed = closingPod.close();
+      closingHeld.release();
+      await closed;
+      closedDuring = await closingPod.opened;
+      reopened = await opening(
+        tablesOver(feed, closingStore),
+        closing,
+        (pod) => pod.opened,
+      );
+    });
+
+    it("returns the pod before its matcher run for the new series has written", () => {
+      assert.equal(settledFirst, "opened");
+    });
+
+    it("answers a question asked as the open returns ahead of the run, over the pod as it was", () => {
+      assert.ok(asOpened, "it waited for the run");
+      assert.deepEqual(asOpened, kindsBefore);
+    });
+
+    it("answers a question asked from the first answers ahead of the run, which starts once no call is waiting", () => {
+      assert.ok(followedUp, "it waited for the run");
+    });
+
+    it("answers a question asked during the run with the rows kept before it", () => {
+      assert.ok(during, "it waited for the run");
+      assert.deepEqual(during, rowsBefore);
+    });
+
+    it("answers, once `pod.opened` settles, as an open that waited for the run", () => {
+      assert.ok(opened);
+      assert.equal(opened.refused, undefined);
+      assert.ok(opened.wrote.length > 0);
+      assert.notDeepEqual(after, rowsBefore, "the run changed nothing asked");
+      assert.deepEqual(after, waited);
+    });
+
+    it("answers `pod.unheldTableVersions()` during the run over the pod as it was, without waiting for it", () => {
+      assert.ok(unheldDuring, "it waited for the run");
+      assert.deepEqual(unheldDuring, unheldBefore);
+    });
+
+    it("rejects `pod.opened` with a run's failure, and still returns the pod", () => {
+      assert.equal(failedOpen, "opened");
+      assert.match(String(failure), /the disk is full/);
+    });
+
+    it("runs the open again at the next open after a run that failed", () => {
+      assert.ok(retried);
+      assert.equal(retried.refused, undefined);
+      assert.ok(retried.wrote.length > 0);
+    });
+
+    it("closes a pod closed during the run once the run has finished, which the next open does not run again", () => {
+      assert.ok(closedDuring);
+      assert.equal(closedDuring.refused, undefined);
+      assert.equal(reopened, undefined);
+    });
+
+    it("answers a question asked after a write was called during the run with the pod after both, not the rows kept before it", () => {
+      assert.ok(matchedDuring, "it waited for the run");
+      assert.equal(matchedDuring.refused, undefined);
+      assert.notDeepEqual(askedAfterWrite, rowsBefore);
+      assert.deepEqual(askedAfterWrite, after);
+    });
+  });
+
+  describe("given a newer version of a series the pod uses and pod.db beside the pod, while the open's matcher run is held", () => {
+    const IMMUNIZATIONS = "pod/My immunizations";
+    let rowsBefore: Row[];
+    let during: Row[] | undefined;
+    let after: Row[];
+    let fromStore: Row[];
+    let reopened: Row[];
+    let readWhole: number;
+    let listings: number;
+
+    before(async () => {
+      const folder = join(scratch, "pods", "held-open-database");
+      const store = new MemoryFiles("urn:test:tables-held-open-database/");
+      const beside = {
+        ...parts,
+        answers: { runtime: "test", at: answersBeside },
+        databaseBeside,
+      };
+      await tablesOver(first, store).check();
+      const made = await openPodWith(
+        { ...beside, tables: tablesOver(first, store) },
+        folder,
+      );
+      try {
+        const entered = await made.enter(
+          entering(
+            made,
+            [
+              ["141", "2025-10-01"],
+              ["150", "2025-10-01"],
+              ["140", "2024-10-01"],
+              ["141", "2024-10-01"],
+            ].map(([code, date], index) =>
+              draft(
+                index,
+                "cascade:Vaccination",
+                `cascade:vaccineCode <${CVX}${code}> ; cascade:vaccinationOccurrenceTime "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+                made,
+              ),
+            ),
+          ),
+        );
+        assert.equal(entered.refused, undefined);
+        rowsBefore = await made.ask(IMMUNIZATIONS);
+      } finally {
+        await made.close();
+      }
+      // What was kept beside the pod but pod.db, so that only pod.db can answer ahead of the run.
+      const kept = join(scratch, "pods", ".answers", "held-open-database");
+      await readFile(join(kept, "pod.db"));
+      await rm(join(kept, "answers.json"), { force: true });
+      await tablesOver(feed, store).check({ cache: "no-cache" });
+
+      const held = writesHeld();
+      let listed = 0;
+      const pod = await openPodWith(
+        {
+          ...beside,
+          tables: tablesOver(feed, store),
+          folder: (path, at) => {
+            const opened = held.folder(path, at);
+            const files = new Proxy(opened.files, {
+              get: (target, property) => {
+                const value = Reflect.get(target, property) as unknown;
+                if (property === "list")
+                  return (under: string) => {
+                    if (under === "") listed += 1;
+                    return target.list(under);
+                  };
+                return typeof value === "function"
+                  ? (value as (...args: unknown[]) => unknown).bind(target)
+                  : value;
+              },
+            });
+            return { ...opened, files };
+          },
+        },
+        folder,
+      );
+      try {
+        await held.reached;
+        during = await whileHeld(pod.ask(IMMUNIZATIONS));
+      } finally {
+        held.release();
+      }
+      try {
+        await pod.opened;
+        listings = listed;
+        after = await pod.ask(IMMUNIZATIONS);
+      } finally {
+        await pod.close();
+      }
+      const again = await openPodWith(
+        { ...beside, tables: tablesOver(feed, store) },
+        folder,
+      );
+      const dataset = CorePod.prototype.dataset;
+      let reads = 0;
+      CorePod.prototype.dataset = function (this: CorePod, lens: string) {
+        reads += 1;
+        return dataset.call(this, lens);
+      };
+      try {
+        reopened = await again.ask(IMMUNIZATIONS);
+      } finally {
+        CorePod.prototype.dataset = dataset;
+        await again.close();
+      }
+      readWhole = reads;
+      const storeOnly = await openPodWith(
+        {
+          ...parts,
+          builtBeside: answersBeside,
+          tables: tablesOver(feed, store),
+        },
+        folder,
+      );
+      try {
+        fromStore = await storeOnly.ask(IMMUNIZATIONS);
+      } finally {
+        await storeOnly.close();
+      }
+    });
+
+    it("answers a question with a .sql during the run at once, from pod.db, with the rows from before it", () => {
+      assert.ok(during, "it waited for the run");
+      assert.deepEqual(during, rowsBefore);
+    });
+
+    it("lists the pod's files once, from the open until `pod.opened` settles", () => {
+      assert.equal(listings, 1);
+    });
+
+    it("answers a question with a .sql, once `pod.opened` settles, with the rows the run left, which pod.db holds once the pod is closed", () => {
+      assert.notDeepEqual(after, rowsBefore, "the run changed nothing asked");
+      assert.deepEqual(after, fromStore);
+      assert.deepEqual(reopened, after);
+      assert.equal(readWhole, 0, "the pod opened again read its store whole");
+    });
+  });
+
+  describe("given a new pod, made and closed, then opened with the app's tables, asked once and closed, as the starter kit's `ask` does", () => {
+    let database: boolean;
+
+    before(async () => {
+      const folder = join(scratch, "pods", "new-asked");
+      const store = new MemoryFiles("urn:test:tables-new-asked/");
+      const beside = {
+        ...parts,
+        answers: { runtime: "test", at: answersBeside },
+        databaseBeside,
+      };
+      await tablesOver(first, store).check();
+      const made = await openPodWith(
+        { ...beside, tables: tablesOver(first, store) },
+        folder,
+      );
+      await made.close();
+      const pod = await openPodWith(
+        { ...beside, tables: tablesOver(first, store) },
+        folder,
+      );
+      try {
+        await pod.ask("pod/My active allergies");
+      } finally {
+        await pod.close();
+      }
+      database = await readFile(
+        join(scratch, "pods", ".answers", "new-asked", "pod.db"),
+      ).then(
+        () => true,
+        () => false,
+      );
+    });
+
+    it("leaves pod.db beside the pod", () => {
+      assert.equal(database, true, "no pod.db was kept");
+    });
+  });
 });
+
+/** The answer, if it comes while a pod's writes are held: within five seconds, where it comes in milliseconds or never. */
+async function whileHeld<T>(answer: Promise<T>): Promise<T | undefined> {
+  answer.catch(() => undefined);
+  return Promise.race([
+    answer,
+    delay(5000, undefined, { ref: false }) as Promise<undefined>,
+  ]);
+}
+
+/** A copy of the files, in memory under the IRI given. */
+async function copied(files: MemoryFiles, at: string): Promise<MemoryFiles> {
+  const copy = new MemoryFiles(at);
+  for (const path of await files.list("")) {
+    const bytes = await files.read(path);
+    if (bytes !== undefined) await copy.write(path, bytes);
+  }
+  return copy;
+}
+
+/**
+ * A pod's folder whose writes wait until `release`, or then fail with `failure`: `reached` settles at the first. A pod
+ * opened writes only in a step, so the open's matcher run is the first to reach it.
+ */
+function writesHeld(failure?: Error): {
+  folder: ResolvedParts["folder"];
+  reached: Promise<void>;
+  release: () => void;
+} {
+  let reach!: () => void;
+  const reached = new Promise<void>((resolve) => (reach = resolve));
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  return {
+    reached,
+    release,
+    folder: (path, at) => {
+      const folder = parts.folder(path, at);
+      const files = new Proxy(folder.files, {
+        get: (target, property, receiver) => {
+          const value = Reflect.get(target, property, receiver) as unknown;
+          if (typeof value !== "function") return value;
+          const call = (value as (...args: unknown[]) => unknown).bind(target);
+          return typeof property === "string" && property.startsWith("write")
+            ? async (...args: unknown[]) => {
+                reach();
+                await released;
+                if (failure !== undefined) throw failure;
+                return call(...args);
+              }
+            : call;
+        },
+      });
+      return { ...folder, files };
+    },
+  };
+}
 
 /**
  * A page that shows a person their reference tables lists each series the app holds, with its versions and where it

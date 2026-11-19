@@ -793,10 +793,21 @@ process reads the feeds, unless `tables.checkOnOpen` is `false`, and keeps each
 newer version that verifies, however long the downloads take in all; a feed or
 download that has not answered in 10 s is left for a later check. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
 checks again ("Check now"); a feed that cannot be read now says `later`, and
-nothing is thrown. Opening a pod after its tables changed gives it them:
-`pod.opened` says what that wrote, and `pod.opened.unheld` the versions it
-names that the app does not hold, which it is matched without. A pod in memory
-gets the package's starter copies.
+nothing is thrown. Opening a pod after its tables changed gives it them, in
+the background: `openPod` returns first, and that starts once the pod has no
+call waiting, so a question asked as it returns, or from those answers, is
+answered over the pod as it was (calls that keep it busy hold it back 2 s at
+most); one asked while that runs is answered with the
+rows kept for the pod as it was, or else once it is done; `pod.unheldTableVersions()`
+answers over the pod as it was, and any other call, `close()` too, waits for
+it. `await pod.opened` settles
+once that is done, saying what it wrote, and `unheld`, the versions the pod
+names that the app does not hold, which it is matched without; an app asks
+again then to show the newer answers. It rejects if that failed, and the pod
+stays open; the next open runs it again. A browser's pod drawn from its kept
+answers settles `opened` once a call opens it with the engine, or at `close()`.
+It waits on a timer, so under `mock.timers` it never settles until the timers
+are ticked. A pod in memory gets the package's starter copies.
 
 What a page shows of the tables, the same `Tables` answers, in Node and in a
 browser (`appTables()`), as plain values: `held()`, each series with its
@@ -875,7 +886,7 @@ never its precise ingredient rows.
 record's version.
 `pod.unheldTableVersions()` names the pod's current table versions this
 device's tables lack, of series a machine Same used another version of: such a
-Same does not count here (M7), so an app says so. `pod.opened.unheld` names them
+Same does not count here (M7), so an app says so. `(await pod.opened).unheld` names them
 only at the open that changed the tables; this answers on every read, and is
 undefined, not known yet, while a page draws a copied pod before the engine
 loads.

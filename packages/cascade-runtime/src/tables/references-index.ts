@@ -37,6 +37,22 @@ export function currentIn(index: Graph): string[] {
     .sort();
 }
 
+/**
+ * Of the versions `shipped` gave, those `currentOf` would have: the versions of a series of a kind, sorted. A version
+ * the references no longer hold is left out.
+ */
+export function ofKinds(
+  references: References,
+  versions: readonly string[],
+): string[] {
+  const kinded = new Set(
+    seriesOfAKind(references.index).map((series) => series.value),
+  );
+  return versions
+    .filter((version) => kinded.has(references.seriesOf(version) ?? ""))
+    .sort();
+}
+
 export function ofAKind(index: Graph, series: Term): boolean {
   return index.objects(series, TABLE_KIND).length > 0;
 }

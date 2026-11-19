@@ -4264,8 +4264,8 @@ describe("Sample pods and exports to build against · replayKit(), kitDownload()
         assert.ok(held.includes(version), `${version} is not the app's`);
     });
 
-    it("builds a pod that `openPod` opens without matching it again", () => {
-      assert.equal(replayed.opened, undefined);
+    it("builds a pod that `openPod` opens without matching it again", async () => {
+      assert.equal(await replayed.opened, undefined);
     });
 
     it("throws for a folder that already holds files, a kit it doesn't carry, or a step the story doesn't have", async () => {
