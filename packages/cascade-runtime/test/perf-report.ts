@@ -208,10 +208,13 @@ export async function loadDataset(id: DatasetId): Promise<Dataset> {
     ({ resource }) => resource.resourceType === "Patient",
   );
   if (patient === undefined) throw new Error(`${input.path} has no Patient`);
-  const fhirBase = patient.fullUrl.slice(
-    0,
-    patient.fullUrl.lastIndexOf(`/Patient/${patient.resource.id}`),
-  );
+  // A Bundle whose entries are named urn:uuid:… has no server; the pull is given one, as a hospital's would be.
+  const fhirBase = patient.fullUrl.startsWith("https://")
+    ? patient.fullUrl.slice(
+        0,
+        patient.fullUrl.lastIndexOf(`/Patient/${patient.resource.id}`),
+      )
+    : "https://synthea.demo.invalid/fhir";
   return {
     id,
     sha256,
@@ -908,6 +911,8 @@ function parsed(args: string[]): { plan: Plan; out: string | undefined } {
 export async function perfFile(
   plan: Plan,
   log: (line: string) => void = () => undefined,
+  /** Called with the file as far as it is, after each size, so a run that fails late loses nothing before it. */
+  partial: (file: PerfFile) => Promise<void> = () => Promise.resolve(),
 ): Promise<PerfFile> {
   const work = await mkdtemp(join(tmpdir(), "perf-report-"));
   try {
@@ -922,8 +927,10 @@ export async function perfFile(
                 (plan.encryption === "auto" && size === LARGE)
               ? [false, true]
               : [false];
-      for (const encrypted of modes)
+      for (const encrypted of modes) {
         results.push(...(await scenariosAt(plan, size, encrypted, work, log)));
+        await partial({ env: envOf(plan), commit: await commits(), results });
+      }
     }
     const bad = results.map(refused).find((reason) => reason !== undefined);
     if (bad !== undefined)
@@ -942,8 +949,17 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   const { plan, out } = parsed(args);
-  const file = await perfFile(plan, (line) =>
-    process.stderr.write(`${line}\n`),
+  const started = performance.now();
+  const file = await perfFile(
+    plan,
+    (line) =>
+      process.stderr.write(
+        `[${((performance.now() - started) / 1000).toFixed(0)}s] ${line}\n`,
+      ),
+    async (so) => {
+      if (out !== undefined)
+        await writeFile(out, `${JSON.stringify(so, null, 2)}\n`);
+    },
   );
   const text = `${JSON.stringify(file, null, 2)}\n`;
   if (out === undefined) process.stdout.write(text);
