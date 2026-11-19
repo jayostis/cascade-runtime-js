@@ -372,20 +372,13 @@ export function madeScreens(
   return failed;
 }
 
-const SCHEMA_TABLES = new Set([
-  "term",
-  "quad",
-  "scope",
-  "asked",
-  "ledger",
-  "sqlite_stat1",
-]);
+const SCHEMA_TABLES = new Set(["term", "quad", "scope", "asked", "ledger"]);
 
 /** The rows of each table a screen made, by table, each table's rows written and sorted. */
 function screenTables(db: Database): Map<string, string[]> {
   const names = db
     .prepare(
-      "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
+      "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name",
     )
     .all()
     .map(({ name }) => String(name))
