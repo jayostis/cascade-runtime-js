@@ -146,11 +146,15 @@ function descends(catalog: Graph, version: Term, held: string): boolean {
   return false;
 }
 
-/** Reads the feed and keeps each current version it describes that the store does not hold and that verifies. */
+/**
+ * Reads the feed and keeps each current version it describes that the store does not hold and that verifies; given
+ * `stallMs`, a request not answered whole within it is given up on, and the next is made.
+ */
 export async function checkFeed(
   context: FeedContext,
   feed: string,
   init: RequestInit,
+  stallMs?: number,
 ): Promise<Checked> {
   const fetching = context.options.fetch ?? fetch;
   const kept: string[] = [];
@@ -158,8 +162,15 @@ export async function checkFeed(
   const answer = async (
     url: string,
   ): Promise<Uint8Array<ArrayBuffer> | string> => {
+    const signals = [
+      ...(init.signal ? [init.signal] : []),
+      ...(stallMs === undefined ? [] : [AbortSignal.timeout(stallMs)]),
+    ];
     try {
-      const response = await fetching(url, init);
+      const response = await fetching(url, {
+        ...init,
+        ...(signals.length === 0 ? {} : { signal: AbortSignal.any(signals) }),
+      });
       return response.ok
         ? new Uint8Array(await response.arrayBuffer())
         : `${url} answered ${response.status}`;
