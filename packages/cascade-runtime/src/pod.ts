@@ -162,7 +162,9 @@ export interface Pod {
    * step: it settles once the step and the rebuild after it have run, to undefined when the tables had not changed, and
    * rejects as a step that fails rejects its call. The calls made as `openPod` returns, before the next turn of the event
    * loop, run before the step, on the pod as it was opened. Once it runs, a question by name is answered with the rows
-   * kept for the pod as it was opened, where they were kept, and any other call waits for the step.
+   * kept for the pod as it was opened, where they were kept, `unheldTableVersions` with the versions read over the pod as
+   * it was opened, and any other call, `close` too, waits for the step. A browser's pod drawn from its kept answers
+   * settles it once a call opens the pod with the engine, as that open's, or at `close`, to undefined.
    */
   readonly opened: Promise<Opened | undefined>;
   /** Whether its files and its kept answers are sealed under a key only its secret opens. */
@@ -247,8 +249,9 @@ export interface Pod {
   /**
    * The current table versions the pod names that the app's tables do not hold, of each series a matcher Same used
    * another version of: such a Same counts where a device holds the version and its rows join the members, and not on
-   * this one (M7). It reads the pod and writes nothing. Undefined while they are not known: a browser's pod drawn from
-   * its kept answers knows them once the engine has opened it.
+   * this one (M7). It reads the pod and writes nothing, and, while `opened` is pending, answers over the pod as it was
+   * opened, without waiting for it. Undefined while they are not known: a browser's pod drawn from its kept answers knows
+   * them once the engine has opened it.
    */
   unheldTableVersions(): Promise<readonly string[] | undefined>;
   /**
@@ -670,6 +673,8 @@ class OpenPod implements Pod {
   #before:
     | { readonly revision: Promise<string>; readonly tables: readonly string[] }
     | undefined;
+  /** While the open's step has not settled, the unheld versions read over the pod as it was before it. */
+  #unheldBefore: Promise<readonly string[]> | undefined;
   readonly opened: Promise<Opened | undefined>;
 
   constructor(
@@ -699,15 +704,19 @@ class OpenPod implements Pod {
     }
     // Queued after the calls made as the open returns, so that a screen's first questions are answered before it.
     this.opened = new Promise((resolve) => setTimeout(resolve, 0))
-      .then(() =>
-        this.#next(async () => {
+      .then(() => {
+        const unheld = this.#next(() => core.unheldTableVersions());
+        unheld.catch(() => undefined);
+        this.#unheldBefore = unheld;
+        return this.#next(async () => {
           const opened = await adopting.open();
           await core.revision();
           return opened;
-        }),
-      )
+        });
+      })
       .finally(() => {
         this.#before = undefined;
+        this.#unheldBefore = undefined;
       });
     this.opened.catch(() => undefined);
   }
@@ -908,7 +917,8 @@ class OpenPod implements Pod {
   }
 
   unheldTableVersions(): Promise<readonly string[]> {
-    return this.#next(() => this.#core.unheldTableVersions());
+    const queued = () => this.#next(() => this.#core.unheldTableVersions());
+    return this.#unheldBefore?.catch(queued) ?? queued();
   }
 
   close(): Promise<void> {

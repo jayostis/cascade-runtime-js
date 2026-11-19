@@ -778,11 +778,16 @@ checks again ("Check now"); a feed that cannot be read now says `later`, and
 nothing is thrown. Opening a pod after its tables changed gives it them, in
 the background: `openPod` returns first, a question asked as it returns is
 answered over the pod as it was, and one asked later, while that runs, with the
-rows kept for the pod as it was, or else once it is done. `await pod.opened` settles
+rows kept for the pod as it was, or else once it is done; `pod.unheldTableVersions()`
+answers over the pod as it was, and any other call, `close()` too, waits for
+it. `await pod.opened` settles
 once that is done, saying what it wrote, and `unheld`, the versions the pod
 names that the app does not hold, which it is matched without; an app asks
 again then to show the newer answers. It rejects if that failed, and the pod
-stays open. A pod in memory gets the package's starter copies.
+stays open; the next open runs it again. A browser's pod drawn from its kept
+answers settles `opened` once a call opens it with the engine, or at `close()`.
+It waits on a timer, so under `mock.timers` it never settles until the timers
+are ticked. A pod in memory gets the package's starter copies.
 
 What a page shows of the tables, the same `Tables` answers, in Node and in a
 browser (`appTables()`), as plain values: `held()`, each series with its

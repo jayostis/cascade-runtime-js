@@ -1157,6 +1157,7 @@ function hanaPod(): Promise<Hana> {
     const later = tablesOver(ingredientsLater.served, store);
     await later.check({ cache: "no-cache" });
     const adopting = await opening(later, folder, async (pod) => {
+      const opened = await pod.opened;
       const joined = new Map<string, string[]>();
       for (const { entry = "", used = "" } of await pod.joinedBy())
         joined.set(entry, [...(joined.get(entry) ?? []), used]);
@@ -1175,7 +1176,7 @@ function hanaPod(): Promise<Hana> {
         return joined.get(entries[0]?.entry ?? "") ?? [];
       };
       return {
-        opened: await pod.opened,
+        opened,
         cited: {
           ibuprofen: await citedBy("allergenCode", `<${RXNORM}5640>`),
           cvx150: await citedBy("vaccineCode", `<${CVX}150>`),
@@ -2547,6 +2548,11 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
     let opened: Awaited<Pod["opened"]>;
     let failedOpen: "opened" | "held";
     let failure: unknown;
+    let unheldBefore: readonly string[] | undefined;
+    let unheldDuring: readonly string[] | undefined;
+    let retried: Awaited<Pod["opened"]>;
+    let closedDuring: Awaited<Pod["opened"]>;
+    let reopened: Awaited<Pod["opened"]>;
 
     before(async () => {
       const folder = join(scratch, "pods", "held-open");
@@ -2597,6 +2603,7 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
         adopt: false,
       });
       kindsBefore = await unadopted.ask(KINDS);
+      unheldBefore = await unadopted.unheldTableVersions();
       await unadopted.close();
       await opening(waiting, copy, async (pod) => {
         await pod.opened;
@@ -2607,6 +2614,12 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       const failingStore = await copied(
         store,
         "urn:test:tables-held-open-failing/",
+      );
+      const closing = join(scratch, "pods", "held-open-closing");
+      await cp(folder, closing, { recursive: true });
+      const closingStore = await copied(
+        store,
+        "urn:test:tables-held-open-closing/",
       );
 
       const held = writesHeld();
@@ -2629,6 +2642,7 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
           asOpened = await whileHeld(pod.ask(KINDS));
           await held.reached;
           during = await whileHeld(pod.ask(IMMUNIZATIONS));
+          unheldDuring = await whileHeld(pod.unheldTableVersions());
         }
       } finally {
         held.release();
@@ -2658,6 +2672,31 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
         (error: unknown) => error,
       );
       await failed?.close();
+      retried = await opening(
+        tablesOver(feed, failingStore),
+        failing,
+        (pod) => pod.opened,
+      );
+
+      const closingHeld = writesHeld();
+      const closingPod = await openPodWith(
+        {
+          ...parts,
+          tables: tablesOver(feed, closingStore),
+          folder: closingHeld.folder,
+        },
+        closing,
+      );
+      await closingHeld.reached;
+      const closed = closingPod.close();
+      closingHeld.release();
+      await closed;
+      closedDuring = await closingPod.opened;
+      reopened = await opening(
+        tablesOver(feed, closingStore),
+        closing,
+        (pod) => pod.opened,
+      );
     });
 
     it("returns the pod before its matcher run for the new series has written", () => {
@@ -2682,18 +2721,35 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       assert.deepEqual(after, waited);
     });
 
+    it("answers `pod.unheldTableVersions()` during the run over the pod as it was, without waiting for it", () => {
+      assert.ok(unheldDuring, "it waited for the run");
+      assert.deepEqual(unheldDuring, unheldBefore);
+    });
+
     it("rejects `pod.opened` with a run's failure, and still returns the pod", () => {
       assert.equal(failedOpen, "opened");
       assert.match(String(failure), /the disk is full/);
     });
+
+    it("runs the open again at the next open after a run that failed", () => {
+      assert.ok(retried);
+      assert.equal(retried.refused, undefined);
+      assert.ok(retried.wrote.length > 0);
+    });
+
+    it("closes a pod closed during the run once the run has finished, which the next open does not run again", () => {
+      assert.ok(closedDuring);
+      assert.equal(closedDuring.refused, undefined);
+      assert.equal(reopened, undefined);
+    });
   });
 });
 
-/** The rows, if they come while a pod's writes are held: within five seconds, where they come in milliseconds or never. */
-async function whileHeld(rows: Promise<Row[]>): Promise<Row[] | undefined> {
-  rows.catch(() => undefined);
+/** The answer, if it comes while a pod's writes are held: within five seconds, where it comes in milliseconds or never. */
+async function whileHeld<T>(answer: Promise<T>): Promise<T | undefined> {
+  answer.catch(() => undefined);
   return Promise.race([
-    rows,
+    answer,
     delay(5000, undefined, { ref: false }) as Promise<undefined>,
   ]);
 }
