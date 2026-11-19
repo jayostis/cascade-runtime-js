@@ -2538,9 +2538,11 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
   describe("given a newer version of a series the pod uses, while the open's matcher run is held", () => {
     const IMMUNIZATIONS = "pod/My immunizations";
     const KINDS = "pod/How many of each kind";
+    const ALLERGIES = "pod/My active allergies";
     let settledFirst: "opened" | "held";
     let rowsBefore: Row[];
     let asOpened: Row[] | undefined;
+    let followedUp: Row[] | undefined;
     let kindsBefore: Row[];
     let during: Row[] | undefined;
     let after: Row[];
@@ -2639,7 +2641,11 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
         if (settledFirst === "opened") {
           const pod = await heldOpen;
           // KINDS was never asked, so nothing is kept for it: it is answered ahead of the run, or not until it is released.
-          asOpened = await whileHeld(pod.ask(KINDS));
+          const first = pod.ask(KINDS);
+          // ALLERGIES is never asked either: asked from KINDS's answer, as a screen asks what its first answers call for.
+          const following = first.then(() => pod.ask(ALLERGIES));
+          asOpened = await whileHeld(first);
+          followedUp = await whileHeld(following);
           await held.reached;
           during = await whileHeld(pod.ask(IMMUNIZATIONS));
           unheldDuring = await whileHeld(pod.unheldTableVersions());
@@ -2706,6 +2712,10 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
     it("answers a question asked as the open returns ahead of the run, over the pod as it was", () => {
       assert.ok(asOpened, "it waited for the run");
       assert.deepEqual(asOpened, kindsBefore);
+    });
+
+    it("answers a question asked from the first answers ahead of the run, which starts once no call is waiting", () => {
+      assert.ok(followedUp, "it waited for the run");
     });
 
     it("answers a question asked during the run with the rows kept before it", () => {
