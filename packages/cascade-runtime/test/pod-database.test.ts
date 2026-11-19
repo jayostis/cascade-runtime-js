@@ -635,6 +635,34 @@ function counting(given: Parts) {
   };
 }
 
+interface Paged {
+  readonly rows: unknown[];
+  readonly pages: number;
+}
+
+/** The question's pages of `size`, each asked after the key the one before gave, joined, until one names no next. */
+async function pagesJoined(
+  pod: Awaited<ReturnType<typeof openPodWith>>,
+  question: string,
+  size: number,
+  most: number,
+): Promise<Paged> {
+  const rows: unknown[] = [];
+  let after: string | undefined;
+  let pages = 0;
+  while (pages <= most) {
+    const page = await pod.askPage(question, {
+      size,
+      ...(after === undefined ? {} : { after }),
+    });
+    pages += 1;
+    rows.push(...page.rows);
+    after = page.next;
+    if (after === undefined) break;
+  }
+  return { rows, pages };
+}
+
 /** The parts with every write to a pod's files held at a gate, once `reached` says the first write came to it. */
 function writesHeld(given: Parts) {
   let release = (): void => undefined;
@@ -738,30 +766,57 @@ describe("Answering a pod's questions from its database, a page at a time · pod
         await copied(first, "asked-pages"),
         async (pod) => {
           const whole = await pod.ask(LABS);
-          const joined: Record<number, unknown[]> = {};
-          for (const size of [1, 2, 50]) {
-            const rows: unknown[] = [];
-            let after: string | undefined;
-            for (let asked = 0; asked <= whole.length; asked += 1) {
-              const page = await pod.askPage(LABS, {
-                size,
-                ...(after === undefined ? {} : { after }),
-              });
-              rows.push(...page.rows);
-              after = page.next;
-              if (after === undefined) break;
-            }
-            joined[size] = rows;
-          }
-          const first50 = await pod.askPage(LABS, { size: 50 });
-          return { whole, joined, first50 };
+          const joined: Record<number, Paged> = {};
+          for (const size of [1, 2, 50])
+            joined[size] = await pagesJoined(pod, LABS, size, whole.length);
+          return { whole, joined };
         },
       );
       assert.ok(result.whole.length > 2, "too few lab results to page");
       for (const size of [1, 2, 50])
-        assert.deepEqual(result.joined[size], result.whole, `pages of ${size}`);
-      const entries = new Set(result.first50.rows.map((row) => row.entry));
-      assert.ok(entries.size <= 50);
+        assert.deepEqual(
+          result.joined[size]?.rows,
+          result.whole,
+          `pages of ${size}`,
+        );
+      assert.ok((result.joined[1]?.pages ?? 0) > 2);
+      assert.equal(result.joined[50]?.pages, 1);
+    });
+
+    it("pages a question with no .sql the same way, from the rows the store gives", async () => {
+      const { result } = await session(
+        await copied(first, "asked-pages-no-sql"),
+        async (pod) => {
+          const whole = await pod.ask(NO_SQL);
+          return {
+            whole,
+            ones: await pagesJoined(pod, NO_SQL, 1, whole.length),
+            twos: await pagesJoined(pod, NO_SQL, 2, whole.length),
+          };
+        },
+      );
+      assert.ok(result.whole.length > 2);
+      assert.deepEqual(result.ones.rows, result.whole);
+      assert.deepEqual(result.twos.rows, result.whole);
+      assert.ok(result.ones.pages > result.twos.pages);
+    });
+
+    it("refuses a page size that is no whole number above 0, and a key no page of a question with no .sql gave", async () => {
+      await session(await copied(first, "asked-pages-refused"), async (pod) => {
+        for (const size of [0, -1, 1.5, Number.NaN, "50"])
+          await assert.rejects(
+            pod.askPage(LABS, { size: size as number }),
+            { name: "Refusal" },
+            String(size),
+          );
+        await assert.rejects(
+          pod.askPage(NO_SQL, { size: 1, after: "34D69677." }),
+          { name: "Refusal" },
+        );
+        await assert.rejects(pod.askPage(NO_SQL, { size: 1, after: "@-1" }), {
+          name: "Refusal",
+        });
+      });
     });
 
     it("keeps no answers.json for a question with a .sql", async () => {

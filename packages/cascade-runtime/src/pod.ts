@@ -221,7 +221,8 @@ export interface Pod {
    * A page of the named question's rows: those of the first `size` entries after the key `after`, or from the first
    * entry when none is given, which joined page after page are the rows `ask` gives, in its order; a page never splits
    * an entry's rows. `next` is the key to ask the next page after, none on the last page. A key holds while the pod is
-   * not changed. Throws `Refusal` for a size that is no whole number above 0, or a key no page of the question gave.
+   * not changed. Answered as `ask` is: from the pod's database without waiting, where it can be. Throws `Refusal` for a
+   * size that is no whole number above 0, or, where the rows are paged from the store, a key no page of it gave.
    */
   askPage(
     question: string,

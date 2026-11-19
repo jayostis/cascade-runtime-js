@@ -291,6 +291,21 @@ async function search(word) {
 }
 ```
 
+Show a long list a page at a time: `askPage(question, { size, after })` gives the
+rows of `size` entries, after the key `after` (from the first entry without it),
+and `next`, the key of the page after it, none on the last; a page never splits an
+entry's rows, and the pages joined are `ask`'s rows. In Node, a question with a
+`.sql` beside its `.rq`, under the app's lens, is answered from `pod.db` beside
+the pod without waiting for a step that is running: it gives the pod as the last
+finished step left it, so ask again once the step's promise settles.
+
+```js
+const labPage = await pod.askPage("pod/My lab results", { size: 50 });
+await showPerson(labPage.rows);
+if (labPage.next)
+  await showPerson((await pod.askPage("pod/My lab results", { size: 50, after: labPage.next })).rows);
+```
+
 ### Questions
 
 A column the vocabulary's `ro-crate-metadata.json` gives a `csvw:separator` for a question comes back as an array of
