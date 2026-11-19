@@ -326,7 +326,14 @@ const ESCAPED_ALIKE = new Set("\\|.-^?*+{}()[]$nrt");
 const QUANTIFIER = /\{\d+(,\d*)?\}/y;
 const CASE_APART = /[\u0130\u0131]/u;
 const UNASSIGNED = /\p{Cn}/u;
-const VERBOSE_SPACE = new Set(" \t\n\r\v\f");
+/** Unicode's White_Space property, which Rust's regex passes over under the x flag outside a class. */
+const WHITE_SPACE = new Set(
+  [
+    0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0x85, 0xa0, 0x1680, 0x2000, 0x2001,
+    0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a,
+    0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+  ].map((code) => String.fromCodePoint(code)),
+);
 /** What Unicode 16.0 case-maps that Python 3.12's Unicode 15.0 leaves unassigned, as Oxigraph's LCASE reads it. */
 const NEWLY_CASED: readonly (readonly [number, number])[] = [
   [0x1c89, 0x1c89],
@@ -339,6 +346,10 @@ const NEWLY_CASED: readonly (readonly [number, number])[] = [
   [0x10d50, 0x10d65],
   [0x16ea0, 0x16eb8],
 ];
+
+/** An operand as the vocabulary's Python reads it, `value or ""`: a zero SQLite gives as a number is none. */
+const operand = (value: unknown): unknown =>
+  value === 0 || value === 0n ? null : value;
 
 function text(value: unknown, name: string): string | null {
   if (value === null || value === undefined) return null;
@@ -395,11 +406,19 @@ function regexSource(pattern: string, flags: string, subject: string): string {
         two === "&&" ||
         two === "--" ||
         two === "~~" ||
-        (flags.includes("x") && /\s/u.test(c))
+        (flags.includes("x") && WHITE_SPACE.has(c))
       )
         throw new SqlFunctionRefused(`${pattern} has a class no vector covers`);
       inClass = c !== "]";
       out.push(c);
+      i += 1;
+      continue;
+    }
+    if (flags.includes("x") && WHITE_SPACE.has(c)) {
+      if (c > "\u007f")
+        throw new SqlFunctionRefused(
+          `${pattern} has white space U+${(c.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")} outside a class under the x flag, which no vector covers`,
+        );
       i += 1;
       continue;
     }
@@ -438,9 +457,7 @@ function regexSource(pattern: string, flags: string, subject: string): string {
       quantified = true;
       continue;
     }
-    if (flags.includes("x") && VERBOSE_SPACE.has(c)) {
-      // Python's and Rust's verbose patterns pass over white space outside a class.
-    } else if (c === ".") out.push(flags.includes("s") ? "[\\s\\S]" : "[^\\n]");
+    if (c === ".") out.push(flags.includes("s") ? "[\\s\\S]" : "[^\\n]");
     else if (c === "^") out.push(multiline ? "(?<![^\\n])" : "^");
     else if (c === "$") out.push(multiline ? "(?![^\\n])" : "$");
     else if (c === "]") out.push("\\]");
@@ -572,11 +589,11 @@ export function sparqlDecimal(
   rightValue?: unknown,
 ): string | null {
   const operator = text(operatorValue, "sparql_decimal");
-  const a = scaled(text(leftValue, "sparql_decimal"));
+  const a = scaled(text(operand(leftValue), "sparql_decimal"));
   const b =
     operator === "floor"
       ? undefined
-      : scaled(text(rightValue ?? null, "sparql_decimal"));
+      : scaled(text(operand(rightValue ?? null), "sparql_decimal"));
   if (a === undefined || (operator !== "floor" && b === undefined)) return null;
   let value: bigint;
   if (operator === "+") value = a + (b ?? 0n);
@@ -826,11 +843,36 @@ function minimumVersion(schema: string): number[] {
 const versionOrder = (a: readonly number[], b: readonly number[]): number =>
   a.reduce((found, part, at) => found || order(part, b[at] ?? 0), 0);
 
+const XSD_INTEGER = `${XSD}integer`;
+const XSD_DECIMAL = `${XSD}decimal`;
+const XSD_BOOLEAN = `${XSD}boolean`;
+
+/**
+ * A valid xsd:integer's, xsd:decimal's or xsd:boolean's lexical form as Oxigraph's store holds it ("01" as "1", "1.50"
+ * as "1.5", "1" as "true"); any other term's as it is.
+ */
+function canonicalLexical(term: SqlTerm): string {
+  if (term.kind !== LITERAL) return term.value;
+  if (term.datatype === XSD_INTEGER && INTEGER.test(term.value)) {
+    const value = BigInt(term.value);
+    return value >= -LONG && value < LONG ? value.toString() : term.value;
+  }
+  if (term.datatype === XSD_DECIMAL) {
+    const value = scaled(term.value);
+    return value === undefined ? term.value : decimalText(value);
+  }
+  if (term.datatype === XSD_BOOLEAN && Object.hasOwn(BOOLEAN, term.value))
+    return BOOLEAN[term.value] === 1 ? "true" : "false";
+  return term.value;
+}
+
 /**
  * Makes the schema on an empty database and loads the graphs' statements into it: each term once, by its N-Triples as
  * Oxigraph writes it, with its kind, lexical form, datatype, language and calendar keys; every record and entry in
  * scope, as a whole run fills it; and the ledger's one row naming what the whole was built from. A term written
- * otherwise than Oxigraph writes it is refused, as is an SQLite older than the schema needs.
+ * otherwise than Oxigraph writes it, escaped otherwise or an integer, decimal or boolean not in the canonical form its
+ * store holds, is refused, as is an SQLite older than the schema needs. The graphs given are a `Union`'s, so the default
+ * graph a query reads is their union by construction, which the vocabulary's loader has to check of an Oxigraph store.
  */
 export function loadStatements(
   db: Database,
@@ -859,9 +901,10 @@ export function loadStatements(
     let found = ids.get(nt);
     if (found === undefined) {
       const term = parsedNt(nt);
-      if (sqlNt(term) !== nt)
+      const canonical = sqlNt({ ...term, value: canonicalLexical(term) });
+      if (canonical !== nt)
         throw new Error(
-          `${nt} is written ${sqlNt(term)} here, not as Oxigraph writes it`,
+          `${nt} is written ${canonical} here, not as Oxigraph writes it`,
         );
       found = ids.size + 1;
       ids.set(nt, found);
@@ -894,8 +937,13 @@ export function loadStatements(
   });
 }
 
-/** Every record and entry in scope, as a whole run fills it. */
+/** Every record and entry in scope, as a whole run fills it, and a question asked of the whole pod. */
 export function wholeScope(db: Database): void {
+  if (hasAsked(db)) db.prepare("DELETE FROM asked").run();
+  everyRecordInScope(db);
+}
+
+function everyRecordInScope(db: Database): void {
   db.prepare("DELETE FROM scope").run();
   db.prepare(
     "INSERT INTO scope (term) SELECT s FROM quad WHERE p = (SELECT id FROM term WHERE nt = ?) " +
@@ -903,13 +951,34 @@ export function wholeScope(db: Database): void {
   ).run(RDF_TYPE, RECORD, ENTRY_MEMBER);
 }
 
-/** The records alone in scope, as a keyed run fills it. */
-export function keyedScope(db: Database, records: readonly string[]): void {
-  db.prepare("DELETE FROM scope").run();
+/** Whether the schema has `asked`; one made before it had binds a question through `scope`. */
+const hasAsked = (db: Database): boolean =>
+  db
+    .prepare(
+      "SELECT 1 AS found FROM sqlite_schema WHERE type = 'table' AND name = 'asked'",
+    )
+    .get() !== undefined;
+
+/**
+ * A question asked of the records alone, as a runtime asks it bound to them: the ones the pod holds put in `asked`.
+ * False when it holds none of them, and the question then gives no rows and is not run, since an empty `asked` is
+ * the whole pod.
+ */
+export function askedOf(db: Database, records: readonly string[]): boolean {
+  const table = hasAsked(db) ? "asked" : "scope";
+  db.prepare(`DELETE FROM ${table}`).run();
   const put = db.prepare(
-    "INSERT INTO scope (term) SELECT id FROM term WHERE nt = ?",
+    `INSERT INTO ${table} (term) SELECT id FROM term WHERE nt = ?`,
   );
-  for (const record of records) put.run(`<${record}>`);
+  let held = 0;
+  for (const record of records) held += put.run(`<${record}>`).changes;
+  return held > 0;
+}
+
+/** A question asked of the whole pod again: `asked` emptied, or, in a schema without it, every record in scope. */
+export function askedWhole(db: Database): void {
+  if (hasAsked(db)) db.prepare("DELETE FROM asked").run();
+  else everyRecordInScope(db);
 }
 
 /** The parts of a view's `.sql`, by name, each opened by a line `-- part: NAME`; none for a `.sql` of one statement. */
@@ -931,10 +1000,17 @@ export function sqlParts(sql: string): ReadonlyMap<string, string> {
   return parts;
 }
 
-/** What a `.sql` gives: its columns, and its rows with each value a term's N-Triples, or null where unbound. */
+/** The column a list question gives last, its row's entry key: a sort key, not a term. */
+export const PAGE_KEY = "page_key";
+
+/**
+ * What a `.sql` gives: its columns, and its rows with each value a term's N-Triples, or null where unbound; for a list
+ * question, its trailing `page_key` taken off both and each row's key as written in `keys`.
+ */
 export interface SqlAnswer {
   readonly columns: readonly string[];
   readonly rows: readonly (readonly (string | null)[])[];
+  readonly keys?: readonly (string | null)[];
 }
 
 /** Runs the `.sql`'s one statement with the named parameters given. A value that is no N-Triples term is refused. */
@@ -944,10 +1020,16 @@ export function sqlAnswer(
   parameters?: Readonly<Record<string, unknown>>,
 ): SqlAnswer {
   const statement = db.prepare(sql);
-  const columns = statement.columns();
-  const rows = (
-    parameters === undefined ? statement.all() : statement.all(parameters)
-  ).map((row) =>
+  const named = statement.columns();
+  const paged = named.at(-1) === PAGE_KEY;
+  const columns = paged ? named.slice(0, -1) : named;
+  const found =
+    parameters === undefined ? statement.all() : statement.all(parameters);
+  const keys = found.map((row) => {
+    const key = row[PAGE_KEY];
+    return typeof key === "string" ? key : null;
+  });
+  const rows = found.map((row) =>
     columns.map((column) => {
       const value = row[column];
       if (value === null || value === undefined) return null;
@@ -958,5 +1040,5 @@ export function sqlAnswer(
       return sqlNt(parsedNt(value));
     }),
   );
-  return { columns, rows };
+  return paged ? { columns, rows, keys } : { columns, rows };
 }

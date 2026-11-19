@@ -5,6 +5,8 @@ import { MemoryFiles, readText } from "../src/files.js";
 import { openDatabase } from "../src/node/sqlite.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import {
+  compared,
+  finalOrder,
   keyedFillFailures,
   madeScreens,
   sqlCheckAssertions,
@@ -418,6 +420,81 @@ describe("Answering the vocabulary's SQL from a pod's statements · loadStatemen
         "f",
         "everyday",
       ).endsWith("#queries/questions/pod/My%20lab%20results.sql/f/everyday"),
+    );
+  });
+  it("judges an ORDER BY's ties on a STR or a SUBSTR of it by that text, and on a term by SPARQL's <", () => {
+    const at = (value: string): string => `"${value}"^^<${XSD}dateTime>`;
+    const unzoned = at("2024-01-01T10:00:00");
+    const zoned = at("2024-01-01T05:00:00-08:00");
+    const whole = { start: 1, unboundEmpty: false };
+    const day = { start: 1, length: 10, unboundEmpty: true };
+    assert.deepEqual(
+      finalOrder("SELECT ?a ?b ?c WHERE { } ORDER BY DESC(?b) ?a STR(?c) ?c", [
+        "a",
+        "b",
+        "c",
+      ]),
+      [{ column: 1 }, { column: 0 }, { column: 2, read: whole }, { column: 2 }],
+    );
+    assert.deepEqual(
+      finalOrder(
+        'SELECT ?a ?b WHERE { } ORDER BY DESC(COALESCE(SUBSTR(STR(?a), 1, 10), "")) ?b',
+        ["a", "b"],
+      ),
+      [{ column: 0, read: day }, { column: 1 }],
+    );
+    assert.deepEqual(
+      compared(
+        ["t"],
+        [[zoned], [unzoned]],
+        [[unzoned], [zoned]],
+        [{ column: 0 }],
+      ),
+      [],
+    );
+    assert.deepEqual(
+      compared(
+        ["t"],
+        [[zoned], [unzoned]],
+        [[unzoned], [zoned]],
+        [{ column: 0, read: whole }],
+      ),
+      [
+        `the same rows in another order, from row 1: expected ?t=${zoned}, found ?t=${unzoned}`,
+      ],
+    );
+    assert.deepEqual(
+      compared(
+        ["t", "u"],
+        [
+          [unzoned, zoned],
+          [zoned, unzoned],
+        ],
+        [
+          [zoned, unzoned],
+          [unzoned, zoned],
+        ],
+        [{ column: 0, read: day }],
+      ),
+      [],
+    );
+    assert.notDeepEqual(
+      compared(
+        ["t", "u"],
+        [
+          [unzoned, unzoned],
+          [zoned, zoned],
+        ],
+        [
+          [zoned, zoned],
+          [unzoned, unzoned],
+        ],
+        [
+          { column: 0, read: day },
+          { column: 1, read: whole },
+        ],
+      ),
+      [],
     );
   });
 });
