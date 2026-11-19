@@ -182,7 +182,7 @@ async function screensOf(): Promise<Screens> {
 const WHOLE =
   /^SEARCH \w+ USING (?:COVERING )?INDEX (?:quad_pos \(p=\?|quad_osp \(o[<>]=?\?)(?: AND o[<>]=?\?)*\)$/;
 
-/** One value for each `?` of a statement, so it is planned as the statement it is: a plan does not depend on the values. */
+/** One value for each `?` of a statement, so it is planned as the statement it is: a plan does not depend on the values while only sqlite_stat1 is shipped. */
 const dummiesOf = (text: string): number[] =>
   Array.from(
     { length: text.replace(/'(?:[^']|'')*'/g, "").split("?").length - 1 },
@@ -394,6 +394,9 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
         for (const view of screens.views)
           for (const text of sqlStatements(view.get(part) ?? ""))
             watched.prepare(text).run();
+      for (const view of screens.views)
+        for (const text of sqlStatements(view.get("triples") ?? ""))
+          searched.push(...wholeFound(building, text, true));
       assert.deepEqual(searched, []);
       assert.deepEqual(rows(building), rows(shipped));
     } finally {
