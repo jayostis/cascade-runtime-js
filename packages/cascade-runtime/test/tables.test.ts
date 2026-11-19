@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
@@ -2691,15 +2692,10 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
 /** The rows, if they come while a pod's writes are held: within five seconds, where they come in milliseconds or never. */
 async function whileHeld(rows: Promise<Row[]>): Promise<Row[] | undefined> {
   rows.catch(() => undefined);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<undefined>((resolve) => {
-    timer = setTimeout(resolve, 5000);
-  });
-  try {
-    return await Promise.race([rows, late]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return Promise.race([
+    rows,
+    delay(5000, undefined, { ref: false }) as Promise<undefined>,
+  ]);
 }
 
 /** A copy of the files, in memory under the IRI given. */
