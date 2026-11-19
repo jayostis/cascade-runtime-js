@@ -36,6 +36,7 @@ const DATABASE_KEY = "pod.db.key";
 const BUILT_BESIDE = "build.trig";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const LAB_RESULTS = "clinical/lab-results.ttl";
+const MANIFEST = "manifest.ttl";
 const WHOLE = "core-pod.keepDatabase.whole";
 const STEP = "core-pod.step.database";
 const WORDS = "t-shirt abacus yo-yo zoom drop-down felt-tip";
@@ -134,13 +135,20 @@ async function builtStatements(folder: string): Promise<string[]> {
   return found.sort();
 }
 
-/** What the database holds as a reader of it sees it: each blank node's label left out, each screen's triples, and its order. */
-async function asRead(db: ReturnType<typeof openDatabase>) {
-  const views = (await readdir(VIEWS)).filter((name) => name.endsWith(".sql"));
+/**
+ * The statements but the manifest's, each blank node's label left out, which a store read back names afresh. A build
+ * states in its manifest when it was made and by whom, so two builds of one pod differ there and nowhere else.
+ */
+const blind = (lines: readonly string[]): string[] =>
+  lines
+    .filter((line) => !line.endsWith(`/${MANIFEST}>`))
+    .map((line) => line.replace(/_:\S+/g, "_:"))
+    .sort();
+
+/** What the database holds as a reader of it sees it: its statements blind to blank nodes' labels, each screen's triples, and its order. */
+function asRead(db: ReturnType<typeof openDatabase>) {
   const screens: Record<string, string[]> = {};
-  for (const name of views) {
-    const sql = await readFile(join(VIEWS, name), "utf8");
-    const triples = sql.split(/^-- part: triples\s*$/m)[1] ?? "";
+  for (const [name, triples] of screenTriples) {
     screens[name] = db
       .prepare(triples)
       .all()
@@ -148,9 +156,7 @@ async function asRead(db: ReturnType<typeof openDatabase>) {
       .sort();
   }
   return {
-    statements: statementsIn(db)
-      .map((line) => line.replace(/_:\S+/g, "_:"))
-      .sort(),
+    statements: blind(statementsIn(db)),
     screens,
     labOrder: db
       .prepare("SELECT sort_key FROM lab_result ORDER BY sort_key")
@@ -160,8 +166,8 @@ async function asRead(db: ReturnType<typeof openDatabase>) {
   };
 }
 
-/** The vocabulary's views, each screen's `.sql` among them. */
-let VIEWS: string;
+/** The `triples` part of each screen's `.sql` among the vocabulary's views, by its name. */
+const screenTriples = new Map<string, string>();
 
 before(async () => {
   pods = await mkdtemp(join(tmpdir(), "pod-database-"));
@@ -172,11 +178,19 @@ before(async () => {
     databaseBeside,
     tables: await tablesBeside(pods),
   };
-  VIEWS = join(
+  const views = join(
     (resolvedParts.vocabulary as FolderFiles).folder,
     "queries",
     "views",
   );
+  for (const name of await readdir(views))
+    if (name.endsWith(".sql"))
+      screenTriples.set(
+        name,
+        (await readFile(join(views, name), "utf8")).split(
+          /^-- part: triples\s*$/m,
+        )[1] ?? "",
+      );
   claiming = await profileOf("first");
   first = join(pods, "first");
   await session(first, async (pod) => {
@@ -236,11 +250,11 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
         pod.ask("pod/My active conditions"),
       );
       assert.ok(built.spans.includes(WHOLE), built.spans.join(", "));
-      const keyed = await readDatabase(stepped, asRead);
+      const keyed = readDatabase(stepped, asRead);
       assert.ok(
         Object.values(keyed.screens).some((triples) => triples.length > 0),
       );
-      assert.deepEqual(keyed, await readDatabase(whole, asRead));
+      assert.deepEqual(keyed, readDatabase(whole, asRead));
     });
   });
 
@@ -284,8 +298,8 @@ describe("Keeping a pod's database beside it · openPod(), pod.close()", () => {
       assert.ok(!spans.includes(STEP), spans.join(", "));
       assert.notEqual(readDatabase(stopped, ledgerOf), stale);
       assert.deepEqual(
-        readDatabase(stopped, statementsIn),
-        await builtStatements(stopped),
+        blind(readDatabase(stopped, statementsIn)),
+        blind(await builtStatements(stopped)),
       );
     });
   });

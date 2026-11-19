@@ -29,6 +29,8 @@ export const DATABASE_KEY_BESIDE = "pod.db.key";
 const VIEWS = "queries/views";
 const SCREEN_PARTS = ["tables", "fill", "finish"] as const;
 const RUN_PARTS = ["fill", "finish"] as const;
+/** The graphs one read of what a step loaded names: a long VALUES block joins in more than linear time. */
+const GRAPHS_AT_ONCE = 256;
 
 /**
  * The database a pod keeps beside it, `pod.db`, by its path: a cache of the pod's statements and screens that the
@@ -207,17 +209,10 @@ export class PodDatabase {
     union: Union,
     fingerprint: string,
   ): Promise<void> {
-    const loaded = new Map<string, HeldTriples>();
-    for (const change of changes)
-      if ("loaded" in change)
-        loaded.set(
-          change.graph,
-          held(
-            await union.construct(
-              `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ${written(iri(change.graph))} { ?s ?p ?o } }`,
-            ),
-          ),
-        );
+    const loaded = await graphsHeld(
+      union,
+      changes.flatMap((change) => ("loaded" in change ? [change.graph] : [])),
+    );
     const db = this.#db;
     db.transaction(() => {
       const keyed = new KeyedStatements(db);
@@ -255,4 +250,35 @@ export class PodDatabase {
 function* held(triples: readonly Triple[]): HeldTriples {
   for (const [subject, predicate, object] of triples)
     yield [heldNt(subject), heldNt(predicate), heldNt(object)];
+}
+
+/** Each graph's triples as the union's store holds them, its blank nodes under the store's own labels, read in batches. */
+async function graphsHeld(
+  union: Union,
+  graphs: readonly string[],
+): Promise<Map<string, [string, string, string][]>> {
+  const found = new Map<string, [string, string, string][]>(
+    graphs.map((graph) => [graph, []]),
+  );
+  for (let start = 0; start < graphs.length; start += GRAPHS_AT_ONCE) {
+    const named = graphs
+      .slice(start, start + GRAPHS_AT_ONCE)
+      .map((graph) => written(iri(graph)))
+      .join(" ");
+    const { rows } = await union.select(
+      `SELECT ?g ?s ?p ?o WHERE { VALUES ?g { ${named} } GRAPH ?g { ?s ?p ?o } }`,
+    );
+    for (const row of rows) {
+      const [g, s, p, o] = ["g", "s", "p", "o"].map((name) => row.get(name));
+      if (
+        g === undefined ||
+        s === undefined ||
+        p === undefined ||
+        o === undefined
+      )
+        continue;
+      found.get(g.value)?.push([heldNt(s), heldNt(p), heldNt(o)]);
+    }
+  }
+  return found;
 }
