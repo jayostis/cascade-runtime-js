@@ -14,6 +14,7 @@ import {
   canonical,
   contentName,
   documentName,
+  earlierInUtc,
   enteredRecordName,
   findingName,
   inUtc,
@@ -63,6 +64,7 @@ const DATE_TIME = `${XSD}dateTime`;
 const HAS_SELECTOR = "http://www.w3.org/ns/oa#hasSelector";
 const DRAFT = /^urn:cascade:output-(\d+)$/;
 const OBSERVED_AS_OF = `${CASCADE}observedAsOf`;
+const LAST_UPDATE_ON = `${PAV}lastUpdateOn`;
 const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const CURRENT_REVISIONS = `${QUERIES}derivations/current-revisions.rq`;
 const LADDER_LENS = "everyday";
@@ -112,6 +114,35 @@ interface Arrival {
   readonly pullSource?: string;
   /** Of a live pull that names no transmitter, the writer's own, when it was retrieved. */
   readonly retrievedByWriter?: string;
+  /** Each source change time (`pav:lastUpdateOn`) the arrival stated that is no `xsd:dateTime` stating its time zone, as written, which its revision does not carry. */
+  readonly changeTimesDropped?: readonly string[];
+}
+
+/** A source change time a revision carries: an `xsd:dateTime` that states its time zone. */
+function zonedChangeTime(term: Term): boolean {
+  if (term.termType !== "Literal" || term.datatype.value !== DATE_TIME)
+    return false;
+  try {
+    inUtc(term.value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `later` is an instant after `earlier`, two `xsd:dateTime` values; never where either states no time zone. */
+function laterInUtc(later: string, earlier: string): boolean {
+  try {
+    return earlierInUtc(earlier, later);
+  } catch {
+    return false;
+  }
+}
+
+/** A source change time an import's arrival stated and its revision does not carry: the record, and the value as N-Triples writes it. */
+export interface ChangeTimeDropped {
+  readonly record: string;
+  readonly changeTime: string;
 }
 
 /** What a document says of how it was reached. */
@@ -158,9 +189,15 @@ function pullSourceOf(reached: Reached): string | undefined {
     : undefined;
 }
 
-/** The whole days by which `earlier` precedes `later`, two xsd:dateTime values. */
+/** The whole days by which `earlier` precedes `later`, two xsd:dateTime values; none where either states no time zone. */
 function daysBefore(earlier: string, later: string): number {
-  return Math.floor((Date.parse(later) - Date.parse(earlier)) / DAY);
+  try {
+    return Math.floor(
+      (Date.parse(inUtc(later)) - Date.parse(inUtc(earlier))) / DAY,
+    );
+  } catch {
+    return 0;
+  }
 }
 
 /** One revision as the pod held it before the step. */
@@ -231,6 +268,7 @@ function revisionStatements(graph: Graph, arrival: Term): Triple[] {
   return graph
     .match(arrival)
     .filter(([, p]) => p.value !== ARRIVED_AS && p.value !== GENERATED_BY)
+    .filter(([, p, o]) => p.value !== LAST_UPDATE_ON || zonedChangeTime(o))
     .flatMap(([, p, o]): Triple[] =>
       p.value === HAS_SELECTOR && o.termType !== "Literal"
         ? [
@@ -525,7 +563,7 @@ export class Revisions {
         held(
           arrival.version.value,
           statedOnRevision(arrival, `${PAV}version`),
-          statedOnRevision(arrival, `${PAV}lastUpdateOn`),
+          statedOnRevision(arrival, LAST_UPDATE_ON),
         ),
       );
   }
@@ -555,13 +593,11 @@ export class Revisions {
    * source change time, or that came by another path than a live pull.
    */
   async contradictedBy(arrival: Arrival): Promise<string[]> {
-    const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
+    const changed = statedOnRevision(arrival, LAST_UPDATE_ON);
     if (arrival.pullSource === undefined || changed === undefined) return [];
     const record = arrival.record.value;
     const later = (this.#before.get(record) ?? []).filter(
-      (one) =>
-        one.changed !== undefined &&
-        Date.parse(one.changed) > Date.parse(changed),
+      (one) => one.changed !== undefined && laterInUtc(one.changed, changed),
     );
     if (later.length === 0) return [];
     const contradicted: string[] = [];
@@ -651,7 +687,7 @@ export class Revisions {
   #readsTheLadder(arrival: Arrival): boolean {
     const record = arrival.record.value;
     const version = arrival.version.value;
-    const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
+    const changed = statedOnRevision(arrival, LAST_UPDATE_ON);
     const told = held(
       version,
       statedOnRevision(arrival, `${PAV}version`),
@@ -692,7 +728,7 @@ export class Revisions {
     const told = held(
       version,
       statedOnRevision(arrival, `${PAV}version`),
-      statedOnRevision(arrival, `${PAV}lastUpdateOn`),
+      statedOnRevision(arrival, LAST_UPDATE_ON),
     );
     return (
       (this.#held.get(record)?.has(told) ?? false) ||
@@ -756,7 +792,7 @@ export class Revisions {
     this.#pending.set(record, [...pending, revision]);
     this.#current.delete(record);
     const observed = arrival.observedAsOf.value;
-    const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
+    const changed = statedOnRevision(arrival, LAST_UPDATE_ON);
     const heads = this.#heads.get(record) ?? [];
     const days = Math.max(
       0,
@@ -1017,7 +1053,7 @@ function arrivals(
       const [observedAsOf = at] = [
         ...answered,
         ...retrieved,
-        ...graph.objects(arrival, `${PAV}lastUpdateOn`),
+        ...graph.objects(arrival, LAST_UPDATE_ON).filter(zonedChangeTime),
       ];
       const [reached] = documents.map((document) => reachedIn(graph, document));
       const pullSource =
@@ -1041,6 +1077,10 @@ function arrivals(
           (answered.length === 0 && observedAsOf === at),
         ...(pullSource === undefined ? {} : { pullSource }),
         ...(retrievedByWriter === undefined ? {} : { retrievedByWriter }),
+        changeTimesDropped: graph
+          .objects(arrival, LAST_UPDATE_ON)
+          .filter((changed) => !zonedChangeTime(changed))
+          .map(written),
       };
     });
 }
@@ -1153,7 +1193,9 @@ async function serverRecord(
  * the import named by a new random ID (N7), and the refusals of A14. Every document whose bytes the pod does not keep
  * is kept, whether or not it wrote a revision (A10). `onProgress` is told of each conversion as its
  * adapter is found. Each conversion is held to `budget`; one that passes it stops the step with the Bridge's error.
- * Gives the import's name, the patient profiles the versions of its new revisions name and the files it wrote for each record it revised.
+ * Gives the import's name, the patient profiles the versions of its new revisions name, the files it wrote for each record it
+ * revised, and each source change time an arrival stated that its revision does not carry, being no `xsd:dateTime` that
+ * states its time zone.
  */
 export async function fileExport(
   context: StepContext,
@@ -1165,8 +1207,10 @@ export async function fileExport(
   readonly activity: string;
   readonly patients: string[];
   readonly filesOf: ReadonlyMap<string, readonly string[]>;
+  readonly changeTimesDropped: readonly ChangeTimeDropped[];
 }> {
   const { pod, writes, newStore, time } = context;
+  const changeTimesDropped: ChangeTimeDropped[] = [];
   const name = time.newId();
   const started = time.now();
   const { layout } = context;
@@ -1207,6 +1251,9 @@ export async function fileExport(
     const arriving = timedSync("arrivals.arrivals", () =>
       arrivals(layout, graph, name, found.path),
     );
+    for (const { record, changeTimesDropped: dropped = [] } of arriving)
+      for (const changeTime of dropped)
+        changeTimesDropped.push({ record: record.value, changeTime });
     await timedAside("arrivals.revisions", async () => {
       await timedAside("arrivals.revisions.prepare", () =>
         revisions.prepare(arriving),
@@ -1241,7 +1288,8 @@ export async function fileExport(
   );
   const patients = [...revisions.patients].sort();
   const { filesOf } = revisions;
-  if (kept.size === 0) return { activity: name, patients, filesOf };
+  if (kept.size === 0)
+    return { activity: name, patients, filesOf, changeTimesDropped };
   const descriptions = [...kept.values()];
   const forms = new Set(await Promise.all(descriptions.map(canonical)));
   if (forms.size > 1)
@@ -1260,7 +1308,7 @@ export async function fileExport(
       ]),
     ],
   });
-  return { activity: name, patients, filesOf };
+  return { activity: name, patients, filesOf, changeTimesDropped };
 }
 
 /**

@@ -26,9 +26,13 @@ const USED = "http://www.w3.org/ns/prov#used";
 
 /**
  * Finn's stray-statement import, the stray line dropped, the arrival's selector node blank as saved, named `<urn:example:selector>`,
- * or with a blank-node statement beside it, then an entry whose version holds a blank node and one that holds none.
+ * or with a blank-node statement beside it, and its source change time as saved or `changeTime`, then an entry whose version
+ * holds a blank node and one that holds none.
  */
-async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
+async function strayReplay(
+  mode: "saved" | "named" | "blank" = "saved",
+  changeTime?: string,
+) {
   const files = await vocabulary();
   const finn = "runtime/scripted-input/finn";
   const source = new MemoryFiles("https://story.example/");
@@ -47,6 +51,10 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
             new TextDecoder()
               .decode(bytes)
               .replace(/^<urn:example:stray>.*$/m, "")
+              .replace(
+                '"2026-05-01T00:00:00Z"^^xsd:dateTime',
+                changeTime ?? '"2026-05-01T00:00:00Z"^^xsd:dateTime',
+              )
               .replace(
                 /^(.*)oa:hasSelector (_:\w+)/m,
                 (_line, head: string, label: string) =>
@@ -404,6 +412,39 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
 
     it("carries a selector named by an IRI as it carries a blank one: the revision states the selector's statements", async () => {
       await carriesSelector(named);
+    });
+  });
+
+  describe("given an arrival whose source change time states no time zone, or is a date", () => {
+    const changeTimes = [
+      '"2026-05-01T00:00:00"^^<http://www.w3.org/2001/XMLSchema#dateTime>',
+      '"2026-05-01"^^<http://www.w3.org/2001/XMLSchema#date>',
+    ];
+    let replays: Replayed[];
+
+    before(async () => {
+      replays = await Promise.all(
+        changeTimes.map((changeTime) => strayReplay("saved", changeTime)),
+      );
+    });
+
+    it("writes the revision without it, and returns it in `changeTimesDropped` with its record", async () => {
+      for (const [index, done] of replays.entries()) {
+        assert.equal(done.steps[1]?.refused, undefined);
+        const wrote = await wroteBy(done, 1);
+        const [revision] = wrote.subjects(`${CASCADE}revisionOf`);
+        assert.ok(revision);
+        assert.deepEqual(
+          wrote.objects(revision, "http://purl.org/pav/lastUpdateOn"),
+          [],
+        );
+        assert.deepEqual(done.steps[1]?.changeTimesDropped, [
+          {
+            record: "urn:uuid:34f85619-02fd-8007-98c1-5705dcdde5e0",
+            changeTime: changeTimes[index],
+          },
+        ]);
+      }
     });
   });
 

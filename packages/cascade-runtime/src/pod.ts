@@ -292,6 +292,14 @@ export interface Opened extends Done {
 }
 
 export interface Imported extends Done {
+  /**
+   * Each source change time (`pav:lastUpdateOn`) an arrival stated that its revision does not carry, being no
+   * `xsd:dateTime` that states its time zone: the record, and the value as N-Triples writes it. Absent where there is none.
+   */
+  readonly changeTimesDropped?: readonly {
+    readonly record: string;
+    readonly changeTime: string;
+  }[];
   readonly claimedProfiles: readonly {
     readonly profile: string;
     readonly judgment: string;
