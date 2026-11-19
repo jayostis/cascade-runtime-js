@@ -4,11 +4,16 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
-import { DatabaseKeyRefused } from "../src/database.js";
+import { type Database, DatabaseKeyRefused } from "../src/database.js";
 import { readText } from "../src/files.js";
 import { Refusal } from "../src/refusal.js";
 import { databaseAt, openDatabase } from "../src/node/sqlite.js";
-import { STATEMENTS_SCHEMA } from "../src/statements.js";
+import { builtWholeIn, type Screens } from "../src/pod-database.js";
+import {
+  sqlDatabaseFunctions,
+  sqlParts,
+  STATEMENTS_SCHEMA,
+} from "../src/statements.js";
 import { vocabulary } from "./vocabulary.js";
 
 const KEY = new Uint8Array(32).fill(7);
@@ -147,6 +152,63 @@ function dumpOf(graphs: number, each: number, broken = false): Uint8Array {
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }
 
+/** A store's dump of one graph, `urn:x:file`, of `count` records. */
+const recordsDump = (count: number): Uint8Array =>
+  new TextEncoder().encode(
+    `<urn:x:file> {\n${Array.from(
+      { length: count },
+      (_, at) =>
+        `<urn:x:r-${at}> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/cascade#Record> .`,
+    ).join("\n")}\n}\n`,
+  );
+
+/** The vocabulary's statements schema and each view's screen, as a pod's build is given them. */
+async function screensOf(): Promise<Screens> {
+  const files = await vocabulary();
+  const paths = (await files.list("queries/views"))
+    .filter((path) => path.endsWith(".sql"))
+    .sort();
+  return {
+    schema: await readText(files, STATEMENTS_SCHEMA),
+    views: (await Promise.all(paths.map(async (path) => readText(files, path))))
+      .map(sqlParts)
+      .filter((parts) => parts.size > 0),
+  };
+}
+
+/** The vocabulary's plan rule: a search of quad by its predicate alone or with a range of its object. */
+const WHOLE =
+  /^SEARCH \w+ USING (?:COVERING )?INDEX (?:quad_pos \(p=\?|quad_osp \(o[<>]=?\?)(?: AND o[<>]=?\?)*\)$/;
+
+/**
+ * The steps of the statement's plan that search quad's whole predicate range in a loop another loop runs once for
+ * each row of: not the first loop of their select, or inside a subquery run for each row of the statement's.
+ */
+function wholeSearches(db: Database, text: string): string[] {
+  let plan: Record<string, unknown>[];
+  try {
+    plan = db.prepare(`EXPLAIN QUERY PLAN ${text}`).all();
+  } catch (error) {
+    // A statement with parameters, the loader's, is no screen's and is planned by its caller's values.
+    if (error instanceof RangeError) return [];
+    throw error;
+  }
+  const steps = new Map(plan.map((step) => [step.id, step]));
+  return plan
+    .filter((step) => {
+      let inside =
+        plan.find((other) => other.parent === step.parent)?.id !== step.id;
+      for (
+        let above = steps.get(step.parent);
+        above !== undefined;
+        above = steps.get(above.parent)
+      )
+        inside ||= String(above.detail).startsWith("CORRELATED");
+      return inside && WHOLE.test(String(step.detail));
+    })
+    .map((step) => `${String(step.detail)} in ${text.slice(0, 100)}`);
+}
+
 const GRAPHS = 200;
 const EACH = 200;
 const graphsOf = (count: number): string[] =>
@@ -241,6 +303,44 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
       );
     } finally {
       db.close();
+    }
+  });
+
+  it("plans every screen's statements by the statistics the vocabulary ships, taking none of the pod's: a build leaves its rows as shipped, and no statement searches a predicate's whole range of quad in a loop", async () => {
+    const screens = await screensOf();
+    const functions = await sqlDatabaseFunctions();
+    const shipped = openDatabase(":memory:", { functions });
+    shipped.exec(screens.schema);
+    for (const view of screens.views) shipped.exec(view.get("tables") ?? "");
+    const rows = (db: Database): unknown[] =>
+      db.prepare("SELECT tbl, idx, stat FROM sqlite_stat1 ORDER BY 1, 2").all();
+    const searched: string[] = [];
+    const building = openDatabase(":memory:", { functions });
+    const watched: Database = {
+      prepare: (text) => {
+        searched.push(...wholeSearches(building, text));
+        return building.prepare(text);
+      },
+      exec: (text) => building.exec(text),
+      transaction: (work) => building.transaction(work),
+      close: () => building.close(),
+    };
+    try {
+      builtWholeIn(watched, {
+        ...screens,
+        dump: recordsDump(40),
+        graphs: ["urn:x:file"],
+        fingerprint: "built",
+      });
+      assert.deepEqual(searched, []);
+      assert.deepEqual(rows(building), rows(shipped));
+      assert.equal(
+        building.prepare("SELECT count(*) AS n FROM scope").get()?.n,
+        40,
+      );
+    } finally {
+      building.close();
+      shipped.close();
     }
   });
 
