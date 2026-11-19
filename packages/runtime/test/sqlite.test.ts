@@ -176,6 +176,7 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
       last = now;
     }, 1);
     const started = performance.now();
+    let took: number;
     try {
       await beside.builtWhole({
         schema,
@@ -185,10 +186,12 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
         fingerprint: "built",
         key: KEY,
       });
+      took = performance.now() - started;
+      // A tick held up by work that ended the build fires only once the timers run again.
+      await new Promise((tick) => setTimeout(tick, 5));
     } finally {
       clearInterval(ticks);
     }
-    const took = performance.now() - started;
     assert.ok(
       longest < took / 2,
       `the event loop waited ${Math.round(longest)} ms at once in a build of ${Math.round(took)} ms`,
