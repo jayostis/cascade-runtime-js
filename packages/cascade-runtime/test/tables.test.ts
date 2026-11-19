@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import {
+  CorePod,
   type Files,
   fileStem,
   iri,
@@ -44,7 +45,9 @@ import { keptPod, openPodWith, type Pod, type Row } from "../src/pod.js";
 import { Answers } from "../src/answers.js";
 // Parts over the repository's checkouts, and an app's file, which the package reads once in a process and nine files cannot be read through.
 import {
+  answersBeside,
   appSettings,
+  databaseBeside,
   partsOf,
   type ResolvedParts,
 } from "../src/node/resolved.js";
@@ -2751,6 +2754,139 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       assert.ok(closedDuring);
       assert.equal(closedDuring.refused, undefined);
       assert.equal(reopened, undefined);
+    });
+  });
+
+  describe("given a newer version of a series the pod uses and pod.db beside the pod, while the open's matcher run is held", () => {
+    const IMMUNIZATIONS = "pod/My immunizations";
+    let rowsBefore: Row[];
+    let during: Row[] | undefined;
+    let after: Row[];
+    let fromStore: Row[];
+    let readWhole: number;
+    let listings: number;
+
+    before(async () => {
+      const folder = join(scratch, "pods", "held-open-database");
+      const store = new MemoryFiles("urn:test:tables-held-open-database/");
+      const beside = {
+        ...parts,
+        answers: { runtime: "test", at: answersBeside },
+        databaseBeside,
+      };
+      await tablesOver(first, store).check();
+      const made = await openPodWith(
+        { ...beside, tables: tablesOver(first, store) },
+        folder,
+      );
+      try {
+        const entered = await made.enter(
+          entering(
+            made,
+            [
+              ["141", "2025-10-01"],
+              ["150", "2025-10-01"],
+              ["140", "2024-10-01"],
+              ["141", "2024-10-01"],
+            ].map(([code, date], index) =>
+              draft(
+                index,
+                "cascade:Vaccination",
+                `cascade:vaccineCode <${CVX}${code}> ; cascade:vaccinationOccurrenceTime "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+                made,
+              ),
+            ),
+          ),
+        );
+        assert.equal(entered.refused, undefined);
+        rowsBefore = await made.ask(IMMUNIZATIONS);
+      } finally {
+        await made.close();
+      }
+      // What was kept beside the pod but pod.db, so that only pod.db can answer ahead of the run.
+      const kept = join(scratch, "pods", ".answers", "held-open-database");
+      await readFile(join(kept, "pod.db"));
+      await rm(join(kept, "answers.json"), { force: true });
+      await tablesOver(feed, store).check({ cache: "no-cache" });
+
+      const held = writesHeld();
+      let listed = 0;
+      const pod = await openPodWith(
+        {
+          ...beside,
+          tables: tablesOver(feed, store),
+          folder: (path, at) => {
+            const opened = held.folder(path, at);
+            const files = new Proxy(opened.files, {
+              get: (target, property) => {
+                const value = Reflect.get(target, property) as unknown;
+                if (property === "list")
+                  return (under: string) => {
+                    if (under === "") listed += 1;
+                    return target.list(under);
+                  };
+                return typeof value === "function"
+                  ? (value as (...args: unknown[]) => unknown).bind(target)
+                  : value;
+              },
+            });
+            return { ...opened, files };
+          },
+        },
+        folder,
+      );
+      try {
+        await held.reached;
+        during = await whileHeld(pod.ask(IMMUNIZATIONS));
+      } finally {
+        held.release();
+      }
+      try {
+        await pod.opened;
+        listings = listed;
+        const dataset = CorePod.prototype.dataset;
+        let reads = 0;
+        CorePod.prototype.dataset = function (this: CorePod, lens: string) {
+          reads += 1;
+          return dataset.call(this, lens);
+        };
+        try {
+          after = await pod.ask(IMMUNIZATIONS);
+        } finally {
+          CorePod.prototype.dataset = dataset;
+        }
+        readWhole = reads;
+      } finally {
+        await pod.close();
+      }
+      const storeOnly = await openPodWith(
+        {
+          ...parts,
+          builtBeside: answersBeside,
+          tables: tablesOver(feed, store),
+        },
+        folder,
+      );
+      try {
+        fromStore = await storeOnly.ask(IMMUNIZATIONS);
+      } finally {
+        await storeOnly.close();
+      }
+    });
+
+    it("answers a question with a .sql during the run at once, from pod.db, with the rows from before it", () => {
+      assert.ok(during, "it waited for the run");
+      assert.deepEqual(during, rowsBefore);
+    });
+
+    it("lists the pod's files once, from the open until `pod.opened` settles", () => {
+      assert.equal(listings, 1);
+    });
+
+    it("answers a question with a .sql, once `pod.opened` settles, from pod.db as the run left it, reading no dataset", () => {
+      assert.notDeepEqual(after, rowsBefore, "the run changed nothing asked");
+      assert.deepEqual(after, fromStore);
+      assert.equal(readWhole, 0);
     });
   });
 });
