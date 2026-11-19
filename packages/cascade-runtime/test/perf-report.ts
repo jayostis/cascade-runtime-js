@@ -2,14 +2,14 @@ import "./offline.js";
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { availableParallelism, cpus, release, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { pullFiles, openPod, tablesBeside } from "cascade-runtime";
-import { componentsOf } from "@cascade-runtime/runtime/node";
+import { componentsOf, findRoot } from "@cascade-runtime/runtime/node";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 import { openFolderPod } from "../src/node/folder-pod.js";
 import {
@@ -53,9 +53,10 @@ export const PER_BUILD: DatasetId = "synthea-10y";
 export const LARGE: DatasetId = "synthea-lifetime";
 
 /**
- * The questions the starter kit's pod page asks first, in its order (cascade-starter-kit app/said.ts `QUESTIONS`,
- * which app/pod-api.ts `asked` asks together), then what it reads after them. Kept here because the kit is another
- * repository; the kit's commit is in the file's `commit` map when a checkout of it is beside this one.
+ * The questions the starter kit's pod page asks first, in its order (cascade-starter-kit app/said.ts `QUESTIONS`),
+ * and `THEN`, the profile's question (app/pod-api.ts `waitingForAnswer`), which the kit's `asked` starts in the same
+ * breath, with `unheldTableVersions()`. Kept here because the kit is another repository; the kit's commit is in the
+ * file's `commit` map when a checkout of it is beside this one, and a test fails when one of these is not in said.ts.
  */
 export const FIRST_SCREEN = [
   "entry/Where it came from",
@@ -71,7 +72,7 @@ export const FIRST_SCREEN = [
   "pod/My immunizations",
   "pod/My procedures",
 ] as const;
-/** Asked one after the first screen's questions, as the kit's `waitingForAnswer` does. */
+/** What the kit's `waitingForAnswer` asks, with the first screen's questions. */
 export const THEN = "profile/What needs review";
 
 /** The questions a page of the pod's database answers, each asked for a first page. */
@@ -291,15 +292,21 @@ export interface Measured {
 }
 
 export interface Tabulated {
-  readonly spans: readonly { name: string; calls: number; ms: number }[];
+  /** Each span's calls, the sum of their own times (`ms`) and the time some call of it was in progress (`wallMs`). */
+  readonly spans: readonly {
+    name: string;
+    calls: number;
+    ms: number;
+    wallMs: number;
+  }[];
   readonly counts: Readonly<Record<string, number>>;
 }
 
 function tabulated(seen: Seen): Tabulated {
   return {
     spans: [...seen.spans]
-      .map(([name, { calls, ms }]) => ({ name, calls, ms }))
-      .sort((a, b) => b.ms - a.ms),
+      .map(([name, { calls, ms, wallMs }]) => ({ name, calls, ms, wallMs }))
+      .sort((a, b) => b.wallMs - a.wallMs),
     counts: Object.fromEntries(
       [...seen.counts].sort(([a], [b]) => (a < b ? -1 : 1)),
     ),
@@ -371,10 +378,13 @@ async function measure(job: Job): Promise<Measured> {
         const next = marks[index + 1]?.at ?? ended;
         parts[named] = (parts[named] ?? 0) + (next - at) / 1000;
       });
+      // All together, as the kit's `asked` starts them: the questions, the tables newer than the pod's, and the profile's.
       await step("first-screen", async () => {
-        await Promise.all(FIRST_SCREEN.map((question) => opened.ask(question)));
-        await opened.unheldTableVersions();
-        await opened.ask(THEN);
+        await Promise.all([
+          opened.unheldTableVersions(),
+          opened.ask(THEN),
+          ...FIRST_SCREEN.map((question) => opened.ask(question)),
+        ]);
       });
     });
     seen = body.seen;
@@ -455,7 +465,8 @@ export function clockRow(
   samples: readonly number[],
   extra: string,
 ): Row {
-  const places = unit === "s" ? 3 : 0;
+  // Microseconds: a question answered from the database takes under a millisecond, which three places would round to 0.
+  const places = unit === "s" ? 6 : 0;
   return {
     name,
     unit,
@@ -467,7 +478,7 @@ export function clockRow(
   };
 }
 
-const countRow = (name: string, value: number, extra?: string): Row => ({
+export const countRow = (name: string, value: number, extra?: string): Row => ({
   name,
   unit: "{count}",
   value,
@@ -491,15 +502,15 @@ export function probedRows(
 ): Row[] {
   const taken = new Set<string>();
   const rows: Row[] = [];
-  for (const { name, calls, ms } of seen.spans.slice(0, limit))
+  for (const { name, calls, ms, wallMs } of seen.spans.slice(0, limit))
     rows.push({
       name: `${prefix}/stage/${unique(taken, part(name))}`,
       unit: "s",
-      value: fixed(ms / 1000, 4),
+      value: fixed(wallMs / 1000, 6),
       kind: "clock",
       samples: 1,
-      range: `${(ms / 1000).toFixed(4)}-${(ms / 1000).toFixed(4)}`,
-      extra: `probed run, ${calls} calls, inclusive of the spans inside it, each call timed on its own so overlapping calls add up past the wall time; ${name.slice(0, 140)}`,
+      range: `${(wallMs / 1000).toFixed(6)}-${(wallMs / 1000).toFixed(6)}`,
+      extra: `probed run; the time some call of it was in progress, inclusive of the spans inside it; ${calls} calls whose own times sum to ${(ms / 1000).toFixed(6)} s (more than the time in progress where calls overlap); ${name.slice(0, 140)}`,
     });
   const counted = new Set<string>();
   for (const [name, value] of Object.entries(seen.counts)
@@ -515,7 +526,7 @@ export function probedRows(
   return rows;
 }
 
-interface Plan {
+export interface Plan {
   readonly scenarios: ReadonlySet<Scenario>;
   readonly sizes: readonly DatasetId[];
   readonly encryption: "plain" | "encrypted" | "both" | "auto";
@@ -538,13 +549,15 @@ async function scenariosAt(
   const claim = await profileOfPatient(data);
   const about = `dataset=${dataset} sha256=${data.sha256} records=${data.records}${encrypted ? " encrypted" : ""}`;
   const wants = (scenario: Scenario) => plan.scenarios.has(scenario);
-  const rows: Row[] = [
-    countRow(
-      `${nameOf("fresh-first-screen", dataset, encrypted)}/count/records`,
-      data.records,
-      about,
-    ),
-  ];
+  const rows: Row[] = wants("fresh-first-screen")
+    ? [
+        countRow(
+          `${nameOf("fresh-first-screen", dataset, encrypted)}/count/records`,
+          data.records,
+          about,
+        ),
+      ]
+    : [];
   const place = (label: string) => join(work, label, "pod");
   const unprobed = (label: string, kind: Job["scenario"]) => ({
     scenario: kind,
@@ -572,7 +585,7 @@ async function scenariosAt(
     );
     fresh.push(await child(unprobed(label, "fresh"), work));
     if (kept !== undefined)
-      await rm(dirname(dirname(kept)), { recursive: true, force: true });
+      await rm(dirname(kept), { recursive: true, force: true });
     kept = place(label);
   }
   const samples = (pick: (each: Measured) => number | undefined) =>
@@ -611,7 +624,7 @@ async function scenariosAt(
         `${name}/rss`,
         "By",
         samples((each) => each.rssBytes),
-        `after the first screen, before close; includes the harness's copy of the input; ${how}`,
+        `after the first screen, before close; the harness's own copy of the input is dropped before the pod opens; ${how}`,
       ),
       clockRow(
         `${name}/peak-rss`,
@@ -689,17 +702,25 @@ async function scenariosAt(
   ] as const) {
     if (!wants(scenario) || kept === undefined) continue;
     const name = nameOf(scenario, dataset, encrypted);
-    const label = `fresh-${freshRuns - 1}`;
-    const job = (probed: boolean): Omit<Job, "out"> => ({
-      ...unprobed(label, kind),
-      probed,
-    });
+    // Each run opens a copy of the pod the fresh run left, so that each is the first open after an import, as the
+    // headline says, and none finds what an earlier run left in the folder.
+    const keptFolder = dirname(kept);
+    let copies = 0;
+    const onACopy = async (probed: boolean): Promise<Measured> => {
+      const label = `${kind}-${copies++}`;
+      await cp(keptFolder, join(work, label), { recursive: true });
+      try {
+        return await child({ ...unprobed(label, kind), probed }, work);
+      } finally {
+        await rm(join(work, label), { recursive: true, force: true });
+      }
+    };
     const runs: Measured[] = [];
     for (let at = 0; at < plan.repeats; at++) {
       log(
         `${dataset}${encrypted ? " encrypted" : ""}: ${scenario} ${at + 1}/${plan.repeats}`,
       );
-      runs.push(await child(job(false), work));
+      runs.push(await onACopy(false));
     }
     const from = (pick: (each: Measured) => number | undefined) =>
       runs.flatMap((each) => pick(each) ?? []);
@@ -787,7 +808,7 @@ async function scenariosAt(
     }
     if (plan.probe) {
       log(`${dataset}${encrypted ? " encrypted" : ""}: ${scenario}, probed`);
-      const probed = await child(job(true), work);
+      const probed = await onACopy(true);
       if (probed.seen !== undefined) {
         const total =
           kind === "reopen"
@@ -809,7 +830,7 @@ async function scenariosAt(
     }
   }
   if (kept !== undefined)
-    await rm(dirname(dirname(kept)), { recursive: true, force: true });
+    await rm(dirname(kept), { recursive: true, force: true });
   return rows;
 }
 
@@ -831,23 +852,61 @@ function headOf(folder: string): string | undefined {
   return git(folder, "status", "--porcelain") === "" ? head : `${head}-dirty`;
 }
 
-/** The commit of the runtime and of each component the run read, the kit's when a checkout of it is beside. */
-async function commits(): Promise<Record<string, string>> {
-  const root = fileURLToPath(new URL("../../../", import.meta.url));
+/** A resolved component's commit, `-dirty` when its folder holds changes the commit does not; undefined for a folder that is no checkout. */
+function commitOf(resolvedAt: {
+  commit?: string;
+  uncommitted?: number;
+}): string | undefined {
+  const { commit, uncommitted = 0 } = resolvedAt;
+  if (commit === undefined || !/^[0-9a-f]{40}$/.test(commit)) return undefined;
+  return uncommitted > 0 ? `${commit}-dirty` : commit;
+}
+
+/** The runtime checkout's folder, the one holding cascade-runtime.json. */
+export const RUNTIME_ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
+
+/** The starter kit's folder name: its checkout is beside the runtime's. */
+export const KIT = "cascade-starter-kit";
+
+/**
+ * The commit of the runtime and of each component the run read (the vocabulary, the fhir-r4 adapter that owns the
+ * record and its mapping, the Bridge, the reference tables), and of the kit when a checkout of it is beside.
+ */
+export async function commits(): Promise<Record<string, string>> {
+  const root = RUNTIME_ROOT;
   const found: Record<string, string | undefined> = { runtime: headOf(root) };
   const parts = await resolved();
-  const { commit, uncommitted = 0 } = parts.local.resolved;
-  if (commit !== undefined && /^[0-9a-f]{40}$/.test(commit))
-    found.vocabulary = uncommitted > 0 ? `${commit}-dirty` : commit;
-  try {
-    const bridge = await (
-      await componentsOf(fileURLToPath(new URL("../../", import.meta.url)))
-    ).bridge();
-    if (/^[0-9a-f]{40}$/.test(bridge.commit)) found.bridge = bridge.commit;
-  } catch {
-    // The Bridge's commit is left out of a file written where it cannot be found.
-  }
-  const kit = join(dirname(root), "cascade-starter-kit");
+  found.vocabulary = commitOf(parts.local.resolved);
+  const components = await componentsOf(
+    fileURLToPath(new URL("../../", import.meta.url)),
+  );
+  /** What cannot be found is left out of a file written where it cannot be. */
+  const each = async (
+    name: string,
+    work: () => Promise<string | undefined>,
+  ): Promise<void> => {
+    try {
+      found[name] = await work();
+    } catch {
+      // left out
+    }
+  };
+  await each("bridge", async () => {
+    const { commit } = await components.bridge();
+    return /^[0-9a-f]{40}$/.test(commit) ? commit : undefined;
+  });
+  await each("adapter-fhir-r4", async () => {
+    const adapter = components.config.adapters.find(({ repository }) =>
+      repository.endsWith("cascade-bridge-adapter-fhir-r4"),
+    );
+    return adapter === undefined
+      ? undefined
+      : commitOf(await components.resolve(adapter));
+  });
+  await each("reference-tables", async () =>
+    commitOf(await components.resolve(components.config.tables.repository)),
+  );
+  const kit = join(dirname(root), KIT);
   if (existsSync(kit)) found.kit = headOf(kit);
   return Object.fromEntries(
     Object.entries(found).filter(
@@ -856,11 +915,12 @@ async function commits(): Promise<Record<string, string>> {
   );
 }
 
-function envOf(plan: Plan): PerfFile["env"] {
+/** The file's environment. The runner is named by its kind, never by the job's own name, which differs on every run. */
+export function envOf(plan: Plan): PerfFile["env"] {
   const model = cpus()[0]?.model.replace(/\s+/g, " ").trim() ?? "unknown cpu";
   const runner =
     process.env.GITHUB_ACTIONS === "true"
-      ? `github-actions ${process.env.RUNNER_OS ?? ""} ${process.env.RUNNER_NAME ?? ""}`.trim()
+      ? `github-actions ${process.env.RUNNER_OS ?? ""}`.trim()
       : "local";
   return {
     os: `${process.platform} ${release()}`,

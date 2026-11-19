@@ -2,12 +2,13 @@ name: perf
 
 # The runtime's performance file (packages/cascade-runtime/test/perf-report.ts): fixed scenarios over one Synthea
 # patient's record, rows in the Bridge spec's result format. Nothing here fails on a slowdown: the files are kept, and a
-# pull request is shown its before -> after against the newest file of main.
+# pull request is shown its before -> after against the latest push to main.
 #
 # - A pull request runs the per-build size and comments the comparison against main (one comment, updated).
 # - A push to main and the nightly run write their file to the orphan branch `perf-data`, at
-#   runtime/YYYY/MM/DD/<run>-<sha7>.json, and put the table in the job summary. The nightly run and a hand-started
-#   run add the large size, plain and encrypted.
+#   runtime/YYYY/MM/DD/<run>-<sha7>-<event>.json, and put the table in the job summary. The nightly run and a
+#   hand-started run add the large size, plain and encrypted. A push also names its file in runtime/latest-push.txt,
+#   which is what a pull request is compared with: a nightly or hand-started file may hold other sizes.
 # - A hand-started run can name one scenario and one size.
 
 on:
@@ -20,13 +21,15 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: "One scenario (fresh-first-screen, reopen-first-answer, question-page, close), or empty for all"
-        required: false
-        default: ""
+        description: "One scenario, or all"
+        type: choice
+        options: [all, fresh-first-screen, reopen-first-answer, question-page, close]
+        default: all
       size:
-        description: "One size (synthea-10y, synthea-lifetime), or empty for the per-build size and, with `large`, the large one"
-        required: false
-        default: ""
+        description: "One size, or the per-build size and, with `large`, the large one"
+        type: choice
+        options: [per-build, synthea-10y, synthea-lifetime]
+        default: per-build
       large:
         description: "Also run the large size"
         type: boolean
@@ -67,6 +70,18 @@ jobs:
           ref: ${{ steps.tables-at.outputs.ref }}
           path: cascade-reference-tables
           persist-credentials: false
+      # The starter kit, beside this checkout: the file records its commit, and a test of this repository fails when the
+      # questions the harness asks first are no longer the kit's.
+      - id: kit-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: jayostis/cascade-starter-kit
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.kit-at.outputs.repository }}
+          ref: ${{ steps.kit-at.outputs.ref }}
+          path: cascade-starter-kit
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
@@ -92,9 +107,9 @@ jobs:
           set -euo pipefail
           sizes="synthea-10y"
           if [ "$EVENT" = schedule ] || [ "$LARGE" = true ]; then sizes="synthea-10y,synthea-lifetime"; fi
-          if [ -n "$SIZE" ]; then sizes="$SIZE"; fi
+          if [ -n "$SIZE" ] && [ "$SIZE" != per-build ]; then sizes="$SIZE"; fi
           args="--size $sizes"
-          if [ -n "$SCENARIO" ]; then args="$args --scenario $SCENARIO"; fi
+          if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
       - name: The performance file
         run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json"
@@ -113,7 +128,7 @@ jobs:
           path: ${{ runner.temp }}/perf.json
           if-no-files-found: error
 
-  # A pull request: the file against the newest one of main on `perf-data`, in one comment that each push updates. A
+  # A pull request: the file against the latest push to main on `perf-data`, in one comment that each push updates. A
   # comment that cannot be posted (a pull request from a fork has a read-only token) is a warning, never a failure.
   compare:
     name: against main
@@ -131,7 +146,7 @@ jobs:
         with:
           name: perf
           path: pr
-      - name: Newest file of main, and the comparison
+      - name: The latest push to main, and the comparison
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -139,11 +154,14 @@ jobs:
         run: |
           set -euo pipefail
           marker='<!-- perf-compare -->'
-          if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}" perf-data >/dev/null 2>&1; then
-            git clone -q --depth 1 --branch perf-data "https://github.com/${GITHUB_REPOSITORY}" data
-            base=$(find data/runtime -name '*.json' | sort | tail -n 1)
-          else
-            base=""
+          # Only the pointer and the file it names are fetched, never every file of the branch.
+          base=""
+          raw='Accept: application/vnd.github.raw'
+          if named=$(gh api -H "$raw" "repos/${GITHUB_REPOSITORY}/contents/runtime/latest-push.txt?ref=perf-data" 2>/dev/null) \
+            && [ -n "$named" ] \
+            && mkdir -p "base/$(dirname "$named")" \
+            && gh api -H "$raw" "repos/${GITHUB_REPOSITORY}/contents/${named}?ref=perf-data" > "base/$named"; then
+            base="base/$named"
           fi
           {
             echo "$marker"
@@ -154,7 +172,7 @@ jobs:
               echo
               node scripts/perf-compare.mjs summary pr/perf.json --markdown
             else
-              echo "Against \`${base#data/}\`. Unprobed medians; no threshold, nothing here fails the run."
+              echo "Against \`${base#base/}\`. Unprobed medians; no threshold, nothing here fails the run."
               echo
               node scripts/perf-compare.mjs compare "$base" pr/perf.json --markdown
             fi
@@ -163,7 +181,7 @@ jobs:
           } > comment.md
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
           id=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PULL}/comments" --paginate \
-            --jq ".[] | select(.body | startswith(\"${marker}\")) | .id" | head -n 1 || true)
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"${marker}\"))) | .id" | head -n 1 || true)
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -F body=@comment.md >/dev/null \
               || echo "::warning::the comparison comment could not be updated"
@@ -182,9 +200,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    concurrency:
-      group: perf-data
-      cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@v7
         with:
@@ -197,7 +212,7 @@ jobs:
         run: |
           set -euo pipefail
           sha7="${GITHUB_SHA::7}"
-          path="runtime/$(date -u +%Y/%m/%d)/${GITHUB_RUN_ID}-${sha7}.json"
+          path="runtime/$(date -u +%Y/%m/%d)/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}.json"
           remote="https://github.com/${GITHUB_REPOSITORY}"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
           echo "::add-mask::$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
@@ -216,6 +231,14 @@ jobs:
             mkdir -p "$(dirname "$path")"
             cp ../file/perf.json "$path"
             git add "$path"
+            # A push to main names its file for the pull requests; a push that finished after a newer one does not.
+            if [ "$GITHUB_EVENT_NAME" = push ]; then
+              current=$(cat runtime/latest-push.txt 2>/dev/null || true)
+              if [ -z "$current" ] || [[ ! "$path" < "$current" ]]; then
+                printf '%s\n' "$path" > runtime/latest-push.txt
+                git add runtime/latest-push.txt
+              fi
+            fi
             git commit -q -m "runtime ${sha7}: ${GITHUB_EVENT_NAME} run ${GITHUB_RUN_ID}"
             if git -c http.extraheader="$auth" push -q origin HEAD:perf-data; then
               echo "kept as ${path}" >> "$GITHUB_STEP_SUMMARY"
