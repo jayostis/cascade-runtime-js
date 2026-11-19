@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1081,7 +1081,7 @@ function draft(
 /** What a pod opened over several sets of tables did: the opens that matter to its capabilities. */
 interface Hana {
   /** The open that gave the pod the newer versions. */
-  readonly adopted: Pod["opened"];
+  readonly adopted: Awaited<Pod["opened"]>;
   /** The versions cited by the view entry of an allergy to ibuprofen, of CVX 150 and of CVX 140 at that open. */
   readonly cited: {
     readonly ibuprofen: readonly string[];
@@ -1090,12 +1090,12 @@ interface Hana {
   };
   /** The open after, with the same tables. */
   readonly again: {
-    readonly opened: Pod["opened"];
+    readonly opened: Awaited<Pod["opened"]>;
     readonly unheld: readonly string[] | undefined;
   };
   /** The first and the second open with tables that lack the newer versions. */
   readonly lacking: readonly {
-    readonly opened: Pod["opened"];
+    readonly opened: Awaited<Pod["opened"]>;
     readonly unheld: readonly string[] | undefined;
   }[];
   /** The product ingredients version the pod first held, and the one it adopted. */
@@ -1174,7 +1174,7 @@ function hanaPod(): Promise<Hana> {
         return joined.get(entries[0]?.entry ?? "") ?? [];
       };
       return {
-        opened: pod.opened,
+        opened: await pod.opened,
         cited: {
           ibuprofen: await citedBy("allergenCode", `<${RXNORM}5640>`),
           cvx150: await citedBy("vaccineCode", `<${CVX}150>`),
@@ -1183,7 +1183,7 @@ function hanaPod(): Promise<Hana> {
       };
     });
     const again = await opening(later, folder, async (pod) => ({
-      opened: pod.opened,
+      opened: await pod.opened,
       unheld: await pod.unheldTableVersions(),
     }));
 
@@ -1194,7 +1194,7 @@ function hanaPod(): Promise<Hana> {
     await older.check();
     const lackingOpen = () =>
       opening(older, folder, async (pod) => ({
-        opened: pod.opened,
+        opened: await pod.opened,
         unheld: await pod.unheldTableVersions(),
       }));
     const lacking = [await lackingOpen(), await lackingOpen()];
@@ -2363,7 +2363,7 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
   });
 
   describe("given only a newer version of the vocabulary's rule list", () => {
-    let revised: Pod["opened"];
+    let revised: Awaited<Pod["opened"]>;
 
     before(async () => {
       const store = await checkedStore(feed);
@@ -2532,7 +2532,190 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       );
     });
   });
+
+  describe("given a newer version of a series the pod uses, while the open's matcher run is held", () => {
+    const IMMUNIZATIONS = "pod/My immunizations";
+    let settledFirst: "opened" | "held";
+    let rowsBefore: Row[];
+    let during: Row[];
+    let after: Row[];
+    let waited: Row[];
+    let opened: Awaited<Pod["opened"]>;
+    let failedOpen: "opened" | "held";
+    let failure: unknown;
+
+    before(async () => {
+      const folder = join(scratch, "pods", "held-open");
+      const store = new MemoryFiles("urn:test:tables-held-open/");
+      const answers = new MemoryFiles("urn:test:answers-held-open/");
+      const answering = {
+        ...parts,
+        answers: { runtime: "test", at: () => answers },
+      };
+      await tablesOver(first, store).check();
+      await opening(tablesOver(first, store), folder, async (pod) => {
+        const entered = await pod.enter(
+          entering(
+            pod,
+            [
+              ["141", "2025-10-01"],
+              ["150", "2025-10-01"],
+              ["140", "2024-10-01"],
+              ["141", "2024-10-01"],
+            ].map(([code, date], index) =>
+              draft(
+                index,
+                "cascade:Vaccination",
+                `cascade:vaccineCode <${CVX}${code}> ; cascade:vaccinationOccurrenceTime "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+                pod,
+              ),
+            ),
+          ),
+        );
+        assert.equal(entered.refused, undefined);
+      });
+      const asking = await openPodWith(
+        { ...answering, tables: tablesOver(first, store) },
+        folder,
+      );
+      rowsBefore = await asking.ask(IMMUNIZATIONS);
+      await asking.close();
+      await tablesOver(feed, store).check({ cache: "no-cache" });
+
+      // The same pod and tables, for an open that waits for its matcher run before it is asked.
+      const copy = join(scratch, "pods", "held-open-waited");
+      await cp(folder, copy, { recursive: true });
+      const waiting = tablesOver(
+        feed,
+        await copied(store, "urn:test:tables-held-open-waited/"),
+      );
+      await opening(waiting, copy, async (pod) => {
+        await pod.opened;
+        waited = await pod.ask(IMMUNIZATIONS);
+      });
+      const failing = join(scratch, "pods", "held-open-failing");
+      await cp(folder, failing, { recursive: true });
+      const failingStore = await copied(
+        store,
+        "urn:test:tables-held-open-failing/",
+      );
+
+      const held = writesHeld();
+      const heldOpen = openPodWith(
+        {
+          ...answering,
+          tables: tablesOver(feed, store),
+          folder: held.folder,
+        },
+        folder,
+      );
+      try {
+        settledFirst = await Promise.race([
+          heldOpen.then(() => "opened" as const),
+          held.reached.then(() => "held" as const),
+        ]);
+        if (settledFirst === "opened")
+          during = await (await heldOpen).ask(IMMUNIZATIONS);
+      } finally {
+        held.release();
+      }
+      const pod = await heldOpen;
+      opened = await pod.opened;
+      after = await pod.ask(IMMUNIZATIONS);
+      await pod.close();
+
+      const refusing = writesHeld(new Error("the disk is full"));
+      const failingOpen = openPodWith(
+        {
+          ...parts,
+          tables: tablesOver(feed, failingStore),
+          folder: refusing.folder,
+        },
+        failing,
+      );
+      failedOpen = await Promise.race([
+        failingOpen.then(() => "opened" as const),
+        refusing.reached.then(() => "held" as const),
+      ]);
+      refusing.release();
+      const failed = await failingOpen.catch(() => undefined);
+      failure = await Promise.resolve(failed?.opened).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await failed?.close();
+    });
+
+    it("returns the pod before its matcher run for the new series has written", () => {
+      assert.equal(settledFirst, "opened");
+    });
+
+    it("answers a question asked during the run with the rows the pod had before it", () => {
+      assert.deepEqual(during, rowsBefore);
+    });
+
+    it("answers, once `pod.opened` settles, as an open that waited for the run", () => {
+      assert.ok(opened);
+      assert.equal(opened.refused, undefined);
+      assert.ok(opened.wrote.length > 0);
+      assert.notDeepEqual(after, rowsBefore, "the run changed nothing asked");
+      assert.deepEqual(after, waited);
+    });
+
+    it("rejects `pod.opened` with a run's failure, and still returns the pod", () => {
+      assert.equal(failedOpen, "opened");
+      assert.match(String(failure), /the disk is full/);
+    });
+  });
 });
+
+/** A copy of the files, in memory under the IRI given. */
+async function copied(files: MemoryFiles, at: string): Promise<MemoryFiles> {
+  const copy = new MemoryFiles(at);
+  for (const path of await files.list("")) {
+    const bytes = await files.read(path);
+    if (bytes !== undefined) await copy.write(path, bytes);
+  }
+  return copy;
+}
+
+/**
+ * A pod's folder whose writes wait until `release`, or then fail with `failure`: `reached` settles at the first. A pod
+ * opened writes only in a step, so the open's matcher run is the first to reach it.
+ */
+function writesHeld(failure?: Error): {
+  folder: ResolvedParts["folder"];
+  reached: Promise<void>;
+  release: () => void;
+} {
+  let reach!: () => void;
+  const reached = new Promise<void>((resolve) => (reach = resolve));
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  return {
+    reached,
+    release,
+    folder: (path, at) => {
+      const folder = parts.folder(path, at);
+      const files = new Proxy(folder.files, {
+        get: (target, property, receiver) => {
+          const value = Reflect.get(target, property, receiver) as unknown;
+          if (typeof value !== "function") return value;
+          const call = (value as (...args: unknown[]) => unknown).bind(target);
+          return typeof property === "string" && property.startsWith("write")
+            ? async (...args: unknown[]) => {
+                reach();
+                await released;
+                if (failure !== undefined) throw failure;
+                return call(...args);
+              }
+            : call;
+        },
+      });
+      return { ...folder, files };
+    },
+  };
+}
 
 /**
  * A page that shows a person their reference tables lists each series the app holds, with its versions and where it
