@@ -473,7 +473,7 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
       const at = join(folders, "unnamed");
       const files = new FolderFiles(at, undefined, { refuseLinks: true });
       await madePod(files);
-      await files.write("sealed/ab/added", encoded("from outside"));
+      await files.write("sealed/zz/added", encoded("from outside"));
       await files.write("notes/kept.txt", encoded("from outside"));
       await files.write(".DS_Store", encoded("from outside"));
       const again = await reopened(files);
@@ -481,11 +481,11 @@ describe("Keeping a pod's sealed files under keyed names · SealedIndex.open(), 
       await again.write(VIEW, encoded(STOPPED));
       assert.equal(text(await again.read(VIEW)), STOPPED);
       const now = await files.list("");
-      assert.ok(!now.includes("sealed/ab/added"), "the added sealed file");
+      assert.ok(!now.includes("sealed/zz/added"), "the added sealed file");
       assert.ok(now.includes("notes/kept.txt"), "the added plain file");
       assert.ok(now.includes(".DS_Store"), "the added file at the top");
       assert.equal((await keyed(files)).length, 2, "the record and one view");
-      assert.ok(!(await readdir(join(at, "sealed"))).includes("ab"));
+      assert.ok(!(await readdir(join(at, "sealed"))).includes("zz"));
     });
   });
 

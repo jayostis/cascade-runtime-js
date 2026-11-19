@@ -137,7 +137,7 @@ async function packetBody(
   } catch (error) {
     return `(the answer is not valid JSON: ${error instanceof Error ? error.message : String(error)})`;
   }
-  const errors = replyErrors(value, copies ? "records" : "pod");
+  const errors = await replyErrors(value, copies ? "records" : "pod");
   if (errors.length > 0)
     return `(the answer is not a valid answer: ${errors.join("; ")})`;
   const answer = numberedReply(value) as Reply;

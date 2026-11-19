@@ -55,15 +55,23 @@ export function comparisons(vocabulary: Files): Promise<Map<string, string>> {
   let read = comparisonsRead.get(vocabulary);
   if (read === undefined) {
     read = (async () => {
-      const found = new Map<string, string>();
-      for (const path of await vocabulary.list(COMPARISONS)) {
-        const bytes = path.endsWith(".rq")
-          ? await vocabulary.read(path)
-          : undefined;
-        if (bytes !== undefined)
-          found.set(await documentName(bytes), new TextDecoder().decode(bytes));
-      }
-      return found;
+      const paths = (await vocabulary.list(COMPARISONS)).filter((path) =>
+        path.endsWith(".rq"),
+      );
+      const read = await Promise.all(
+        paths.map(async (path) => {
+          const bytes = await vocabulary.read(path);
+          return bytes === undefined
+            ? []
+            : [
+                [
+                  await documentName(bytes),
+                  new TextDecoder().decode(bytes),
+                ] as const,
+              ];
+        }),
+      );
+      return new Map(read.flat());
     })();
     read.catch(() => comparisonsRead.delete(vocabulary));
     comparisonsRead.set(vocabulary, read);

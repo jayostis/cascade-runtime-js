@@ -1,6 +1,6 @@
-import SHACLValidator from "rdf-validate-shacl";
-import factory from "rdf-validate-shacl/src/defaultEnv.js";
 import type * as RDFJS from "@rdfjs/types";
+import type SHACLValidator from "rdf-validate-shacl";
+import type DefaultEnv from "rdf-validate-shacl/src/defaultEnv.js";
 import { type Files, readText } from "./files.js";
 import { blank, iri, literal, type Term, type Triple, written } from "./rdf.js";
 import {
@@ -18,7 +18,42 @@ const SHAPES = ".shapes.ttl";
 const SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
 const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
+interface Shacl {
+  readonly Validator: typeof SHACLValidator;
+  readonly factory: typeof DefaultEnv;
+}
+let loading: Promise<Shacl> | undefined;
+let loaded: Shacl | undefined;
+
+/**
+ * rdf-validate-shacl, loaded by the first read of shapes rather than with the runtime: an open checks no shape. A load
+ * that fails is tried again at the next read.
+ */
+function shaclLoaded(): Promise<Shacl> {
+  if (loading === undefined) {
+    const load = Promise.all([
+      import("rdf-validate-shacl"),
+      import("rdf-validate-shacl/src/defaultEnv.js"),
+    ]).then(
+      ([validator, env]) =>
+        (loaded = { Validator: validator.default, factory: env.default }),
+    );
+    loading = load;
+    load.catch(() => {
+      if (loading === load) loading = undefined;
+    });
+  }
+  return loading;
+}
+
+/** The library, loaded by `Shapes.read`, which makes every `Shapes`. */
+function shacl(): Shacl {
+  if (loaded === undefined) throw new Error("rdf-validate-shacl is not loaded");
+  return loaded;
+}
+
 function term(value: Term): RDFJS.Quad_Object {
+  const { factory } = shacl();
   switch (value.termType) {
     case "NamedNode":
       return factory.namedNode(value.value);
@@ -100,9 +135,12 @@ export class Shapes {
         if (parsed.get(slot) === mine) parsed.delete(slot);
       });
     }
-    const { rest, constraints, terms } = await held.reading;
+    const [{ rest, constraints, terms }, { Validator }] = await Promise.all([
+      held.reading,
+      shaclLoaded(),
+    ]);
     return new Shapes(
-      new SHACLValidator(dataset(rest)),
+      new Validator(dataset(rest)),
       constraints,
       terms,
       newStore,
@@ -175,7 +213,7 @@ export class Shapes {
   #validatorOf(shape: string): SHACLValidator {
     let validator = this.#validators.get(shape);
     if (validator === undefined) {
-      validator = new SHACLValidator(
+      validator = new (shacl().Validator)(
         dataset(closure(this.shapeTriples, shape)),
       );
       this.#validators.set(shape, validator);
@@ -282,6 +320,7 @@ function closure(all: readonly Triple[], root: string): Triple[] {
 }
 
 function dataset(triples: readonly Triple[]): RDFJS.DatasetCore {
+  const { factory } = shacl();
   return factory.dataset(
     triples.map(([s, p, o]) =>
       factory.quad(
