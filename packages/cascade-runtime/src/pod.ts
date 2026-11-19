@@ -25,9 +25,11 @@ import {
   type Exported,
   exportedNames,
   ExportedFiles,
+  isPageKey,
   type ListColumn,
   MemoryFiles,
   podRevision,
+  type PageAsked,
   type PodKey,
   SealedIndex,
   podStated,
@@ -201,6 +203,11 @@ export interface Pod {
   /** Why `judge` would fail on the Turtle before the pod's rules are asked, or nothing, writing nothing. */
   checkJudgment(turtle: string): Promise<string | undefined>;
   match(activity?: string): Promise<Done>;
+  /**
+   * The named question's rows. One with a `.sql` beside its `.rq`, under the app's lens, is answered from the database
+   * kept beside a pod in a folder when that holds the pod as it stands, without waiting for a call made before it: its
+   * rows are those of the pod as the last finished step left it, so ask after awaiting a step for the rows it changed.
+   */
   ask(question: string, options?: { lens?: string }): Promise<Row[]>;
   /** A query of your own gives text in every column: the vocabulary declares no list column for it. */
   ask(
@@ -211,6 +218,18 @@ export interface Pod {
     question: string | { query: string },
     options?: { lens?: string },
   ): Promise<Row[]>;
+  /**
+   * A page of the named question's rows: those of the first `size` entries after the key `after`, or from the first
+   * entry when none is given, which joined page after page are the rows `ask` gives, in its order; a page never splits
+   * an entry's rows. `next` is the key to ask the next page after, none on the last page. A key holds while the pod is
+   * not changed. Answered as `ask` is: from the pod's database without waiting, where it can be. Throws `Refusal` for a
+   * size that is no whole number above 0, a key of no page's shape, or, where the rows are paged from the store, a key no
+   * page of it gave.
+   */
+  askPage(
+    question: string,
+    options: { size: number; after?: string; lens?: string },
+  ): Promise<Page>;
   /**
    * How each report of a variant stands to the row of the variant classifications table the app holds that the variant
    * finds (`tables/agreement.rq`): the report's entry (`report`), the row (`row`), the version (`origin`) and the
@@ -288,6 +307,79 @@ export interface Done {
   readonly judgment?: string;
   /** The matcher run taking it, with matching on. */
   readonly matched?: Done;
+}
+
+/** A page of a question's rows, and the key to ask the next page after; none on the last page. */
+export interface Page {
+  readonly rows: Row[];
+  readonly next?: string;
+}
+
+/** What starts a key `askPage` gives when it pages the rows `ask` gave, rather than the pod's database: never a sort key's. */
+const ROWS_PAGE = "@";
+
+/** Throws for options `pod.askPage` does not take, and for a size that is no whole number above 0. */
+export function acceptPageOptions(options: {
+  size: number;
+  after?: string;
+  lens?: string;
+}): void {
+  acceptOptions("pod.askPage", options, {
+    size: true,
+    after: true,
+    lens: true,
+  });
+  if (!Number.isSafeInteger(options?.size) || options.size < 1)
+    throw new Refusal(
+      `a page's size is a whole number above 0, not ${String(options?.size)}`,
+    );
+  if (options.after !== undefined && typeof options.after !== "string")
+    throw new Refusal(
+      `a page is asked after a key, not ${String(options.after)}`,
+    );
+}
+
+/** A key that is no key a page of the question gave. */
+const noKey = (question: string, after: string): Refusal =>
+  new Refusal(
+    `${after} is no key a page of ${question} gave, or the pod changed since; ask its first page again`,
+  );
+
+/** The entries before the page a key of the rows `ask` gave names. */
+function entriesBefore(question: string, after: string): number {
+  const counted = after.startsWith(ROWS_PAGE)
+    ? Number(after.slice(ROWS_PAGE.length))
+    : Number.NaN;
+  if (!Number.isSafeInteger(counted) || counted < 0)
+    throw noKey(question, after);
+  return counted;
+}
+
+/**
+ * The page of `size` entries of the rows after the key, the rows being those `ask` gave: an entry is a run of rows with
+ * one `entry`, and a row with none is an entry of its own. The key counts the entries before the page.
+ */
+export function pageOfRows(
+  question: string,
+  rows: readonly Row[],
+  size: number,
+  after?: string,
+): Page {
+  const start = after === undefined ? 0 : entriesBefore(question, after);
+  const entries: Row[][] = [];
+  let entry: unknown;
+  for (const row of rows) {
+    const last = entries.at(-1);
+    if (last !== undefined && row.entry !== undefined && row.entry === entry)
+      last.push(row);
+    else entries.push([row]);
+    entry = row.entry;
+  }
+  const end = start + size;
+  const page = entries.slice(start, end).flat();
+  return end < entries.length
+    ? { rows: page, next: `${ROWS_PAGE}${end}` }
+    : { rows: page };
 }
 
 export interface Opened extends Done {
@@ -671,6 +763,8 @@ class OpenPod implements Pod {
   #queue: Promise<unknown> = Promise.resolve();
   #bridge: Promise<LoadedBridge> | undefined;
   #closed = false;
+  /** Whether `close` was called, from the moment it is: a question asked after it is refused, as every call is. */
+  #closing = false;
   #titled: boolean;
 
   constructor(
@@ -832,7 +926,113 @@ class OpenPod implements Pod {
     options: { lens?: string } = {},
   ): Promise<Row[]> {
     acceptAskOptions(options);
-    return this.#next(() => this.#ask(question, options));
+    if (typeof question !== "string")
+      return this.#next(() => this.#ask(question, options));
+    return this.#databaseFirst(
+      () => this.#fromDatabase(question, options.lens),
+      () => this.#ask(question, options),
+      (page) => page.rows,
+    );
+  }
+
+  async askPage(
+    question: string,
+    options: { size: number; after?: string; lens?: string },
+  ): Promise<Page> {
+    acceptPageOptions(options);
+    const { size, after, lens } = options;
+    const fromDatabase = this.#pageFromDatabase(question, lens, size, after);
+    return this.#databaseFirst(
+      fromDatabase,
+      async () => {
+        const answered = await fromDatabase();
+        if (answered !== undefined) return answered;
+        const rows = await this.#askedOfStore(
+          question,
+          lens ?? this.#parts.lens,
+        );
+        return pageOfRows(question, rows, size, after);
+      },
+      (answered) => answered,
+    );
+  }
+
+  /**
+   * What asks the page of the pod's database: after a sort key, or, for a key of the rows `ask` gave, the entries
+   * before it and the page asked together and those entries dropped, the next page's key the database's. Throws
+   * `Refusal` at once for a key of neither shape.
+   */
+  #pageFromDatabase(
+    question: string,
+    lens: string | undefined,
+    size: number,
+    after: string | undefined,
+  ): () => Promise<Page | undefined> {
+    if (after === undefined || isPageKey(after)) {
+      const page = after === undefined ? { size } : { size, after };
+      return () => this.#fromDatabase(question, lens, page);
+    }
+    const before = entriesBefore(question, after);
+    return async () => {
+      const answered = await this.#fromDatabase(question, lens, {
+        size: before + size,
+      });
+      if (answered === undefined) return undefined;
+      const { rows, next } = pageOfRows(question, answered.rows, size, after);
+      const following = next ?? answered.next;
+      return following === undefined ? { rows } : { rows, next: following };
+    };
+  }
+
+  /**
+   * What the pod's database gives, without waiting for the calls made before; or, where it gives nothing, what `queued`
+   * gives in its place among those calls, which `queued` keeps by taking that place at once. Once `close` is called,
+   * the database is not asked: the call takes its place after `close`, which refuses it.
+   */
+  async #databaseFirst<T>(
+    asked: () => Promise<Page | undefined>,
+    queued: () => Promise<T>,
+    given: (page: Page) => T,
+  ): Promise<T> {
+    if (this.#closing) return this.#next(queued);
+    const answered = asked();
+    let found: Page | undefined;
+    const waiting = this.#next(async () => {
+      const first = await answered.catch(() => undefined);
+      return first === undefined ? queued() : given(first);
+    });
+    try {
+      found = await answered;
+    } catch (error) {
+      waiting.catch(() => undefined);
+      throw error;
+    }
+    if (found === undefined) return waiting;
+    waiting.catch(() => undefined);
+    return given(found);
+  }
+
+  /**
+   * The named question's rows from the pod's database, as `ask` gives them, or a page of them; none for a question with
+   * no `.sql`, under another lens than the app's, or where the database does not hold the pod as it stands. A question
+   * or lens the vocabulary does not offer throws, as `ask` does.
+   */
+  async #fromDatabase(
+    question: string,
+    lens: string | undefined,
+    page?: PageAsked,
+  ): Promise<Page | undefined> {
+    if (this.#closed) return undefined;
+    const asked = lens ?? this.#parts.lens;
+    const offered = await askable(this.#parts.vocabulary);
+    offeredLens(offered, asked);
+    questionText(offered, question);
+    const { sql, lists } = offered.questions.get(question)!;
+    if (sql === undefined || this.#closed) return undefined;
+    const answer = await this.#core.answered(asked, sql, page);
+    if (answer === undefined || this.#closed) return undefined;
+    const rows = answer.rows.map((row) => withLists(row, lists));
+    return answer.next === undefined ? { rows } : { rows, next: answer.next };
   }
 
   agreement(): Promise<TextRow[]> {
@@ -856,6 +1056,7 @@ class OpenPod implements Pod {
   }
 
   close(): Promise<void> {
+    this.#closing = true;
     return this.#next(async () => {
       this.#closed = true;
       await this.#core.keepBuild().catch(() => undefined);
@@ -1286,7 +1487,21 @@ class OpenPod implements Pod {
     question: string | { query: string },
     options: { lens?: string },
   ): Promise<Row[]> {
-    const lens = options.lens ?? this.#parts.lens;
+    if (typeof question === "string") {
+      const answered = await this.#fromDatabase(question, options.lens);
+      if (answered !== undefined) return answered.rows;
+    }
+    return this.#askedOfStore(question, options.lens ?? this.#parts.lens);
+  }
+
+  /**
+   * The question's rows from the store, or, for a named question, from the answers kept beside the pod: never for one
+   * with a `.sql` where a database is kept beside it, which keeps its rows.
+   */
+  async #askedOfStore(
+    question: string | { query: string },
+    lens: string,
+  ): Promise<Row[]> {
     const { vocabulary, build } = this.#parts;
     const offered = await askable(vocabulary);
     offeredLens(offered, lens);
@@ -1296,7 +1511,11 @@ class OpenPod implements Pod {
     if (typeof question === "string") {
       query = questionText(offered, question);
       lists = questionLists(offered, question);
-      const answers = this.#answers;
+      const answers =
+        this.#core.keepsDatabase &&
+        offered.questions.get(question)?.sql !== undefined
+          ? undefined
+          : this.#answers;
       if (answers !== undefined) {
         const key = await keyOf(build, offered.layout, {
           runtime: answers.runtime,

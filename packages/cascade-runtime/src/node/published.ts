@@ -94,6 +94,7 @@ export async function answersToPublish(
   const opened = await openPodWith(
     {
       ...parts,
+      databaseBeside: undefined,
       folder: (_path, iri) => ({
         files: iri === undefined ? files : files.at(iri),
         name,

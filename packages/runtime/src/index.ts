@@ -11,8 +11,11 @@ export { type Change, KeptBuild, type Rebuilding } from "./incremental.js";
 export * from "./database.js";
 export {
   type BesideDatabase,
+  type DatabaseAnswer,
+  type PageAsked,
   DATABASE_BESIDE,
   DATABASE_KEY_BESIDE,
+  isPageKey,
 } from "./pod-database.js";
 export * from "./dataset.js";
 export * from "./features.js";

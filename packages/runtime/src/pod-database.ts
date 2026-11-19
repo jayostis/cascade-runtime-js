@@ -10,6 +10,8 @@ import {
   ledgerFingerprint,
   ledgerNamed,
   loadStatements,
+  PAGE_KEY,
+  parsedNt,
   sqlDatabaseFunctions,
   sqlParts,
   sqlStatements,
@@ -28,6 +30,32 @@ const SCREEN_PARTS = ["tables", "fill", "finish"] as const;
 const RUN_PARTS = ["fill", "finish"] as const;
 /** The graphs one read of what a step loaded names: a long VALUES block joins in more than linear time. */
 const GRAPHS_AT_ONCE = 256;
+
+/**
+ * A screen's sort key: one or more conditions, each written ascending, as a kind's digit, hex of its text and '.', or
+ * descending, as hex of its text turned to the letters a to p and '~'.
+ */
+const SORT_KEY = /^(?:[0-3](?:[0-9A-F]{2})*\.|(?:[a-p]{2})*~)+$/;
+
+/** Whether the text is shaped as a screen's sort key, which a list question gives as its `page_key`. */
+export function isPageKey(text: string): boolean {
+  return SORT_KEY.test(text);
+}
+
+/** A page of a list question: how many entries, and the key of the entry it follows; none for the first page. */
+export interface PageAsked {
+  readonly size: number;
+  readonly after?: string;
+}
+
+/**
+ * A question's rows as its `.sql` gives them from the database: each a term's value by its column, an unbound one left
+ * out; for a page of a list question, the key to ask the next page after, none on the last.
+ */
+export interface DatabaseAnswer {
+  readonly rows: Readonly<Record<string, string>>[];
+  readonly next?: string;
+}
 
 /** The vocabulary's statements schema and each view's screen, the parts of its `.sql`, sorted by path. */
 export interface Screens {
@@ -62,6 +90,8 @@ export interface BesideDatabase {
   builtWhole(whole: WholeBuild): Promise<void>;
   /** Removes the database, its write-ahead log and any build of it left part way, so the next open makes it anew. */
   remove(): Promise<void>;
+  /** Whether the database is there to open, so that one never built is not made by asking what it holds. */
+  exists(): Promise<boolean>;
   /**
    * For a sealed pod, whose database is sealed too: the path beside the pod its key is kept at, a keyed name that
    * says nothing of what it holds, and sealed as everything beside the pod is.
@@ -135,6 +165,10 @@ export class PodDatabase {
   #db: Database;
   /** Each part run on this connection, its statements compiled the first time it runs and run again as compiled. */
   #compiled = new Map<string, Statement[]>();
+  /** Each question's statement, by its `.sql`, prepared on this connection the first time the question is asked. */
+  #asked = new Map<string, Statement>();
+  /** Whether the connection is closed, for a build whole or for good, so that nothing is asked of it. */
+  #shut = false;
 
   private constructor(
     beside: BesideDatabase,
@@ -223,8 +257,10 @@ export class PodDatabase {
     graphs: ReadonlySet<string>,
     fingerprint: string,
   ): Promise<void> {
+    this.#shut = true;
     this.#db.close();
     this.#compiled = new Map();
+    this.#asked = new Map();
     try {
       await this.#beside.builtWhole({
         ...this.#screens,
@@ -238,7 +274,57 @@ export class PodDatabase {
         ...(this.#key === undefined ? {} : { key: this.#key }),
         functions: this.#functions,
       });
+      this.#shut = false;
     }
+  }
+
+  /**
+   * The rows a question's `.sql` gives, asked of the whole pod: a list question's whole list, or, given a page, its
+   * first `size` entries after the key, and the key of the last of them when another entry follows; a question that
+   * is no list gives all its rows whatever the page. The statement is prepared the first time the question is asked.
+   * None while the connection is closed, as during a build whole.
+   */
+  answer(sql: string, page?: PageAsked): DatabaseAnswer | undefined {
+    if (this.#shut) return undefined;
+    let statement = this.#asked.get(sql);
+    if (statement === undefined) {
+      statement = this.#db.prepare(sql);
+      this.#asked.set(sql, statement);
+    }
+    const named = statement.columns();
+    const paged = named.at(-1) === PAGE_KEY;
+    const columns = paged ? named.slice(0, -1) : named;
+    const found = paged
+      ? statement.all({
+          page_size: page === undefined ? null : page.size + 1,
+          after: page?.after ?? null,
+        })
+      : statement.all();
+    const keys = found.map((row) => row[PAGE_KEY]);
+    let next: string | undefined;
+    let end = found.length;
+    if (paged && page !== undefined) {
+      const entries = [...new Set(keys)];
+      if (entries.length > page.size) {
+        const beyond = entries[page.size];
+        end = keys.indexOf(beyond);
+        next = String(entries[page.size - 1]);
+      }
+    }
+    const rows = found.slice(0, end).map((row) => {
+      const values: Record<string, string> = {};
+      for (const column of columns) {
+        const value = row[column];
+        if (value === null || value === undefined) continue;
+        if (typeof value !== "string")
+          throw new TypeError(
+            `the column ${column} gives ${String(value)}, no N-Triples term`,
+          );
+        values[column] = parsedNt(value).value;
+      }
+      return values;
+    });
+    return next === undefined ? { rows } : { rows, next };
   }
 
   /**
@@ -256,6 +342,27 @@ export class PodDatabase {
       union,
       changes.flatMap((change) => ("loaded" in change ? [change.graph] : [])),
     );
+    this.#keyed(changes, loaded, fingerprint);
+  }
+
+  /**
+   * Puts the triples in the graph in place of what it held, as a step's keyed write does, the ledger naming the
+   * fingerprint it named: for a file the build writes that no screen reads and that changed outside a step, as the
+   * manifest's title, so no screen is filled again. Nothing where the ledger names none, since the database is then
+   * built whole when next kept.
+   */
+  replaced(graph: string, triples: readonly Triple[]): void {
+    const fingerprint = this.#shut ? undefined : this.fingerprint;
+    if (fingerprint === undefined) return;
+    this.#keyed([{ graph, whole: triples }], new Map(), fingerprint, false);
+  }
+
+  #keyed(
+    changes: readonly BuildChange[],
+    loaded: ReadonlyMap<string, [string, string, string][]>,
+    fingerprint: string,
+    screened = true,
+  ): void {
     const db = this.#db;
     db.transaction(() => {
       const keyed = new KeyedStatements(db);
@@ -271,9 +378,11 @@ export class PodDatabase {
           keyed.add(change.graph, held(change.fresh));
         }
       }
-      keyed.scoped();
-      for (const part of RUN_PARTS)
-        for (const view of this.#screens.views) this.#ran(view.get(part));
+      if (screened) {
+        keyed.scoped();
+        for (const part of RUN_PARTS)
+          for (const view of this.#screens.views) this.#ran(view.get(part));
+      }
       ledgerNamed(db, fingerprint);
     });
   }
@@ -306,6 +415,7 @@ export class PodDatabase {
 
   /** Ends the connection, writing back what the write-ahead log holds. */
   close(): void {
+    this.#shut = true;
     this.#db.close();
   }
 }

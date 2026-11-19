@@ -721,6 +721,12 @@ export class KeptBuild {
     this.#moved += triples.length;
   }
 
+  /** Puts the manifest's triples in place of what the build held of it, as a retitle writes it between steps. */
+  async manifestReplaced(triples: readonly Triple[]): Promise<void> {
+    const { address, layout } = this.#rebuilding;
+    await this.#replaced(address + layout.manifest, triples);
+  }
+
   /** Each file the build writes, by its path, as the build or the last step wrote it. */
   #builtFiles(): Map<string, readonly Triple[]> {
     const files = new Map<string, readonly Triple[]>();
