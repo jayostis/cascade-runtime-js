@@ -891,4 +891,138 @@ describe("Answering a pod's questions from its database, a page at a time · pod
       }
     });
   });
+
+  describe("given a pod opened again and asked a page of a question with a .sql", () => {
+    it("pages on from pod.db after a retitle, reading no dataset, with the new title in pod.db and no build of it whole at close", async () => {
+      const folder = await copied(first, "asked-retitled");
+      const title = "Retitled for the test";
+      const watched = counting(parts);
+      try {
+        const { result, spans } = await session(
+          folder,
+          async (pod) => {
+            const page = await pod.askPage(LABS, { size: 2 });
+            assert.ok(page.next !== undefined, "too few lab results to page");
+            await pod.retitle(title);
+            const next = await pod.askPage(LABS, {
+              size: 2,
+              after: page.next,
+            });
+            return { next, loads: { ...watched.loads } };
+          },
+          watched.parts,
+        );
+        assert.ok(result.next.rows.length > 0);
+        assert.deepEqual(result.loads, {
+          restored: 0,
+          files: 0,
+          triples: 0,
+          datasets: 0,
+        });
+        assert.ok(!spans.includes(WHOLE), "pod.db was built whole at close");
+      } finally {
+        watched.restore();
+      }
+      assert.ok(
+        readDatabase(folder, statementsIn).some((line) =>
+          line.includes(`"${title}"`),
+        ),
+        "pod.db does not hold the new title",
+      );
+    });
+
+    it("refuses a key of no page_key's shape rather than paging after it", async () => {
+      await session(await copied(first, "asked-made-up-key"), async (pod) => {
+        for (const after of ["zzzz-not-a-key", "", "34D696.", "mnm~"])
+          await assert.rejects(
+            pod.askPage(LABS, { size: 1, after }),
+            { name: "Refusal" },
+            after,
+          );
+      });
+    });
+
+    it("pages after a key of the rows ask gave from pod.db, as the store would, restoring no store", async () => {
+      const folder = await copied(first, "asked-rows-key");
+      const watched = counting(parts);
+      try {
+        const { result } = await session(
+          folder,
+          async (pod) => {
+            const second = await pod.askPage(LABS, {
+              size: 2,
+              after: (await pod.askPage(LABS, { size: 2 })).next!,
+            });
+            const counted = await pod.askPage(LABS, { size: 2, after: "@2" });
+            return { second, counted, loads: { ...watched.loads } };
+          },
+          watched.parts,
+        );
+        assert.deepEqual(result.counted, result.second);
+        assert.equal(result.loads.restored, 0);
+        assert.equal(result.loads.datasets, 0);
+      } finally {
+        watched.restore();
+      }
+    });
+
+    it("answers under a lens pod.db was not built for from the store, the rows the store gives", async () => {
+      const lens = "export";
+      const { result } = await session(
+        await copied(first, "asked-other-lens"),
+        (pod) => pod.ask(LABS, { lens }),
+      );
+      const { result: fromStore } = await session(
+        await copied(first, "asked-other-lens-store"),
+        (pod) => pod.ask(LABS, { lens }),
+        storeOnly(parts),
+      );
+      assert.ok(result.length > 0);
+      assert.deepEqual(result, fromStore);
+    });
+  });
+
+  describe("when the pod is closed as a question is asked", () => {
+    it("refuses the question, as it refuses any call after close, and leaves no connection to pod.db open", async () => {
+      let opened = 0;
+      let closed = 0;
+      const given: Parts = {
+        ...parts,
+        databaseBeside: async (path, name) => {
+          const beside = await parts.databaseBeside!(path, name);
+          return {
+            ...beside,
+            builtWhole: (whole) => beside.builtWhole(whole),
+            remove: () => beside.remove(),
+            open: (options) => {
+              const db = beside.open(options);
+              opened += 1;
+              return {
+                prepare: (sql) => db.prepare(sql),
+                exec: (sql) => db.exec(sql),
+                transaction: (work) => db.transaction(work),
+                close: () => {
+                  closed += 1;
+                  db.close();
+                },
+              };
+            },
+          };
+        },
+      };
+      for (const askedBefore of [false, true]) {
+        const pod = await openPodWith(
+          given,
+          await copied(first, `asked-closing-${String(askedBefore)}`),
+        );
+        if (askedBefore) await pod.askPage(LABS, { size: 1 });
+        const closing = pod.close();
+        const asked = pod.ask(LABS);
+        await closing;
+        await assert.rejects(asked, /is closed/, String(askedBefore));
+      }
+      assert.ok(opened > 0);
+      assert.equal(closed, opened, "a connection to pod.db is left open");
+    });
+  });
 });
