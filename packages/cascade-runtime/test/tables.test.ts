@@ -2535,9 +2535,12 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
 
   describe("given a newer version of a series the pod uses, while the open's matcher run is held", () => {
     const IMMUNIZATIONS = "pod/My immunizations";
+    const KINDS = "pod/How many of each kind";
     let settledFirst: "opened" | "held";
     let rowsBefore: Row[];
-    let during: Row[];
+    let asOpened: Row[] | undefined;
+    let kindsBefore: Row[];
+    let during: Row[] | undefined;
     let after: Row[];
     let waited: Row[];
     let opened: Awaited<Pod["opened"]>;
@@ -2589,6 +2592,11 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
         feed,
         await copied(store, "urn:test:tables-held-open-waited/"),
       );
+      const unadopted = await openPodWith({ ...parts, tables: waiting }, copy, {
+        adopt: false,
+      });
+      kindsBefore = await unadopted.ask(KINDS);
+      await unadopted.close();
       await opening(waiting, copy, async (pod) => {
         await pod.opened;
         waited = await pod.ask(IMMUNIZATIONS);
@@ -2614,8 +2622,13 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
           heldOpen.then(() => "opened" as const),
           held.reached.then(() => "held" as const),
         ]);
-        if (settledFirst === "opened")
-          during = await (await heldOpen).ask(IMMUNIZATIONS);
+        if (settledFirst === "opened") {
+          const pod = await heldOpen;
+          // KINDS was never asked, so nothing is kept for it: it is answered ahead of the run, or not until it is released.
+          asOpened = await whileHeld(pod.ask(KINDS));
+          await held.reached;
+          during = await whileHeld(pod.ask(IMMUNIZATIONS));
+        }
       } finally {
         held.release();
       }
@@ -2650,7 +2663,13 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
       assert.equal(settledFirst, "opened");
     });
 
-    it("answers a question asked during the run with the rows the pod had before it", () => {
+    it("answers a question asked as the open returns ahead of the run, over the pod as it was", () => {
+      assert.ok(asOpened, "it waited for the run");
+      assert.deepEqual(asOpened, kindsBefore);
+    });
+
+    it("answers a question asked during the run with the rows kept before it", () => {
+      assert.ok(during, "it waited for the run");
       assert.deepEqual(during, rowsBefore);
     });
 
@@ -2668,6 +2687,20 @@ describe("Opening a pod with newer reference tables · openPod(), pod.opened, po
     });
   });
 });
+
+/** The rows, if they come while a pod's writes are held: within five seconds, where they come in milliseconds or never. */
+async function whileHeld(rows: Promise<Row[]>): Promise<Row[] | undefined> {
+  rows.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<undefined>((resolve) => {
+    timer = setTimeout(resolve, 5000);
+  });
+  try {
+    return await Promise.race([rows, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** A copy of the files, in memory under the IRI given. */
 async function copied(files: MemoryFiles, at: string): Promise<MemoryFiles> {
