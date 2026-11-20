@@ -1,0 +1,16 @@
+{
+  "scenarios": {
+    "close": {
+      "says": "Closing a pod straight after it took in a record and drew the first screen.",
+      "total": "Closing a pod straight after its import and first screen, which saves its database."
+    }
+  },
+  "measures": {
+    "close": "Closing the pod, saving its database."
+  },
+  "spans": {
+    "scenario.close": {
+      "says": "Closing the pod, saving its database for the next time it opens."
+    }
+  }
+}

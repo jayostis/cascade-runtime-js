@@ -18,7 +18,7 @@ import {
   type SpanEvent,
   timed,
 } from "@cascade-runtime/runtime/probe";
-import { explain, glossaryMarkdown } from "./perf-glossary.js";
+import { explain, glossaryMarkdown, readGlossary } from "./perf-glossary.js";
 import { flatten, loadPlainly } from "./perf-floor.js";
 import { profileOf, syntheticPull } from "./import-bench.js";
 import {
@@ -52,6 +52,14 @@ const history = (await import(
     options?: object,
   ): { name: string; value: number; extra?: string }[];
 };
+
+const stacked = (await import(
+  pathToFileURL(
+    fileURLToPath(
+      new URL("../../../../scripts/perf-stacked.mjs", import.meta.url),
+    ),
+  ).href
+)) as { readGlossary(folder?: string): object };
 
 interface Rates {
   lines?: number;
@@ -707,6 +715,67 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         glossaryMarkdown(),
         "regenerate: node packages/cascade-runtime/dist/test/perf-glossary.js > docs/perf-glossary.md",
       );
+    });
+  });
+
+  describe("given the glossary as the files of a folder, one for each scenario", () => {
+    it("has a file named for each scenario that holds that scenario's sentence, and the sentences of no other", async () => {
+      const { readdir } = await import("node:fs/promises");
+      const folder = new URL("../../test/perf-glossary/", import.meta.url);
+      const files = (await readdir(folder)).filter((each) =>
+        each.endsWith(".json"),
+      );
+      for (const scenario of SCENARIOS) {
+        const own = files.filter((each) => each.endsWith(`-${scenario}.json`));
+        assert.equal(own.length, 1, `the file of ${scenario}`);
+        const fragment = JSON.parse(
+          await readFile(new URL(own[0] as string, folder), "utf8"),
+        ) as { scenarios?: Record<string, unknown> };
+        assert.deepEqual(Object.keys(fragment.scenarios ?? {}), [scenario]);
+      }
+    });
+
+    it("is read the same by the runtime's test code and by the page scripts", () => {
+      assert.deepEqual(stacked.readGlossary(), readGlossary());
+    });
+
+    it("joins the files in the order of their names, and refuses a key or a text that two of them give", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "glossary-"));
+      try {
+        const given = (file: string, body: object) =>
+          writeFile(join(folder, file), JSON.stringify(body));
+        await given("10-b.json", {
+          about: "a",
+          measures: { y: "b" },
+          families: [{ says: "second" }],
+        });
+        await given("05-a.json", {
+          measures: { x: "a" },
+          families: [{ says: "first" }],
+        });
+        const merged = readGlossary(pathToFileURL(`${folder}/`)) as unknown as {
+          measures: object;
+          families: { says: string }[];
+        };
+        assert.deepEqual(Object.keys(merged.measures), ["x", "y"]);
+        assert.deepEqual(
+          merged.families.map(({ says }) => says),
+          ["first", "second"],
+        );
+        await given("20-c.json", { measures: { x: "again" } });
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          /20-c.json gives measures.x/,
+        );
+        await rm(join(folder, "20-c.json"));
+        await given("20-d.json", { about: "twice" });
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          /20-d.json gives about/,
+        );
+      } finally {
+        await rm(folder, { recursive: true, force: true });
+      }
     });
   });
 

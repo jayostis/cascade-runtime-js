@@ -1,0 +1,65 @@
+{
+  "spans": {
+    "files.read.file": {
+      "says": "Reading one file from the pod's folder."
+    },
+    "files.write.file": {
+      "says": "Writing one file into the pod's folder."
+    },
+    "files.write.rename": {
+      "says": "Moving a finished file into place, so a half-written file is never seen."
+    },
+    "files.hash.sha256": {
+      "says": "Fingerprinting a file's content to tell whether it changed."
+    },
+    "files.encrypt": {
+      "says": "Scrambling a file with the pod's secret before it is written (encrypted pods only)."
+    },
+    "files.decrypt": {
+      "says": "Unscrambling a file with the pod's secret as it is read (encrypted pods only)."
+    },
+    "files.commit.index": {
+      "says": "Writing the pod's list of its encrypted files (encrypted pods only)."
+    },
+    "pod.match": {
+      "says": "Judging which records in the pod are the same thing recorded twice.",
+      "within": "scenario.import"
+    },
+    "pod.unclaimedprofiles": {
+      "says": "Finding the people named in an import's records whom the person has not yet said are, or are not, themselves."
+    },
+    "pod.judge": {
+      "says": "Claiming one confirmed profile as the pod's owner, by filing the judgment that says so."
+    },
+    "pod.profilestied": {
+      "says": "Looking up which profiles the person has already said are, or are not, themselves."
+    },
+    "store.query": {
+      "says": "Questions put to the pod's fact store, many of them: the time one or more of them was in progress."
+    },
+    "union.loadfiles": {
+      "says": "Loading the pod's files into memory as facts."
+    },
+    "union.loadturtle": {
+      "says": "Loading text-format facts into memory."
+    },
+    "union.add": {
+      "says": "Adding facts to the pod's in-memory facts."
+    },
+    "union.drop": {
+      "says": "Dropping facts from the pod's in-memory facts."
+    },
+    "union.removesubjects": {
+      "says": "Removing everything known about some records from the in-memory facts."
+    },
+    "union.select": {
+      "says": "Asking the in-memory facts a question that returns rows."
+    },
+    "union.construct": {
+      "says": "Asking the in-memory facts a question that returns new facts."
+    },
+    "union.holds": {
+      "says": "Checking whether the in-memory facts hold something."
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "spans": {
+    "matcher.of": {
+      "says": "Setting up the 'same record' matcher for one run: reading the records it compares and running its rules over them."
+    },
+    "matcher.of.read": {
+      "says": "Reading the records to be compared.",
+      "within": "matcher.of"
+    },
+    "matcher.of.podcodes": {
+      "says": "Looking up the medical codes of the records being compared.",
+      "within": "matcher.of"
+    },
+    "matcher.of.withcurrentversions": {
+      "says": "Adding each record's current version to the comparison.",
+      "within": "matcher.of"
+    },
+    "matcher.of.over": {
+      "says": "Running the matching rules over the records.",
+      "within": "matcher.of"
+    },
+    "matcher.of.withpartners": {
+      "says": "Adding the records that matched, so their partners are compared too.",
+      "within": "matcher.of"
+    },
+    "matcher.of.releaseview": {
+      "says": "Letting go of the matcher's working copy of the facts.",
+      "within": "matcher.of"
+    },
+    "matcher.recordreads": {
+      "says": "Reading the records the matcher compares."
+    },
+    "matcher.actstaken": {
+      "says": "Working out which acts (an import, an entry session, a connect or a sync) this run takes records from."
+    },
+    "matcher.take": {
+      "says": "Judging which records this import, entry, connect or sync brought are the same as records the pod holds, and recording each match."
+    },
+    "matcher.filefindings": {
+      "says": "Writing a finding for review for each pair of records one of the finding rules gives."
+    },
+    "matcher.view": {
+      "says": "Building the matcher's working copy of the facts."
+    }
+  }
+}

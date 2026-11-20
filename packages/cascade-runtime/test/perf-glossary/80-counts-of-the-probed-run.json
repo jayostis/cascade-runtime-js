@@ -1,0 +1,51 @@
+{
+  "counts": {
+    "graph.scans": "How many times the in-memory facts were searched from end to end.",
+    "graph.quadsvisited": "How many individual facts those searches looked at.",
+    "store.queries": "How many questions were put to the pod's fact store.",
+    "bridge.query.rows": "How many rows the Bridge's queries returned in all.",
+    "bridge.workers": "How many helper processes the Bridge used.",
+    "bridge.package.found": "Whether the Bridge's package was found, 1 if so.",
+    "built.lines.total": "How many lines the answer files hold in all.",
+    "built.lines.written": "How many answer-file lines were written.",
+    "built.lines.sorted": "How many answer-file lines had to be sorted.",
+    "view.quadsmoved": "How many facts were set aside and put back while answer files were rebuilt.",
+    "podfiles.files": "How many pod files were read.",
+    "podfiles.calls": "How many times pod files were read.",
+    "adapter.files.read": "How many adapter files were read.",
+    "components.resolved": "How many of the runtime's parts were found on disk.",
+    "core-pod.compactions": "How many times the pod's files were tidied together.",
+    "incremental.boundvalues.iris": "How many record names a narrowed question was given.",
+    "incremental.boundvalues.batches": "How many batches those names were given in.",
+    "incremental.boundvalues.calls": "How many narrowed questions were asked.",
+    "matcher.valuesblocks": "How many groups of records the matcher compared at a time.",
+    "matcher.valuesblockrecords": "How many records those groups held in all.",
+    "matcher.valueslistssplit": "How many times a long list of records was split to fit.",
+    "matcher.queriesrun": "How many questions the matcher asked.",
+    "matcher.takenrecords": "How many records the matcher picked to compare.",
+    "matcher.boundrecords": "How many records the matcher's questions were limited to.",
+    "shapes.machine-basis-check": "How many times a judgment's stated basis was checked against its shape (a repeat check over the same statements is not counted)."
+  },
+  "countFamilies": [
+    {
+      "endsWith": ".graph.quadsvisited",
+      "says": "How many individual facts the searches inside '{name}' looked at."
+    },
+    {
+      "endsWith": ".graph.scans",
+      "says": "How many times the in-memory facts were searched end to end inside '{name}'."
+    },
+    {
+      "endsWith": ".store.queries",
+      "says": "How many fact-store questions '{name}' put."
+    },
+    {
+      "endsWith": ".rows",
+      "says": "How many rows '{name}' returned."
+    },
+    {
+      "startsWith": "core-pod.matcherselect.query-",
+      "says": "How many times the matcher put this question to the pod's facts."
+    }
+  ]
+}

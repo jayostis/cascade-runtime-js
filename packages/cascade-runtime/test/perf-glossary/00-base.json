@@ -1,0 +1,16 @@
+{
+  "about": "Plain-language meanings for every name in the runtime's performance file. This folder is the glossary: its files are merged in file-name order, a list (the families) by joining and an object (the scenarios, measures, spans, counts) by adding keys, and a key two files both give, or a text one gives twice, is an error. The number leads the name so that the page lists entries in that order; a scenario owns the file that carries its name, and a new scenario adds a file of its own and edits none of these. Read by perf-glossary.ts (each row's `extra`), checked by perf-report.test.ts, and listed in docs/perf-glossary.md. Span and count keys are the row-name form of the runtime's probe names (lower case, dashes for colons and spaces); a family matches by start and end of that form, with {name} the part between.",
+  "datasets": {
+    "synthea-10y": "Synthea's realistic synthetic patient, a 10-year record of 647 records. No real person's data.",
+    "synthea-lifetime": "A synthetic patient's whole life, 16,833 records: the large size, run nightly."
+  },
+  "variants": {
+    "plain": "The pod's files are stored readable.",
+    "encrypted": "The pod's files are stored scrambled with a secret, as a person's private pod would be."
+  },
+  "measures": {
+    "total": "The headline: the whole scenario from start to finish, the median of the runs."
+  },
+  "selfRows": "Own time: the time some call of it was in progress with none of the spans inside it in progress, that is the time spent in its own code, or waiting. Unlike its stage time it leaves out what the spans inside it took, so the largest own times are the places to look first.",
+  "runs": "Each build also keeps a trace of its probed run (\"Where the time went\": every call with its start, end and the call it ran inside, drawn as a flame graph) and a CPU profile of an unprobed run (\"Which code took it\": every function the processor was sampled in), both opened in speedscope. The builds are listed at https://jayostis.github.io/cascade-runtime-js/perf/runs/, newest first, with the files each still has: traces for the newest 30 builds, CPU profiles for the newest 5, and the large size's files for the newest 7 builds that ran it. A trace draws each call under the call that ran it, side by side where calls ran at the same time; where more than 32 calls of one step ran at once, they are drawn as one merged bar for each stretch of time some of them were running, labelled with how many (for example \"files.encrypt × 40 at once\"), so no time is left out of the picture. The Bridge says how long each of its queries took in all and not when it ran, so a trace does not draw them: the index lists, for each build, the time per Bridge query, positions unknown, and a Bridge stage's own time includes the queries it ran."
+}

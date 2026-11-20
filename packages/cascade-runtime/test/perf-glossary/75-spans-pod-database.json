@@ -1,0 +1,36 @@
+{
+  "spans": {
+    "pod-database.build.worker": {
+      "says": "Starting the helper that builds the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.load": {
+      "says": "Loading the pod's facts into the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.screens-fill": {
+      "says": "Filling in the database's ready-made answer tables.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.screens-tables": {
+      "says": "Creating the database's ready-made answer tables.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.screens-finish": {
+      "says": "Finishing the database's ready-made answer tables.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.sync": {
+      "says": "Making the saved database safely written to disk.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.close": {
+      "says": "Closing the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.rename": {
+      "says": "Moving the finished database into place.",
+      "within": "core-pod.keepdatabase"
+    }
+  }
+}

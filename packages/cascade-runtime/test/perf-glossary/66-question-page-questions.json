@@ -1,0 +1,8 @@
+{
+  "measureFamilies": [
+    {
+      "startsWith": "question-",
+      "says": "One page of 20 answers to: {name}."
+    }
+  ]
+}

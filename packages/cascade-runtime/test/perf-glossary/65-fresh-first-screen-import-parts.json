@@ -1,0 +1,14 @@
+{
+  "measures": {
+    "phase-loading-the-adapter": "Import part: loading the adapter that knows this kind of record.",
+    "phase-converting": "Import part: converting the source record into the pod's own format.",
+    "phase-saving": "Import part: writing the converted records into the pod.",
+    "phase-judging": "Import part: claiming, as the pod's owner, the profiles the person confirmed are theirs."
+  },
+  "measureFamilies": [
+    {
+      "startsWith": "phase-",
+      "says": "Import part: {name}."
+    }
+  ]
+}

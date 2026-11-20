@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 interface Family {
@@ -27,9 +27,46 @@ interface Glossary {
   readonly countFamilies: readonly Family[];
 }
 
-/** The glossary file sits in the source tree; the compiled test folder is two levels below it. */
-const FILE = new URL("../../test/perf-glossary.json", import.meta.url);
-export const glossary = JSON.parse(readFileSync(FILE, "utf8")) as Glossary;
+/** The glossary's files sit in the source tree; the compiled test folder is two levels below it. */
+const FOLDER = new URL("../../test/perf-glossary/", import.meta.url);
+
+/**
+ * The glossary of a folder of fragments, merged in file-name order: a list by joining, an object by adding keys, a text
+ * by taking it. A key two files both give, or a text one gives twice, is an error, so two scenarios cannot silently
+ * overwrite each other. scripts/perf-stacked.mjs reads the folder the same way.
+ */
+export function readGlossary(folder: URL = FOLDER): Glossary {
+  const merged: Record<string, unknown> = {};
+  for (const file of readdirSync(folder)
+    .filter((each) => each.endsWith(".json"))
+    .sort()) {
+    const fragment = JSON.parse(
+      readFileSync(new URL(file, folder), "utf8"),
+    ) as Record<string, unknown>;
+    for (const [section, value] of Object.entries(fragment)) {
+      const had = merged[section];
+      if (Array.isArray(value)) {
+        merged[section] = [...((had as unknown[] | undefined) ?? []), ...value];
+      } else if (typeof value === "object" && value !== null) {
+        const into = (had ?? (merged[section] = {})) as Record<string, unknown>;
+        for (const [key, entry] of Object.entries(value)) {
+          if (key in into)
+            throw new Error(
+              `${file} gives ${section}.${key}, which another file gave`,
+            );
+          into[key] = entry;
+        }
+      } else {
+        if (had !== undefined)
+          throw new Error(`${file} gives ${section}, which another file gave`);
+        merged[section] = value;
+      }
+    }
+  }
+  return merged as unknown as Glossary;
+}
+
+export const glossary = readGlossary();
 
 /** A row's name: `<scenario>-<dataset>[-encrypted]/<rest>`. */
 const ROW = new RegExp(
@@ -177,7 +214,7 @@ export function glossaryMarkdown(): string {
   return [
     "# What the performance numbers mean",
     "",
-    "Generated from `packages/cascade-runtime/test/perf-glossary.json`; edit that file, then run",
+    "Generated from the files of `packages/cascade-runtime/test/perf-glossary/`; edit them, then run",
     "`node packages/cascade-runtime/dist/test/perf-glossary.js > docs/perf-glossary.md`. A test fails if this page is out of date or if the performance file names something the glossary lacks.",
     "",
     "## Scenarios",

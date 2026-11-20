@@ -1,0 +1,43 @@
+{
+  "spans": {
+    "arrivals.fileexport": {
+      "says": "Taking in every document of the record: converting each, working out its records and writing them to the pod.",
+      "within": "core-pod.step.perform"
+    },
+    "arrivals.convert": {
+      "says": "Converting the source record into the pod's own format with the adapter.",
+      "within": "scenario.import"
+    },
+    "arrivals.accepting": {
+      "says": "Finding which adapter accepts this document.",
+      "within": "scenario.import"
+    },
+    "arrivals.parsegraph": {
+      "says": "Reading the converted records as facts.",
+      "within": "scenario.import"
+    },
+    "arrivals.refuseunaccounted": {
+      "says": "Checking that nothing in the converted records was left unexplained.",
+      "within": "scenario.import"
+    },
+    "arrivals.arrivals": {
+      "says": "Working out what each arriving record is and where it belongs.",
+      "within": "scenario.import"
+    },
+    "arrivals.revisions": {
+      "says": "Working out which records are new versions of ones the pod already holds.",
+      "within": "scenario.import"
+    },
+    "arrivals.revisions.prepare": {
+      "says": "Getting the existing records ready to compare with the arriving ones.",
+      "within": "arrivals.revisions"
+    },
+    "arrivals.revisions.write": {
+      "says": "Writing the new versions of records.",
+      "within": "arrivals.revisions"
+    },
+    "arrivals.revisionsof": {
+      "says": "Finding the earlier versions of one record."
+    }
+  }
+}

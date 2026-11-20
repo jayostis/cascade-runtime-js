@@ -1,0 +1,50 @@
+{
+  "families": [
+    {
+      "startsWith": "bridge.query-",
+      "endsWith": ".rq",
+      "says": "The Bridge's query for {name}, which pulls those out of the converted source.",
+      "within": "arrivals.convert"
+    },
+    {
+      "startsWith": "build.query-",
+      "endsWith": ".ttl",
+      "says": "Building the {name} answer file by asking the pod's facts its question.",
+      "within": "build.queried"
+    },
+    {
+      "startsWith": "view.build-",
+      "endsWith": ".ttl",
+      "says": "Writing the {name} answer file from the question's rows.",
+      "within": "build.queried"
+    },
+    {
+      "startsWith": "derive.step-queries-",
+      "endsWith": ".rq",
+      "says": "Working out {name} from the pod's facts, one derivation step.",
+      "within": "kept.step.rebuilt"
+    },
+    {
+      "startsWith": "matcher.rule-",
+      "says": "One 'same record' rule, {name}: checking whether two records fit it.",
+      "within": "matcher.of.over"
+    },
+    {
+      "startsWith": "question.page-",
+      "says": "One page of the answer to: {name}."
+    },
+    {
+      "startsWith": "question-",
+      "says": "The answer to: {name}.",
+      "within": {
+        "fresh-first-screen": "scenario.first-screen",
+        "reopen-first-answer": ["scenario.first-read", "scenario.second-read"]
+      }
+    },
+    {
+      "startsWith": "core-pod.step.rebuild-",
+      "says": "Re-deriving the pod's answers after a step of this kind: {name}.",
+      "within": "scenario.import"
+    }
+  ]
+}

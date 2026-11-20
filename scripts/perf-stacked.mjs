@@ -38,10 +38,7 @@ export const BANDS = 7;
 export const WINDOW = 120;
 
 const GLOSSARY = fileURLToPath(
-  new URL(
-    "../packages/cascade-runtime/test/perf-glossary.json",
-    import.meta.url,
-  ),
+  new URL("../packages/cascade-runtime/test/perf-glossary/", import.meta.url),
 );
 
 /**
@@ -109,8 +106,35 @@ export function buildsIn(data) {
     );
 }
 
-export function readGlossary(path = GLOSSARY) {
-  return JSON.parse(readFileSync(path, "utf8"));
+/**
+ * The glossary of a folder of fragments, merged in file-name order as readGlossary in
+ * packages/cascade-runtime/test/perf-glossary.ts does it (a test holds the two equal): a list by joining, an object by
+ * adding keys, a text by taking it.
+ */
+export function readGlossary(folder = GLOSSARY) {
+  const merged = {};
+  for (const file of readdirSync(folder)
+    .filter((each) => each.endsWith(".json"))
+    .sort()) {
+    const fragment = JSON.parse(readFileSync(join(folder, file), "utf8"));
+    for (const [section, value] of Object.entries(fragment)) {
+      if (Array.isArray(value))
+        merged[section] = [...(merged[section] ?? []), ...value];
+      else if (typeof value === "object" && value !== null) {
+        merged[section] ??= {};
+        for (const [key, entry] of Object.entries(value)) {
+          if (key in merged[section])
+            throw new Error(
+              `${file} gives ${section}.${key}, which another file gave`,
+            );
+          merged[section][key] = entry;
+        }
+      } else if (merged[section] !== undefined)
+        throw new Error(`${file} gives ${section}, which another file gave`);
+      else merged[section] = value;
+    }
+  }
+  return merged;
 }
 
 /** The sentence a row's `extra` begins with, without the "Sits inside <step>." the glossary adds. */

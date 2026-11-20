@@ -1,0 +1,8 @@
+{
+  "scenarios": {
+    "question-page": {
+      "says": "Fetching one page of 20 answers to each of the app's questions, from the saved database.",
+      "total": "Fetching one page of answers for every question in turn."
+    }
+  }
+}

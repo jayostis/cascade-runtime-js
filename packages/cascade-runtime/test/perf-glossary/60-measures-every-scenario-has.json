@@ -1,0 +1,7 @@
+{
+  "measures": {
+    "rss": "Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the second read for a reopened one, after a first read and before the pages for the question pages.",
+    "peak-rss": "The most memory the process held at any moment, in bytes.",
+    "probed-total": "The scenario's time in one run with the probe on, which slows some work; its stages are from this run and are for finding where time goes, never for adding up to the headline."
+  }
+}
