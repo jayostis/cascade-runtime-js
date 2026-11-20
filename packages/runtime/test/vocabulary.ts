@@ -74,6 +74,8 @@ export async function replayed(
     readonly importers?: ReplayOptions["importers"];
     readonly build?: ReplayOptions["build"];
     readonly performers?: ReplayOptions["performers"];
+    /** The pod's files, from its address, where they are not `MemoryFiles`. */
+    readonly pod?: (address: string) => Files;
   } = {},
 ): Promise<Replayed & { readonly folder: string }> {
   const files = await vocabulary();
@@ -88,7 +90,7 @@ export async function replayed(
     vocabulary: files,
     folder,
     title: "",
-    pod: new MemoryFiles(story.address),
+    pod: options.pod?.(story.address) ?? new MemoryFiles(story.address),
     newStore: () => new OxigraphStore(),
     layout: await layout(),
     ...(options.importers === undefined

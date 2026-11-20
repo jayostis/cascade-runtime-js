@@ -1,4 +1,4 @@
-import { type Files, writeAll } from "./files.js";
+import { type Files, writeAll, writeEach } from "./files.js";
 import { ntriples, type Triple } from "./rdf.js";
 
 export function same(a: Uint8Array, b: Uint8Array): boolean {
@@ -32,6 +32,7 @@ export type FinishAct = (
 export class StepWrites {
   readonly #files = new Map<string, Uint8Array>();
   readonly #arrived = new Set<string>();
+  readonly #waves = new Map<string, number>();
   #act: Act | undefined;
   #committed: readonly string[] = [];
 
@@ -40,12 +41,18 @@ export class StepWrites {
     return this.#committed;
   }
 
-  add(path: string, bytes: Uint8Array): void {
+  /**
+   * Holds the file. Where the pod writes several files at once, the files given the same `wave` in a row are written
+   * together, each such row only once every file added before it is written (W1); a file with no wave is written in
+   * its place, in one `writeAll` with the files with none beside it. A path added again keeps the place and the wave it first had.
+   */
+  add(path: string, bytes: Uint8Array, wave?: number): void {
     if (path === this.#act?.path)
       throw new Error(`${path} is the act's file, written last`);
     const held = this.#files.get(path);
     if (held !== undefined && !same(held, bytes))
       throw new Error(`${path} would be written twice with different bytes`);
+    if (held === undefined && wave !== undefined) this.#waves.set(path, wave);
     this.#files.set(path, bytes);
   }
 
@@ -90,8 +97,34 @@ export class StepWrites {
       const finished = (await finish?.(act, [...fresh], this.#arrived)) ?? [];
       fresh.push([act.path, ntriples([...act.triples, ...finished])]);
     }
-    await writeAll(pod, fresh);
+    await this.#write(pod, fresh);
     this.#committed = fresh.map(([path]) => path);
     return fresh.flatMap(([path]) => (this.#arrived.has(path) ? [] : [path]));
+  }
+
+  /**
+   * One `writeAll` of every file where the pod has no `writeMany`, which a pod that takes a batch whole, or none, is
+   * given. Else the files of a wave in a row go to `writeMany`, and the rest, in a row, to `writeAll`, one run
+   * after another in the order given.
+   */
+  async #write(
+    pod: Files,
+    fresh: readonly (readonly [string, Uint8Array])[],
+  ): Promise<void> {
+    if (pod.writeMany === undefined) return writeAll(pod, fresh);
+    let run: (readonly [string, Uint8Array])[] = [];
+    let wave: number | undefined;
+    const flush = (): Promise<void> =>
+      wave === undefined ? writeAll(pod, run) : writeEach(pod, run);
+    for (const file of fresh) {
+      const waved = this.#waves.get(file[0]);
+      if (run.length > 0 && waved !== wave) {
+        await flush();
+        run = [];
+      }
+      wave = waved;
+      run.push(file);
+    }
+    await flush();
   }
 }

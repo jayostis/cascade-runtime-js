@@ -25,6 +25,11 @@ export interface Files {
    */
   writeAll?(files: Iterable<readonly [string, Uint8Array]>): Promise<void>;
   /**
+   * Writes every file, in no order, several at once. When one fails, some are written and none is still being
+   * written when it returns, which is by throwing the first failure.
+   */
+  writeMany?(files: Iterable<readonly [string, Uint8Array]>): Promise<void>;
+  /**
    * Writes the file only when it holds `holds`, or, when that is undefined, only when there is none; false, writing
    * nothing, when it holds anything else. Where the host has transactions, the look and the write are one.
    */
@@ -71,6 +76,15 @@ export async function writeAll(
   if (written.length === 0) return;
   if (files.writeAll !== undefined) return files.writeAll(written);
   for (const [path, bytes] of written) await files.write(path, bytes);
+}
+
+/** Writes the files in no order, several at once where the files have `writeMany`, else as `writeAll` does. */
+export async function writeEach(
+  files: Files,
+  written: readonly (readonly [string, Uint8Array])[],
+): Promise<void> {
+  if (files.writeMany !== undefined) return files.writeMany(written);
+  return writeAll(files, written);
 }
 
 /**
