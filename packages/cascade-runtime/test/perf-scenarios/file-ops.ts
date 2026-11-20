@@ -10,12 +10,12 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, parse } from "node:path";
+import { join, parse, win32 } from "node:path";
 import { promisify } from "node:util";
 import { child } from "../perf-child.js";
 import { PER_BUILD } from "../perf-data.js";
 import { type Job, type Measured } from "../perf-job.js";
-import { type Plan } from "../perf-plan.js";
+import { Refusal, type Plan } from "../perf-plan.js";
 import { clockRow, countRow, type Row } from "../perf-rows.js";
 
 /** How many small files each operation is timed over. */
@@ -434,6 +434,76 @@ export function insideListed(
 /** Defender lists this, and nothing else, to a shell that is not an administrator's. */
 const hidden = (entry: string): boolean => /^N\/A/i.test(entry);
 
+/**
+ * Why a folder is one this comparison does not write 3,000 files into on its own, or undefined: a drive's root, a program or
+ * system folder (and what is inside one), and a user's profile folder itself or the folder holding the profiles.
+ */
+export function systemFolder(
+  path: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  if (win32.parse(path).base === "") return "a drive's root";
+  const key = folderKey(path);
+  const inside = (parent: string | undefined): boolean => {
+    if (parent === undefined || parent === "") return false;
+    const at = folderKey(parent);
+    return key === at || key.startsWith(`${at}\\`) || key.startsWith(`${at}/`);
+  };
+  const programs = [
+    env.ProgramFiles ?? "C:\\Program Files",
+    env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
+    env.ProgramW6432,
+    env.ProgramData ?? "C:\\ProgramData",
+    env.windir ?? env.SystemRoot ?? "C:\\Windows",
+  ];
+  const found = programs.find(inside);
+  if (found !== undefined) return `inside ${found}, a program or system folder`;
+  const profile = env.USERPROFILE;
+  if (profile !== undefined && profile !== "") {
+    const profiles = win32.dirname(profile);
+    if (key === folderKey(profile) || key === folderKey(profiles))
+      return "a user's profile folder, or the folder that holds them";
+    if (folderKey(win32.dirname(path)) === folderKey(profiles))
+      return "a user's profile folder";
+  }
+  return undefined;
+}
+
+/**
+ * What a person has to know before reading the two folders' times as what the scanner costs: whether it is checking at all, which
+ * entries of the list were not compared with the folders, and what is not read. Nothing here changes anything.
+ */
+export function scannerNotes(settings: ScannerSettings): string[] {
+  const idle = [
+    ...(settings.realtime ? [] : ["its live checking is off"]),
+    ...(settings.fileOpening ? [] : ["its file-opening checking is off"]),
+    ...(settings.reported?.fileOpening === false
+      ? ["Get-MpComputerStatus says its file-opening protection is not enabled"]
+      : []),
+    ...(settings.mode === undefined || /^normal$/i.test(settings.mode)
+      ? []
+      : [
+          `it runs in ${settings.mode} mode, which usually means another antivirus program is the one scanning`,
+        ]),
+  ];
+  const unmatched = settings.excludedFolders.filter((entry) =>
+    /[*?%]/.test(entry),
+  );
+  return [
+    ...(idle.length === 0
+      ? []
+      : [
+          `WARNING: neither folder is being scanned by Windows Defender: ${idle.join("; ")}. A flat result then says nothing about what scanning costs; it only says that two folders on this machine take the same time.`,
+        ]),
+    ...(unmatched.length === 0
+      ? []
+      : [
+          `WARNING: ${unmatched.length} of the excluded list's entries hold a wildcard or a variable (${unmatched.join(", ")}) and are not compared with the folders, so a folder under one of them is read as scanned although Defender leaves it alone. If the scanned folder is under one, neither folder is scanned and a flat result says nothing about scanning: name a --folder-scanned that none of them covers.`,
+        ]),
+    "Only the excluded folders are read: Defender's process and file-extension exclusions are not, and files that one of them covers are not scanned in either folder.",
+  ];
+}
+
 const microseconds = (seconds: number): string => {
   const us = seconds * 1e6;
   return `${us >= 100 ? Math.round(us) : us >= 10 ? +us.toFixed(1) : +us.toFixed(2)} µs`;
@@ -488,6 +558,7 @@ export function foldersReport(
   return [
     "Nothing on this machine was changed: Windows Defender's settings were only read.",
     `Windows Defender read as: ${describeSettings(settings)}`,
+    ...scannerNotes(settings),
     `In the excluded folder: ${where["in-excluded-folder"]}`,
     `In the scanned folder: ${where["in-scanned-folder"]}`,
     ...lines.flatMap(([text, key]) => [
@@ -509,6 +580,11 @@ export async function foldersCompared(
     scanner?: Pick<Scanner, "read">;
     once: (folder: string) => Promise<FileOpsRun>;
     tmp?: string;
+    /** What a person's system folders are called, where this machine's differ from the process's. */
+    env?: NodeJS.ProcessEnv;
+    /** Other folders to remove if the run is stopped, which its own end removes too. */
+    alsoRemove?: readonly string[];
+    signals?: SignalHost;
   },
 ): Promise<Row[]> {
   const scanner =
@@ -516,27 +592,28 @@ export async function foldersCompared(
     (process.platform === "win32" ? windowsScanner() : undefined);
   const settings = await scanner?.read();
   if (settings === undefined)
-    throw new Error(
+    throw new Refusal(
       "--scanner-folders reads Windows Defender's list of excluded folders (Get-MpPreference) and could not: this machine has no Windows Defender, or PowerShell would not read it. Nothing was changed.",
     );
   const listed = settings.excludedFolders;
+  for (const note of scannerNotes(settings)) log(note);
   const hiddenFrom = listed.find(hidden);
   if (hiddenFrom !== undefined)
-    throw new Error(
+    throw new Refusal(
       `Windows Defender hides its list of excluded folders from a shell that is not an administrator's (it answered "${hiddenFrom}"): run this again from an administrator PowerShell. Only the list is read; nothing is changed.`,
     );
   const state = async (folder: string) => {
     const real = await realpath(folder).catch(() => {
-      throw new Error(`${folder} is not a folder that exists`);
+      throw new Refusal(`${folder} is not a folder that exists`);
     });
     return { real, entry: insideListed(real, listed) };
   };
-  // The folder that is excluded: the one asked for, or the first excluded folder that can be written to.
+  // The folder that is excluded: the one asked for, or the first excluded folder of the person's own that can be written to.
   const writableRoots: { real: string; entry: string | undefined }[] = [];
   if (plan.folderExcluded !== undefined) {
     const found = await state(plan.folderExcluded);
     if (found.entry === undefined)
-      throw new Error(
+      throw new Refusal(
         `--folder-excluded ${plan.folderExcluded} (${found.real}) is not inside any folder Windows Defender leaves alone; its list is [${listed.join(", ")}]`,
       );
     writableRoots.push(found);
@@ -545,21 +622,26 @@ export async function foldersCompared(
     const ordered = [...listed].sort(
       (a, b) => Number(parse(a).base === "") - Number(parse(b).base === ""),
     );
+    const system: string[] = [];
     for (const entry of ordered) {
       if (/[*?%]/.test(entry)) continue;
       const found = await state(entry).catch(() => undefined);
-      if (found !== undefined && found.entry !== undefined)
-        writableRoots.push(found);
+      if (found === undefined || found.entry === undefined) continue;
+      const why = systemFolder(found.real, deps.env);
+      if (why === undefined) writableRoots.push(found);
+      else system.push(`${found.real} (${why})`);
     }
     if (writableRoots.length === 0)
-      throw new Error(
-        `no folder is excluded from Windows Defender on this machine that exists (its list is [${listed.join(", ")}]), so there is no excluded folder to compare; name one with --folder-excluded. Nothing was changed.`,
+      throw new Refusal(
+        system.length === 0
+          ? `no folder is excluded from Windows Defender on this machine that exists (its list is [${listed.join(", ")}]), so there is no excluded folder to compare; name one with --folder-excluded <a folder of your own that it leaves alone>. Nothing was changed.`
+          : `the only excluded folders that exist are system or program folders: ${system.join("; ")}. This is not written into one without being asked: name a folder of your own that Windows Defender leaves alone with --folder-excluded <folder>. Nothing was changed.`,
       );
   }
   const scannedAsked = plan.folderScanned ?? deps.tmp ?? tmpdir();
   const scanned = await state(scannedAsked);
   if (scanned.entry !== undefined)
-    throw new Error(
+    throw new Refusal(
       `${plan.folderScanned === undefined ? "the temporary folder" : "--folder-scanned"} ${scannedAsked} (${scanned.real}) is inside ${scanned.entry}, which Windows Defender leaves alone, so both folders are in the same state; name a folder outside every one with --folder-scanned. Nothing was changed.`,
     );
   const folders: Record<"in-excluded-folder" | "in-scanned-folder", string> = {
@@ -569,6 +651,11 @@ export async function foldersCompared(
   const roots: string[] = [];
   const where = {} as Record<keyof typeof folders, string>;
   const entryOf: Record<string, string | undefined> = {};
+  // A run that is stopped removes the folders it made, as its end does.
+  const stopListening = restoringOnSignals(async () => {
+    for (const root of [...roots, ...(deps.alsoRemove ?? [])])
+      await rm(root, { recursive: true, force: true }).catch(() => undefined);
+  }, deps.signals);
   try {
     for (const candidate of writableRoots) {
       try {
@@ -582,7 +669,7 @@ export async function foldersCompared(
       }
     }
     if (folders["in-excluded-folder"] === "")
-      throw new Error(
+      throw new Refusal(
         `no excluded folder could be written to (tried ${writableRoots.map(({ real }) => real).join(", ")}); name one with --folder-excluded. Nothing was changed.`,
       );
     roots.push(folders["in-excluded-folder"]);
@@ -596,6 +683,9 @@ export async function foldersCompared(
         each === "in-excluded-folder"
           ? `${folders[each]}, inside ${entryOf[each]}, which Windows Defender leaves alone`
           : `${folders[each]}, inside none of the ${listed.length} folders Windows Defender leaves alone`;
+    log(
+      `3,000 small files, under 1 MB in all, are written in each of these, and the folders are deleted afterwards: ${where["in-excluded-folder"]}; ${where["in-scanned-folder"]}`,
+    );
     // The folders as made are checked once more, by real path, against the same list.
     for (const each of Object.keys(folders) as (keyof typeof folders)[]) {
       const now = await state(folders[each]);
@@ -632,6 +722,7 @@ export async function foldersCompared(
     for (const line of foldersReport(rows, settings, where)) log(line);
     return rows;
   } finally {
+    stopListening();
     for (const root of roots) await rm(root, { recursive: true, force: true });
   }
 }
@@ -678,7 +769,12 @@ export async function fileOpsAt(
     });
   // Nothing is changed in the machine's scanner: it is read, and two folders are measured.
   if (plan.scannerFolders === true)
-    return foldersCompared(plan, log, { scanner, once });
+    return foldersCompared(plan, log, {
+      scanner,
+      once,
+      alsoRemove: [work],
+      ...(deps.signals !== undefined && { signals: deps.signals }),
+    });
   // The scanner is told to leave this folder alone, not the whole of `work`, which holds the runs' own results too.
   const excludedHome = join(work, "left-alone");
   const batch = async (state: ScannerState): Promise<Row[]> => {

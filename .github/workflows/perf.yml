@@ -46,7 +46,8 @@ name: perf
 #   with Windows Defender's checking as the runner has it, with all of it on and no folder left out, and with the folder
 #   excluded (`--scanner-compare`), and puts every setting back; no other run does, as those runs would pay for it every time. It
 #   is honoured with `scenario` all only, as the file micro-bench is run with that alone. The flag refuses to run outside GitHub
-#   Actions: on a person's machine, `--scanner-folders` compares a folder Defender leaves alone with one it scans and changes nothing.
+#   Actions: on a person's machine, `--scanner-folders` compares a folder Defender leaves alone with one it scans and changes
+#   nothing; it measures the file micro-bench alone (never the suite's scenarios) and no workflow runs it.
 
 on:
   push:

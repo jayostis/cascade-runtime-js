@@ -15,8 +15,14 @@ interface Glossary {
   readonly datasets: Readonly<Record<string, string>>;
   readonly variants: Readonly<Record<string, string>>;
   readonly scenarios: Readonly<
-    Record<string, { says: string; total: string; chart?: false }>
+    Record<string, { says: string; total?: string; chart?: false }>
   >;
+  /** What a kind of file of a pod is, the class it counts as, and its name on a page; the keys are the kinds the stored scenario counts. */
+  readonly storedKinds: Readonly<
+    Record<string, { label: string; class: string; says: string }>
+  >;
+  readonly storedClasses: Readonly<Record<string, string>>;
+  readonly storedRule: string;
   readonly measures: Readonly<Record<string, string>>;
   readonly measureFamilies: readonly Family[];
   readonly selfRows: string;
@@ -185,6 +191,11 @@ export function explain(rowName: string): string | undefined {
   }
   if (rest.startsWith("count/")) return countOf(rest.slice(6));
   if (rest === "total") return glossary.scenarios[scenario]?.total;
+  const kind = /^(files|statements|bytes)\/(.+)$/.exec(rest);
+  const stored =
+    kind === null ? undefined : glossary.storedKinds[kind[2] ?? ""];
+  if (kind !== null && stored !== undefined)
+    return `How many ${kind[1]} of the kind "${stored.label}" the pod holds, which counts as ${stored.class}: ${stored.says}`;
   const measure =
     glossary.measures[rest] ??
     lookup((each) => fromFamily(glossary.measureFamilies, each)?.says, rest);
@@ -233,6 +244,20 @@ export function glossaryMarkdown(): string {
     "",
     table(Object.entries(glossary.scenarios).map(([k, v]) => [k, v.says])),
     "",
+    "## What a pod holds",
+    "",
+    "The `stored` scenario counts the pod a fresh import and its close left, in rows named `stored-<dataset>[-encrypted]/files/<kind>`, `/statements/<kind>`, `/bytes/<kind>`, `/predicates/<vocabulary>`, `/database/<table or index>` and `/count/<count>`. " +
+      glossary.storedRule,
+    "",
+    table(
+      Object.entries(glossary.storedKinds).map(([k, v]): [string, string] => [
+        k,
+        `${v.label} (${v.class}). ${v.says}`,
+      ]),
+    ),
+    "",
+    table(entries(glossary.storedClasses)),
+    "",
     "## Datasets",
     "",
     table(entries(glossary.datasets)),
@@ -246,10 +271,10 @@ export function glossaryMarkdown(): string {
     "Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is the scenario's own sentence above.",
     "",
     table([
-      ...Object.entries(glossary.scenarios).map(([k, v]): [string, string] => [
-        `${k}/total`,
-        v.total,
-      ]),
+      ...Object.entries(glossary.scenarios).flatMap(
+        ([k, v]): [string, string][] =>
+          v.total === undefined ? [] : [[`${k}/total`, v.total]],
+      ),
       ...entries(glossary.measures),
       ...family(glossary.measureFamilies),
     ]),

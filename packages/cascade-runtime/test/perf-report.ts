@@ -6,7 +6,7 @@ import { CHILD } from "./perf-child.js";
 import { pinClock, pinOf } from "./perf-clock.js";
 import { type Job } from "./perf-job.js";
 import { measure } from "./perf-measure.js";
-import { parsed } from "./perf-plan.js";
+import { parsed, Refusal } from "./perf-plan.js";
 import { perfFile } from "./perf-run.js";
 
 /**
@@ -49,6 +49,13 @@ export * from "./perf-scenarios/floor.js";
 export * from "./perf-scenarios/fresh-first-screen.js";
 export * from "./perf-scenarios/question-page.js";
 export * from "./perf-scenarios/reopen-first-answer.js";
+export * from "./perf-scenarios/stored.js";
+
+/** A refusal says what to do: its message alone, and exit code 2, with no stack. */
+function refuse(error: Error): void {
+  writeSync(2, `${error.message}\n`);
+  process.exitCode = 2;
+}
 
 async function main(args: string[]): Promise<void> {
   const at = args.indexOf(CHILD);
@@ -60,7 +67,14 @@ async function main(args: string[]): Promise<void> {
     await writeFile(job.out, JSON.stringify(await measure(job)));
     return;
   }
-  const { plan, out } = parsed(args);
+  let asked: ReturnType<typeof parsed>;
+  try {
+    asked = parsed(args);
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return refuse(error);
+  }
+  const { plan, out } = asked;
   // A run that ends without its file says how it ended, and by which signal it was told to.
   let finished = false;
   const say = (text: string) =>
@@ -76,17 +90,24 @@ async function main(args: string[]): Promise<void> {
     if (!finished) say("the performance run has nothing left to wait for");
   });
   const started = performance.now();
-  const file = await perfFile(
-    plan,
-    (line) =>
-      process.stderr.write(
-        `[${((performance.now() - started) / 1000).toFixed(0)}s] ${line}\n`,
-      ),
-    async (so) => {
-      if (out !== undefined)
-        await writeFile(out, `${JSON.stringify(so, null, 2)}\n`);
-    },
-  );
+  let file: Awaited<ReturnType<typeof perfFile>>;
+  try {
+    file = await perfFile(
+      plan,
+      (line) =>
+        process.stderr.write(
+          `[${((performance.now() - started) / 1000).toFixed(0)}s] ${line}\n`,
+        ),
+      async (so) => {
+        if (out !== undefined)
+          await writeFile(out, `${JSON.stringify(so, null, 2)}\n`);
+      },
+    );
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    finished = true;
+    return refuse(error);
+  }
   const text = `${JSON.stringify(file, null, 2)}\n`;
   if (out === undefined) process.stdout.write(text);
   else await writeFile(out, text);

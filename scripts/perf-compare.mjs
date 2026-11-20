@@ -20,12 +20,26 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  CLASS_HEAD,
+  KIND_HEAD,
+  classCells,
+  kindCells,
+  storedKeys,
+  storedLine,
+  storedNotes,
+  storedRowName,
+  storedOf,
+  storedTitle,
+  STORED_ROW,
+} from "./perf-stored.mjs";
 
 /**
- * What a row is, from its name: a stage of the probed run (its total included), a step's own time in it, a count, or a
- * headline time or size.
+ * What a row is, from its name: a count of what a pod holds (the `stored` scenario's rows), a stage of the probed run (its
+ * total included), a step's own time in it, a count, or a headline time or size.
  */
 export function kindOf(name) {
+  if (STORED_ROW.test(name)) return "stored";
   if (/\/self\//.test(name)) return "self";
   if (/\/stage\//.test(name) || /\/probed-total$/.test(name)) return "stage";
   if (/\/count\//.test(name)) return "count";
@@ -298,10 +312,10 @@ export const FLOOR_NOTE =
 
 /** How to read the table of what an import handled. */
 export const THROUGHPUT_NOTE =
-  "Counts are exact and come from the probed run of the same import; answer-file lines are the lines the import built for the pod's answer files. A rate is the run's whole count divided by the time of the phase that writes it, from the unprobed runs. It is shown only for saving, the phase that writes the files and their lines.";
+  "Counts are exact and come from the probed run of the same import; answer-file lines are the lines the import built for the pod's files, counted each time a file is built: more than the statements the files hold, because some files are built more than once (at 647 source entries, 21,631 lines against 19,636 statements). A rate is the run's whole count divided by the time of the phase that writes it, from the unprobed runs. It is shown only for saving, the phase that writes the files and their lines.";
 
 export const THROUGHPUT_HEAD = [
-  "Records",
+  "Source entries",
   "Answer-file lines",
   "Files written",
   "Questions put to the fact store",
@@ -380,6 +394,111 @@ export function speedSection(file, { markdown = false } = {}) {
 }
 
 /**
+ * What a file says of what each pod it counted holds: for each, the line of what a fresh import left, the classes of what is
+ * held and, folded away in a markdown report, each kind. None for a file with no such rows.
+ */
+export function storedSection(file, { markdown = false } = {}) {
+  const pages = storedKeys(file).flatMap((key) => storedOf(file, key) ?? []);
+  if (pages.length === 0) return [];
+  const out = [markdown ? "**What a pod holds**" : "WHAT A POD HOLDS", ""];
+  for (const page of pages) {
+    out.push(
+      markdown
+        ? `- ${storedTitle(page)}: ${storedLine(page)}`
+        : `${storedTitle(page)}: ${storedLine(page)}`,
+      "",
+      table(CLASS_HEAD, classCells(page), markdown),
+      "",
+    );
+    const kinds = table(KIND_HEAD, kindCells(page), markdown, [1]);
+    out.push(
+      ...(markdown
+        ? [
+            "<details><summary>Each kind of file</summary>",
+            "",
+            kinds,
+            "",
+            "</details>",
+          ]
+        : [kinds]),
+      "",
+      ...storedNotes(page).flatMap((note) => [
+        markdown ? `> ${note}` : note,
+        "",
+      ]),
+    );
+  }
+  return out;
+}
+
+/**
+ * What changed in the counts of what a pod holds between two files, a row to a line, in the files' own order; a sentence where
+ * the earlier file has no counts of the pod to compare with, and where none changed.
+ */
+function storedChanges(before, after, { markdown, was$, now$ }) {
+  const rowsOf = (file) =>
+    new Map(
+      (file.results ?? [])
+        .filter(({ name }) => STORED_ROW.test(name))
+        .map((row) => [row.name, row]),
+    );
+  const was = rowsOf(before);
+  const now = rowsOf(after);
+  if (now.size === 0) return [];
+  const quote = (text) => (markdown ? `> ${text}` : text);
+  const bare = storedKeys(after).filter(
+    (key) => ![...was.keys()].some((name) => name.startsWith(`${key}/`)),
+  );
+  const out = [];
+  if (bare.length > 0)
+    out.push(
+      quote(
+        `${was$}'s file holds no counts of what a pod holds (${bare.join(", ")}), so they are new here.`,
+      ),
+      "",
+    );
+  const entries = (key) =>
+    now.get(`${key}/count/entries`)?.value ??
+    was.get(`${key}/count/entries`)?.value;
+  const sized = (value, unit) =>
+    unit === "By"
+      ? `${(value / 1048576).toFixed(2)} MiB`
+      : shown(value, unit, true);
+  const changed = [...now.values()].flatMap((row) => {
+    const key = row.name.slice(0, row.name.indexOf("/"));
+    const from = was.get(row.name);
+    return bare.includes(key) || from?.value === row.value
+      ? []
+      : [
+          [
+            storedRowName(row.name, entries(key)),
+            from === undefined ? "" : sized(from.value, row.unit),
+            sized(row.value, row.unit),
+            from === undefined ? "new" : countChange(from.value, row.value),
+          ],
+        ];
+  });
+  const compared = storedKeys(after).length - bare.length;
+  if (changed.length > 0)
+    out.push(
+      markdown
+        ? `**What a pod holds, that changed: ${was$} -> ${now$}**`
+        : `WHAT A POD HOLDS, THAT CHANGED: ${was$} -> ${now$}`,
+      "",
+      table(["", was$, now$, "change"], changed, markdown),
+      "",
+    );
+  else if (compared > 0)
+    out.push(
+      quote(
+        `No count of what a pod holds changed between ${was$} and ${now$}.`,
+      ),
+      "",
+    );
+  return out;
+}
+
+/**
  * In words, for each scenario and size, what main took and what this pull request took: the total of each, with the change.
  * `was` and `now` are the rows of the two files by name.
  */
@@ -430,6 +549,8 @@ export function compare(
     );
   }
   out.push(...speedSection(after, { markdown }));
+  out.push(...storedSection(after, { markdown }));
+  out.push(...storedChanges(before, after, { markdown, was$, now$ }));
   const head = (title) =>
     out.push(markdown ? `**${title}**` : title.toUpperCase(), "");
   const rowsOf = (kind) => {
@@ -629,6 +750,7 @@ export function summary(
     "",
   );
   out.push(...speedSection(file, { markdown }));
+  out.push(...storedSection(file, { markdown }));
   for (const [group, rows] of grouped(
     file.results.filter((row) => kindOf(row.name) === "stage"),
   )) {

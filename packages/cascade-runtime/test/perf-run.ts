@@ -42,6 +42,7 @@ import {
   reopenProbedTotal,
   reopenRows,
 } from "./perf-scenarios/reopen-first-answer.js";
+import { storedRows } from "./perf-scenarios/stored.js";
 
 /** One build of a scenario at a size, as `flame.json` lists it. */
 export interface FlameBuild {
@@ -121,7 +122,8 @@ async function scenariosAt(
     : [];
 
   // fresh: the headline runs, then the probed one. The last unprobed pod stays for the scenarios that open one.
-  const needsPod = wants("reopen-first-answer") || wants("question-page");
+  const needsPod =
+    wants("reopen-first-answer") || wants("question-page") || wants("stored");
   const fresh: Measured[] = [];
   let kept: string | undefined;
   const freshRuns =
@@ -247,6 +249,25 @@ async function scenariosAt(
       );
       await onACopy(false, true);
     }
+  }
+  // stored: the pod the fresh runs left, counted last, in a process of its own, once: its counts are exact. It reads the pod where
+  // the last fresh run closed it; the scenarios above opened copies of it.
+  if (wants("stored") && kept !== undefined) {
+    log(`${dataset}${encrypted ? " encrypted" : ""}: stored`);
+    const counted = await child(
+      { ...ctx.unprobed("fresh-last", "stored"), folder: kept },
+      work,
+    );
+    if (counted.stored === undefined)
+      throw new Error("the stored scenario counted nothing");
+    rows.push(
+      ...storedRows(
+        nameOf("stored", dataset, encrypted),
+        about,
+        counted.stored,
+        data.records,
+      ),
+    );
   }
   if (kept !== undefined)
     await rm(dirname(kept), { recursive: true, force: true });

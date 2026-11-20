@@ -20,7 +20,15 @@ import {
 } from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
-import { fileURLToPath, URL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { readGlossary } from "./perf-glossary.mjs";
+import {
+  STORED_ROW,
+  storedHtml,
+  storedKeys,
+  storedOf,
+  storedTitle,
+} from "./perf-stored.mjs";
 import {
   FLOOR_NOTE,
   SPEED_ROW,
@@ -31,15 +39,13 @@ import {
   throughputTable,
 } from "./perf-compare.mjs";
 
+export { readGlossary };
+
 /** How many steps get a band of their own in a chart; the rest of the time is one band, "everything else". */
 export const BANDS = 7;
 
 /** The newest builds a chart draws; a year of pushes would make columns too thin to hover. */
 export const WINDOW = 120;
-
-const GLOSSARY = fileURLToPath(
-  new URL("../packages/cascade-runtime/test/perf-glossary/", import.meta.url),
-);
 
 /**
  * Colours that tell seven neighbouring bands apart on white. A step takes the one its name hashes to, or the next that no
@@ -136,49 +142,6 @@ export function buildsIn(data) {
           ? -1
           : 1,
     );
-}
-
-/**
- * The glossary of a folder of fragments, merged in file-name order as readGlossary in
- * packages/cascade-runtime/test/perf-glossary.ts does it (a test holds the two equal): a list by joining, an object by
- * adding keys, a text by taking it.
- */
-export function readGlossary(folder = GLOSSARY) {
-  const merged = {};
-  for (const file of readdirSync(folder)
-    .filter((each) => each.endsWith(".json"))
-    .sort()) {
-    const fragment = JSON.parse(readFileSync(join(folder, file), "utf8"));
-    for (const [section, value] of Object.entries(fragment)) {
-      if (Array.isArray(value)) {
-        const list = [...(merged[section] ?? [])];
-        for (const entry of value) {
-          if (
-            list.some(
-              (other) => JSON.stringify(other) === JSON.stringify(entry),
-            )
-          )
-            throw new Error(
-              `${file} lists ${JSON.stringify(entry)} in ${section}, which is listed already`,
-            );
-          list.push(entry);
-        }
-        merged[section] = list;
-      } else if (typeof value === "object" && value !== null) {
-        merged[section] ??= {};
-        for (const [key, entry] of Object.entries(value)) {
-          if (key in merged[section])
-            throw new Error(
-              `${file} gives ${section}.${key}, which another file gave`,
-            );
-          merged[section][key] = entry;
-        }
-      } else if (merged[section] !== undefined)
-        throw new Error(`${file} gives ${section}, which another file gave`);
-      else merged[section] = value;
-    }
-  }
-  return merged;
 }
 
 /** The sentence a row's `extra` begins with, without the "Sits inside <step>." the glossary adds. */
@@ -305,7 +268,7 @@ export function reduced(file, glossary = readGlossary()) {
         ];
       if (rest === "total" || rest === "probed-total")
         return [{ name: row.name, value: row.value, samples: row.samples }];
-      if (SPEED_ROW.test(row.name))
+      if (SPEED_ROW.test(row.name) || STORED_ROW.test(row.name))
         return [{ name: row.name, value: row.value }];
       if (!rest.startsWith("self/")) return [];
       return [
@@ -492,13 +455,13 @@ const TITLES = {
   close: "Closing the pod",
 };
 
-/** A size as a person reads it: "647 records", "16,833 records, nightly"; encrypted says so. */
+/** A size as a person reads it: "647 source entries", "16,833 source entries, measured nightly"; encrypted says so. */
 function sizeOf(chart, glossary) {
   const sentence = glossary.datasets[chart.dataset] ?? chart.dataset;
-  const records = /([\d,]+) records/.exec(sentence)?.[1];
+  const entries = /([\d,]+) source entries/.exec(sentence)?.[1];
   const nightly = chart.dataset === "synthea-lifetime";
   return [
-    records === undefined ? chart.dataset : `${records} records`,
+    entries === undefined ? chart.dataset : `${entries} source entries`,
     ...(nightly ? ["measured nightly"] : []),
     ...(chart.encrypted ? ["encrypted pod"] : []),
   ].join(", ");
@@ -697,6 +660,11 @@ ul.legend .latest { margin-left: auto; color: #555b66; white-space: nowrap; font
 #tip .row b { margin-left: auto; padding-left: 1rem; font-weight: 500; white-space: nowrap; }
 #tip .says { color: #aab; font-size: .75rem; margin: 0 0 .25rem 1.25rem; }
 #tip .hint { margin-top: .4rem; color: #aab; font-size: .75rem; }
+table.held { border-collapse: collapse; width: 100%; font-size: .85rem; margin: .4rem 0; }
+table.held th, table.held td { padding: .25rem .5rem; border-bottom: 1px solid #e3e6ea; vertical-align: bottom; text-align: left; }
+table.held th.n, table.held td.n { text-align: right; font-variant-numeric: tabular-nums; }
+section.stored details { margin: .4rem 0; }
+section.stored h3 { font-size: 1rem; margin: 1.4rem 0 .2rem; }
 .speedbox { margin: .6rem 0; }
 .speedbox p { margin: .3rem 0; }
 .speedline { font-size: 1rem; }
@@ -969,10 +937,45 @@ ${scanner}
 </section>`;
 }
 
+/**
+ * What each size's pod held in the newest build whose file counted it, for the section "What a pod holds": the build and what
+ * its rows say, by size, plain before encrypted. Nothing for builds none of whose files count a pod.
+ */
+export function storedLatest(files, glossary = readGlossary()) {
+  const order = Object.keys(glossary.datasets);
+  const found = new Map();
+  for (const { build, file } of files)
+    for (const key of storedKeys(file)) {
+      const page = storedOf(file, key, glossary);
+      if (page !== undefined) found.set(key, { build, page });
+    }
+  return [...found.values()].sort(
+    (a, b) =>
+      order.indexOf(a.page.dataset) - order.indexOf(b.page.dataset) ||
+      Number(a.page.encrypted) - Number(b.page.encrypted),
+  );
+}
+
+/** The section of what the pods the newest builds left hold, one block for each size. */
+function storedBlock(stored, repo, glossary) {
+  if (stored.length === 0) return "";
+  const blocks = stored.map(({ build, page }) =>
+    storedHtml(page, {
+      heading: `<h3>${esc(storedTitle(page))} <span class="note">Build <a href="https://github.com/${esc(repo)}/commit/${esc(build.sha)}">${esc(build.sha)}</a>, ${esc(build.date)}</span></h3>`,
+    }),
+  );
+  return `<section class="stored" id="stored">
+<h2>What a pod holds</h2>
+<p class="about">What a fresh import leaves in a new pod once it is closed, counted exactly in the newest build that counted it: how many files, statements and bytes, and how much of it is what the source said against what the pod keeps about it. It is about the pod's shape, not a measure of time.</p>
+${blocks.join("\n")}
+<p class="note">${esc(glossary.storedRule ?? "")}</p>
+</section>`;
+}
+
 /** The page: the charts, how to read them, and the data they draw. */
 export function stackedPage(
   charts,
-  { repo, glossary = readGlossary(), fileOps = [] } = {},
+  { repo, glossary = readGlossary(), fileOps = [], stored = [] } = {},
 ) {
   const repeats = [
     ...new Set(charts.map((chart) => chart.columns.at(-1)?.runs)),
@@ -1060,13 +1063,14 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <p>Each chart follows one thing a person waits for. Every column is one build of the runtime, oldest on the left, so the chart shows whether it got faster or slower. A column's height is how long it took, in seconds; its coloured bands are the steps inside that took the time, so a band that grows is the step that slowed things down. Move over a column to see its numbers; click it to open that build's flame graphs.</p>
 <details class="how"><summary>How the bands are worked out</summary>
 <p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
-<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
-<p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (records, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p>
+<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 source entries are one synthetic patient's ten years, measured on every build; 16,833 source entries are a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
+<p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (source entries, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p></details>
 <p>Charts "on Windows" and "on macOS" are the same measurement on those systems' own GitHub-hosted machines, drawn from those builds alone: a time on one system is never plotted in a column of another, because the machines differ in processor, disk and file system, and the times only read against their own system's earlier ones. Those two are measured when a change is merged to main and every night, not on every pull request, so they have fewer columns. What the systems cost per file, and what the virus scanner was set to and doing while it was measured, is under the charts.</p>
 <p>Why the two are not measured on every pull request: a pull request is shown only when its slowest check is done. A Windows run took about 6 minutes (11 with the Defender comparison, which only a hand-started run adds) and a macOS run about 3 (November 2026, a hosted runner each), against about 9 minutes for the slowest check, so the Windows run would have become the slowest check of every pull request. They are measured on the main branch and by hand, and a hand-started run of any branch can name them.</p></details>
-<p class="toc">${[...titled.map((chart) => `<a href="#${esc(chart.id ?? chart.key)}">${esc(chart.title)}</a><br>`), ...(fileOps.length === 0 ? [] : ['<a href="#file-ops">What one file costs on each operating system</a><br>'])].join("\n")}</p>
+<p class="toc">${[...titled.map((chart) => `<a href="#${esc(chart.id ?? chart.key)}">${esc(chart.title)}</a><br>`), ...(fileOps.length === 0 ? [] : ['<a href="#file-ops">What one file costs on each operating system</a><br>']), ...(stored.length === 0 ? [] : ['<a href="#stored">What a pod holds</a><br>'])].join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
 ${fileOpsSection(fileOps)}
+${storedBlock(stored, repo, glossary)}
 <p class="links"><a href="../">Documentation home</a> · <a href="runs/">Each build's flame graphs</a> · <a href="detail/">Every measurement, one small chart each</a> · <a href="stacked.json">The data of these charts</a></p>
 <div id="tip" hidden></div>
 <script type="application/json" id="data">${JSON.stringify(data).replaceAll("<", "\\u003c")}</script>
@@ -1141,7 +1145,12 @@ export function pages({ data, out, repo, runs, glossary = readGlossary() }) {
         column.href = `runs/#${column.id}`;
   mkdirSync(out, { recursive: true });
   const fileOps = fileOpsOf(files);
-  const page = stackedPage(charts, { repo, glossary, fileOps });
+  const page = stackedPage(charts, {
+    repo,
+    glossary,
+    fileOps,
+    stored: storedLatest(files, glossary),
+  });
   writeFileSync(join(out, "index.html"), page);
   writeFileSync(
     join(out, "stacked.json"),
