@@ -115,9 +115,10 @@ export function clockRow(
   };
 }
 
+/** A count of work done: of bytes (`By`) where the name ends in `.bytes`, otherwise of things (`{count}`). */
 export const countRow = (name: string, value: number, extra?: string): Row => ({
   name,
-  unit: "{count}",
+  unit: name.endsWith(".bytes") ? "By" : "{count}",
   value,
   kind: "cost",
   ...(extra !== undefined && { extra }),

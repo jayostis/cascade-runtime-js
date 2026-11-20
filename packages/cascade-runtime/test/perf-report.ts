@@ -2,6 +2,7 @@ import "./offline.js";
 import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { CHILD } from "./perf-child.js";
+import { pinClock } from "./perf-clock.js";
 import { type Job } from "./perf-job.js";
 import { measure } from "./perf-measure.js";
 import { parsed } from "./perf-plan.js";
@@ -51,6 +52,8 @@ async function main(args: string[]): Promise<void> {
   const at = args.indexOf(CHILD);
   if (at !== -1) {
     const job = JSON.parse(args[at + 1] as string) as Job;
+    // What the job writes with the time or a new id is then the same on every run, as a fingerprint of it needs.
+    pinClock();
     await writeFile(job.out, JSON.stringify(await measure(job)));
     return;
   }

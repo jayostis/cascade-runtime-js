@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { after, before, describe, it } from "node:test";
@@ -330,7 +330,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         const first = crypto.randomUUID();
         assert.match(
           first,
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/,
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
         );
         assert.notEqual(crypto.randomUUID(), first);
         unpin();
@@ -376,6 +376,43 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.deepEqual(a, b);
       const running = await imported("running-1");
       assert.notEqual(running.sha256, (await imported("running-2")).sha256);
+    });
+
+    it("has the fingerprint of a folder tell two statements apart, and not two labels of one blank node", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "fingerprint-"));
+      scratch.push(folder);
+      const holding = async (name: string, text: string) => {
+        await mkdir(join(folder, name), { recursive: true });
+        await writeFile(join(folder, name, "judgment.ttl"), text);
+        return (await folderFingerprint(join(folder, name))).sha256;
+      };
+      const was = (label: string, object: string) =>
+        `<urn:a> <urn:was> _:${label} .\n_:${label} <urn:is> ${object} .\n`;
+      const one = await holding(
+        "one",
+        was("b54691f5b548c1716b41a26b585b05b1", "<urn:x>"),
+      );
+      assert.equal(
+        await holding("two", was("edf3f236a17f1520697b3359340125f", "<urn:x>")),
+        one,
+        "another label",
+      );
+      assert.notEqual(
+        await holding(
+          "three",
+          was("b54691f5b548c1716b41a26b585b05b1", "<urn:y>"),
+        ),
+        one,
+        "another statement",
+      );
+      // The store sorts a file's lines, and a label decides where its lines fall.
+      const before = `_:${"0".repeat(32)} <urn:is> <urn:x> .\n<urn:a> <urn:was> _:${"0".repeat(32)} .\n`;
+      const after = `<urn:a> <urn:was> _:${"f".repeat(32)} .\n_:${"f".repeat(32)} <urn:is> <urn:x> .\n`;
+      assert.equal(
+        await holding("four", after),
+        await holding("five", before),
+        "lines in another order because of another label",
+      );
     });
   });
 

@@ -26,10 +26,15 @@ export function kindOf(name) {
   return "headline";
 }
 
-/** A value as a person reads it: seconds with a unit that fits, bytes as MiB, counts with thousands separators. */
-export function shown(value, unit) {
+/**
+ * A value as a person reads it: seconds with a unit that fits, bytes as MiB (in tenths under ten of them) or, for an
+ * exact count of bytes, in whole bytes, counts with thousands separators.
+ */
+export function shown(value, unit, exact = false) {
   if (value === undefined) return "";
-  if (unit === "By") return `${(value / 1048576).toFixed(0)} MiB`;
+  if (unit === "By" && exact) return `${value.toLocaleString("en-US")} By`;
+  if (unit === "By")
+    return `${(value / 1048576).toFixed(value < 10 * 1048576 ? 1 : 0)} MiB`;
   if (unit === "{count}") return value.toLocaleString("en-US");
   if (value >= 100) return `${value.toFixed(0)} s`;
   if (value >= 10) return `${value.toFixed(1)} s`;
@@ -332,7 +337,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
   };
   const line = ({ name, from, to }, label = name) => {
     const unit = (to ?? from).unit;
-    const counting = (to ?? from).unit === "{count}";
+    const counting = unit === "{count}" || kindOf(name) === "count";
     const verdict =
       from === undefined
         ? "new"
@@ -341,7 +346,12 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
           : counting
             ? countChange(from.value, to.value)
             : change(from.value, to.value);
-    return [label, shown(from?.value, unit), shown(to?.value, unit), verdict];
+    return [
+      label,
+      shown(from?.value, unit, counting),
+      shown(to?.value, unit, counting),
+      verdict,
+    ];
   };
   /** A line with the plain sentence of the step after its change. */
   const said = (pair) => [...line(pair), says(pair.to ?? pair.from)];
