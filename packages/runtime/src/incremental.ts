@@ -719,14 +719,14 @@ export class KeptBuild {
 
   /** Puts the triples in the graph of the type index or the manifest in place of what it held. */
   async #replaced(graph: string, triples: readonly Triple[]): Promise<void> {
-    this.#closingFiles.set(
-      graph.slice(this.#rebuilding.address.length),
-      triples,
-    );
+    const path = graph.slice(this.#rebuilding.address.length);
+    const held = this.#closingFiles.get(path)?.length ?? 0;
+    this.#closingFiles.set(path, triples);
     this.recording?.push({ graph, whole: triples });
     if (this.#builtOut) return;
-    this.#moved += await this.#union.drop(graph);
+    await this.#union.drop(graph);
     await this.#union.add(triples, graph);
+    this.#moved += held;
   }
 
   /** Puts the manifest's triples in place of what the build held of it, as a retitle writes it between steps. */

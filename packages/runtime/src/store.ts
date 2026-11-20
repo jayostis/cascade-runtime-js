@@ -51,8 +51,8 @@ export interface Store {
   /** The Turtle's triples as it writes them, each literal's lexical form kept, its relative IRIs resolved against `base`. */
   parse(turtle: Uint8Array | string, base: string): Promise<Triple[]>;
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
-  /** Removes a graph and its triples, and gives how many it held. */
-  drop(graph: string): Promise<number>;
+  /** Removes a graph and its triples. */
+  drop(graph: string): Promise<void>;
   /** Removes from the graph every triple whose subject is one of the IRIs, and gives how many it removed. */
   removeSubjects(graph: string, subjects: Iterable<string>): Promise<number>;
   select(query: string, union: ReadonlySet<string>): Promise<Rows>;
@@ -141,11 +141,10 @@ export class Union implements Dataset {
     this.#graphs.add(graph);
   }
 
-  /** Removes a graph and its triples, and takes it out of the union; gives how many triples it held. */
-  async drop(graph: string): Promise<number> {
-    const held = await timedAside("union.drop", () => this.store.drop(graph));
+  /** Removes a graph and its triples, and takes it out of the union. */
+  async drop(graph: string): Promise<void> {
+    await timedAside("union.drop", () => this.store.drop(graph));
     this.#graphs.delete(graph);
-    return held;
   }
 
   /** Removes from the graph every triple whose subject is one of the IRIs; gives how many it removed. */
@@ -238,9 +237,9 @@ export class RestorableUnion extends Union {
     await super.add(all, graph);
   }
 
-  override async drop(graph: string): Promise<number> {
+  override async drop(graph: string): Promise<void> {
     await this.#keep(graph);
-    return super.drop(graph);
+    await super.drop(graph);
   }
 
   override async removeSubjects(

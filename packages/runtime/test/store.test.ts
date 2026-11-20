@@ -483,7 +483,7 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
       assert.equal(otherUnion, false);
     });
 
-    it("returns how many quads each removal took out: the subjects' in the graph, and the graph's all", async () => {
+    it("returns how many quads `removeSubjects()` took out: the subjects' in the graph, none for a subject or a graph it does not hold", async () => {
       const held = new Union(new OxigraphStore());
       await held.add(
         [
@@ -501,10 +501,6 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
       );
       assert.equal(await held.removeSubjects("urn:graph", ["urn:a"]), 0);
       assert.equal(await held.removeSubjects("urn:absent", ["urn:b"]), 0);
-      assert.equal(await held.drop("urn:graph"), 2);
-      assert.equal(await held.drop("urn:graph"), 0);
-      assert.equal(await held.drop("urn:absent"), 0);
-      assert.equal(await held.drop("urn:other"), 1);
     });
 
     it("counts each quad once when a subject is given twice, and when there are more subjects than one removal binds", async () => {
@@ -554,14 +550,13 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
       assert.equal(done.restored.moved, 2 + 1 + 1 + 1 + 2 + 1);
     });
 
-    it("returns how many quads each removal took out, as a union does", async () => {
+    it("returns how many quads `removeSubjects()` took out, as a union does", async () => {
       const store = new OxigraphStore();
       await store.loadTurtle("<urn:u> <urn:p> 2, 3 . <urn:v> <urn:p> 4 .", {
         graph: "urn:three",
       });
       const held = new RestorableUnion(store, ["urn:three"]);
       assert.equal(await held.removeSubjects("urn:three", ["urn:u"]), 2);
-      assert.equal(await held.drop("urn:three"), 1);
       await held.restore();
     });
 

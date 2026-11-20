@@ -690,8 +690,8 @@ export class OxigraphStore implements Store {
     for (const graph of graphs as string[]) this.#graphs.add(graph);
   }
 
-  /** How many quads the graph holds, of the subjects in `values` (a `VALUES` block) when it is given. */
-  #held(named: string, values = ""): number {
+  /** How many quads the graph holds of the subjects in `values`, a `VALUES` block. */
+  #held(named: string, values: string): number {
     const answer = parseResults(
       this.#store.query(
         `SELECT (COUNT(*) AS ?n) WHERE { GRAPH ${named} { ${values} ?s ?p ?o } }`,
@@ -703,13 +703,10 @@ export class OxigraphStore implements Store {
     return Number(answer.rows[0]?.get("n")?.value ?? 0);
   }
 
-  async drop(graph: string): Promise<number> {
-    if (this.#oxigraph === undefined) return 0;
-    const named = written(iri(graph));
-    const held = this.#held(named);
-    this.#oxigraph.update(`DROP SILENT GRAPH ${named}`);
+  async drop(graph: string): Promise<void> {
+    if (this.#oxigraph === undefined) return;
+    this.#oxigraph.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
     this.#graphs.delete(graph);
-    return held;
   }
 
   async removeSubjects(
