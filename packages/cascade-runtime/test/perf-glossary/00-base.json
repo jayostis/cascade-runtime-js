@@ -1,8 +1,8 @@
 {
   "about": "Plain-language meanings for every name in the runtime's performance file. This folder is the glossary: its files are merged in file-name order, a list (the families) by joining and an object (the scenarios, measures, spans, counts) by adding keys, and a key two files both give, or a text one gives twice, is an error. The number leads the name so that the page lists entries in that order; a scenario owns the file that carries its name, and a new scenario adds a file of its own and edits none of these. Read by perf-glossary.ts (each row's `extra`), checked by perf-report.test.ts, and listed in docs/perf-glossary.md. Span and count keys are the row-name form of the runtime's probe names (lower case, dashes for colons and spaces); a family matches by start and end of that form, with {name} the part between.",
   "datasets": {
-    "synthea-10y": "Synthea's realistic synthetic patient, a 10-year record of 647 records. No real person's data.",
-    "synthea-lifetime": "A synthetic patient's whole life, 16,833 records: the large size, run nightly."
+    "synthea-10y": "Synthea's realistic synthetic patient, a 10-year record of 647 source entries. No real person's data.",
+    "synthea-lifetime": "A synthetic patient's whole life, 16,833 source entries: the large size, run nightly."
   },
   "variants": {
     "plain": "The pod's files are stored readable.",

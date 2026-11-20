@@ -6,6 +6,7 @@ import { type Loaded } from "./perf-floor.js";
 import { explainSpan } from "./perf-glossary.js";
 import { type DatasetId } from "./perf-data.js";
 import { type Scenario } from "./perf-plan.js";
+import { type Stored } from "./perf-scenarios/stored.js";
 import { fixed, part, type Tabulated, tabulated } from "./perf-rows.js";
 import { chromeTrace } from "./perf-trace.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
@@ -19,7 +20,7 @@ export const SECRET = "t-shirt abacus yo-yo zoom drop-down felt-tip";
 
 /** What one child process is asked to measure. */
 export interface Job {
-  readonly scenario: "fresh" | "reopen" | "question-page" | "floor";
+  readonly scenario: "fresh" | "reopen" | "question-page" | "floor" | "stored";
   readonly dataset: DatasetId;
   readonly encrypted: boolean;
   readonly probed: boolean;
@@ -45,6 +46,8 @@ export interface Measured {
   readonly wrote?: number;
   /** What the floor loaded and how long each stage took, for the floor scenario. */
   readonly floor?: Loaded;
+  /** What the pod holds, counted, for the stored scenario. */
+  readonly stored?: Stored;
   readonly seen?: Tabulated;
   /** The close alone, for a fresh run: its own probe. */
   readonly closeSeen?: Tabulated;

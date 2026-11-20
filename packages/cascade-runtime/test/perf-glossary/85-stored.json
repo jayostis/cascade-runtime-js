@@ -1,0 +1,121 @@
+{
+  "scenarios": {
+    "stored": {
+      "chart": false,
+      "says": "What a pod holds once a fresh import and its close are done, counted exactly by the kinds of file the pod's layout names: files, statements and bytes, and the pod's database by table and index."
+    }
+  },
+  "storedRule": "The rule for what is the source's data, history, bookkeeping or derived: a kind of file counts as the source's data when it holds what the source said (a version's content, every statement of a version file but the one that links it to its record, and the source's own bytes); as history when it holds what the pod keeps about how it learnt that (the record each version belongs to, the link from each version to it, and a revision for each time an import saw a version); as derived when the pod can write it again from its other files (the views and labels); and as bookkeeping for everything else the pod keeps to run it. The kind of a file comes from where the pod's layout places it, and, inside a folder of records, from the statements it holds: a file that states a version's link to its record is a version, one that states a revision's link is a revision, any other is the record's own.",
+  "storedClasses": {
+    "data": "What the person's source said: the content of every version (its codes, names, dates and values), and the source's own bytes. The one statement of each version file that says which record it is a version of is not counted here: it is history.",
+    "history": "What the pod keeps about how it learnt it: the record each version belongs to, the link from each version to it, and a revision for each time an import saw a version.",
+    "bookkeeping": "What the pod keeps to run: acts, descriptions of documents, judgments, the matcher's output, findings, reference series, servers, the pod's creation and settings, and anything else.",
+    "derived": "Copies the pod writes again from its other files after every import, which hold nothing new and can be rebuilt: the views and the labels."
+  },
+  "storedKinds": {
+    "records": {
+      "label": "Pod records: the name each thing is known by",
+      "class": "history",
+      "says": "A record's own file: the name the pod gives one thing the source described (a lab result, a medication, a condition), with its type and the source's own id for it. It holds no content; its versions and revisions point at it."
+    },
+    "versions": {
+      "label": "Versions: what the source said",
+      "class": "data",
+      "says": "One file for each distinct thing the source said of a record: the content (codes, names, dates, values) and one statement naming the record it is a version of. A later pull that says something different adds a version; one that says the same adds none."
+    },
+    "revisions": {
+      "label": "Revisions: each time it was seen",
+      "class": "history",
+      "says": "One file for each time an import saw a version: when, in which document and at which place in it, and which version. The pod's own history, not something the source said."
+    },
+    "servers": {
+      "label": "Servers: where a pull came from",
+      "class": "bookkeeping",
+      "says": "The records, versions and revisions of the servers a pull came from (a hospital's address and name), kept as any other record is."
+    },
+    "findings": {
+      "label": "Findings for review",
+      "class": "bookkeeping",
+      "says": "What the pod noticed and left for its owner to look at."
+    },
+    "judgments": {
+      "label": "Judgments and their retractions",
+      "class": "bookkeeping",
+      "says": "What the owner decided, such as which records say the same thing, and the retractions of those decisions."
+    },
+    "matcher-output": {
+      "label": "Matcher output",
+      "class": "bookkeeping",
+      "says": "The assertions the matcher made while it looked for records that say the same thing."
+    },
+    "references": {
+      "label": "Reference series",
+      "class": "bookkeeping",
+      "says": "The versions of the reference tables (code lists and series) the pod kept for its answers."
+    },
+    "acts": {
+      "label": "Acts: each import and activity",
+      "class": "bookkeeping",
+      "says": "What was done to the pod: each import (what it used and when), each other activity, each sync from another writer."
+    },
+    "documents": {
+      "label": "Descriptions of the source documents",
+      "class": "bookkeeping",
+      "says": "One file of statements for each source document an import was given: its name by content and its kind. The document's bytes are the stored documents."
+    },
+    "stored-documents": {
+      "label": "Stored documents: the source's own bytes",
+      "class": "data",
+      "says": "The source document's own bytes, kept as they came: no statements, the file is the document."
+    },
+    "views": {
+      "label": "Views and labels: rebuilt copies",
+      "class": "derived",
+      "says": "The files the pod writes again after every import from its other files: a list of each kind of record and the names shown for things. Everything in them is rebuildable from the pod's other files: some of it is statements the versions, records and revisions hold, the rest is derived from them (labels, padded dates, workflow status)."
+    },
+    "creation-settings": {
+      "label": "Creation and settings",
+      "class": "bookkeeping",
+      "says": "What makes the pod a pod: the person it is about, its manifest, its profile card, its preferences and its type index."
+    },
+    "other": {
+      "label": "Other files",
+      "class": "bookkeeping",
+      "says": "Any file the layout places nowhere, such as an encrypted pod's header."
+    }
+  },
+  "measures": {
+    "files/all": "Every file the pod holds, counted by the pod's layout: the kinds' counts add up to it.",
+    "files/on-disk": "Every file in the pod's folder as the disk has it. For a plain pod it equals the count above; for an encrypted pod it also counts the sealed index.",
+    "files/beside": "The files kept beside the pod: its database, its kept build and its kept answers.",
+    "statements/all": "Every statement in the pod's files, one for each line: a statement a view holds again is counted in each file that holds it, and the kinds' counts add up to it. A statement is one fact the pod keeps, a thing, one of its properties and the value. The lines are counted as N-Triples, one statement to a line, which is how this runtime writes them: a pod written by another writer in Turtle would be miscounted.",
+    "bytes/all": "What the pod's files hold, in bytes, read back (an encrypted pod's once opened): the bytes of their content, not the space they take on a disk. The kinds' counts add up to it.",
+    "bytes/on-disk": "What the files of the pod's folder add up to as the disk holds them: sealed files are larger than what they hold, and the sealed index is a file of its own.",
+    "bytes/in-4k-blocks": "What the files of the pod's folder take when each is rounded up to whole 4 KiB blocks, as NTFS and most other file systems allocate: the cost of many small files, which the bytes they hold do not show.",
+    "bytes/beside": "The bytes of the files kept beside the pod: its database, its kept build and its kept answers.",
+    "database/file": "The size of the database the pod keeps beside it, in bytes.",
+    "database/statements": "How many statements the database holds, in its table of statements: those of the pod's files, each loaded once (the count of lines of a file equals the database's count for the graph that file is), and the graphs derived from them, which no file holds. So it is more than the statements of the files.",
+    "database/terms": "How many distinct terms the database holds, each kept once.",
+    "database/tables": "Bytes the database's tables take, from SQLite's dbstat table; not given where the SQLite build has none.",
+    "database/indexes": "Bytes the database's indexes take, from SQLite's dbstat table; not given where the SQLite build has none."
+  },
+  "measureFamilies": [
+    {
+      "startsWith": "predicates/",
+      "says": "How many statements in the pod's files have a property from the {name} vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other: mainly rdfs for labels, oa for where in a document a revision's source sits, solid and obo)."
+    },
+    {
+      "startsWith": "database/table-",
+      "says": "Bytes the database's table {name} takes, one of the largest."
+    },
+    {
+      "startsWith": "database/index-",
+      "says": "Bytes the database's index {name} takes, one of the largest."
+    }
+  ],
+  "counts": {
+    "entries": "How many entries the source's Bundle holds, the same as the fresh import's count of records: the source's own count, which is not the number of records the pod keeps (see pod-records).",
+    "version-links": "How many of the statements in version files link a version to its record, one for each version: the pod's own statement, which counts as history, not as what the source said.",
+    "pod-records": "How many records the pod holds: a file for each thing the source described, the servers' included, each with versions and revisions beside it. Not the source's entries."
+  }
+}

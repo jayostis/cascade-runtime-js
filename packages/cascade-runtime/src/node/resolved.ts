@@ -100,7 +100,7 @@ export function configureTables(
 }
 
 /** The folder of what is kept beside the pod in the folder, `.answers/<name>`. */
-function besideFolder(path: string): string {
+export function besideFolder(path: string): string {
   const folder = absolute(path);
   return join(dirname(folder), ".answers", basename(folder));
 }

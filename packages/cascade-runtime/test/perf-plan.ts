@@ -2,7 +2,8 @@ import { DATASETS, PER_BUILD, type DatasetId } from "./perf-data.js";
 
 /**
  * Each scenario's fixed id: the first part of every row's name. `floor` is the same input loaded as plainly as SQL can
- * (perf-floor.ts), which a fresh import is read against; it is run once for a size, beside the others.
+ * (perf-floor.ts), which a fresh import is read against; it is run once for a size, beside the others. `stored` counts what
+ * the pod the fresh runs left holds (perf-scenarios/stored.ts); the counts are exact, so it is run once, after the others.
  */
 export const SCENARIOS = [
   "fresh-first-screen",
@@ -10,6 +11,7 @@ export const SCENARIOS = [
   "question-page",
   "close",
   "floor",
+  "stored",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
