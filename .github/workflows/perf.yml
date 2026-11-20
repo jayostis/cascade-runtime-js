@@ -81,6 +81,9 @@ jobs:
       CASCADE_TEST_OFFLINE: "1"
       # Read by the file's environment: the runner is a hosted one, which other jobs share the machine of.
       PERF_OTHER_LOAD: "a shared hosted runner"
+      # Whether main is measured here too, beside this build: a pull request, and a hand-started run on a branch other than main
+      # (which has no pull request but is read the same way). A push to main and the nightly run measure only themselves.
+      SAME_JOB: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main') }}
     defaults:
       run:
         working-directory: cascade-runtime-js
@@ -111,6 +114,52 @@ jobs:
           ref: ${{ steps.kit-at.outputs.ref }}
           path: cascade-starter-kit
           persist-credentials: false
+      # Main beside this build, for a run that measures both (SAME_JOB): the runtime at the default branch and each repository it
+      # reads, in a folder of their own, so that main reads main's vocabulary, adapters, reference tables and starter kit as a
+      # push to main does, and this build reads the ones its Depends-On lines name. Every step may fail: a build of main that
+      # cannot be made leaves no file, and the comparison falls back to the latest push's. No credential stays on disk.
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: main/cascade-runtime-js
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-vocabulary
+          path: main/cascade-vocabulary
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-bridge-adapter-fhir-r4
+          path: main/cascade-bridge-adapter-fhir-r4
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-bridge-adapter-ccda
+          path: main/cascade-bridge-adapter-ccda
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-reference-tables
+          path: main/cascade-reference-tables
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-starter-kit
+          path: main/cascade-starter-kit
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
@@ -125,39 +174,13 @@ jobs:
       - run: npm run --silent bridge
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      # The CPU profiles name the Bridge's Rust functions only if its wasm keeps its names, which the package does not
-      # (it would weigh more for every reader): the release the build was read from holds a second module, the same code with
-      # its names, and it is laid over the package's in the cache. The step runs before the headline timings, so they load the named module too (10.0 MB beside the package's, about 0.7 ms more to read and a compile of 18.4 ms against 18.5, noise against a 3.26 s total). The asset is checked against the digest GitHub computed when it was uploaded, which a transport error or a mix-up of assets fails; the step never fails the job, as a profile's names are an extra. A release made before the Bridge
-      # published one has none, and its profiles show wasm-function[N].
+      # The CPU profiles name the Bridge's Rust functions only if its wasm keeps its names; the script lays the release's named module
+      # over the package's (what it checks and why are in its header). It never fails the job.
       - name: The Bridge's function names
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          bridge=jayostis/cascade-bridge-rs
-          cache=build/cache/cascade-bridge-rs
-          read -r from commit < <(node -p "const r = JSON.parse(require('fs').readFileSync('$cache/expected.json', 'utf8')); r.source + ' ' + r.commit")
-          tag="build-$commit"
-          if [ "$from" != release ]; then
-            echo "::warning::the Bridge read is a $from build, which has no function names: the profiles show wasm-function[N]"
-            exit 0
-          fi
-          none() {
-            echo "::warning::$1, so the profiles show wasm-function[N]"
-            exit 0
-          }
-          if ! want=$(gh release view "$tag" -R "$bridge" --json assets -q '.assets[] | select(.name == "cascade_bridge_bg.names.wasm") | .digest'); then
-            none "the assets of $tag could not be listed"
-          fi
-          [ -n "$want" ] || none "$tag holds no cascade_bridge_bg.names.wasm with a digest"
-          if ! gh release download "$tag" -R "$bridge" --pattern cascade_bridge_bg.names.wasm --dir "$RUNNER_TEMP/names"; then
-            none "cascade_bridge_bg.names.wasm of $tag could not be downloaded"
-          fi
-          got=sha256:$(sha256sum "$RUNNER_TEMP/names/cascade_bridge_bg.names.wasm" | cut -d' ' -f1)
-          [ "$got" = "$want" ] || none "cascade_bridge_bg.names.wasm of $tag is $got, where GitHub's digest of the asset is $want"
-          cp "$RUNNER_TEMP/names/cascade_bridge_bg.names.wasm" "$cache/$tag/cascade_bridge_bg.wasm"
-          echo "The Bridge's wasm is $tag's with its function names ($(du -h "$cache/$tag/cascade_bridge_bg.wasm" | cut -f1))." >> "$GITHUB_STEP_SUMMARY"
+        run: bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$GITHUB_WORKSPACE/cascade-runtime-js"
       - id: what
         shell: bash
         env:
@@ -174,9 +197,65 @@ jobs:
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
           echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
+      # Main's build: its dependencies, and the Bridge as main resolves it, which is as a push to main does (the newest build of the
+      # Bridge's default branch), never the build this pull request's Depends-On lines pick: the event's file is left out of the
+      # environment and the branch is the default one. The run keeps that pick for its attempt, in main's own cache.
+      - name: Main's build
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        working-directory: main/cascade-runtime-js
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          MAIN_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP"/perf-main*.json
+          npm ci
+          unset GITHUB_EVENT_PATH
+          export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
+          npm run --silent bridge
+          bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$PWD" "main's run"
+      - name: Main's performance file, before
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        working-directory: main/cascade-runtime-js
+        shell: bash
+        env:
+          MAIN_BRANCH: ${{ github.event.repository.default_branch }}
+          ARGS: ${{ steps.what.outputs.args }}
+        run: |
+          set -euo pipefail
+          unset GITHUB_EVENT_PATH
+          export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
+          # shellcheck disable=SC2086
+          npm run --silent perf -- $ARGS --out "$RUNNER_TEMP/perf-main-before.json"
       # The traces and CPU profiles are made by the same run: a trace from its probed run, a CPU profile from one more run.
       - name: The performance file
         run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json" --profiles "$RUNNER_TEMP/flame"
+      - name: Main's performance file, after
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        working-directory: main/cascade-runtime-js
+        shell: bash
+        env:
+          MAIN_BRANCH: ${{ github.event.repository.default_branch }}
+          ARGS: ${{ steps.what.outputs.args }}
+        run: |
+          set -euo pipefail
+          unset GITHUB_EVENT_PATH
+          export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
+          # shellcheck disable=SC2086
+          npm run --silent perf -- $ARGS --out "$RUNNER_TEMP/perf-main-after.json"
+      - name: Where this run's files landed
+        if: ${{ env.SAME_JOB == 'true' && !cancelled() }}
+        shell: bash
+        run: |
+          ls -la "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/main" "$RUNNER_TEMP"/perf*.json || true
+          for f in perf-main-before perf-main-after perf; do
+            [ -f "$RUNNER_TEMP/$f.json" ] && node -e "const f=require('fs');const j=JSON.parse(f.readFileSync(process.argv[1]));console.log(process.argv[1], j.env.runner, JSON.stringify(j.commit))" "$RUNNER_TEMP/$f.json"
+          done
       - name: The summary
         if: ${{ !cancelled() }}
         shell: bash
@@ -242,6 +321,7 @@ jobs:
           name: perf
           path: |
             ${{ runner.temp }}/perf.json
+            ${{ runner.temp }}/perf-main*.json
             ${{ runner.temp }}/history.json
             ${{ runner.temp }}/where.md
           if-no-files-found: error
