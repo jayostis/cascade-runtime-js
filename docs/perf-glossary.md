@@ -193,8 +193,8 @@ Rows named `<scenario>-<dataset>/stage/<stage>`: where time goes inside one run 
 | `view.build-*.ttl` | Writing the `<name>` answer file from the question's rows. Sits inside `build.queried`. |
 | `derive.step-queries-*.rq` | Working out `<name>` from the pod's facts, one derivation step. Sits inside `kept.step.rebuilt`. |
 | `matcher.rule-*` | One 'same record' rule, `<name>`: checking whether two records fit it. Sits inside `matcher.of.over`. |
-| `question.page-*` | One page of the answer to: `<name>`. Sits inside `scenario.first-screen`. |
-| `question-*` | The answer to: `<name>`. Sits inside `scenario.first-screen`. |
+| `question.page-*` | One page of the answer to: `<name>`. |
+| `question-*` | The answer to: `<name>`. Where it sits depends on the scenario: in `fresh-first-screen` inside `scenario.first-screen`; in `reopen-first-answer` inside `scenario.first-read` or `scenario.second-read`. |
 | `core-pod.step.rebuild-*` | Re-deriving the pod's answers after a step of this kind: `<name>`. Sits inside `scenario.import`. |
 
 ## Own time of the probed run

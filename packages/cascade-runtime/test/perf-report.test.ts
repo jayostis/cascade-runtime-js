@@ -339,6 +339,23 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         assert.ok(explain(name), name);
     });
 
+    it("says a span sits inside the step it sits inside in the row's scenario, and nowhere for a scenario where it sits at the top", () => {
+      const own = (scenario: string, span: string) =>
+        explain(`${scenario}-synthea-10y/self/${span}`) ?? "";
+      assert.match(
+        own("fresh-first-screen", "question-pod-my-lab-results"),
+        /Sits inside scenario\.first-screen\. \|/,
+      );
+      assert.match(
+        own("reopen-first-answer", "question-pod-my-lab-results"),
+        /Sits inside scenario\.first-read or scenario\.second-read\. \|/,
+      );
+      assert.doesNotMatch(
+        own("question-page", "question.page-pod-my-lab-results"),
+        /Sits inside/,
+      );
+    });
+
     it("is the page docs/perf-glossary.md lists, word for word", async () => {
       const { readFile } = await import("node:fs/promises");
       const page = await readFile(

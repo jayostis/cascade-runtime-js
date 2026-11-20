@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { explain } from "./perf-glossary.js";
 
 const script = async <T>(name: string): Promise<T> =>
   (await import(
@@ -15,6 +16,7 @@ const script = async <T>(name: string): Promise<T> =>
 interface Column {
   id: string;
   total: number;
+  runs?: number;
   measured: boolean;
   bands: number[];
   other: number;
@@ -24,6 +26,7 @@ interface Step {
   key: string;
   label: string;
   says?: string;
+  span: string;
   colour: string;
 }
 interface Chart {
@@ -44,6 +47,9 @@ interface Stacked {
   pages(options: object): Chart[];
   sentenceOf(extra: string | undefined): string | undefined;
   shortOf(sentence: string): string;
+  readBuilds(data: string, glossary: object, window?: number): File[];
+  readGlossary(): object;
+  chartSvg(chart: object, index: number): string;
 }
 
 const KEY = "fresh-first-screen-synthea-10y";
@@ -54,7 +60,11 @@ const file = (
   run: number,
   total: number | undefined,
   own: Record<string, number>,
-  { probed = total, key = KEY }: { probed?: number; key?: string } = {},
+  {
+    probed = total,
+    key = KEY,
+    runs,
+  }: { probed?: number; key?: string; runs?: number } = {},
 ): File => ({
   build: {
     id: `${run}-aaaaaa${run % 10}`,
@@ -67,7 +77,14 @@ const file = (
     results: [
       ...(total === undefined
         ? []
-        : [{ name: `${key}/total`, unit: "s", value: total }]),
+        : [
+            {
+              name: `${key}/total`,
+              unit: "s",
+              value: total,
+              ...(runs !== undefined && { samples: runs }),
+            },
+          ]),
       ...(probed === undefined
         ? []
         : [{ name: `${key}/probed-total`, unit: "s", value: probed }]),
@@ -241,8 +258,178 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
         ).endsWith("…"),
       );
       const [chart] = shape([file(1, 2, { "core-pod.x": 1 })]) as [Chart];
-      assert.equal(chart.steps[0]?.label, "Opening the pod");
+      assert.equal(chart.steps[0]?.label, "Opening the pod: core-pod.x");
       assert.equal(chart.steps[0]?.says, "Opening the pod: core-pod.x.");
+    });
+  });
+
+  describe("given the questions of the question pages, whose sentences differ only by the question", () => {
+    const ASKED = [
+      "pod-my-active-conditions",
+      "pod-what-each-import-brought-in",
+      "profile-what-needs-review",
+      "pod-which-reference-versions-are-current",
+      "pod-my-reports-notes-and-documents",
+    ];
+
+    /** A build of `scenario` whose own-time rows say what the glossary says of them, as the performance file's do. */
+    const asking = (scenario: string, family: string) => {
+      const key = `${scenario}-synthea-10y`;
+      const own = Object.fromEntries(
+        ASKED.map((question, at) => [`${family}-${question}`, 5 - at]),
+      );
+      const built = file(1, 20, own, { key });
+      for (const row of built.file.results as {
+        name: string;
+        extra?: string;
+      }[])
+        if (row.name.includes("/self/")) row.extra = explain(row.name);
+      return built;
+    };
+
+    it("gives every band of the question-page chart a label of its own that names its question, and keeps the whole sentence", async () => {
+      const { shape, stackedPage, readGlossary } =
+        await script<Stacked>("perf-stacked.mjs");
+      const charts = shape([asking("question-page", "question.page")]);
+      const [chart] = charts as [Chart];
+      assert.equal(chart.steps.length, ASKED.length);
+      assert.equal(new Set(chart.steps.map(({ label }) => label)).size, 5);
+      for (const [at, question] of ASKED.entries()) {
+        const step = chart.steps[at] as Step;
+        const words = question.replaceAll("-", " ");
+        assert.equal(step.label, `One page of the answer to: ${words}`);
+        assert.equal(step.says, `One page of the answer to: ${words}.`);
+        assert.equal(step.span, `question.page-${question}`);
+      }
+      const page = stackedPage(charts, {
+        repo: "owner/repo",
+        glossary: readGlossary(),
+      });
+      assert.match(
+        page,
+        /"says":"One page of the answer to: pod which reference versions are current\."/,
+      );
+    });
+
+    it("names a band of a reopened pod by its question, without the places the glossary says the question sits inside", async () => {
+      const { shape } = await script<Stacked>("perf-stacked.mjs");
+      const built = asking("reopen-first-answer", "question");
+      assert.match(
+        String(
+          (built.file.results as { extra?: string }[]).find(
+            ({ extra }) => extra !== undefined,
+          )?.extra,
+        ),
+        /Sits inside scenario\.first-read or scenario\.second-read\./,
+      );
+      const [chart] = shape([built]) as [Chart];
+      assert.equal(
+        chart.steps[0]?.label,
+        "The answer to: pod my active conditions",
+      );
+    });
+  });
+
+  describe("given the same steps with other weights", () => {
+    it("gives a step the colour its name gives, however much time the steps took", async () => {
+      const { shape } = await script<Stacked>("perf-stacked.mjs");
+      const colours = (own: Record<string, number>) =>
+        Object.fromEntries(
+          (shape([file(1, 100, own)])[0] as Chart).steps.map(
+            ({ key, colour }) => [key, colour],
+          ),
+        );
+      assert.deepEqual(
+        colours({ x: 5, y: 3, z: 1, w: 2 }),
+        colours({ x: 1, y: 3, z: 5, w: 4 }),
+      );
+    });
+  });
+
+  describe("given a page of charts and a person who cannot use a pointer", () => {
+    it("makes every column focusable, with its numbers spoken whether or not it opens anything, and says how many runs the headline is the median of", async () => {
+      const { shape, stackedPage, readGlossary } =
+        await script<Stacked>("perf-stacked.mjs");
+      const page = stackedPage(
+        shape([file(1, 2, { a: 1 }), file(2, 2, { a: 1 }, { runs: 5 })]),
+        { repo: "owner/repo", glossary: readGlossary() },
+      );
+      const columns = page.match(/<a class="col"[^>]*>/g) ?? [];
+      assert.equal(columns.length, 2);
+      for (const column of columns) assert.match(column, /tabindex="0"/);
+      assert.match(columns[0] ?? "", /role="img"/);
+      assert.match(
+        columns[0] ?? "",
+        /aria-label="[^"]*: Opening the pod: a 1 s/,
+      );
+      assert.match(page, /<svg [^>]*role="group"/);
+      assert.doesNotMatch(page, /<svg [^>]*role="img"/);
+      assert.match(page, /the median of 5 runs/);
+    });
+
+    it("shows times under ten milliseconds with their decimals", async () => {
+      const { shape, chartSvg } = await script<Stacked>("perf-stacked.mjs");
+      const [chart] = shape([file(1, 0.005, { a: 0.004 })]) as [Chart];
+      const svg = chartSvg({ ...chart, title: "t" }, 0);
+      assert.match(svg, />1\.5 ms</);
+      assert.match(svg, />4\.5 ms</);
+    });
+  });
+
+  describe("given a perf-data checkout with more builds than a chart draws and a file that cannot be read", () => {
+    it("reads the newest builds, cuts each file to the rows the charts use, and skips the unreadable file with a warning", async () => {
+      const { readBuilds, readGlossary } =
+        await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      scratch.push(data);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      for (const run of [1, 2, 3, 4]) {
+        const built = file(run, 2, { "scenario.open": 1 });
+        await writeFile(
+          join(day, `${run}-aaaaaa${run}-push.json`),
+          run === 3
+            ? "{ not json"
+            : JSON.stringify({
+                ...built.file,
+                results: [
+                  ...built.file.results,
+                  { name: `${KEY}/stage/scenario.open`, unit: "s", value: 1 },
+                  {
+                    name: `${KEY}/count/probe.calls`,
+                    unit: "{count}",
+                    value: 9,
+                  },
+                  { name: `${KEY}/rss`, unit: "By", value: 100 },
+                ],
+              }),
+        );
+      }
+      const warned: string[] = [];
+      const write = process.stderr.write.bind(process.stderr);
+      process.stderr.write = ((text: string) => {
+        warned.push(text);
+        return true;
+      }) as typeof process.stderr.write;
+      let kept: File[];
+      try {
+        kept = readBuilds(data, readGlossary(), 2);
+      } finally {
+        process.stderr.write = write;
+      }
+      assert.deepEqual(
+        kept.map(({ build }) => build.run),
+        ["2", "4"],
+      );
+      assert.equal(warned.length, 1);
+      assert.match(warned[0] ?? "", /3-aaaaaa3 is left out/);
+      for (const { file: reducedFile } of kept)
+        assert.deepEqual(
+          (reducedFile.results as { name: string }[]).map(({ name }) =>
+            name.slice(KEY.length + 1),
+          ),
+          ["total", "probed-total", "self/scenario.open"],
+        );
     });
   });
 

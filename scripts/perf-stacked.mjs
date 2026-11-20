@@ -38,7 +38,8 @@ const GLOSSARY = fileURLToPath(
 
 /**
  * Colours that tell seven neighbouring bands apart on white. A step takes the one its name hashes to, or the next that no
- * step charted with it holds, so the same step is the same colour in every chart of the page.
+ * step charted with it, earlier in name order, holds. Nothing but names decides, so a step keeps its colour from one
+ * deploy to the next, and is the same colour in every chart of the page.
  */
 export const PALETTE = [
   "#3b6fb6",
@@ -109,21 +110,39 @@ export function sentenceOf(extra) {
   if (typeof extra !== "string") return undefined;
   const first = extra
     .split(" | ")[0]
-    .replace(/\s*Sits inside \S+\.$/, "")
+    .replace(/\s*Sits inside \S+(?: or \S+)*\.$/, "")
     .trim();
   return first === "" ? undefined : first;
 }
 
-/** A sentence cut to a label that fits under a chart: its first sentence, shortened at a word. */
-export function shortOf(sentence, limit = 56) {
-  // Up to the first full stop, colon or semicolon that leaves a label with something in it.
-  const plain = sentence.replace(/\.$/, "");
-  const first =
-    plain.split(/[.:;]\s/).find((part) => part.length >= 15) ?? plain;
-  if (first.length <= limit) return first;
-  const cut = first.slice(0, limit - 1);
+/** A text cut at a word to fit `limit`, with an ellipsis where it was cut. */
+function clipped(text, limit) {
+  if (text.length <= limit) return text;
+  const cut = text.slice(0, limit - 1);
   const word = cut.lastIndexOf(" ");
   return `${cut.slice(0, word > 20 ? word : limit - 1).replace(/[,\s]+$/, "")}…`;
+}
+
+/**
+ * A sentence cut to a label that fits under a chart: its first sentence, shortened at a word. A sentence of the form
+ * "What it does: the thing" keeps both parts when the step's own name (`name`) repeats the thing, because then the thing is
+ * what tells its bands apart ("One page of the answer to: pod my lab results" for `question.page-pod-my-lab-results`); one
+ * whose second part explains the first, or a sentence without a name to compare, keeps only the first part.
+ */
+export function shortOf(sentence, limit = 56, name = "") {
+  const plain = sentence.replace(/\.$/, "");
+  const first =
+    plain.split(/[.;]\s/).find((part) => part.length >= 15) ?? plain;
+  const named = /^([^:]*): (.+)$/.exec(first);
+  if (named === null) return clipped(first, limit);
+  const [, lead = "", thing = ""] = named;
+  const slug = thing
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (lead.length < 15 || (slug !== "" && name.includes(slug)))
+    return clipped(first, 80);
+  return clipped(lead, limit);
 }
 
 const hashOf = (text) => {
@@ -134,20 +153,17 @@ const hashOf = (text) => {
 };
 
 /**
- * Gives each step a colour, once for the page: a step takes the colour its name hashes to, or the next one that no step
- * charted beside it holds. Steps are taken largest first, so the biggest bands keep the colour their name gives.
+ * Gives each step a colour, once for the page: in name order, a step takes the colour its name hashes to, or the next one
+ * that no step charted beside it, already coloured, holds.
  *
- * @param {Map<string, {weight: number, with: Set<string>}>} steps
+ * @param {Map<string, {with: Set<string>}>} steps
  * @returns {Map<string, string>}
  */
 export function coloured(steps) {
   const taken = new Map();
-  const order = [...steps].sort(
-    ([a, x], [b, y]) => y.weight - x.weight || (a < b ? -1 : 1),
-  );
-  for (const [key, { with: beside }] of order) {
+  for (const key of [...steps.keys()].sort()) {
     const used = new Set(
-      [...beside]
+      [...(steps.get(key)?.with ?? [])]
         .map((other) => taken.get(other))
         .filter((each) => each !== undefined),
     );
@@ -162,34 +178,57 @@ export function coloured(steps) {
 /** What a build's file says of one scenario at one size: its headline time, the probed run's time, and each step's own time. */
 function rowsOf(file, key) {
   let total;
+  let runs;
   let probed;
   const own = new Map();
   const prefix = `${key}/`;
   for (const row of file.results ?? []) {
     if (!row.name.startsWith(prefix) || typeof row.value !== "number") continue;
     const rest = row.name.slice(prefix.length);
-    if (rest === "total") total = row.value;
-    else if (rest === "probed-total") probed = row.value;
+    if (rest === "total") {
+      total = row.value;
+      runs = row.samples;
+    } else if (rest === "probed-total") probed = row.value;
     else if (rest.startsWith("self/")) {
       const name = rest.slice(5);
-      own.set(name, {
-        seconds: row.value,
-        says: sentenceOf(row.extra),
-        span: /;\s*([^;]+)$/.exec(row.extra ?? "")?.[1]?.trim(),
-      });
+      own.set(name, { seconds: row.value, says: sentenceOf(row.extra) });
     }
   }
-  return { total, probed, own };
+  return { total, runs, probed, own };
 }
 
 /** The scenario and size a row name starts with, from the glossary's names: `fresh-first-screen-synthea-10y-encrypted/total`. */
+const keyPattern = (glossary) =>
+  new RegExp(
+    `^((${Object.keys(glossary.scenarios).join("|")})-(${Object.keys(glossary.datasets).join("|")})(-encrypted)?)/`,
+  );
+
+/**
+ * What a build's file keeps for the charts: the rows of the headline time, the probed run's time and each step's own time
+ * (with the sentence of its `extra` and no more), the rest of the file being dropped as it is read.
+ */
+export function reduced(file, glossary = readGlossary()) {
+  const pattern = keyPattern(glossary);
+  return {
+    results: (file.results ?? []).flatMap((row) => {
+      const found = pattern.exec(row.name ?? "");
+      if (found === null || typeof row.value !== "number") return [];
+      const rest = row.name.slice(found[0].length);
+      if (rest === "total" || rest === "probed-total")
+        return [{ name: row.name, value: row.value, samples: row.samples }];
+      if (!rest.startsWith("self/")) return [];
+      return [
+        { name: row.name, value: row.value, extra: sentenceOf(row.extra) },
+      ];
+    }),
+  };
+}
+
 function chartKeys(files, glossary) {
   const found = new Set();
   const scenarios = Object.keys(glossary.scenarios);
   const datasets = Object.keys(glossary.datasets);
-  const pattern = new RegExp(
-    `^((${scenarios.join("|")})-(${datasets.join("|")})(-encrypted)?)/`,
-  );
+  const pattern = keyPattern(glossary);
   for (const { file } of files)
     for (const row of file.results ?? []) {
       const found_ = pattern.exec(row.name);
@@ -260,9 +299,12 @@ export function shapeChart(measured, { bands = BANDS, window = WINDOW } = {}) {
       ?.own.get(name);
     return {
       key: name,
-      label: newest?.says === undefined ? name : shortOf(newest.says),
+      label:
+        newest?.says === undefined
+          ? name
+          : shortOf(newest.says, undefined, name),
       says: newest?.says,
-      span: newest?.span ?? name,
+      span: name,
       weight: sum,
     };
   });
@@ -276,6 +318,7 @@ export function shapeChart(measured, { bands = BANDS, window = WINDOW } = {}) {
       event: build.event,
       run: build.run,
       total: build.total,
+      runs: build.runs,
       measured: build.own.size > 0,
       bands: values,
       other: Math.max(0, build.total - sum),
@@ -302,8 +345,7 @@ export function shape(
   const steps = new Map();
   for (const chart of charts)
     for (const step of chart.steps) {
-      const known = steps.get(step.key) ?? { weight: 0, with: new Set() };
-      known.weight = Math.max(known.weight, step.weight);
+      const known = steps.get(step.key) ?? { with: new Set() };
       for (const other of chart.steps)
         if (other.key !== step.key) known.with.add(other.key);
       steps.set(step.key, known);
@@ -364,7 +406,9 @@ const seconds = (value) =>
     ? `${+value.toFixed(1)} s`
     : value === 0
       ? "0"
-      : `${Math.round(value * 1000)} ms`;
+      : value < 0.01
+        ? `${+(value * 1000).toFixed(1)} ms`
+        : `${Math.round(value * 1000)} ms`;
 
 /** A time as the rest of the performance pages say it: `5.25 s`, `310 ms`. */
 const exact = (value) => shown(value, "s");
@@ -434,18 +478,29 @@ export function chartSvg(chart, index) {
     );
   }
   chart.columns.forEach((column, at) => {
-    const link = column.href === undefined ? "" : ` href="${esc(column.href)}"`;
+    const link =
+      column.href === undefined ? ' role="img"' : ` href="${esc(column.href)}"`;
+    const said = [
+      ...chart.steps.map((each, place) => ({
+        label: each.label,
+        value: column.bands[place] ?? 0,
+      })),
+      { label: "everything else", value: column.other },
+    ]
+      .filter(({ value }) => value > 0)
+      .map(({ label, value }) => `${label} ${seconds(value)}`);
+    const aloud = `${column.sha}, ${column.date}, ${exact(column.total)}${said.length === 0 ? "" : `: ${said.join("; ")}`}`;
     out.push(
-      `<a class="col"${link} data-chart="${index}" data-at="${at}" aria-label="${esc(`${column.sha}, ${column.date}, ${exact(column.total)}`)}"><rect x="${(left + slot * at).toFixed(1)}" y="${top}" width="${slot.toFixed(1)}" height="${plot.h}"/></a>`,
+      `<a class="col"${link} tabindex="0" data-chart="${index}" data-at="${at}" aria-label="${esc(aloud)}"><rect x="${(left + slot * at).toFixed(1)}" y="${top}" width="${slot.toFixed(1)}" height="${plot.h}"/></a>`,
     );
   });
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(`${chart.title}: seconds by build, stacked by step`)}">${out.join("")}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="${esc(`${chart.title}: seconds by build, stacked by step`)}">${out.join("")}</svg>`;
 }
 
 const SCRIPT = `
 const data = JSON.parse(document.getElementById("data").textContent);
 const tip = document.getElementById("tip");
-const seconds = (v) => v >= 1 ? v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + " s" : v === 0 ? "0" : Math.round(v * 1000) + " ms";
+const seconds = (v) => v >= 1 ? v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + " s" : v === 0 ? "0" : v < 0.01 ? (+(v * 1000).toFixed(1)) + " ms" : Math.round(v * 1000) + " ms";
 const el = (name, text, cls) => { const e = document.createElement(name); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
 function show(link, event) {
   const chart = data.charts[+link.dataset.chart];
@@ -453,7 +508,7 @@ function show(link, event) {
   tip.replaceChildren();
   tip.append(el("strong", column.sha + " · " + column.date + " · " + column.event));
   tip.append(el("div", "Total " + seconds(column.total), "total"));
-  const rows = chart.steps.map((step, i) => ({ colour: step.colour, label: step.label, value: column.bands[i] }));
+  const rows = chart.steps.map((step, i) => ({ colour: step.colour, label: step.label, says: step.says, value: column.bands[i] }));
   rows.push({ colour: data.other, label: column.measured ? "everything else" : "no step breakdown in this build's file", value: column.other });
   for (const row of rows.slice().reverse()) {
     if (row.value <= 0) continue;
@@ -462,17 +517,31 @@ function show(link, event) {
     swatch.style.background = row.colour;
     line.append(swatch, el("span", row.label), el("b", seconds(row.value) + " (" + Math.round(100 * row.value / column.total) + "%)"));
     tip.append(line);
+    if (row.says && row.says.replace(/\\.$/, "") !== row.label) tip.append(el("div", row.says, "says"));
   }
-  tip.append(el("div", column.href ? "Click: this build's flame graphs" : "No flame graphs are kept for this build", "hint"));
+  tip.append(el("div", column.href ? (event.pointerType === "touch" ? "Tap again: this build's flame graphs" : "Click: this build's flame graphs") : "No flame graphs are kept for this build", "hint"));
   tip.hidden = false;
   const box = tip.getBoundingClientRect();
   const left = event.clientX + 16 + box.width > innerWidth ? event.clientX - 16 - box.width : event.clientX + 16;
   tip.style.left = Math.max(4, left) + "px";
   tip.style.top = Math.max(4, Math.min(event.clientY + 12, innerHeight - box.height - 4)) + "px";
 }
+let armed = null;
+document.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("a.col")) return;
+  tip.hidden = true;
+  armed = null;
+});
 for (const link of document.querySelectorAll("a.col")) {
   link.addEventListener("pointermove", (event) => show(link, event));
-  link.addEventListener("pointerleave", () => { tip.hidden = true; });
+  link.addEventListener("pointerleave", (event) => { if (event.pointerType !== "touch") tip.hidden = true; });
+  link.addEventListener("pointerdown", (event) => { link.dataset.touch = event.pointerType === "touch" ? "1" : ""; });
+  link.addEventListener("click", (event) => {
+    if (!link.dataset.touch || armed === link) return;
+    event.preventDefault();
+    armed = link;
+    show(link, { clientX: event.clientX, clientY: event.clientY, pointerType: "touch" });
+  });
   link.addEventListener("focus", () => { const r = link.getBoundingClientRect(); show(link, { clientX: r.left + r.width / 2, clientY: r.top + 20 }); });
   link.addEventListener("blur", () => { tip.hidden = true; });
 }
@@ -499,6 +568,7 @@ svg { width: 100%; height: auto; display: block; }
 a.col rect { fill: transparent; }
 a.col:hover rect, a.col:focus rect { fill: rgba(30, 40, 60, .09); }
 a.col { outline: none; cursor: pointer; }
+a.col:focus-visible rect { stroke: #2f64b8; stroke-width: 2; }
 ul.legend { list-style: none; padding: 0; margin: .4rem 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(26rem, 1fr)); gap: .2rem 1.2rem; font-size: .88rem; }
 ul.legend li { display: flex; gap: .5rem; align-items: baseline; }
 .swatch { display: inline-block; width: .8rem; height: .8rem; border-radius: 2px; flex: none; }
@@ -508,6 +578,7 @@ ul.legend .latest { margin-left: auto; color: #555b66; white-space: nowrap; font
 #tip .total { font-size: 1rem; margin: .1rem 0 .35rem; }
 #tip .row { display: flex; gap: .45rem; align-items: baseline; }
 #tip .row b { margin-left: auto; padding-left: 1rem; font-weight: 500; white-space: nowrap; }
+#tip .says { color: #aab; font-size: .75rem; margin: 0 0 .25rem 1.25rem; }
 #tip .hint { margin-top: .4rem; color: #aab; font-size: .75rem; }
 .toc { columns: 2; font-size: .9rem; }
 .note { color: #555b66; font-size: .85rem; }
@@ -515,6 +586,15 @@ ul.legend .latest { margin-left: auto; color: #555b66; white-space: nowrap; font
 
 /** The page: the charts, how to read them, and the data they draw. */
 export function stackedPage(charts, { repo, glossary = readGlossary() } = {}) {
+  const repeats = [
+    ...new Set(charts.map((chart) => chart.columns.at(-1)?.runs)),
+  ].filter((each) => typeof each === "number");
+  const runsText =
+    repeats.length === 0
+      ? "several runs"
+      : repeats.length === 1
+        ? `${repeats[0]} runs`
+        : `${Math.min(...repeats)} to ${Math.max(...repeats)} runs`;
   const titled = charts.map((chart) => ({
     ...chart,
     title: chartTitle(chart, glossary),
@@ -582,8 +662,8 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <h1>Where the time goes, over time</h1>
 <p>Each chart follows one thing a person waits for. Every column is one build of the runtime, oldest on the left, so the chart shows whether it got faster or slower. A column's height is how long it took, in seconds; its coloured bands are the steps inside that took the time, so a band that grows is the step that slowed things down. Move over a column to see its numbers; click it to open that build's flame graphs.</p>
 <details class="how"><summary>How the bands are worked out</summary>
-<p>The column's height is the build's measured time: the median of three runs with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
-<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step keeps the same colour in every chart. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p></details>
+<p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
+<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p></details>
 <p class="toc">${titled.map((chart) => `<a href="#${esc(chart.key)}">${esc(chart.title)}</a><br>`).join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
 <p class="links"><a href="../">Documentation home</a> · <a href="runs/">Each build's flame graphs</a> · <a href="detail/">Every measurement, one small chart each</a> · <a href="stacked.json">The data of these charts</a></p>
@@ -608,13 +688,37 @@ export function entriesOf(runs) {
   );
 }
 
+/**
+ * Every build's rows the charts need, oldest first. The files are read newest first, one at a time, and each is cut down to
+ * those rows as it is read; a build that no chart needs any more (every chart it measures already has `window` newer builds)
+ * is let go. A file that cannot be read is skipped, with a warning, and the rest of the page is drawn.
+ */
+export function readBuilds(data, glossary, window = WINDOW) {
+  const have = new Map();
+  const files = [];
+  for (const build of buildsIn(data).reverse()) {
+    let file;
+    try {
+      file = reduced(JSON.parse(readFileSync(build.path, "utf8")), glossary);
+    } catch (error) {
+      process.stderr.write(
+        `warning: ${build.id} is left out of the charts, its file cannot be read: ${error instanceof Error ? error.message : error}\n`,
+      );
+      continue;
+    }
+    const keys = file.results
+      .filter((row) => row.name.endsWith("/total"))
+      .map((row) => row.name.slice(0, -"/total".length));
+    if (keys.some((key) => (have.get(key) ?? 0) < window))
+      files.push({ build, file });
+    for (const key of keys) have.set(key, (have.get(key) ?? 0) + 1);
+  }
+  return files.reverse();
+}
+
 /** Reads the data checkout, writes `index.html` and `stacked.json` into `out`, and returns what it drew. */
 export function pages({ data, out, repo, runs, glossary = readGlossary() }) {
-  const builds = buildsIn(data);
-  const files = builds.map((build) => ({
-    build,
-    file: JSON.parse(readFileSync(build.path, "utf8")),
-  }));
+  const files = readBuilds(data, glossary);
   const charts = shape(files, { glossary });
   const entries = entriesOf(runs);
   for (const chart of charts)

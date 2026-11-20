@@ -5,8 +5,11 @@ interface Family {
   readonly startsWith?: string;
   readonly endsWith?: string;
   readonly says: string;
-  readonly within?: string;
+  readonly within?: Within;
 }
+
+/** The step a span sits inside: one, or for a span that sits elsewhere in each scenario, the place by scenario. */
+type Within = string | Readonly<Record<string, string | readonly string[]>>;
 
 interface Glossary {
   readonly datasets: Readonly<Record<string, string>>;
@@ -16,7 +19,7 @@ interface Glossary {
   readonly measureFamilies: readonly Family[];
   readonly selfRows: string;
   readonly runs: string;
-  readonly spans: Readonly<Record<string, { says: string; within?: string }>>;
+  readonly spans: Readonly<Record<string, { says: string; within?: Within }>>;
   readonly families: readonly Family[];
   readonly counts: Readonly<Record<string, string>>;
   readonly countFamilies: readonly Family[];
@@ -51,7 +54,7 @@ const spaced = (text: string) => text.replace(/[-.]+/g, " ").trim();
 function fromFamily(
   families: readonly Family[],
   name: string,
-): { says: string; within?: string } | undefined {
+): { says: string; within?: Within } | undefined {
   for (const family of families) {
     const start = family.startsWith ?? "";
     const end = family.endsWith ?? "";
@@ -88,13 +91,35 @@ const countOf = (name: string): string | undefined =>
     name,
   );
 
-/** What a span is, from its name in the form a row has it (see `part` in perf-report.ts), or undefined for one the glossary lacks. */
-export function explainSpan(name: string): string | undefined {
+/** The steps a span sits inside in `scenario`, as names; none where it sits at the top, or where no scenario is given for a place that depends on it. */
+function placeOf(within: Within | undefined, scenario?: string): string[] {
+  if (within === undefined) return [];
+  if (typeof within === "string") return [within];
+  const here = scenario === undefined ? undefined : within[scenario];
+  return here === undefined
+    ? []
+    : typeof here === "string"
+      ? [here]
+      : [...here];
+}
+
+const listed = (names: readonly string[], quote: string) =>
+  names.map((each) => `${quote}${each}${quote}`).join(" or ");
+
+const sitsInside = (names: readonly string[], quote: string) =>
+  names.length === 0 ? "" : ` Sits inside ${listed(names, quote)}.`;
+
+/**
+ * What a span is, from its name in the form a row has it (see `part` in perf-report.ts), or undefined for one the glossary lacks.
+ * `scenario` is the scenario of the row, for a span that sits in a different place in each.
+ */
+export function explainSpan(
+  name: string,
+  scenario?: string,
+): string | undefined {
   const found = spanOf(name);
   if (found === undefined) return undefined;
-  return found.within === undefined
-    ? found.says
-    : `${found.says} Sits inside ${found.within}.`;
+  return found.says + sitsInside(placeOf(found.within, scenario), "");
 }
 
 /** The sentence a row's `extra` begins with, or undefined for a name the glossary lacks. */
@@ -102,9 +127,9 @@ export function explain(rowName: string): string | undefined {
   const row = parsed(rowName);
   if (row === undefined) return undefined;
   const { scenario, rest } = row;
-  if (rest.startsWith("stage/")) return explainSpan(rest.slice(6));
+  if (rest.startsWith("stage/")) return explainSpan(rest.slice(6), scenario);
   if (rest.startsWith("self/")) {
-    const says = explainSpan(rest.slice(5));
+    const says = explainSpan(rest.slice(5), scenario);
     return says === undefined ? undefined : `${says} | ${glossary.selfRows}`;
   }
   if (rest.startsWith("count/")) return countOf(rest.slice(6));
@@ -132,11 +157,20 @@ export function glossaryMarkdown(): string {
     ].join("\n");
   const entries = (record: Readonly<Record<string, string>>) =>
     Object.entries(record) as [string, string][];
+  /** A span's place for the page: one step, or each scenario's own. */
+  const place = (within: Within | undefined) =>
+    within === undefined || typeof within === "string"
+      ? sitsInside(placeOf(within), "`")
+      : ` Where it sits depends on the scenario: ${Object.keys(within)
+          .map(
+            (scenario) =>
+              `in \`${scenario}\` inside ${listed(placeOf(within, scenario), "`")}`,
+          )
+          .join("; ")}.`;
   const family = (list: readonly Family[]) =>
     list.map((each): [string, string] => [
       `${each.startsWith ?? ""}*${each.endsWith ?? ""}`,
-      each.says.replace("{name}", "`<name>`") +
-        (each.within ? ` Sits inside \`${each.within}\`.` : ""),
+      each.says.replace("{name}", "`<name>`") + place(each.within),
     ]);
   return [
     "# What the performance numbers mean",
@@ -176,7 +210,7 @@ export function glossaryMarkdown(): string {
     table([
       ...Object.entries(glossary.spans).map(([k, v]): [string, string] => [
         k,
-        v.says + (v.within ? ` Sits inside \`${v.within}\`.` : ""),
+        v.says + place(v.within),
       ]),
       ...family(glossary.families),
     ]),
