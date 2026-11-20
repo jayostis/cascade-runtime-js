@@ -3352,6 +3352,18 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         "every run of the jobs is the full one unless a build asks",
       );
       assert.equal(parsed(["--light-jobs"]).plan.lightJobs, true);
+      const light = [...parsed(["--light-jobs"]).plan.scenarios];
+      assert.ok(!light.includes("add-one-record"), "left to the nightly run");
+      assert.ok(light.includes("reimport-changed"));
+      assert.ok(
+        parsed([
+          "--light-jobs",
+          "--scenario",
+          "add-one-record",
+        ]).plan.scenarios.has("add-one-record"),
+        "named, it runs",
+      );
+      assert.ok(parsed([]).plan.scenarios.has("add-one-record"));
     });
 
     it("explains every row the jobs write, in the glossary, with a sentence of the job's own for its total", () => {

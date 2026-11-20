@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { readGlossary } from "./perf-glossary.mjs";
 import {
   EDIT_ROW,
+  JOB_SCENARIOS,
   JOBS_ROW,
   jobsHtml,
   jobsKeys,
@@ -992,22 +993,48 @@ ${blocks.join("\n")}
 }
 
 /**
- * What the jobs of every day took at each size in the newest build whose file measured them, for the section "What people do
- * after the first import": the build and what its rows say, by size, plain before encrypted.
+ * What the jobs of every day took at each size in the newest Linux build whose file measured them, for the section "What people
+ * do after the first import": the build and what its rows say, by size, plain before encrypted. A job the newest build left to
+ * the nightly run keeps the line of the newest build that measured it, which says so.
  */
 export function jobsLatest(files, glossary = readGlossary()) {
   const order = Object.keys(glossary.datasets);
   const found = new Map();
-  for (const { build, file } of files)
+  for (const { build, file } of files) {
+    if ((build.os ?? "linux") !== "linux") continue;
     for (const key of jobsKeys(file)) {
       const page = jobsOf(file, key);
-      if (page !== undefined) found.set(key, { build, page });
+      if (page === undefined) continue;
+      const older = new Map(found.get(key)?.older ?? []);
+      for (const line of found.get(key)?.page.lines ?? [])
+        older.set(line.id, { build: found.get(key).build, line });
+      found.set(key, { build, page, older });
     }
-  return [...found.values()].sort(
-    (a, b) =>
-      order.indexOf(a.page.dataset) - order.indexOf(b.page.dataset) ||
-      Number(a.page.encrypted) - Number(b.page.encrypted),
-  );
+  }
+  return [...found.values()]
+    .map(({ build, page, older }) => {
+      const has = new Set(page.lines.map(({ id }) => id));
+      const borrowed = [...older]
+        .filter(([id]) => !has.has(id))
+        .map(([id, { build: from, line }]) => ({
+          id,
+          text: `${line.text.replace(/\.$/, "")} (measured in build ${from.sha} of ${from.date}, which the newest build leaves out).`,
+        }));
+      return {
+        build,
+        page: {
+          ...page,
+          lines: [...page.lines, ...borrowed].sort(
+            (a, b) => JOB_SCENARIOS.indexOf(a.id) - JOB_SCENARIOS.indexOf(b.id),
+          ),
+        },
+      };
+    })
+    .sort(
+      (a, b) =>
+        order.indexOf(a.page.dataset) - order.indexOf(b.page.dataset) ||
+        Number(a.page.encrypted) - Number(b.page.encrypted),
+    );
 }
 
 /** The section of what the jobs after the first import took, one block for each size. */

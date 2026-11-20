@@ -916,6 +916,47 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
       assert.doesNotMatch(text, /\b\d[\d,]* records\b/, "never a bare count");
     });
 
+    it("keeps a job's line from the newest build that measured it when the newest build left that job to the nightly run, and says which build", async () => {
+      const { pages } = await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      const out = await mkdtemp(join(tmpdir(), "perf-stacked-out-"));
+      scratch.push(data, out);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      await writeFile(
+        join(day, "100-aaaaaaa-schedule.json"),
+        JSON.stringify({ results: rowsOfJobs() }),
+      );
+      await writeFile(
+        join(day, "200-bbbbbbb-push.json"),
+        JSON.stringify({
+          results: rowsOfJobs().filter(
+            ({ name }) => !name.startsWith("add-one-record-"),
+          ),
+        }),
+      );
+      pages({ data, out, repo: "owner/repo" });
+      const page = await readFile(join(out, "index.html"), "utf8");
+      const text = (
+        /<section class="jobs"[\s\S]*?<\/section>/.exec(page)?.[0] ?? ""
+      )
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ");
+      assert.match(
+        text,
+        /Importing the same file with one source entry added took 1\.60 s/,
+      );
+      assert.match(
+        text,
+        /measured in build aaaaaaa of 2026-11-20, which the newest build leaves out/,
+      );
+      assert.equal(
+        text.match(/Importing the same file again took/g)?.length,
+        1,
+      );
+      assert.equal(text.match(/which the newest build leaves out/g)?.length, 1);
+    });
+
     it("shows a job's line only when the build measured it and the first import it is read against, and a build that measured none has no section", async () => {
       const { stackedPage, shape } = await script<Stacked>("perf-stacked.mjs");
       const { jobsOf } = await script<{

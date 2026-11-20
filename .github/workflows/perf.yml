@@ -33,7 +33,8 @@ name: perf
 #   import handled and how fast saving went.
 # - Every run also measures what people do after the first import (the `reimport-identical`, `reimport-changed`, `add-one-record`,
 #   `reopen-after-kill` and `question-after-update` scenarios), each on a copy of the pod the first import left: /perf/, /perf/runs/, the
-#   summary and the comment have a line for each under "What people do after the first import".
+#   summary and the comment have a line for each under "What people do after the first import". A pull request and a push run each
+#   once and leave out `add-one-record`; the nightly run runs all five three times.
 # - A hand-started run can name one scenario (`fresh-first-screen,floor` is the import and its floor) and one size.
 # - Linux is not the only system a person runs this on. A push to main, the nightly run and a hand-started run that asks for
 #   `windows`, `macos` or `all` systems also run the same per-build scenario on a GitHub-hosted Windows runner and a macOS one
@@ -257,8 +258,8 @@ jobs:
           if [ "$EVENT" = schedule ] || [ "$LARGE" = true ]; then sizes="synthea-10y,synthea-lifetime"; fi
           if [ -n "$SIZE" ] && [ "$SIZE" != per-build ]; then sizes="$SIZE"; fi
           args="--size $sizes"
-          # A pull request and a push to main run the jobs that convert a document again or rebuild a pod once, so each build's
-          # job stays short; the nightly and hand-started runs run them in full.
+          # A pull request and a push to main run each job of every day once, without adding one result (which cost a fifth of the
+          # step), so each build's job stays short; the nightly and hand-started runs run them in full.
           if [ "$EVENT" = pull_request ] || [ "$EVENT" = push ]; then args="$args --light-jobs"; fi
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           # What one file costs is for a push, the nightly run and a hand-started run of everything, never for a pull request.
