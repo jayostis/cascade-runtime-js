@@ -12,6 +12,15 @@ name: perf
 #   feeds the file's headline rows and slowest stages to github-action-benchmark, which keeps the history page's data and
 #   index.html under perf/ on that branch; the `build-pages` job of check.yml copies perf/ into the site, so the page is
 #   served at /perf/ by the next deploy (the nightly run is early enough for the 03:17 deploy to hold it).
+# - Every run, a pull request's too, also makes flame graphs to drill into: a trace of each scenario's probed run (where the
+#   time went, step inside step) and a CPU profile of one more, unprobed run (which code took it), as the artifact
+#   `perf-flame`, with a short list of each scenario's longest steps in the job summary and the comment. A push, the
+#   nightly run and a hand-started run also keep them on their own orphan branch, `perf-flame` (not on `perf-data`, whose
+#   history would otherwise grow by megabytes a day for good), in the folder runtime/YYYY/MM/DD/<run>-<sha7>-<event>/:
+#   traces for the newest 30 builds, CPU profiles for the newest 5, and the large size's files for the newest 7 builds that
+#   ran it. The `keep-flame` job writes that branch as ONE commit, the whole window, and force-pushes it each time, so the
+#   branch never has more history than its files; it is the only job that force-pushes, and only that branch. The
+#   `build-pages` job of check.yml serves them with the speedscope viewer at /perf/runs/.
 # - A hand-started run can name one scenario and one size.
 
 on:
@@ -52,6 +61,9 @@ jobs:
     name: performance file
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      # The day the files are kept under, decided once so that a run that crosses midnight names one folder.
+      day: ${{ steps.what.outputs.day }}
     env:
       CASCADE_TEST_OFFLINE: "1"
       # Read by the file's environment: the runner is a hosted one, which other jobs share the machine of.
@@ -115,19 +127,69 @@ jobs:
           args="--size $sizes"
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
+          echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
+      # The traces and CPU profiles are made by the same run: a trace from its probed run, a CPU profile from one more run.
       - name: The performance file
-        run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json"
+        run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json" --profiles "$RUNNER_TEMP/flame"
       - name: The summary
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
+          # The steps with the longest own time are listed once, by a later step, with the links to their flame graphs.
+          own=""
+          [ -f "$RUNNER_TEMP/flame/flame.json" ] && own="--without-own-time"
           if [ -f "$RUNNER_TEMP/perf.json" ]; then
-            node scripts/perf-compare.mjs summary "$RUNNER_TEMP/perf.json" --markdown >> "$GITHUB_STEP_SUMMARY"
+            node scripts/perf-compare.mjs summary "$RUNNER_TEMP/perf.json" --markdown $own >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: The rows for the history page
         shell: bash
         run: node scripts/perf-history.mjs "$RUNNER_TEMP/perf.json" > "$RUNNER_TEMP/history.json"
+      - name: What the flame graph files weigh
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "$RUNNER_TEMP/flame" ]; then
+            echo "### The flame graph files" >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+            echo '| file | size |' >> "$GITHUB_STEP_SUMMARY"
+            echo '|---|---:|' >> "$GITHUB_STEP_SUMMARY"
+            for file in "$RUNNER_TEMP/flame"/*; do
+              printf '| %s | %s |\n' "$(basename "$file")" "$(du -h "$file" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
+      # A pull request's files can only be downloaded from here; a push's, the nightly run's and a hand-started run's on main
+      # are on `perf-flame` once the `keep-flame` job has run, and the links read them there.
+      - uses: actions/upload-artifact@v7
+        id: flame
+        if: ${{ !cancelled() }}
+        with:
+          name: perf-flame
+          path: ${{ runner.temp }}/flame
+          if-no-files-found: error
+      - name: Where the time went
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          DAY: ${{ steps.what.outputs.day }}
+          DOWNLOAD: ${{ steps.flame.outputs.artifact-url }}
+          KEPT: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/where.md"
+          [ -f "$RUNNER_TEMP/flame/flame.json" ] || exit 0
+          site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/speedscope/"
+          if [ "$KEPT" = true ]; then
+            raw="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/perf-flame/runtime/${DAY}/${GITHUB_RUN_ID}-${GITHUB_SHA::7}-${EVENT}"
+            node scripts/perf-flame.mjs summary "$RUNNER_TEMP/flame" --markdown --files "$raw" --viewer "$site" > "$RUNNER_TEMP/where.md"
+            echo >> "$RUNNER_TEMP/where.md"
+            echo "This build's entry in [the flame graph index](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/runs/#${GITHUB_RUN_ID}-${GITHUB_SHA::7}) (it appears with the next deploy). The links above read the \`perf-flame\` branch and stop working when the build is no longer among the newest 30 kept there; the index lists what each kept build still has." >> "$RUNNER_TEMP/where.md"
+          else
+            node scripts/perf-flame.mjs summary "$RUNNER_TEMP/flame" --markdown --download "$DOWNLOAD" --viewer "$site" > "$RUNNER_TEMP/where.md"
+          fi
+          cat "$RUNNER_TEMP/where.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -135,6 +197,7 @@ jobs:
           path: |
             ${{ runner.temp }}/perf.json
             ${{ runner.temp }}/history.json
+            ${{ runner.temp }}/where.md
           if-no-files-found: error
 
   # A pull request: the file against the latest push to main on `perf-data`, in one comment that each push updates. A
@@ -179,13 +242,22 @@ jobs:
             if [ -z "$base" ]; then
               echo "main has no performance file yet, so there is nothing to compare with. This pull request's:"
               echo
-              node scripts/perf-compare.mjs summary pr/perf.json --markdown
+              # The steps with the longest own time are in the flame graph list below, with their links: not twice.
+              if [ -f pr/where.md ] && [ -s pr/where.md ]; then
+                node scripts/perf-compare.mjs summary pr/perf.json --markdown --without-own-time
+              else
+                node scripts/perf-compare.mjs summary pr/perf.json --markdown
+              fi
             else
               echo "Against \`${base#base/}\`. Unprobed medians; no threshold, nothing here fails the run."
               echo
               node scripts/perf-compare.mjs compare "$base" pr/perf.json --markdown
             fi
             echo
+            if [ -f pr/where.md ]; then
+              cat pr/where.md
+              echo
+            fi
             echo "What each row means: [the glossary](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/perf-glossary.md). Every main build over time: [performance history](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/)."
             echo
             echo "[Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
@@ -220,10 +292,11 @@ jobs:
         shell: bash
         env:
           TOKEN: ${{ github.token }}
+          DAY: ${{ needs.perf.outputs.day }}
         run: |
           set -euo pipefail
           sha7="${GITHUB_SHA::7}"
-          path="runtime/$(date -u +%Y/%m/%d)/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}.json"
+          path="runtime/${DAY}/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}.json"
           remote="https://github.com/${GITHUB_REPOSITORY}"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
           echo "::add-mask::$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
@@ -291,3 +364,80 @@ jobs:
           fail-on-alert: false
           comment-on-alert: false
           summary-always: false
+
+  # A push to main, the nightly run and a hand-started run: the flame graph files are written to the orphan branch
+  # `perf-flame`, apart from `perf-data`, so that the history of neither grows without end (a plain clone fetches every
+  # branch's whole history, and the files weigh megabytes a build). The branch is ONE commit: each run fetches it, adds its
+  # build's folder, removes what falls outside the window (traces for the newest 30 builds, CPU profiles for the newest 5,
+  # the large size's files for the newest 7 builds that ran it; `KEEP` in scripts/perf-runs.mjs says the same) and
+  # force-pushes a new root commit of the whole tree. This is the only job that force-pushes, and it pushes only that
+  # branch, with a lease on the commit it started from, so that two runs that finish together cannot overwrite each other:
+  # the one that loses fetches again and writes again. It runs no code of this repository's.
+  keep-flame:
+    name: keep the flame graphs
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    needs: perf
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: perf-flame
+          path: flame
+      - name: Write the window to perf-flame
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+          DAY: ${{ needs.perf.outputs.day }}
+        run: |
+          set -euo pipefail
+          sha7="${GITHUB_SHA::7}"
+          folder="runtime/${DAY}/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}"
+          remote="https://github.com/${GITHUB_REPOSITORY}"
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          echo "::add-mask::$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          for attempt in 1 2 3 4 5 6; do
+            rm -rf data
+            git init -q data
+            cd data
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git remote add origin "$remote"
+            expect=""
+            if git -c http.extraheader="$auth" fetch -q --depth 1 origin perf-flame 2>/dev/null; then
+              git checkout -q -B window FETCH_HEAD
+              expect="$(git rev-parse FETCH_HEAD)"
+            fi
+            mkdir -p "$folder"
+            cp -r ../flame/. "$folder/"
+            mapfile -t builds < <(find runtime -mindepth 5 -maxdepth 5 -name flame.json | sed 's|/flame\.json$||' | sort -r)
+            at=0
+            large=0
+            for build in "${builds[@]}"; do
+              at=$((at + 1))
+              if [ "$at" -gt 30 ]; then
+                rm -rf -- "$build"
+                continue
+              fi
+              if [ "$at" -gt 5 ]; then rm -f -- "$build"/*.cpuprofile; fi
+              if compgen -G "$build/*synthea-lifetime*" > /dev/null; then
+                large=$((large + 1))
+                if [ "$large" -gt 7 ]; then rm -f -- "$build"/*synthea-lifetime*; fi
+              fi
+            done
+            find runtime -type d -empty -delete
+            # A new root commit of the whole tree, whether or not the branch exists yet.
+            git symbolic-ref HEAD refs/heads/next
+            git add -A
+            git commit -q -m "flame graphs of the newest $((at > 30 ? 30 : at)) builds, newest run ${GITHUB_RUN_ID} (${sha7})"
+            if git -c http.extraheader="$auth" push -q --force-with-lease="refs/heads/perf-flame:${expect}" origin HEAD:refs/heads/perf-flame; then
+              echo "The flame graphs of this build are on \`perf-flame\` as \`${folder}\`." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "push raced; attempt ${attempt}"
+            cd ..
+            sleep $((RANDOM % 8 + 3))
+          done
+          echo "::error::the flame graphs could not be pushed to perf-flame after six attempts"
+          exit 1

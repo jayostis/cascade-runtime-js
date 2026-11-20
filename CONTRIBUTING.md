@@ -158,6 +158,8 @@ the configs, and how it is scored.
 
 [Performance history](https://jayostis.github.io/cascade-runtime-js/perf/) draws a chart for each measurement over main's builds and the nightly runs: the headline times (a fresh pod's import and first screen, a reopened pod's first answer, a page of answers, closing) and the slowest stages inside each. Lower is better; hover a point for what it measures, its range over three runs and the commit. Nothing alerts or fails on a slowdown. [What the performance numbers mean](docs/perf-glossary.md) lists every scenario, data set and stage in plain words. `npm run perf` makes the same file locally; a pull request is shown its before and after against main in a comment.
 
+To see where the time of a build went, [each build's flame graphs](https://jayostis.github.io/cascade-runtime-js/perf/runs/) open in speedscope: a trace of a probed run, every step nested inside the step that called it (_Where the time went_), and a CPU profile of an unprobed run, every function the processor was sampled in (_Which code took it_). A pull request's are the artifact `perf-flame` of its `perf` run: download it, and drop a `.trace.json` or a `.cpuprofile` into [the viewer](https://jayostis.github.io/cascade-runtime-js/perf/speedscope/). Locally, `npm run perf -- --profiles <folder>` writes them. The rows `<scenario>/self/<step>` of the file are each step's own time, which leaves out the steps inside it and so points at what to change.
+
 ### The developer story
 
 There are two, one per epic. `developer-story/allergies.mjs` is what an app would write against the package

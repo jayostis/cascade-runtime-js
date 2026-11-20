@@ -147,8 +147,8 @@ export function wholeBuildJob(path: string, whole: WholeBuild): WholeBuildJob {
 /** What that worker answers once the file is built and closed, or why it was not. */
 export interface WholeBuildDone {
   readonly error?: string;
-  /** Where the job asked: the milliseconds each step of the build took, by name. */
-  readonly steps?: readonly (readonly [string, number])[];
+  /** Where the job asked: each step of the build by name, the milliseconds it took and when it began (milliseconds since the epoch). */
+  readonly steps?: readonly (readonly [string, number, number])[];
 }
 
 /** A file and the two a connection in write-ahead mode keeps beside it. */
@@ -201,7 +201,11 @@ function builtInWorker(job: WholeBuildJob): Promise<void> {
       else if (done === undefined || code !== 0)
         reject(new Error(`the build's worker ended with ${code}, unfinished`));
       else {
-        for (const [name, ms] of done.steps ?? []) recorded(name, ms);
+        for (const [name, ms, began] of done.steps ?? [])
+          recorded(name, ms, 1, {
+            track: "pod.db build worker",
+            start: began - performance.timeOrigin,
+          });
         resolve();
       }
     });

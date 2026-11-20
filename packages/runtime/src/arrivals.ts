@@ -1143,10 +1143,21 @@ function read(found: ExportDocument, started: string): Uint8Array {
   }
 }
 
-/** The Bridge's own stages and queries of a profiled convert, recorded as spans that sit inside `arrivals.convert`. */
-function bridgeSpans(conversion: Conversion): void {
-  for (const { stage, seconds } of conversion.stages ?? [])
-    recorded(`bridge.stage:${stage}`, seconds * 1000);
+/**
+ * The Bridge's own stages and queries of a profiled convert, recorded as spans that sit inside `arrivals.convert`. A trace
+ * draws the stages from `began`, when the convert did, end to end on one track, which is the order the Bridge ran them
+ * in. The queries are recorded with their totals only: the Bridge says how long each took in all and not when, and a
+ * stage's own time includes the queries it ran, so none is drawn and none is taken out of its stage's own time.
+ */
+function bridgeSpans(conversion: Conversion, began: number): void {
+  let stageAt = began;
+  for (const { stage, seconds } of conversion.stages ?? []) {
+    recorded(`bridge.stage:${stage}`, seconds * 1000, 1, {
+      track: "Bridge stages",
+      start: stageAt,
+    });
+    stageAt += seconds * 1000;
+  }
   for (const { iri, executions, rows, seconds } of conversion.queries ?? []) {
     recorded(`bridge.query:${iri}`, seconds * 1000, executions);
     counted("bridge.query.rows", rows);
@@ -1254,16 +1265,18 @@ export async function fileExport(
       accepting(adapters, found, document),
     );
     await onProgress?.({ part: "converting", done, of: documents.length });
-    const conversion = await timedAside("arrivals.convert", () =>
-      refusing(found.path, () =>
+    const conversion = await timedAside("arrivals.convert", async () => {
+      const began = probed() ? performance.now() : 0;
+      const converted = await refusing(found.path, () =>
         adapter.convert(document, {
           ...conversionBudget(budget, found.bytes.length),
           // Only a probed run asks the Bridge to time its stages; any other converts as it always did.
           ...(probed() && { profile: true }),
         }),
-      ),
-    );
-    bridgeSpans(conversion);
+      );
+      bridgeSpans(converted, began);
+      return converted;
+    });
     const graph = await timedAside("arrivals.parseGraph", () =>
       parseGraph(conversion.graph, documentIri, newStore),
     );

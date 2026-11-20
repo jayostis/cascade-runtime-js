@@ -8,10 +8,44 @@ export interface Spent {
   wallMs: number;
 }
 
-/** What a probe has seen: time and calls by span, and counts by name. */
+/**
+ * One call of a span, for a trace of a run: when it began and ended (milliseconds on this thread's `performance.now()`)
+ * and the span open around it, whose index in `Seen.events` is `parent` (-1 for none). A call measured elsewhere has the
+ * `track` it is drawn on.
+ */
+export interface SpanEvent {
+  readonly name: string;
+  readonly start: number;
+  end: number;
+  readonly parent: number;
+  readonly track?: string;
+  readonly calls?: number;
+}
+
+/** What a probe has seen: time and calls by span, and counts by name; and, when the run was traced, every call of every span. */
 export interface Seen {
   readonly spans: ReadonlyMap<string, Spent>;
   readonly counts: ReadonlyMap<string, number>;
+  readonly events?: readonly SpanEvent[];
+}
+
+/** A call of a span in progress: when it began, and, in a traced run, the index of the event that stands for it. */
+interface Call {
+  readonly name: string;
+  readonly at: number;
+  readonly event?: number;
+}
+
+/** Where a span measured elsewhere sat: the track it is drawn on and when it began (milliseconds on this thread's `performance.now()`). */
+export interface Placed {
+  readonly track: string;
+  readonly start: number;
+}
+
+/** The index of the call a function runs inside of, carried through its awaits: a span's parent is the span it was called inside of, not the last one begun. */
+interface Context {
+  run<R>(store: number, run: () => R): R;
+  getStore(): number | undefined;
 }
 
 /**
@@ -24,19 +58,59 @@ export interface Seen {
 class Probe implements Seen {
   readonly spans = new Map<string, Spent>();
   readonly counts = new Map<string, number>();
+  /** Every call, in the order begun, when the run is traced. */
+  readonly events: SpanEvent[] | undefined;
+  readonly #context: Context | undefined;
   /** The spans open now, innermost last, which a count is credited to as well. */
   readonly open: string[] = [];
   /** The calls of each name in progress now, and when the first of them began: what `wallMs` is made of. */
   readonly #inFlight = new Map<string, { depth: number; since: number }>();
 
-  /** A call of the name begins now; returns the time, for `end`. */
-  begin(name: string): number {
-    const now = performance.now();
+  constructor(traced: boolean) {
+    if (!traced) return;
+    const hooks = (
+      globalThis as {
+        process?: {
+          getBuiltinModule?: (name: string) => {
+            AsyncLocalStorage?: new () => Context;
+          };
+        };
+      }
+    ).process?.getBuiltinModule?.("node:async_hooks");
+    if (hooks?.AsyncLocalStorage === undefined)
+      throw new Error("a traced run needs node:async_hooks");
+    this.#context = new hooks.AsyncLocalStorage();
+    this.events = [];
+  }
+
+  /** A call of the name begins now; returns it, for `end`. */
+  begin(name: string): Call {
+    const at = performance.now();
     const flight = this.#inFlight.get(name);
-    if (flight === undefined)
-      this.#inFlight.set(name, { depth: 1, since: now });
+    if (flight === undefined) this.#inFlight.set(name, { depth: 1, since: at });
     else flight.depth += 1;
-    return now;
+    if (this.events === undefined) return { name, at };
+    this.events.push({
+      name,
+      start: at,
+      end: Number.NaN,
+      parent: this.#context?.getStore() ?? -1,
+    });
+    return { name, at, event: this.events.length - 1 };
+  }
+
+  /** Runs the function with the call as the span open around what it starts, in a traced run. */
+  within<R>(call: Call, run: () => R): R {
+    return call.event === undefined || this.#context === undefined
+      ? run()
+      : this.#context.run(call.event, run);
+  }
+
+  /** Ends, now, the calls still open when the run ends. */
+  closed(): void {
+    const now = performance.now();
+    for (const event of this.events ?? [])
+      if (Number.isNaN(event.end)) event.end = now;
   }
 
   add(name: string, by: number): void {
@@ -50,9 +124,11 @@ class Probe implements Seen {
     if (inner !== undefined) this.add(`${inner}.${name}`, by);
   }
 
-  /** The call of the name that began at `started` ends now. */
-  end(name: string, started: number): void {
+  /** The call ends now. */
+  end({ name, at: started, event }: Call): void {
     const now = performance.now();
+    if (event !== undefined && this.events !== undefined)
+      (this.events[event] as SpanEvent).end = now;
     const span = this.span(name);
     span.calls += 1;
     span.ms += now - started;
@@ -66,6 +142,19 @@ class Probe implements Seen {
       span.wallMs += now - flight.since;
       this.#inFlight.delete(name);
     }
+  }
+
+  /** A span measured elsewhere, as an event; one whose position is not known is no event. */
+  place(name: string, ms: number, calls: number, where?: Placed): void {
+    if (this.events === undefined || where === undefined) return;
+    this.events.push({
+      name,
+      start: where.start,
+      end: where.start + ms,
+      parent: this.#context?.getStore() ?? -1,
+      track: where.track,
+      calls,
+    });
   }
 
   span(name: string): Spent {
@@ -87,18 +176,23 @@ let active: Probe | undefined;
  * innermost open span is the last one begun, so work that runs at the same time as another (the files of an import
  * sealed at once, the first screen's questions asked together) credits a count to whichever span began last. Its
  * `ms` adds the time of every call, overlapping ones in full; its `wallMs` is the time some call of the name was open.
+ *
+ * With `trace`, it also gives every call as an event (`Seen.events`) with the span it ran inside of, which follows a call
+ * through its awaits, so concurrent work keeps its own parents. A run that is not traced keeps no event.
  */
 export async function probing<T>(
   run: () => Promise<T>,
+  options: { readonly trace?: boolean } = {},
 ): Promise<{ result: T; seen: Seen }> {
   if (active !== undefined)
     throw new Error("an import is already being probed");
-  const probe = new Probe();
+  const probe = new Probe(options.trace === true);
   active = probe;
   try {
     return { result: await run(), seen: probe };
   } finally {
     active = undefined;
+    probe.closed();
   }
 }
 
@@ -134,14 +228,14 @@ export function scanned(quads: number): void {
 export function timed<T>(name: string, run: () => Promise<T>): Promise<T> {
   if (active === undefined) return run();
   const probe = active;
-  const started = probe.begin(name);
+  const call = probe.begin(name);
   probe.open.push(name);
   return (async () => {
     try {
-      return await run();
+      return await probe.within(call, run);
     } finally {
       probe.open.splice(probe.open.lastIndexOf(name), 1);
-      probe.end(name, started);
+      probe.end(call);
     }
   })();
 }
@@ -158,12 +252,12 @@ export function timedAside<T>(
   if (active === undefined) return run();
   const probe = active;
   const named = typeof name === "string" ? name : name();
-  const started = probe.begin(named);
+  const call = probe.begin(named);
   return (async () => {
     try {
-      return await run();
+      return await probe.within(call, run);
     } finally {
-      probe.end(named, started);
+      probe.end(call);
     }
   })();
 }
@@ -176,37 +270,45 @@ export function queried<T>(run: () => T): T {
   if (active === undefined) return run();
   const probe = active;
   probe.addInside("store.queries", 1);
-  const started = probe.begin("store.query");
+  const call = probe.begin("store.query");
   try {
     return run();
   } finally {
-    probe.end("store.query", started);
+    probe.end(call);
   }
 }
 
 /**
  * Records a span measured elsewhere (by another thread, or by the Bridge's own clock) as `calls` calls taking `ms`
  * in all, while probing, which is also its wall time: what was measured elsewhere is not overlapped with itself here.
- * Nothing when it is off.
+ * A traced run draws it as one event on the track it is `placed` on, a child of the span it is recorded inside of, ending
+ * where it began plus `ms`; one not placed has a span's totals and no event, for where it ran is not known. Nothing when
+ * it is off.
  */
-export function recorded(name: string, ms: number, calls = 1): void {
+export function recorded(
+  name: string,
+  ms: number,
+  calls = 1,
+  placed?: Placed,
+): void {
   if (active === undefined) return;
   const span = active.span(name);
   span.calls += calls;
   span.ms += ms;
   span.wallMs += ms;
+  active.place(name, ms, calls, placed);
 }
 
 /** `timed` for a function that is not async. */
 export function timedSync<T>(name: string, run: () => T): T {
   if (active === undefined) return run();
   const probe = active;
-  const started = probe.begin(name);
+  const call = probe.begin(name);
   probe.open.push(name);
   try {
-    return run();
+    return probe.within(call, run);
   } finally {
     probe.open.pop();
-    probe.end(name, started);
+    probe.end(call);
   }
 }
