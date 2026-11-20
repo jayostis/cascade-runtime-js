@@ -1,0 +1,3387 @@
+{
+  "env": {
+    "os": "linux 7.0.0-1016-aws",
+    "runner": "github-actions Linux; Intel(R) Xeon(R) 6975P-C; other load: a shared hosted runner",
+    "cpus": 4,
+    "node": "24.22.3",
+    "host": "node",
+    "profile": "runtime-perf fresh-first-screen+reopen-first-answer+question-page+close; headline unprobed median of 3, stages from one probed run"
+  },
+  "commit": {
+    "runtime": "6a8f8165df165f8164b737262f3136b439cf53ae",
+    "vocabulary": "c9fb5cd1ce85f0a9ef2360ea6e9d1d80f97594ed",
+    "bridge": "23bbe7009eee5d035e5668f85f20b764e8b49e76",
+    "adapter-fhir-r4": "bbaa314e9438da8c08e8d3bf233e25702b665f30",
+    "reference-tables": "2da562383c567aa2568520fee7bef26414c5c926",
+    "kit": "eaf561f276e4ce202be4c1695cefc444711aad2e"
+  },
+  "results": [
+    {
+      "name": "fresh-first-screen-synthea-10y/count/records",
+      "unit": "{count}",
+      "value": 647,
+      "kind": "cost",
+      "extra": "dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/total",
+      "unit": "s",
+      "value": 3.597088,
+      "kind": "clock",
+      "samples": 3,
+      "range": "3.589866-3.622566",
+      "extra": "open + import + first screen; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/open",
+      "unit": "s",
+      "value": 0.206369,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.206330-0.216513",
+      "extra": "unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/import",
+      "unit": "s",
+      "value": 3.308892,
+      "kind": "clock",
+      "samples": 3,
+      "range": "3.301240-3.324636",
+      "extra": "unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/first-screen",
+      "unit": "s",
+      "value": 0.081828,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.081417-0.082297",
+      "extra": "unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/rss",
+      "unit": "By",
+      "value": 447070208,
+      "kind": "clock",
+      "samples": 3,
+      "range": "439078912-453177344",
+      "extra": "after the first screen, before close; the harness's own copy of the input is dropped before the pod opens; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/peak-rss",
+      "unit": "By",
+      "value": 527757312,
+      "kind": "clock",
+      "samples": 3,
+      "range": "517066752-533594112",
+      "extra": "the most the process reached, as the operating system keeps it; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/phase-loading-the-adapter",
+      "unit": "s",
+      "value": 1.1164,
+      "kind": "clock",
+      "samples": 3,
+      "range": "1.106299-1.120236",
+      "extra": "part of the import (onProgress marks); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/phase-converting",
+      "unit": "s",
+      "value": 1.067489,
+      "kind": "clock",
+      "samples": 3,
+      "range": "1.067125-1.073667",
+      "extra": "part of the import (onProgress marks); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/phase-saving",
+      "unit": "s",
+      "value": 0.563856,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.561002-0.564171",
+      "extra": "part of the import (onProgress marks); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/phase-judging",
+      "unit": "s",
+      "value": 0.569946,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.549202-0.572471",
+      "extra": "part of the import (onProgress marks); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/files-written",
+      "unit": "{count}",
+      "value": 1729,
+      "kind": "cost",
+      "extra": "dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "close-synthea-10y/total",
+      "unit": "s",
+      "value": 0.419213,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.419127-0.421855",
+      "extra": "closing a pod right after its import and first screen; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/probed-total",
+      "unit": "s",
+      "value": 3.498517,
+      "kind": "clock",
+      "samples": 1,
+      "range": "3.498517-3.498517",
+      "extra": "probed run: some work runs one at a time, so these are slower than the same steps unprobed"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/scenario.import",
+      "unit": "s",
+      "value": 3.208189,
+      "kind": "clock",
+      "samples": 1,
+      "range": "3.208189-3.208189",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 3.208189 s (more than the time in progress where calls overlap); scenario.import"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.step.perform",
+      "unit": "s",
+      "value": 2.232961,
+      "kind": "clock",
+      "samples": 1,
+      "range": "2.232961-2.232961",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 3 calls whose own times sum to 2.232961 s (more than the time in progress where calls overlap); core-pod.step.perform"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.fileexport",
+      "unit": "s",
+      "value": 1.784946,
+      "kind": "clock",
+      "samples": 1,
+      "range": "1.784946-1.784946",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 1.784946 s (more than the time in progress where calls overlap); arrivals.fileExport"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.convert",
+      "unit": "s",
+      "value": 0.808868,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.808868-0.808868",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.808868 s (more than the time in progress where calls overlap); arrivals.convert"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.accepting",
+      "unit": "s",
+      "value": 0.698434,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.698434-0.698434",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.698434 s (more than the time in progress where calls overlap); arrivals.accepting"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/pod.match",
+      "unit": "s",
+      "value": 0.542587,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.542587-0.542587",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.542587 s (more than the time in progress where calls overlap); pod.match"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.step.commit",
+      "unit": "s",
+      "value": 0.505483,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.505483-0.505483",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 3 calls whose own times sum to 0.505483 s (more than the time in progress where calls overlap); core-pod.step.commit"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.step.rebuild-import",
+      "unit": "s",
+      "value": 0.500616,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.500616-0.500616",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.500616 s (more than the time in progress where calls overlap); core-pod.step.rebuild:import"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.step",
+      "unit": "s",
+      "value": 0.486849,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.486849-0.486849",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.486849 s (more than the time in progress where calls overlap); kept.step"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.import.adapters",
+      "unit": "s",
+      "value": 0.411151,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.411151-0.411151",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.411151 s (more than the time in progress where calls overlap); core-pod.import.adapters"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-records",
+      "unit": "s",
+      "value": 0.397848,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.397848-0.397848",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.397848 s (more than the time in progress where calls overlap); bridge.stage:records"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.step.rebuilt",
+      "unit": "s",
+      "value": 0.377275,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.377275-0.377275",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.377275 s (more than the time in progress where calls overlap); kept.step.rebuilt"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/store.query",
+      "unit": "s",
+      "value": 0.344447,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.344447-0.344447",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 154 calls whose own times sum to 0.344447 s (more than the time in progress where calls overlap); store.query"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/scenario.open",
+      "unit": "s",
+      "value": 0.207919,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.207919-0.207919",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.207919 s (more than the time in progress where calls overlap); scenario.open"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-mapping",
+      "unit": "s",
+      "value": 0.205312,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.205312-0.205312",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.205312 s (more than the time in progress where calls overlap); bridge.stage:mapping"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.construct",
+      "unit": "s",
+      "value": 0.194666,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.194666-0.194666",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 64 calls whose own times sum to 0.194666 s (more than the time in progress where calls overlap); union.construct"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.select",
+      "unit": "s",
+      "value": 0.169067,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.169067-0.169067",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 86 calls whose own times sum to 0.171538 s (more than the time in progress where calls overlap); union.select"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.rebuilt.derive",
+      "unit": "s",
+      "value": 0.147645,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.147645-0.147645",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.147645 s (more than the time in progress where calls overlap); kept.rebuilt.derive"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/files.write.file",
+      "unit": "s",
+      "value": 0.121378,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.121378-0.121378",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1752 calls whose own times sum to 0.121378 s (more than the time in progress where calls overlap); files.write.file"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.parsegraph",
+      "unit": "s",
+      "value": 0.112085,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.112085-0.112085",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.112085 s (more than the time in progress where calls overlap); arrivals.parseGraph"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.loadfiles",
+      "unit": "s",
+      "value": 0.10936,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.109360-0.109360",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 11 calls whose own times sum to 0.109360 s (more than the time in progress where calls overlap); union.loadFiles"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.revisions",
+      "unit": "s",
+      "value": 0.097639,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.097639-0.097639",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.097639 s (more than the time in progress where calls overlap); arrivals.revisions"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.queried",
+      "unit": "s",
+      "value": 0.092981,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.092981-0.092981",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.092981 s (more than the time in progress where calls overlap); build.queried"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/scenario.first-screen",
+      "unit": "s",
+      "value": 0.082345,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.082345-0.082345",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.082345 s (more than the time in progress where calls overlap); scenario.first-screen"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-my-procedures",
+      "unit": "s",
+      "value": 0.081902,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.081902-0.081902",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.081902 s (more than the time in progress where calls overlap); question:pod/My procedures"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-my-immunizations",
+      "unit": "s",
+      "value": 0.079616,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.079616-0.079616",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.079616 s (more than the time in progress where calls overlap); question:pod/My immunizations"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-my-lab-results",
+      "unit": "s",
+      "value": 0.077475,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.077475-0.077475",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.077475 s (more than the time in progress where calls overlap); question:pod/My lab results"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.step.rebuild-other",
+      "unit": "s",
+      "value": 0.074364,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.074364-0.074364",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.074364 s (more than the time in progress where calls overlap); core-pod.step.rebuild:other"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-labels.ttl",
+      "unit": "s",
+      "value": 0.073765,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.073765-0.073765",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.073765 s (more than the time in progress where calls overlap); build.query:clinical/labels.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.step.podfiles",
+      "unit": "s",
+      "value": 0.073099,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.073099-0.073099",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.073099 s (more than the time in progress where calls overlap); kept.step.podFiles"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-lift",
+      "unit": "s",
+      "value": 0.072061,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.072061-0.072061",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.072061 s (more than the time in progress where calls overlap); bridge.stage:lift"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-record.rq",
+      "unit": "s",
+      "value": 0.071036,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.071036-0.071036",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.071036 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/record.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.whole",
+      "unit": "s",
+      "value": 0.07098,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.070980-0.070980",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.070980 s (more than the time in progress where calls overlap); kept.whole"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-my-active-conditions",
+      "unit": "s",
+      "value": 0.070247,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.070247-0.070247",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.070247 s (more than the time in progress where calls overlap); question:pod/My active conditions"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-my-active-allergies",
+      "unit": "s",
+      "value": 0.067861,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.067861-0.067861",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.067861 s (more than the time in progress where calls overlap); question:pod/My active allergies"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-records.rq",
+      "unit": "s",
+      "value": 0.067639,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.067639-0.067639",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.067639 s (more than the time in progress where calls overlap); derive.step:queries/derivations/records.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-what-each-import-brought-in",
+      "unit": "s",
+      "value": 0.063648,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.063648-0.063648",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.063648 s (more than the time in progress where calls overlap); question:pod/What each import brought in"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.holds",
+      "unit": "s",
+      "value": 0.061067,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.061067-0.061067",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 54 calls whose own times sum to 0.061067 s (more than the time in progress where calls overlap); union.holds"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.add",
+      "unit": "s",
+      "value": 0.060417,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.060417-0.060417",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 87 calls whose own times sum to 0.060417 s (more than the time in progress where calls overlap); union.add"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.whole.derive",
+      "unit": "s",
+      "value": 0.052909,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.052909-0.052909",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.052909 s (more than the time in progress where calls overlap); kept.whole.derive"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.inputshash",
+      "unit": "s",
+      "value": 0.051745,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.051745-0.051745",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 4 calls whose own times sum to 0.051745 s (more than the time in progress where calls overlap); core-pod.inputsHash"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.step.finished",
+      "unit": "s",
+      "value": 0.04948,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.049480-0.049480",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.049480 s (more than the time in progress where calls overlap); core-pod.step.finished"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/incremental.boundvalues",
+      "unit": "s",
+      "value": 0.04676,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.046760-0.046760",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 25 calls whose own times sum to 0.046760 s (more than the time in progress where calls overlap); incremental.boundValues"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.rebuilt.podfiles",
+      "unit": "s",
+      "value": 0.046091,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.046091-0.046091",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.046091 s (more than the time in progress where calls overlap); kept.rebuilt.podFiles"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-index",
+      "unit": "s",
+      "value": 0.045957,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.045957-0.045957",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.045957 s (more than the time in progress where calls overlap); bridge.stage:index"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-my-medication-history",
+      "unit": "s",
+      "value": 0.045469,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.045469-0.045469",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.045469 s (more than the time in progress where calls overlap); question:pod/My medication history"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/files.write.rename",
+      "unit": "s",
+      "value": 0.041529,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.041529-0.041529",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1752 calls whose own times sum to 0.041529 s (more than the time in progress where calls overlap); files.write.rename"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-documenttable",
+      "unit": "s",
+      "value": 0.040502,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.040502-0.040502",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.040502 s (more than the time in progress where calls overlap); bridge.stage:documentTable"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-what-each-report-says-of-a-variant",
+      "unit": "s",
+      "value": 0.040107,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.040107-0.040107",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.040107 s (more than the time in progress where calls overlap); question:pod/What each report says of a variant"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-my-genetic-variants",
+      "unit": "s",
+      "value": 0.039659,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.039659-0.039659",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.039659 s (more than the time in progress where calls overlap); question:pod/My genetic variants"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-entry-what-needs-review",
+      "unit": "s",
+      "value": 0.03793,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.037930-0.037930",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.037930 s (more than the time in progress where calls overlap); question:entry/What needs review"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.refuseunaccounted",
+      "unit": "s",
+      "value": 0.03539,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.035390-0.035390",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.035390 s (more than the time in progress where calls overlap); arrivals.refuseUnaccounted"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.of",
+      "unit": "s",
+      "value": 0.033479,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.033479-0.033479",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.033479 s (more than the time in progress where calls overlap); matcher.of"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/files.hash.sha256",
+      "unit": "s",
+      "value": 0.033359,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.033359-0.033359",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 624 calls whose own times sum to 0.042541 s (more than the time in progress where calls overlap); files.hash.sha256"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-excluded-for-their-patient.rq",
+      "unit": "s",
+      "value": 0.031101,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.031101-0.031101",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.031101 s (more than the time in progress where calls overlap); derive.step:queries/derivations/excluded-for-their-patient.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.drop",
+      "unit": "s",
+      "value": 0.029942,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.029942-0.029942",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1745 calls whose own times sum to 0.029942 s (more than the time in progress where calls overlap); union.drop"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-pod-what-was-seen-more-than-once",
+      "unit": "s",
+      "value": 0.028916,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.028916-0.028916",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.028916 s (more than the time in progress where calls overlap); question:pod/What was seen more than once"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-entry-where-it-came-from",
+      "unit": "s",
+      "value": 0.027042,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.027042-0.027042",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.027042 s (more than the time in progress where calls overlap); question:entry/Where it came from"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/question-profile-what-needs-review",
+      "unit": "s",
+      "value": 0.024084,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.024084-0.024084",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.024084 s (more than the time in progress where calls overlap); question:profile/What needs review"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-current-revisions.rq",
+      "unit": "s",
+      "value": 0.023124,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.023124-0.023124",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.023124 s (more than the time in progress where calls overlap); derive.step:queries/derivations/current-revisions.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.arrivals",
+      "unit": "s",
+      "value": 0.022985,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.022985-0.022985",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.022985 s (more than the time in progress where calls overlap); arrivals.arrivals"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/files.read.file",
+      "unit": "s",
+      "value": 0.022072,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.022072-0.022072",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 244 calls whose own times sum to 0.247395 s (more than the time in progress where calls overlap); files.read.file"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.step.namedbefore",
+      "unit": "s",
+      "value": 0.017732,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.017732-0.017732",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.017732 s (more than the time in progress where calls overlap); kept.step.namedBefore"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-lab-result.rq",
+      "unit": "s",
+      "value": 0.01691,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.016910-0.016910",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.016910 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/lab-result.r"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-absent-reasons.rq",
+      "unit": "s",
+      "value": 0.015581,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.015581-0.015581",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.015581 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/absent-reaso"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.of.read",
+      "unit": "s",
+      "value": 0.015465,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.015465-0.015465",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.015465 s (more than the time in progress where calls overlap); matcher.of.read"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-coding-system-table.rq",
+      "unit": "s",
+      "value": 0.015353,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.015353-0.015353",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.015353 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/coding-syste"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-lab-result-quantities.rq",
+      "unit": "s",
+      "value": 0.015117,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.015117-0.015117",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.015117 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/lab-result-q"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.loadturtle",
+      "unit": "s",
+      "value": 0.015102,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.015102-0.015102",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.015102 s (more than the time in progress where calls overlap); union.loadTurtle"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-lab-result-codes.rq",
+      "unit": "s",
+      "value": 0.013731,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.013731-0.013731",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.013731 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/lab-result-c"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.step.closed",
+      "unit": "s",
+      "value": 0.013589,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.013589-0.013589",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.013589 s (more than the time in progress where calls overlap); kept.step.closed"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-current-revision-candidates.rq",
+      "unit": "s",
+      "value": 0.013427,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.013427-0.013427",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.013427 s (more than the time in progress where calls overlap); derive.step:queries/derivations/current-revision-candidates.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-medication-lifecycles.rq",
+      "unit": "s",
+      "value": 0.013376,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.013376-0.013376",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.013376 s (more than the time in progress where calls overlap); derive.step:queries/derivations/medication-lifecycles.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.rebuilt.filesof",
+      "unit": "s",
+      "value": 0.012316,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.012316-0.012316",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.012316 s (more than the time in progress where calls overlap); kept.rebuilt.filesOf"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-serialising",
+      "unit": "s",
+      "value": 0.011507,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.011507-0.011507",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.011507 s (more than the time in progress where calls overlap); bridge.stage:serialising"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.recordreads",
+      "unit": "s",
+      "value": 0.010623,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.010623-0.010623",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.010623 s (more than the time in progress where calls overlap); matcher.recordReads"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-candidates-ordered-by-ancestry.rq",
+      "unit": "s",
+      "value": 0.009591,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.009591-0.009591",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.009591 s (more than the time in progress where calls overlap); derive.step:queries/derivations/candidates-ordered-by-ancestry.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-status-sources.rq",
+      "unit": "s",
+      "value": 0.009134,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.009134-0.009134",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.009134 s (more than the time in progress where calls overlap); derive.step:queries/derivations/status-sources.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.of.podcodes",
+      "unit": "s",
+      "value": 0.008646,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.008646-0.008646",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.008646 s (more than the time in progress where calls overlap); matcher.of.podCodes"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/union.removesubjects",
+      "unit": "s",
+      "value": 0.007633,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.007633-0.007633",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 8 calls whose own times sum to 0.007633 s (more than the time in progress where calls overlap); union.removeSubjects"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-narrative-text.rq",
+      "unit": "s",
+      "value": 0.007128,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.007128-0.007128",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.007128 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/narrative-te"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.rebuild.writeall",
+      "unit": "s",
+      "value": 0.006759,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.006759-0.006759",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 3 calls whose own times sum to 0.006759 s (more than the time in progress where calls overlap); core-pod.rebuild.writeAll"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-medication.rq",
+      "unit": "s",
+      "value": 0.006596,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.006596-0.006596",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.006596 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/medication.r"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.queried.written",
+      "unit": "s",
+      "value": 0.00645,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.006450-0.006450",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 4 calls whose own times sum to 0.006450 s (more than the time in progress where calls overlap); build.queried.written"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-medication-supply-and-dosages.rq",
+      "unit": "s",
+      "value": 0.00628,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.006280-0.006280",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.006280 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/medication-s"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-condition.rq",
+      "unit": "s",
+      "value": 0.005565,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.005565-0.005565",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.005565 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/condition.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.step.rebuild-match",
+      "unit": "s",
+      "value": 0.005377,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.005377-0.005377",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.005377 s (more than the time in progress where calls overlap); core-pod.step.rebuild:match"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-date-sources.rq",
+      "unit": "s",
+      "value": 0.005167,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.005167-0.005167",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.005167 s (more than the time in progress where calls overlap); derive.step:queries/derivations/date-sources.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-lab-result-performer.rq",
+      "unit": "s",
+      "value": 0.004726,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.004726-0.004726",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.004726 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/lab-result-p"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.rebuild.bytes",
+      "unit": "s",
+      "value": 0.004387,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.004387-0.004387",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 3 calls whose own times sum to 0.004387 s (more than the time in progress where calls overlap); core-pod.rebuild.bytes"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-medication-exposure-periods.rq",
+      "unit": "s",
+      "value": 0.004072,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.004072-0.004072",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.004072 s (more than the time in progress where calls overlap); derive.step:queries/derivations/medication-exposure-periods.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.step.keptafter",
+      "unit": "s",
+      "value": 0.003812,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003812-0.003812",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.003812 s (more than the time in progress where calls overlap); core-pod.step.keptAfter"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-procedure.rq",
+      "unit": "s",
+      "value": 0.003751,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003751-0.003751",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.003751 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/procedure.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-lab-result-identifiers.rq",
+      "unit": "s",
+      "value": 0.003561,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003561-0.003561",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.003561 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/lab-result-i"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.revisionsof",
+      "unit": "s",
+      "value": 0.003386,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003386-0.003386",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.003386 s (more than the time in progress where calls overlap); arrivals.revisionsOf"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-organization-table.rq",
+      "unit": "s",
+      "value": 0.003337,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003337-0.003337",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.003337 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/organization"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/pod.unclaimedprofiles",
+      "unit": "s",
+      "value": 0.003306,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003306-0.003306",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.003306 s (more than the time in progress where calls overlap); pod.unclaimedProfiles"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-lab-result-table.rq",
+      "unit": "s",
+      "value": 0.003261,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003261-0.003261",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.003261 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/lab-result-t"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-lab-results.ttl",
+      "unit": "s",
+      "value": 0.003192,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003192-0.003192",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.003192 s (more than the time in progress where calls overlap); build.query:clinical/lab-results.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.matcherselect",
+      "unit": "s",
+      "value": 0.003072,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003072-0.003072",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 3 calls whose own times sum to 0.009091 s (more than the time in progress where calls overlap); core-pod.matcherSelect"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-same-records-under-same-servers.rq",
+      "unit": "s",
+      "value": 0.003054,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003054-0.003054",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.003054 s (more than the time in progress where calls overlap); derive.step:queries/derivations/same-records-under-same-servers.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-report-and-note-performer.rq",
+      "unit": "s",
+      "value": 0.002694,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002694-0.002694",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002694 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/report-and-n"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-narrative-texts-as-trimmed-lines.rq",
+      "unit": "s",
+      "value": 0.002547,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002547-0.002547",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.002547 s (more than the time in progress where calls overlap); derive.step:queries/derivations/narrative-texts-as-trimmed-lines.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-organization.rq",
+      "unit": "s",
+      "value": 0.002444,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002444-0.002444",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002444 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/organization"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-lenses-everyday.rq",
+      "unit": "s",
+      "value": 0.002432,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002432-0.002432",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.002432 s (more than the time in progress where calls overlap); derive.step:queries/lenses/everyday.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-medications.ttl",
+      "unit": "s",
+      "value": 0.002412,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002412-0.002412",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.002412 s (more than the time in progress where calls overlap); build.query:clinical/medications.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-summary",
+      "unit": "s",
+      "value": 0.002367,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002367-0.002367",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.002367 s (more than the time in progress where calls overlap); bridge.stage:summary"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-medication-dispense-prescription.rq",
+      "unit": "s",
+      "value": 0.002349,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002349-0.002349",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002349 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/medication-d"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-attachments.rq",
+      "unit": "s",
+      "value": 0.00234,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002340-0.002340",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002340 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/attachments."
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-report-results.rq",
+      "unit": "s",
+      "value": 0.002307,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002307-0.002307",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002307 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/report-resul"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-medication-table.rq",
+      "unit": "s",
+      "value": 0.002242,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002242-0.002242",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002242 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/medication-t"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-allergy-intolerance.rq",
+      "unit": "s",
+      "value": 0.002226,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002226-0.002226",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002226 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/allergy-into"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.actstaken",
+      "unit": "s",
+      "value": 0.00221,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002210-0.002210",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.002210 s (more than the time in progress where calls overlap); matcher.actsTaken"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-immunization.rq",
+      "unit": "s",
+      "value": 0.002058,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002058-0.002058",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002058 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/immunization"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-document-table.rq",
+      "unit": "s",
+      "value": 0.002038,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002038-0.002038",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002038 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/document-tab"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-organization-from-server.rq",
+      "unit": "s",
+      "value": 0.002019,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.002019-0.002019",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.002019 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/organization"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-variant-interpretation.rq",
+      "unit": "s",
+      "value": 0.001978,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001978-0.001978",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001978 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/variant-inte"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.matcherview",
+      "unit": "s",
+      "value": 0.001947,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001947-0.001947",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001947 s (more than the time in progress where calls overlap); core-pod.matcherView"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-patient.rq",
+      "unit": "s",
+      "value": 0.00185,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001850-0.001850",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001850 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/patient.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-variant.rq",
+      "unit": "s",
+      "value": 0.001768,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001768-0.001768",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001768 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/variant.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-note-or-document.rq",
+      "unit": "s",
+      "value": 0.001652,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001652-0.001652",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001652 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/note-or-docu"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-entries.rq",
+      "unit": "s",
+      "value": 0.001643,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001643-0.001643",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001643 s (more than the time in progress where calls overlap); derive.step:queries/derivations/entries.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-revision-judgments.rq",
+      "unit": "s",
+      "value": 0.001631,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001631-0.001631",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001631 s (more than the time in progress where calls overlap); derive.step:queries/derivations/revision-judgments.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-report.rq",
+      "unit": "s",
+      "value": 0.001619,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001619-0.001619",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001619 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/report.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-dataset",
+      "unit": "s",
+      "value": 0.001557,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001557-0.001557",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001557 s (more than the time in progress where calls overlap); bridge.stage:dataset"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-lead-member-candidates.rq",
+      "unit": "s",
+      "value": 0.00149,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001490-0.001490",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001490 s (more than the time in progress where calls overlap); derive.step:queries/derivations/lead-member-candidates.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-allergies.ttl",
+      "unit": "s",
+      "value": 0.001489,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001489-0.001489",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001489 s (more than the time in progress where calls overlap); build.query:clinical/allergies.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-variant-table.rq",
+      "unit": "s",
+      "value": 0.001489,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001489-0.001489",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001489 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/variant-tabl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-medication-dispense.rq",
+      "unit": "s",
+      "value": 0.001475,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001475-0.001475",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001475 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/medication-d"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-variant-interpretation-table.rq",
+      "unit": "s",
+      "value": 0.001433,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001433-0.001433",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001433 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/variant-inte"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-medication-dispense-lifecycles.rq",
+      "unit": "s",
+      "value": 0.001408,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001408-0.001408",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001408 s (more than the time in progress where calls overlap); derive.step:queries/derivations/medication-dispense-lifecycles.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-lapsed-sames.rq",
+      "unit": "s",
+      "value": 0.001404,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001404-0.001404",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001404 s (more than the time in progress where calls overlap); derive.step:queries/derivations/lapsed-sames.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-conditions.ttl",
+      "unit": "s",
+      "value": 0.001373,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001373-0.001373",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001373 s (more than the time in progress where calls overlap); build.query:clinical/conditions.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.revisions.prepare",
+      "unit": "s",
+      "value": 0.001307,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001307-0.001307",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001307 s (more than the time in progress where calls overlap); arrivals.revisions.prepare"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-same-pairs.rq",
+      "unit": "s",
+      "value": 0.001268,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001268-0.001268",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001268 s (more than the time in progress where calls overlap); derive.step:queries/derivations/same-pairs.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-patient-profile.ttl",
+      "unit": "s",
+      "value": 0.001208,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001208-0.001208",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001208 s (more than the time in progress where calls overlap); build.query:clinical/patient-profile.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-note-or-document-table.rq",
+      "unit": "s",
+      "value": 0.001133,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001133-0.001133",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 647 calls whose own times sum to 0.001133 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/note-or-docu"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.step.reached",
+      "unit": "s",
+      "value": 0.001121,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001121-0.001121",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001121 s (more than the time in progress where calls overlap); kept.step.reached"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.of.over",
+      "unit": "s",
+      "value": 0.001117,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001117-0.001117",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001117 s (more than the time in progress where calls overlap); matcher.of.over"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.step.scoped",
+      "unit": "s",
+      "value": 0.001067,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001067-0.001067",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001067 s (more than the time in progress where calls overlap); kept.step.scoped"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-lead-members.rq",
+      "unit": "s",
+      "value": 0.001,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001000-0.001000",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.001000 s (more than the time in progress where calls overlap); derive.step:queries/derivations/lead-members.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-different-pairs.rq",
+      "unit": "s",
+      "value": 0.000995,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000995-0.000995",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000995 s (more than the time in progress where calls overlap); derive.step:queries/derivations/different-pairs.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.whole.podfiles",
+      "unit": "s",
+      "value": 0.00091,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000910-0.000910",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000910 s (more than the time in progress where calls overlap); kept.whole.podFiles"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-current-reference-versions.rq",
+      "unit": "s",
+      "value": 0.000899,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000899-0.000899",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000899 s (more than the time in progress where calls overlap); derive.step:queries/derivations/current-reference-versions.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.rebuilt.held",
+      "unit": "s",
+      "value": 0.000797,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000797-0.000797",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000797 s (more than the time in progress where calls overlap); kept.rebuilt.held"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.of.withcurrentversions",
+      "unit": "s",
+      "value": 0.000784,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000784-0.000784",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000784 s (more than the time in progress where calls overlap); matcher.of.withCurrentVersions"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-excluded-at-source.rq",
+      "unit": "s",
+      "value": 0.000768,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000768-0.000768",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000768 s (more than the time in progress where calls overlap); derive.step:queries/derivations/excluded-at-source.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.queried.currentversions",
+      "unit": "s",
+      "value": 0.000753,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000753-0.000753",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000753 s (more than the time in progress where calls overlap); build.queried.currentVersions"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-immunizations.ttl",
+      "unit": "s",
+      "value": 0.000743,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000743-0.000743",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000743 s (more than the time in progress where calls overlap); build.query:clinical/immunizations.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.query-clinical-procedures.ttl",
+      "unit": "s",
+      "value": 0.00072,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000720-0.000720",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000720 s (more than the time in progress where calls overlap); build.query:clinical/procedures.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-excluded-by-judgment.rq",
+      "unit": "s",
+      "value": 0.00069,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000690-0.000690",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000690 s (more than the time in progress where calls overlap); derive.step:queries/derivations/excluded-by-judgment.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.databaseanswers",
+      "unit": "s",
+      "value": 0.000689,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000689-0.000689",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000689 s (more than the time in progress where calls overlap); core-pod.databaseAnswers"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/arrivals.revisions.write",
+      "unit": "s",
+      "value": 0.000654,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000654-0.000654",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000654 s (more than the time in progress where calls overlap); arrivals.revisions.write"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-top-criticalities.rq",
+      "unit": "s",
+      "value": 0.000638,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000638-0.000638",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000638 s (more than the time in progress where calls overlap); derive.step:queries/derivations/top-criticalities.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-subjects.rq",
+      "unit": "s",
+      "value": 0.000604,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000604-0.000604",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000604 s (more than the time in progress where calls overlap); derive.step:queries/derivations/subjects.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-same-organizations.rq",
+      "unit": "s",
+      "value": 0.000594,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000594-0.000594",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000594 s (more than the time in progress where calls overlap); derive.step:queries/derivations/same-organizations.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/build.queried.viewsheld",
+      "unit": "s",
+      "value": 0.000458,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000458-0.000458",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000458 s (more than the time in progress where calls overlap); build.queried.viewsHeld"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.scoped.podfiles",
+      "unit": "s",
+      "value": 0.000453,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000453-0.000453",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000453 s (more than the time in progress where calls overlap); kept.scoped.podFiles"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/derive.step-queries-derivations-excluded-with-their-activity.rq",
+      "unit": "s",
+      "value": 0.000449,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000449-0.000449",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000449 s (more than the time in progress where calls overlap); derive.step:queries/derivations/excluded-with-their-activity.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/core-pod.import.documents",
+      "unit": "s",
+      "value": 0.000381,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000381-0.000381",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 3 calls whose own times sum to 0.000381 s (more than the time in progress where calls overlap); core-pod.import.documents"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-lab-results.ttl",
+      "unit": "s",
+      "value": 0.000339,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000339-0.000339",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000339 s (more than the time in progress where calls overlap); view.build:clinical/lab-results.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.stage-detect",
+      "unit": "s",
+      "value": 0.000252,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000252-0.000252",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000252 s (more than the time in progress where calls overlap); bridge.stage:detect"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/bridge.query-detect.rq",
+      "unit": "s",
+      "value": 0.000251,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000251-0.000251",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000251 s (more than the time in progress where calls overlap); bridge.query:https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/tree/bbaa314e9438da8c08e8d3bf233e25702b665f30/in/sparql/detect.rq"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.whole.recordsandtheirs",
+      "unit": "s",
+      "value": 0.000232,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000232-0.000232",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000232 s (more than the time in progress where calls overlap); kept.whole.recordsAndTheirs"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-patient-profile.ttl",
+      "unit": "s",
+      "value": 0.000191,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000191-0.000191",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000191 s (more than the time in progress where calls overlap); view.build:clinical/patient-profile.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.take",
+      "unit": "s",
+      "value": 0.000178,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000178-0.000178",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000178 s (more than the time in progress where calls overlap); matcher.take"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-procedures.ttl",
+      "unit": "s",
+      "value": 0.000124,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000124-0.000124",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000124 s (more than the time in progress where calls overlap); view.build:clinical/procedures.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-medications.ttl",
+      "unit": "s",
+      "value": 0.000109,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000109-0.000109",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000109 s (more than the time in progress where calls overlap); view.build:clinical/medications.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-differentresultunitsatoneinstant",
+      "unit": "s",
+      "value": 0.000101,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000101-0.000101",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000101 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#DifferentResultUnitsAtOneInstant"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.of.withpartners",
+      "unit": "s",
+      "value": 0.000099,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000099-0.000099",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000099 s (more than the time in progress where calls overlap); matcher.of.withPartners"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.of.releaseview",
+      "unit": "s",
+      "value": 0.000097,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000097-0.000097",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000097 s (more than the time in progress where calls overlap); matcher.of.releaseView"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-immunizations.ttl",
+      "unit": "s",
+      "value": 0.000092,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000092-0.000092",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000092 s (more than the time in progress where calls overlap); view.build:clinical/immunizations.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.filefindings",
+      "unit": "s",
+      "value": 0.000083,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000083-0.000083",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000083 s (more than the time in progress where calls overlap); matcher.fileFindings"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-allergies.ttl",
+      "unit": "s",
+      "value": 0.000077,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000077-0.000077",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000077 s (more than the time in progress where calls overlap); view.build:clinical/allergies.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-conditions.ttl",
+      "unit": "s",
+      "value": 0.000073,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000073-0.000073",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000073 s (more than the time in progress where calls overlap); view.build:clinical/conditions.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/kept.reached.judged",
+      "unit": "s",
+      "value": 0.000042,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000042-0.000042",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 2 calls whose own times sum to 0.000042 s (more than the time in progress where calls overlap); kept.reached.judged"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-sameresult",
+      "unit": "s",
+      "value": 0.000035,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000035-0.000035",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000035 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameResult"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-differentresultvaluesatoneinstant",
+      "unit": "s",
+      "value": 0.000023,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000023-0.000023",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000023 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#DifferentResultValuesAtOneInstant"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-sameresultononeday",
+      "unit": "s",
+      "value": 0.00002,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000020-0.000020",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000020 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameResultOnOneDay"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samemappedcodeanddate",
+      "unit": "s",
+      "value": 0.000012,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000012-0.000012",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000012 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameMappedCodeAndDate"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samemappedcode",
+      "unit": "s",
+      "value": 0.000012,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000012-0.000012",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000012 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameMappedCode"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-sameconvertedcode",
+      "unit": "s",
+      "value": 0.000011,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000011-0.000011",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000011 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameConvertedCode"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samebusinessidentifierandtestcodewithinoneorganization",
+      "unit": "s",
+      "value": 0.000011,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000011-0.000011",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000011 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameBusinessIdentifierAndTestCodeWithinOneOrganization"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samecodeandperiod",
+      "unit": "s",
+      "value": 0.00001,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000010-0.000010",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000010 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameCodeAndPeriod"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-sameproductcode",
+      "unit": "s",
+      "value": 0.000009,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000009-0.000009",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000009 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameProductCode"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samevariationthroughtable",
+      "unit": "s",
+      "value": 0.000007,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000007-0.000007",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000007 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameVariationThroughTable"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samemedicationcode",
+      "unit": "s",
+      "value": 0.000007,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000007-0.000007",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000007 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameMedicationCode"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samenotetypeandtext",
+      "unit": "s",
+      "value": 0.000007,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000007-0.000007",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000007 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameNoteTypeAndText"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samebrandgeneric",
+      "unit": "s",
+      "value": 0.000006,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000006-0.000006",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000006 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameBrandGeneric"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-sameselfassertedbaseurlandauthorizationendpointononehost",
+      "unit": "s",
+      "value": 0.000006,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000006-0.000006",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000006 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samecode",
+      "unit": "s",
+      "value": 0.000005,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000005-0.000005",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000005 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameCode"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samenoteordocumentmasteridentifier",
+      "unit": "s",
+      "value": 0.000005,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000005-0.000005",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000005 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameNoteOrDocumentMasterIdentifier"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samecodeanddate",
+      "unit": "s",
+      "value": 0.000004,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000004-0.000004",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000004 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameCodeAndDate"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samevariation",
+      "unit": "s",
+      "value": 0.000003,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000003-0.000003",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000003 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameVariation"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-notes-and-documents.ttl",
+      "unit": "s",
+      "value": 0.000003,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000003-0.000003",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000003 s (more than the time in progress where calls overlap); view.build:clinical/notes-and-documents.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-medication-dispenses.ttl",
+      "unit": "s",
+      "value": 0.000002,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000002-0.000002",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000002 s (more than the time in progress where calls overlap); view.build:clinical/medication-dispenses.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/matcher.rule-samenotetypeandtextgrownwithinoneorganization",
+      "unit": "s",
+      "value": 0.000002,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000002-0.000002",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000002 s (more than the time in progress where calls overlap); matcher.rule:https://ns.cascadeprotocol.org/cascade#SameNoteTypeAndTextGrownWithinOneOrganization"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-reports.ttl",
+      "unit": "s",
+      "value": 0.000001,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000001-0.000001",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000001 s (more than the time in progress where calls overlap); view.build:clinical/reports.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-variants.ttl",
+      "unit": "s",
+      "value": 0.000001,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000001-0.000001",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000001 s (more than the time in progress where calls overlap); view.build:clinical/variants.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/stage/view.build-clinical-variant-interpretations.ttl",
+      "unit": "s",
+      "value": 0.000001,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000001-0.000001",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000001 s (more than the time in progress where calls overlap); view.build:clinical/variant-interpretations.ttl"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/graph.quadsvisited",
+      "unit": "{count}",
+      "value": 113585,
+      "kind": "cost",
+      "extra": "probed run; graph.quadsVisited"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/arrivals.refuseunaccounted.graph.quadsvisited",
+      "unit": "{count}",
+      "value": 69070,
+      "kind": "cost",
+      "extra": "probed run; arrivals.refuseUnaccounted.graph.quadsVisited"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/built.lines.total",
+      "unit": "{count}",
+      "value": 21628,
+      "kind": "cost",
+      "extra": "probed run; built.lines.total"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/built.lines.written",
+      "unit": "{count}",
+      "value": 21626,
+      "kind": "cost",
+      "extra": "probed run; built.lines.written"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/built.lines.sorted",
+      "unit": "{count}",
+      "value": 21568,
+      "kind": "cost",
+      "extra": "probed run; built.lines.sorted"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/scenario.open.graph.quadsvisited",
+      "unit": "{count}",
+      "value": 16555,
+      "kind": "cost",
+      "extra": "probed run; scenario.open.graph.quadsVisited"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/bridge.query.rows",
+      "unit": "{count}",
+      "value": 16533,
+      "kind": "cost",
+      "extra": "probed run; bridge.query.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/scenario.import.graph.quadsvisited",
+      "unit": "{count}",
+      "value": 14134,
+      "kind": "cost",
+      "extra": "probed run; scenario.import.graph.quadsVisited"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/arrivals.arrivals.graph.quadsvisited",
+      "unit": "{count}",
+      "value": 13814,
+      "kind": "cost",
+      "extra": "probed run; arrivals.arrivals.graph.quadsVisited"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/incremental.boundvalues.iris",
+      "unit": "{count}",
+      "value": 5194,
+      "kind": "cost",
+      "extra": "probed run; incremental.boundValues.iris"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/view.quadsmoved",
+      "unit": "{count}",
+      "value": 3556,
+      "kind": "cost",
+      "extra": "probed run; view.quadsMoved"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/podfiles.files",
+      "unit": "{count}",
+      "value": 3462,
+      "kind": "cost",
+      "extra": "probed run; podFiles.files"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-records.rq.rows",
+      "unit": "{count}",
+      "value": 2868,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/records.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-labels.ttl.rows",
+      "unit": "{count}",
+      "value": 1727,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/labels.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-excluded-for-their-patient.rq.rows",
+      "unit": "{count}",
+      "value": 1722,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/excluded-for-their-patient.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-current-revisions.rq.rows",
+      "unit": "{count}",
+      "value": 1150,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/current-revisions.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-current-revision-candidates.rq.rows",
+      "unit": "{count}",
+      "value": 575,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/current-revision-candidates.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.valuesblockrecords",
+      "unit": "{count}",
+      "value": 575,
+      "kind": "cost",
+      "extra": "probed run; matcher.valuesBlockRecords"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/store.queries",
+      "unit": "{count}",
+      "value": 154,
+      "kind": "cost",
+      "extra": "probed run; store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/adapter.files.read",
+      "unit": "{count}",
+      "value": 68,
+      "kind": "cost",
+      "extra": "probed run; adapter.files.read"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/scenario.import.store.queries",
+      "unit": "{count}",
+      "value": 49,
+      "kind": "cost",
+      "extra": "probed run; scenario.import.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/scenario.open.store.queries",
+      "unit": "{count}",
+      "value": 35,
+      "kind": "cost",
+      "extra": "probed run; scenario.open.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/incremental.boundvalues.batches",
+      "unit": "{count}",
+      "value": 33,
+      "kind": "cost",
+      "extra": "probed run; incremental.boundValues.batches"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/incremental.boundvalues.store.queries",
+      "unit": "{count}",
+      "value": 33,
+      "kind": "cost",
+      "extra": "probed run; incremental.boundValues.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/graph.scans",
+      "unit": "{count}",
+      "value": 32,
+      "kind": "cost",
+      "extra": "probed run; graph.scans"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/incremental.boundvalues.calls",
+      "unit": "{count}",
+      "value": 25,
+      "kind": "cost",
+      "extra": "probed run; incremental.boundValues.calls"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.queriesrun",
+      "unit": "{count}",
+      "value": 20,
+      "kind": "cost",
+      "extra": "probed run; matcher.queriesRun"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/scenario.first-screen.store.queries",
+      "unit": "{count}",
+      "value": 14,
+      "kind": "cost",
+      "extra": "probed run; scenario.first-screen.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/scenario.import.graph.scans",
+      "unit": "{count}",
+      "value": 14,
+      "kind": "cost",
+      "extra": "probed run; scenario.import.graph.scans"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.of.read.graph.quadsvisited",
+      "unit": "{count}",
+      "value": 12,
+      "kind": "cost",
+      "extra": "probed run; matcher.of.read.graph.quadsVisited"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/podfiles.calls",
+      "unit": "{count}",
+      "value": 11,
+      "kind": "cost",
+      "extra": "probed run; podFiles.calls"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/scenario.open.graph.scans",
+      "unit": "{count}",
+      "value": 10,
+      "kind": "cost",
+      "extra": "probed run; scenario.open.graph.scans"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.of.read.store.queries",
+      "unit": "{count}",
+      "value": 9,
+      "kind": "cost",
+      "extra": "probed run; matcher.of.read.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.recordreads.store.queries",
+      "unit": "{count}",
+      "value": 7,
+      "kind": "cost",
+      "extra": "probed run; matcher.recordReads.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/arrivals.refuseunaccounted.graph.scans",
+      "unit": "{count}",
+      "value": 5,
+      "kind": "cost",
+      "extra": "probed run; arrivals.refuseUnaccounted.graph.scans"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/bridge.workers",
+      "unit": "{count}",
+      "value": 3,
+      "kind": "cost",
+      "extra": "probed run; bridge.workers"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/core-pod.matcherselect.store.queries",
+      "unit": "{count}",
+      "value": 3,
+      "kind": "cost",
+      "extra": "probed run; core-pod.matcherSelect.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/components.resolved",
+      "unit": "{count}",
+      "value": 2,
+      "kind": "cost",
+      "extra": "probed run; components.resolved"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.of.read.graph.scans",
+      "unit": "{count}",
+      "value": 2,
+      "kind": "cost",
+      "extra": "probed run; matcher.of.read.graph.scans"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/arrivals.arrivals.graph.scans",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; arrivals.arrivals.graph.scans"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/bridge.package.found",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; bridge.package.found"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/core-pod.matcherselect.query-select-distinct-profile-verdict-where-judgment-cascade-countsunde",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; core-pod.matcherSelect.query: SELECT DISTINCT ?profile ?verdict WHERE { ?judgment cascade:countsUnde"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/core-pod.matcherselect.query-select-distinct-profile-where-left-cascade-leftoutreason-cascade-p",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; core-pod.matcherSelect.query: SELECT DISTINCT ?profile WHERE { ?left cascade:leftOutReason cascade:P"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/core-pod.matcherselect.query-select-distinct-profile-where-revision-prov-wasgeneratedby-urn-uu",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; core-pod.matcherSelect.query: SELECT DISTINCT ?profile WHERE { ?revision prov:wasGeneratedBy <urn:uu"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/core-pod.matcherview.store.queries",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; core-pod.matcherView.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.of.over.store.queries",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; matcher.of.over.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.of.podcodes.store.queries",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; matcher.of.podCodes.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.of.withcurrentversions.store.queries",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; matcher.of.withCurrentVersions.store.queries"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.valuesblocks",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; matcher.valuesBlocks"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-allergies.ttl.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/allergies.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-conditions.ttl.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/conditions.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-immunizations.ttl.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/immunizations.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-lab-results.ttl.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/lab-results.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-medications.ttl.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/medications.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-patient-profile.ttl.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/patient-profile.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/build.query-clinical-procedures.ttl.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; build.query:clinical/procedures.ttl.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-candidates-ordered-by-ancestry.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/candidates-ordered-by-ancestry.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-current-reference-versions.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/current-reference-versions.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-date-sources.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/date-sources.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-different-pairs.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/different-pairs.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-entries.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/entries.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-excluded-at-source.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/excluded-at-source.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-excluded-by-judgment.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/excluded-by-judgment.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-excluded-with-their-activity.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/excluded-with-their-activity.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-lapsed-sames.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/lapsed-sames.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-lead-member-candidates.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/lead-member-candidates.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-lead-members.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/lead-members.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-medication-dispense-lifecycles.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/medication-dispense-lifecycles.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-medication-exposure-periods.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/medication-exposure-periods.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-medication-lifecycles.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/medication-lifecycles.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-narrative-texts-as-trimmed-lines.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/narrative-texts-as-trimmed-lines.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-revision-judgments.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/revision-judgments.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-same-organizations.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/same-organizations.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-same-pairs.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/same-pairs.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-same-records-under-same-servers.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/same-records-under-same-servers.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-status-sources.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/status-sources.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-subjects.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/subjects.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-derivations-top-criticalities.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/derivations/top-criticalities.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/derive.step-queries-lenses-everyday.rq.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; derive.step:queries/lenses/everyday.rq.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.boundrecords",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.boundRecords"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-differentresultunitsatoneinstant.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#DifferentResultUnitsAtOneInstant.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-differentresultvaluesatoneinstant.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#DifferentResultValuesAtOneInstant.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samebrandgeneric.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameBrandGeneric.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samebusinessidentifierandtestcodewithinoneorganization.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameBusinessIdentifierAndTestCodeWithinOneOrganization.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samecode.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameCode.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samecodeanddate.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameCodeAndDate.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samecodeandperiod.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameCodeAndPeriod.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-sameconvertedcode.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameConvertedCode.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samemappedcode.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameMappedCode.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samemappedcodeanddate.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameMappedCodeAndDate.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samemedicationcode.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameMedicationCode.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samenoteordocumentmasteridentifier.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameNoteOrDocumentMasterIdentifier.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samenotetypeandtext.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameNoteTypeAndText.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samenotetypeandtextgrownwithinoneorganization.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameNoteTypeAndTextGrownWithinOneOrganization.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-sameproductcode.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameProductCode.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-sameresult.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameResult.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-sameresultononeday.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameResultOnOneDay.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-sameselfassertedbaseurlandauthorizationendpointononehost.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samevariation.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameVariation.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.rule-samevariationthroughtable.rows",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.rule:https://ns.cascadeprotocol.org/cascade#SameVariationThroughTable.rows"
+    },
+    {
+      "name": "fresh-first-screen-synthea-10y/count/matcher.takenrecords",
+      "unit": "{count}",
+      "value": 0,
+      "kind": "cost",
+      "extra": "probed run; matcher.takenRecords"
+    },
+    {
+      "name": "close-synthea-10y/probed-total",
+      "unit": "s",
+      "value": 0.425525,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.425525-0.425525",
+      "extra": "probed run: some work runs one at a time, so these are slower than the same steps unprobed"
+    },
+    {
+      "name": "close-synthea-10y/stage/scenario.close",
+      "unit": "s",
+      "value": 0.425513,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.425513-0.425513",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.425513 s (more than the time in progress where calls overlap); scenario.close"
+    },
+    {
+      "name": "close-synthea-10y/stage/core-pod.keepdatabase",
+      "unit": "s",
+      "value": 0.342658,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.342658-0.342658",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.342658 s (more than the time in progress where calls overlap); core-pod.keepDatabase"
+    },
+    {
+      "name": "close-synthea-10y/stage/core-pod.keepdatabase.whole",
+      "unit": "s",
+      "value": 0.331708,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.331708-0.331708",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.331708 s (more than the time in progress where calls overlap); core-pod.keepDatabase.whole"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.worker",
+      "unit": "s",
+      "value": 0.325001,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.325001-0.325001",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.325001 s (more than the time in progress where calls overlap); pod-database.build.worker"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.load",
+      "unit": "s",
+      "value": 0.138162,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.138162-0.138162",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.138162 s (more than the time in progress where calls overlap); pod-database.build.load"
+    },
+    {
+      "name": "close-synthea-10y/stage/core-pod.keepbuild",
+      "unit": "s",
+      "value": 0.07321,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.073210-0.073210",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.073210 s (more than the time in progress where calls overlap); core-pod.keepBuild"
+    },
+    {
+      "name": "close-synthea-10y/stage/core-pod.keepbuild.dump",
+      "unit": "s",
+      "value": 0.05029,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.050290-0.050290",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.050290 s (more than the time in progress where calls overlap); core-pod.keepBuild.dump"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.screens-fill",
+      "unit": "s",
+      "value": 0.027748,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.027748-0.027748",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.027748 s (more than the time in progress where calls overlap); pod-database.build.screens:fill"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.screens-finish",
+      "unit": "s",
+      "value": 0.010679,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.010679-0.010679",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.010679 s (more than the time in progress where calls overlap); pod-database.build.screens:finish"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.screens-tables",
+      "unit": "s",
+      "value": 0.010073,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.010073-0.010073",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.010073 s (more than the time in progress where calls overlap); pod-database.build.screens:tables"
+    },
+    {
+      "name": "close-synthea-10y/stage/core-pod.keepbuild.write",
+      "unit": "s",
+      "value": 0.00434,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.004340-0.004340",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.004340 s (more than the time in progress where calls overlap); core-pod.keepBuild.write"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.sync",
+      "unit": "s",
+      "value": 0.003378,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003378-0.003378",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.003378 s (more than the time in progress where calls overlap); pod-database.build.sync"
+    },
+    {
+      "name": "close-synthea-10y/stage/files.write.file",
+      "unit": "s",
+      "value": 0.001706,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001706-0.001706",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001706 s (more than the time in progress where calls overlap); files.write.file"
+    },
+    {
+      "name": "close-synthea-10y/stage/files.read.file",
+      "unit": "s",
+      "value": 0.001479,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001479-0.001479",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 13 calls whose own times sum to 0.010595 s (more than the time in progress where calls overlap); files.read.file"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.close",
+      "unit": "s",
+      "value": 0.001244,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001244-0.001244",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001244 s (more than the time in progress where calls overlap); pod-database.build.close"
+    },
+    {
+      "name": "close-synthea-10y/stage/pod-database.build.rename",
+      "unit": "s",
+      "value": 0.000057,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000057-0.000057",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000057 s (more than the time in progress where calls overlap); pod-database.build.rename"
+    },
+    {
+      "name": "close-synthea-10y/stage/files.write.rename",
+      "unit": "s",
+      "value": 0.000051,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000051-0.000051",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000051 s (more than the time in progress where calls overlap); files.write.rename"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/total",
+      "unit": "s",
+      "value": 0.16049,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.160228-0.163001",
+      "extra": "open + first read; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/open",
+      "unit": "s",
+      "value": 0.126422,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.124988-0.127026",
+      "extra": "unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/first-read",
+      "unit": "s",
+      "value": 0.03524,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.034068-0.035975",
+      "extra": "pod/My active conditions; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/second-read",
+      "unit": "s",
+      "value": 0.00078,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000759-0.000793",
+      "extra": "pod/My active medications; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/close",
+      "unit": "s",
+      "value": 0.000519,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000513-0.000525",
+      "extra": "unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/rss",
+      "unit": "By",
+      "value": 135954432,
+      "kind": "clock",
+      "samples": 3,
+      "range": "131244032-142102528",
+      "extra": "after the second read; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/peak-rss",
+      "unit": "By",
+      "value": 135954432,
+      "kind": "clock",
+      "samples": 3,
+      "range": "132075520-142102528",
+      "extra": "unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/probed-total",
+      "unit": "s",
+      "value": 0.162546,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.162546-0.162546",
+      "extra": "probed run: some work runs one at a time, so these are slower than the same steps unprobed"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/scenario.open",
+      "unit": "s",
+      "value": 0.128122,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.128122-0.128122",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.128122 s (more than the time in progress where calls overlap); scenario.open"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/files.read.file",
+      "unit": "s",
+      "value": 0.068079,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.068079-0.068079",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 160 calls whose own times sum to 0.294017 s (more than the time in progress where calls overlap); files.read.file"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/scenario.first-read",
+      "unit": "s",
+      "value": 0.034375,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.034375-0.034375",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.034375 s (more than the time in progress where calls overlap); scenario.first-read"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/question-pod-my-active-conditions",
+      "unit": "s",
+      "value": 0.034302,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.034302-0.034302",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.034302 s (more than the time in progress where calls overlap); question:pod/My active conditions"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/core-pod.databaseanswers",
+      "unit": "s",
+      "value": 0.026091,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.026091-0.026091",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.026091 s (more than the time in progress where calls overlap); core-pod.databaseAnswers"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/core-pod.inputshash",
+      "unit": "s",
+      "value": 0.018846,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.018846-0.018846",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.018846 s (more than the time in progress where calls overlap); core-pod.inputsHash"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/union.select",
+      "unit": "s",
+      "value": 0.016796,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.016796-0.016796",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.016796 s (more than the time in progress where calls overlap); union.select"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/store.query",
+      "unit": "s",
+      "value": 0.016213,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.016213-0.016213",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.016213 s (more than the time in progress where calls overlap); store.query"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/union.loadturtle",
+      "unit": "s",
+      "value": 0.011082,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.011082-0.011082",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.011082 s (more than the time in progress where calls overlap); union.loadTurtle"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/files.hash.sha256",
+      "unit": "s",
+      "value": 0.01033,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.010330-0.010330",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 20 calls whose own times sum to 0.028263 s (more than the time in progress where calls overlap); files.hash.sha256"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/scenario.second-read",
+      "unit": "s",
+      "value": 0.000738,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000738-0.000738",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000738 s (more than the time in progress where calls overlap); scenario.second-read"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/question-pod-my-active-medications",
+      "unit": "s",
+      "value": 0.000716,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000716-0.000716",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000716 s (more than the time in progress where calls overlap); question:pod/My active medications"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/stage/scenario.close",
+      "unit": "s",
+      "value": 0.000527,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000527-0.000527",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000527 s (more than the time in progress where calls overlap); scenario.close"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/graph.quadsvisited",
+      "unit": "{count}",
+      "value": 16549,
+      "kind": "cost",
+      "extra": "probed run; graph.quadsVisited"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/scenario.open.graph.quadsvisited",
+      "unit": "{count}",
+      "value": 16543,
+      "kind": "cost",
+      "extra": "probed run; scenario.open.graph.quadsVisited"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/graph.scans",
+      "unit": "{count}",
+      "value": 9,
+      "kind": "cost",
+      "extra": "probed run; graph.scans"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/scenario.open.graph.scans",
+      "unit": "{count}",
+      "value": 8,
+      "kind": "cost",
+      "extra": "probed run; scenario.open.graph.scans"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/scenario.first-read.graph.quadsvisited",
+      "unit": "{count}",
+      "value": 6,
+      "kind": "cost",
+      "extra": "probed run; scenario.first-read.graph.quadsVisited"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/components.resolved",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; components.resolved"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/scenario.first-read.graph.scans",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; scenario.first-read.graph.scans"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/scenario.open.store.queries",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; scenario.open.store.queries"
+    },
+    {
+      "name": "reopen-first-answer-synthea-10y/count/store.queries",
+      "unit": "{count}",
+      "value": 1,
+      "kind": "cost",
+      "extra": "probed run; store.queries"
+    },
+    {
+      "name": "question-page-synthea-10y/total",
+      "unit": "s",
+      "value": 0.024557,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.022631-0.024814",
+      "extra": "16 questions, a page of 20 each, from pod.db; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/rss",
+      "unit": "By",
+      "value": 132841472,
+      "kind": "clock",
+      "samples": 3,
+      "range": "132259840-143912960",
+      "extra": "after a first read, before the pages; unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/peak-rss",
+      "unit": "By",
+      "value": 142483456,
+      "kind": "clock",
+      "samples": 3,
+      "range": "139132928-153743360",
+      "extra": "unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-lab-results",
+      "unit": "s",
+      "value": 0.000553,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000547-0.000603",
+      "extra": "askPage(pod/My lab results, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-medication-history",
+      "unit": "s",
+      "value": 0.000728,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000712-0.000748",
+      "extra": "askPage(pod/My medication history, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-condition-history",
+      "unit": "s",
+      "value": 0.000369,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000359-0.000391",
+      "extra": "askPage(pod/My condition history, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-active-conditions",
+      "unit": "s",
+      "value": 0.000033,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000029-0.000033",
+      "extra": "askPage(pod/My active conditions, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-active-medications",
+      "unit": "s",
+      "value": 0.000701,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000686-0.000742",
+      "extra": "askPage(pod/My active medications, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-active-allergies",
+      "unit": "s",
+      "value": 0.000458,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000448-0.000481",
+      "extra": "askPage(pod/My active allergies, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-immunizations",
+      "unit": "s",
+      "value": 0.000144,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000138-0.000147",
+      "extra": "askPage(pod/My immunizations, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-procedures",
+      "unit": "s",
+      "value": 0.000314,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000276-0.000318",
+      "extra": "askPage(pod/My procedures, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-genetic-variants",
+      "unit": "s",
+      "value": 0.000238,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000226-0.000269",
+      "extra": "askPage(pod/My genetic variants, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-my-reports-notes-and-documents",
+      "unit": "s",
+      "value": 0.000718,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000705-0.000780",
+      "extra": "askPage(pod/My reports, notes and documents, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-what-each-import-brought-in",
+      "unit": "s",
+      "value": 0.008456,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.007438-0.008559",
+      "extra": "askPage(pod/What each import brought in, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-what-everything-is-called",
+      "unit": "s",
+      "value": 0.005924,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.005349-0.006252",
+      "extra": "askPage(pod/What everything is called, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-how-many-of-each-kind",
+      "unit": "s",
+      "value": 0.001312,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.001182-0.001356",
+      "extra": "askPage(pod/How many of each kind, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-which-reference-versions-are-current",
+      "unit": "s",
+      "value": 0.000171,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000171-0.000176",
+      "extra": "askPage(pod/Which reference versions are current, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-pod-the-person-this-pod-is-about",
+      "unit": "s",
+      "value": 0.000909,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.000896-0.000924",
+      "extra": "askPage(pod/The person this pod is about, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/question-profile-what-needs-review",
+      "unit": "s",
+      "value": 0.003357,
+      "kind": "clock",
+      "samples": 3,
+      "range": "0.003302-0.003378",
+      "extra": "askPage(profile/What needs review, size 20); unprobed, median of 3 runs, each in a process of its own; dataset=synthea-10y sha256=2703dc1e7e920fa1e45d16c58f8338ef13b3cc1916ee40ffa461112d54dce5de records=647"
+    },
+    {
+      "name": "question-page-synthea-10y/probed-total",
+      "unit": "s",
+      "value": 0.025793,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.025793-0.025793",
+      "extra": "probed run: some work runs one at a time, so these are slower than the same steps unprobed"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-what-each-import-brought-in",
+      "unit": "s",
+      "value": 0.009029,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.009029-0.009029",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.009029 s (more than the time in progress where calls overlap); question.page:pod/What each import brought in"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-what-everything-is-called",
+      "unit": "s",
+      "value": 0.006226,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.006226-0.006226",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.006226 s (more than the time in progress where calls overlap); question.page:pod/What everything is called"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-profile-what-needs-review",
+      "unit": "s",
+      "value": 0.003385,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.003385-0.003385",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.003385 s (more than the time in progress where calls overlap); question.page:profile/What needs review"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-how-many-of-each-kind",
+      "unit": "s",
+      "value": 0.00131,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.001310-0.001310",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.001310 s (more than the time in progress where calls overlap); question.page:pod/How many of each kind"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-the-person-this-pod-is-about",
+      "unit": "s",
+      "value": 0.000872,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000872-0.000872",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000872 s (more than the time in progress where calls overlap); question.page:pod/The person this pod is about"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-reports-notes-and-documents",
+      "unit": "s",
+      "value": 0.00079,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000790-0.000790",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000790 s (more than the time in progress where calls overlap); question.page:pod/My reports, notes and documents"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-active-medications",
+      "unit": "s",
+      "value": 0.000731,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000731-0.000731",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000731 s (more than the time in progress where calls overlap); question.page:pod/My active medications"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-medication-history",
+      "unit": "s",
+      "value": 0.000719,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000719-0.000719",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000719 s (more than the time in progress where calls overlap); question.page:pod/My medication history"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-lab-results",
+      "unit": "s",
+      "value": 0.000514,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000514-0.000514",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000514 s (more than the time in progress where calls overlap); question.page:pod/My lab results"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-active-allergies",
+      "unit": "s",
+      "value": 0.000463,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000463-0.000463",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000463 s (more than the time in progress where calls overlap); question.page:pod/My active allergies"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-condition-history",
+      "unit": "s",
+      "value": 0.000397,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000397-0.000397",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000397 s (more than the time in progress where calls overlap); question.page:pod/My condition history"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-procedures",
+      "unit": "s",
+      "value": 0.000283,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000283-0.000283",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000283 s (more than the time in progress where calls overlap); question.page:pod/My procedures"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-genetic-variants",
+      "unit": "s",
+      "value": 0.000229,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000229-0.000229",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000229 s (more than the time in progress where calls overlap); question.page:pod/My genetic variants"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-immunizations",
+      "unit": "s",
+      "value": 0.000201,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000201-0.000201",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000201 s (more than the time in progress where calls overlap); question.page:pod/My immunizations"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-which-reference-versions-are-current",
+      "unit": "s",
+      "value": 0.00019,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000190-0.000190",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000190 s (more than the time in progress where calls overlap); question.page:pod/Which reference versions are current"
+    },
+    {
+      "name": "question-page-synthea-10y/stage/question.page-pod-my-active-conditions",
+      "unit": "s",
+      "value": 0.000031,
+      "kind": "clock",
+      "samples": 1,
+      "range": "0.000031-0.000031",
+      "extra": "probed run; the time some call of it was in progress, inclusive of the spans inside it; 1 calls whose own times sum to 0.000031 s (more than the time in progress where calls overlap); question.page:pod/My active conditions"
+    }
+  ]
+}
