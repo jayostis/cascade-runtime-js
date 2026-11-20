@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { tablesBeside } from "cascade-runtime";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 import { type Loaded } from "./perf-floor.js";
+import { type FileOpsRun } from "./perf-scenarios/file-ops.js";
 import { explainSpan } from "./perf-glossary.js";
 import { type DatasetId } from "./perf-data.js";
 import { type Scenario } from "./perf-plan.js";
@@ -32,7 +33,8 @@ export interface Job {
     | "reopen"
     | "question-page"
     | "floor"
-    | "stored";
+    | "stored"
+    | "file-ops";
   /** For `again`: how the document being imported differs from the first one. */
   readonly again?: Again;
   /** The scenario whose rows and trace this run is, where it is not the one the kind names: a reopen is also the question after an update. */
@@ -64,6 +66,8 @@ export interface Measured {
   readonly added?: Added;
   /** What the floor loaded and how long each stage took, for the floor scenario. */
   readonly floor?: Loaded;
+  /** What the file micro-bench timed, for that scenario. */
+  readonly fileOps?: FileOpsRun;
   /** What the pod holds, counted, for the stored scenario. */
   readonly stored?: Stored;
   readonly seen?: Tabulated;

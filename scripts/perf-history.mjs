@@ -15,10 +15,16 @@ import { fileURLToPath } from "node:url";
 const HEADLINE =
   /\/(total|open|import|first-screen|first-read|second-read|close|peak-rss)$/;
 const FLOOR_STAGE = /^floor-[^/]+\/(parse|flatten|insert)$/;
+/** What one small file costs: each operation at 16 in flight, and the whole written as one file, for each state of the scanner. */
+const FILE_OPS =
+  /^file-ops-[^/]+\/(?:(?:absent-check|create|create-rename|full-path)\/in-flight-16|one-file\/whole)$/;
 
 export function forHistory(file, { stages = 6 } = {}) {
   const keep = file.results.filter(
-    (row) => HEADLINE.test(row.name) || FLOOR_STAGE.test(row.name),
+    (row) =>
+      HEADLINE.test(row.name) ||
+      FLOOR_STAGE.test(row.name) ||
+      FILE_OPS.test(row.name),
   );
   const slowest = new Map();
   for (const kind of ["stage", "self"])

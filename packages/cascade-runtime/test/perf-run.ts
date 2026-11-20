@@ -30,6 +30,7 @@ import {
 } from "./perf-rows.js";
 import { againRows, SCENARIO_OF } from "./perf-scenarios/after-first-import.js";
 import { closeProbedRows, closeRows } from "./perf-scenarios/close.js";
+import { fileOpsAt } from "./perf-scenarios/file-ops.js";
 import { floorAt } from "./perf-scenarios/floor.js";
 import {
   freshProbedRows,
@@ -438,7 +439,24 @@ export async function perfFile(
   try {
     const results: Row[] = [];
     // A plan of the floor alone has no pod to open, so no scenario runs, and no record is loaded for the pod's scenarios.
-    const only = [...plan.scenarios].every((scenario) => scenario === "floor");
+    const only = [...plan.scenarios].every(
+      (scenario) => scenario === "floor" || scenario === "file-ops",
+    );
+    // What one file costs belongs to no size: once, first, before any import has used the machine.
+    if (plan.scenarios.has("file-ops")) {
+      const kept = async (rows: readonly Row[]): Promise<void> =>
+        partial({
+          env: envOf(plan),
+          commit: await commits(),
+          results: explained([...results, ...rows]).rows,
+        });
+      results.push(...(await fileOpsAt(plan, work, log, { keep: kept })));
+      await partial({
+        env: envOf(plan),
+        commit: await commits(),
+        results: explained(results).rows,
+      });
+    }
     for (const size of plan.sizes) {
       const modes: boolean[] =
         plan.encryption === "plain"

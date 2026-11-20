@@ -35,6 +35,22 @@ name: perf
 #   `reopen-after-kill` and `question-after-update` scenarios), each on a copy of the pod the first import left: /perf/, /perf/runs/, the
 #   summary and the comment have a line for each under "What people do after the first import".
 # - A hand-started run can name one scenario (`fresh-first-screen,floor` is the import and its floor) and one size.
+# - Linux is not the only system a person runs this on. A push to main, the nightly run and a hand-started run that asks for
+#   `windows`, `macos` or `all` systems also run the same per-build scenario on a GitHub-hosted Windows runner and a macOS one
+#   (`perf-systems`; `macos-latest` is Apple silicon), each keeping its own file at
+#   runtime/YYYY/MM/DD/<run>-<sha7>-<event>-<system>.json and its own series on the history page, never mixed with Linux's:
+#   the times of one system are not read against another's. They are not run on a pull request, which waits for its slowest
+#   check: these legs take longer than the whole check does (the pages say how long each takes). They make no flame graphs,
+#   which are kept for Linux builds. They measure the per-build size only, on every kind of run: the large size is Linux's.
+#   The schedule has not yet run this workflow (its API history has no such run), so the nightly path of these legs is untried.
+# - A push, the nightly run and a hand-started run of everything also time what one small file costs (the `file-ops`
+#   scenario, `--file-ops`): asking whether it is there, creating it, renaming it, what the folder host does for a file, and one
+#   file for all of them. A pull request does not run it. A hand-started run with `scanner` set also does it on the Windows leg
+#   with Windows Defender's checking as the runner has it, with all of it on and no folder left out, and with the folder
+#   excluded (`--scanner-compare`), and puts every setting back; no other run does, as those runs would pay for it every time. It
+#   is honoured with `scenario` all only, as the file micro-bench is run with that alone. The flag refuses to run outside GitHub
+#   Actions: on a person's machine, `--scanner-folders` compares a folder Defender leaves alone with one it scans and changes
+#   nothing; it measures the file micro-bench alone (never the suite's scenarios) and no workflow runs it.
 
 on:
   push:
@@ -75,6 +91,15 @@ on:
         description: "Also run the large size"
         type: boolean
         default: false
+      scanner:
+        description: "With scenario all only: on the Windows leg, also time the file micro-bench with Windows Defender's checking as the runner has it, all on, and the folder excluded (a hosted runner only; it is changed and put back)"
+        type: boolean
+        default: false
+      systems:
+        description: "linux alone, as before, or Windows (a hosted runner), macOS (a hosted Apple silicon one) or all three; only a run on main keeps its files"
+        type: choice
+        options: [linux, all, windows, macos]
+        default: linux
 
 concurrency:
   group: perf-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -233,6 +258,8 @@ jobs:
           if [ -n "$SIZE" ] && [ "$SIZE" != per-build ]; then sizes="$SIZE"; fi
           args="--size $sizes"
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
+          # What one file costs is for a push, the nightly run and a hand-started run of everything, never for a pull request.
+          if [ "$EVENT" != pull_request ] && { [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; }; then args="$args --file-ops"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
           echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
       # Main's build: its dependencies, and the Bridge as main resolves it, which is as a push to main does (the newest build of the
@@ -369,6 +396,125 @@ jobs:
             ${{ runner.temp }}/where.md
           if-no-files-found: error
 
+  # The same per-build measurement on a hosted Windows runner and a hosted macOS one (Apple silicon: `macos-latest`), for a push
+  # to main, the nightly run and a hand-started run that asks for them, never for a pull request: a pull request waits for its
+  # slowest check, and these legs would be slower than all of them. Each leg keeps its own file and its own series; `publish`
+  # commits them. They make no flame graphs and measure no main beside the build: the comparison with main is the Linux job's.
+  # Nothing here fails on a slowdown, and a leg that fails does not stop the others or the Linux job.
+  perf-systems:
+    # No `name`: a matrix job is then called `perf-systems (windows)`, and a skipped one by its id, not by an expression nothing resolved.
+    if: ${{ github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.systems == 'linux') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        system: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.systems != 'all' && format('["{0}"]', inputs.systems) || '["windows", "macos"]') }}
+    runs-on: ${{ matrix.system == 'windows' && 'windows-latest' || 'macos-latest' }}
+    timeout-minutes: 90
+    env:
+      CASCADE_TEST_OFFLINE: "1"
+      PERF_OTHER_LOAD: "a shared hosted runner"
+    defaults:
+      run:
+        shell: bash
+        working-directory: cascade-runtime-js
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          persist-credentials: false
+      - id: tables-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: jayostis/cascade-reference-tables
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.tables-at.outputs.repository }}
+          ref: ${{ steps.tables-at.outputs.ref }}
+          path: cascade-reference-tables
+          persist-credentials: false
+      - id: kit-at
+        uses: ./cascade-runtime-js/.github/actions/depends-on
+        with:
+          repository: jayostis/cascade-starter-kit
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.kit-at.outputs.repository }}
+          ref: ${{ steps.kit-at.outputs.ref }}
+          path: cascade-starter-kit
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: cascade-runtime-js/package-lock.json
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: "true"
+      # The SQLite binding's binding.gyp sends a lock-based install to node-gyp, which finds no Visual Studio it knows on windows;
+      # the binding's prebuilt build is all the checkout needs (installed.yml does the same).
+      - run: npm ci ${{ runner.os == 'Windows' && '--ignore-scripts' || '' }}
+      - run: npm run --silent bridge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - id: what
+        env:
+          EVENT: ${{ github.event_name }}
+          SCENARIO: ${{ inputs.scenario }}
+          SIZE: ${{ inputs.size }}
+          SYSTEM: ${{ matrix.system }}
+          SCANNER: ${{ inputs.scanner }}
+        run: |
+          set -euo pipefail
+          # The per-build size only, on every kind of run: the nightly run's and `large`'s second size is measured on Linux, and has
+          # not been timed on these systems (it would run under the 90-minute limit with no figure to say how far under).
+          sizes="synthea-10y"
+          if [ -n "$SIZE" ] && [ "$SIZE" != per-build ]; then sizes="$SIZE"; fi
+          args="--size $sizes"
+          if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
+          if [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; then args="$args --file-ops"; fi
+          # Windows Defender's settings are changed, and put back, for more runs of the file micro-bench, only when a person asks, and
+          # only with every scenario: the file micro-bench runs with `all` alone, and the comparison is part of it.
+          if [ "$SYSTEM" = windows ] && [ "$SCANNER" = true ] && { [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; }; then args="$args --scanner-compare"; fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+          echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
+      - name: The performance file
+        run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json"
+      # What Defender settings the runner is left with and what it did while the comparison ran: a run that ends without its file is
+      # read from here.
+      - name: What Windows Defender did
+        if: ${{ !cancelled() && matrix.system == 'windows' && inputs.scanner && (inputs.scenario == 'all' || inputs.scenario == '') }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Get-MpComputerStatus | Format-List RealTimeProtectionEnabled, AMRunningMode, IoavProtectionEnabled, BehaviorMonitorEnabled
+          Get-MpPreference | Format-List DisableRealtimeMonitoring, DisableIOAVProtection, DisableBehaviorMonitoring, DisableScriptScanning, ExclusionPath
+          Get-MpThreatDetection | Format-List InitialDetectionTime, ProcessName, Resources
+          Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-Windows Defender/Operational'; StartTime = (Get-Date).AddMinutes(-20) } -MaxEvents 40 | Format-List TimeCreated, Id, Message
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-20); Level = 2 } -MaxEvents 20 | Format-List TimeCreated, ProviderName, Message
+      - name: The summary
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/perf.json" ]; then
+            node scripts/perf-compare.mjs summary "$RUNNER_TEMP/perf.json" --markdown >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: The rows for the history page
+        env:
+          DAY: ${{ steps.what.outputs.day }}
+        run: |
+          set -euo pipefail
+          node scripts/perf-history.mjs "$RUNNER_TEMP/perf.json" > "$RUNNER_TEMP/history.json"
+          printf '%s' "$DAY" > "$RUNNER_TEMP/day.txt"
+      # Only a leg that went through every step above leaves a file: `publish` keeps what is here and nothing of a leg that failed.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: perf-${{ matrix.system }}
+          path: |
+            ${{ runner.temp }}/perf.json
+            ${{ runner.temp }}/history.json
+            ${{ runner.temp }}/day.txt
+          if-no-files-found: error
+
   # A pull request: the file against main as the performance job measured it beside the build (the latest push to main on
   # `perf-data` only when that run gave no file), in one comment that each push updates. A
   # comment that cannot be posted (a pull request from a fork has a read-only token) is a warning, never a failure.
@@ -440,27 +586,68 @@ jobs:
   # A push to main, the nightly run and a hand-started run: the file is committed to the orphan branch `perf-data`.
   # The only job that writes to the repository, and it runs no code of this repository's: a shell script and
   # github-action-benchmark (pinned to a commit) over the artifact. A push that races another is retried.
+  # One leg for each system, one after the other (they push to the same branch): Linux's file and the two others', each under
+  # its own name and in its own series, so that no two systems are ever one series. A leg whose artifact is not there (the
+  # measurement failed, or was not asked for) keeps nothing and says so; the others go on. Linux's keep also waits for the
+  # Windows and macOS legs to end (`needs` names the whole job, not one leg of it), so it comes about 10 minutes after Linux's
+  # own measurement; only a delay.
   publish:
-    name: keep the file
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-    needs: perf
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    needs: [perf, perf-systems]
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - {
+              system: linux,
+              artifact: perf,
+              suffix: "",
+              series: "Runtime performance",
+            }
+          - {
+              system: windows,
+              artifact: perf-windows,
+              suffix: "-windows",
+              series: "Runtime performance (Windows)",
+            }
+          - {
+              system: macos,
+              artifact: perf-macos,
+              suffix: "-macos",
+              series: "Runtime performance (macOS)",
+            }
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # Linux's file is kept only when its job went through every step, as before: its artifact is uploaded even from a run
+      # that failed late, with the file as far as it got.
       - uses: actions/download-artifact@v7
+        id: got
+        if: ${{ matrix.system != 'linux' || needs.perf.result == 'success' }}
+        # Only a Windows or macOS leg may have nothing to download; a Linux file that cannot be fetched fails the leg, so that the
+        # push does not go on with latest-push.txt unchanged.
+        continue-on-error: ${{ matrix.system != 'linux' }}
         with:
-          name: perf
+          name: ${{ matrix.artifact }}
           path: file
+      - name: Nothing to keep
+        if: ${{ steps.got.outcome != 'success' }}
+        run: echo "::notice::no performance file of ${{ matrix.system }} to keep from this run"
       - name: Commit it to perf-data
+        if: ${{ steps.got.outcome == 'success' }}
         shell: bash
         env:
           TOKEN: ${{ github.token }}
-          DAY: ${{ needs.perf.outputs.day }}
+          # The day is decided once by the measuring job, and kept with the file of a Windows or macOS leg.
+          DAY: ${{ matrix.system == 'linux' && needs.perf.outputs.day || '' }}
+          SUFFIX: ${{ matrix.suffix }}
         run: |
           set -euo pipefail
           sha7="${GITHUB_SHA::7}"
-          path="runtime/${DAY}/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}.json"
+          [ -n "$DAY" ] || DAY=$(cat file/day.txt)
+          path="runtime/${DAY}/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}${SUFFIX}.json"
           remote="https://github.com/${GITHUB_REPOSITORY}"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
           echo "::add-mask::$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
@@ -479,15 +666,16 @@ jobs:
             mkdir -p "$(dirname "$path")"
             cp ../file/perf.json "$path"
             git add "$path"
-            # A push to main names its file for the pull requests; a push that finished after a newer one does not.
-            if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # A push to main names its file for the pull requests; a push that finished after a newer one does not. Only
+            # Linux's file is one a pull request is compared with: a pull request is measured on Linux.
+            if [ "$GITHUB_EVENT_NAME" = push ] && [ -z "$SUFFIX" ]; then
               current=$(cat runtime/latest-push.txt 2>/dev/null || true)
               if [ -z "$current" ] || [[ ! "$path" < "$current" ]]; then
                 printf '%s\n' "$path" > runtime/latest-push.txt
                 git add runtime/latest-push.txt
               fi
             fi
-            git commit -q -m "runtime ${sha7}: ${GITHUB_EVENT_NAME} run ${GITHUB_RUN_ID}"
+            git commit -q -m "runtime ${sha7}: ${GITHUB_EVENT_NAME} run ${GITHUB_RUN_ID}${SUFFIX}"
             if git -c http.extraheader="$auth" push -q origin HEAD:perf-data; then
               echo "kept as ${path}" >> "$GITHUB_STEP_SUMMARY"
               exit 0
@@ -503,22 +691,28 @@ jobs:
       # a chart for each measurement over the commits, whose hover shows each row's `extra` (its plain meaning, the data set
       # and the range). The checkout is the data branch alone, so no code of this repository runs here. Nothing alerts:
       # there is no threshold, no comment and nothing fails on a slowdown.
+      # Each system is a series of its own: the action keeps the history under the name it is given, so Windows's rows are never
+      # drawn in a chart of Linux's.
       - name: Keep the rows where the checkout will not clear them
+        if: ${{ steps.got.outcome == 'success' }}
         run: cp file/history.json "$RUNNER_TEMP/history.json"
       # No credential stays on disk while the third-party action runs: it pushes with the `github-token` it is given.
       - uses: actions/checkout@v7
+        if: ${{ steps.got.outcome == 'success' }}
         with:
           ref: perf-data
           persist-credentials: false
       # The action fetches `perf-data` into a branch of that name, which git refuses while it is the branch checked out.
       - name: Leave the data branch for the action to fetch
+        if: ${{ steps.got.outcome == 'success' }}
         run: git checkout -q --detach
       # `ref` names the commit the run measured: a schedule or hand-started run has no head commit, and the action would
       # otherwise record whatever main is when this job publishes.
       - uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+        if: ${{ steps.got.outcome == 'success' }}
         with:
           ref: ${{ github.sha }}
-          name: Runtime performance
+          name: ${{ matrix.series }}
           tool: customSmallerIsBetter
           output-file-path: ${{ runner.temp }}/history.json
           gh-pages-branch: perf-data
