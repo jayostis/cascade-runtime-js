@@ -829,7 +829,10 @@ function scannerFacts(system) {
     );
   for (const [key, text] of [
     ["count/scanner-switch-off-allowed", "switch its live checking off"],
-    ["count/scanner-switch-on-allowed", "switch all its checking on"],
+    [
+      "count/scanner-switch-on-allowed",
+      "switch its live, file and script checking on",
+    ],
     ["count/scanner-exclusion-allowed", "exclude the folder"],
   ])
     if (system.states["as-is"]?.[key] === 0)
@@ -906,8 +909,8 @@ function fileOpsSection(systems) {
       const states = [
         ["as-is", "As the runner has it"],
         ["off", "Live checking switched off"],
-        ["on", "All checking switched on, no folder left out"],
-        ["excluded", "All checking on, the folder excluded"],
+        ["on", "Live, file and script checking on, no folder left out"],
+        ["excluded", "Live, file and script checking on, the folder excluded"],
       ].filter(([state]) => system.states[state] !== undefined);
       const timeOf = (state, key) => {
         const value = system.states[state][key];

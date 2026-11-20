@@ -147,8 +147,8 @@ export async function measureFileOps(job: Job): Promise<Measured> {
 }
 
 /**
- * Whether the machine's virus scanner was as it is, with its live checking switched off, with all its checking on and none
- * of the runner's excluded folders, or with all of it on and the folder excluded.
+ * Whether the machine's virus scanner was as it is, with its live checking switched off, with its live, file and script checking on and none
+ * of the runner's excluded folders, or with those on and the folder excluded.
  */
 export type ScannerState = "as-is" | "off" | "on" | "excluded";
 
@@ -353,7 +353,7 @@ export function restoringOnSignals(
 
 /**
  * The micro-bench's rows: the machine as it is and, when the plan compares and the machine has a scanner, with its live
- * checking switched off (where it was on), with all its checking on and the runner's excluded folders taken off, and with the
+ * checking switched off (where it was on), with its live, file and script checking on and the runner's excluded folders taken off, and with the
  * folder excluded. What the scanner is set to is recorded for each, and whatever was changed is put back and checked, whether or
  * not a measurement fails or the process is stopped.
  */
@@ -430,12 +430,13 @@ export async function fileOpsAt(
   );
   if (!plan.scannerCompare) return rows;
 
-  // Everything the scanner does is on, and nothing is left alone.
+  // Every check of a file is on, and nothing is left alone. Behaviour monitoring stays as it was: with it on, Defender ended the
+  // process that changed its settings and started another (Behavior:Win32/NodeSuspProcLaunch.D, run 44824490994), and it checks
+  // what a program does, not the files it makes.
   const scanning: ScannerSettings = {
     ...start,
     realtime: true,
     fileOpening: true,
-    behaviour: true,
     scripts: true,
     excludedFolders: [],
   };
