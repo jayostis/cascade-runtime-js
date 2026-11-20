@@ -295,7 +295,7 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `bridge.query.rows` | How many rows the Bridge's queries returned in all. |
 | `bridge.workers` | How many helper processes the Bridge used. |
 | `bridge.package.found` | Whether the Bridge's package was found, 1 if so. |
-| `built.lines.total` | How many lines the import built for the pod's files, counted each time a file is built. It is more than the statements the pod's files hold (the stored scenario's statements/all) because some files are built more than once: measured at 647 source entries, it is 21,631 lines against 19,636 statements, of which 1,775 are each record's file being built twice (once to write it and once as the copy held for its revision) and 220 are files a later build replaced. That the large size has the same cause is likely and not measured. |
+| `built.lines.total` | How many lines the import built for the pod's files, counted each time a file is built. It is more than the statements the pod's files hold (the stored scenario's statements/all) because some files are built more than once: a file a later build replaced is built again, and some files are rebuilt on purpose. A record's file is built once, and the copy held for its revision is the bytes written. That the large size has the same cause is likely and not measured. |
 | `built.lines.written` | How many answer-file lines were written. |
 | `built.lines.sorted` | How many answer-file lines had to be sorted. |
 | `view.quadsmoved` | How many facts were set aside and put back while answer files were rebuilt. |

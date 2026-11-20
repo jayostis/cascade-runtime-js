@@ -312,7 +312,7 @@ export const FLOOR_NOTE =
 
 /** How to read the table of what an import handled. */
 export const THROUGHPUT_NOTE =
-  "Counts are exact and come from the probed run of the same import; answer-file lines are the lines the import built for the pod's files, counted each time a file is built: more than the statements the files hold, because some files are built more than once (at 647 source entries, 21,631 lines against 19,636 statements). A rate is the run's whole count divided by the time of the phase that writes it, from the unprobed runs. It is shown only for saving, the phase that writes the files and their lines.";
+  "Counts are exact and come from the probed run of the same import; answer-file lines are the lines the import built for the pod's files, counted each time a file is built: more than the statements the files hold, because a file a later build replaced is built again and some files are rebuilt on purpose. A rate is the run's whole count divided by the time of the phase that writes it, from the unprobed runs. It is shown only for saving, the phase that writes the files and their lines. The lines rate follows the lines built, so a change that builds fewer lines for the same work shows a lower rate.";
 
 export const THROUGHPUT_HEAD = [
   "Source entries",

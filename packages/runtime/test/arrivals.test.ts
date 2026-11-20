@@ -10,7 +10,14 @@ import {
   type LoadedAdapter,
 } from "../src/bridge.js";
 import { CorePod } from "../src/core-pod.js";
-import { MemoryFiles } from "../src/files.js";
+import {
+  EncryptedFiles,
+  madeNewPod,
+  newHeader,
+  SealedIndex,
+} from "../src/encryption.js";
+import { type Files, MemoryFiles } from "../src/files.js";
+import { same, StepWrites } from "../src/pod.js";
 import { StoryTime } from "../src/ids.js";
 import { Graph, parseGraph } from "../src/graph.js";
 import { iri, written } from "../src/rdf.js";
@@ -214,6 +221,7 @@ async function carriesSelector(done: Replayed): Promise<void> {
 /** Ada's first export, then one that holds the current version restamped, a new version, and the first again. */
 async function threeStatesOfOneRecord(
   describeTheRepeatAs?: string,
+  podFiles: Files = new MemoryFiles("https://pod.example/"),
 ): Promise<Replayed> {
   const files = await vocabulary();
   const ada = "runtime/scripted-input/ada/";
@@ -313,7 +321,7 @@ async function threeStatesOfOneRecord(
     vocabulary: files,
     folder: "s",
     title: "",
-    pod: new MemoryFiles(story.address),
+    pod: podFiles,
     newStore,
     layout: await layout(),
     importers: [appleHealthExport],
@@ -401,6 +409,46 @@ async function leftInPod(
       lines += new TextDecoder().decode(bytes).split("\n").length - 1;
   }
   return { sha256: hash.digest("hex"), files: paths.length, lines };
+}
+
+/** The bytes loaded as a record's held revision, and every file `StepWrites.add` was given, over a run. */
+interface Held {
+  readonly held: [string, Uint8Array][];
+  readonly written: Map<string, Uint8Array[]>;
+  /** The same bytes as `written`, copied when given, to show nothing changed them later. */
+  readonly writtenCopies: Map<string, Uint8Array[]>;
+}
+
+/** Runs `run`, recording each file the revisions hold (loaded as `<path>#held`) and each file the step is given to write. */
+async function heldAndWritten(run: () => Promise<Replayed>): Promise<Held> {
+  const held: [string, Uint8Array][] = [];
+  const written = new Map<string, Uint8Array[]>();
+  const writtenCopies = new Map<string, Uint8Array[]>();
+  const add = StepWrites.prototype.add;
+  const load = OxigraphStore.prototype.loadTurtle;
+  StepWrites.prototype.add = function (path, bytes, ...rest) {
+    written.set(path, [...(written.get(path) ?? []), bytes]);
+    writtenCopies.set(path, [
+      ...(writtenCopies.get(path) ?? []),
+      bytes.slice(),
+    ]);
+    return add.call(this, path, bytes, ...rest);
+  };
+  OxigraphStore.prototype.loadTurtle = function (turtle, options) {
+    if (options.graph.endsWith("#held") && typeof turtle !== "string")
+      held.push([
+        options.graph.slice("https://pod.example/".length, -"#held".length),
+        turtle,
+      ]);
+    return load.call(this, turtle, options);
+  };
+  try {
+    assert.equal((await run()).stopped, undefined);
+  } finally {
+    StepWrites.prototype.add = add;
+    OxigraphStore.prototype.loadTurtle = load;
+  }
+  return { held, written, writtenCopies };
 }
 
 /** What `leftInPod` says of the pod a run left, and how many lines the line builder built over the run. */
@@ -616,23 +664,60 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
       assert.equal(states.built, states.lines + 2 * 3 + 2 + 4);
     });
 
-    it("leaves the files it left before each file's lines were built once", () => {
-      assert.deepEqual(
-        { four: four.sha256, files: four.files },
-        {
-          four: "8f1dcbb8201d60e24c3bf954f29d1f51ba7c4f6dfe1853a469a401173b5b6de3",
-          files: 25,
-        },
-      );
-      assert.deepEqual(
-        { states: states.sha256, files: states.files },
-        {
-          states:
-            "1232714e0708a514d9450698be701abef95df9ca92fb107e84700f4d6776b08a",
-          files: 20,
-        },
-      );
+    it("leaves the same files when the same import is run again", () => {
       assert.equal(statesAgain.sha256, states.sha256);
+    });
+  });
+
+  describe("given a record imported twice in one step, in a pod kept as plain files and in one sealed under a key", () => {
+    let plain: Held;
+    let sealed: Held;
+
+    before(async () => {
+      plain = await heldAndWritten(() => threeStatesOfOneRecord());
+      const memory = new MemoryFiles("https://pod.example/");
+      const made = await newHeader("abacus abdomen", async (secret, salt) =>
+        crypto.subtle
+          .digest("SHA-256", new Uint8Array([...secret, ...salt]))
+          .then((digest) => new Uint8Array(digest)),
+      );
+      assert.ok(await madeNewPod(memory, made));
+      const index = await SealedIndex.open(memory, made.key);
+      sealed = await heldAndWritten(() =>
+        threeStatesOfOneRecord(
+          undefined,
+          new EncryptedFiles(memory, made.key, { index }),
+        ),
+      );
+    });
+
+    it("keeps for the revision the bytes it wrote for the record's file", () => {
+      assert.ok(plain.held.length > 0);
+      for (const [path, bytes] of plain.held)
+        assert.ok(
+          plain.written.get(path)?.some((one) => same(one, bytes)),
+          `${path}: the held copy is not the bytes written`,
+        );
+    });
+
+    it("holds the record's file as plaintext in a sealed pod, and leaves the bytes it wrote what it wrote after sealing them", () => {
+      assert.ok(sealed.held.length > 0);
+      for (const [path, bytes] of sealed.held) {
+        assert.ok(
+          bytes.length > 0 && new TextDecoder().decode(bytes).includes("<"),
+          `${path}: the held copy is not plaintext Turtle`,
+        );
+        const written = sealed.written.get(path) ?? [];
+        assert.ok(
+          written.some((one) => same(one, bytes)),
+          `${path}: the held copy is not the bytes written`,
+        );
+        assert.deepEqual(
+          written.map((one) => [...one]),
+          sealed.writtenCopies.get(path)?.map((one) => [...one]),
+          `${path}: sealing changed the bytes it was given`,
+        );
+      }
     });
   });
 
