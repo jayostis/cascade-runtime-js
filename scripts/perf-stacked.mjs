@@ -861,6 +861,24 @@ function scannerSentences(system, linux) {
     out.push(
       `At its fastest here a file took ${micro(best)} to create, ${timesOf(best / linuxAt)} what it takes on Linux (${micro(linuxAt)}).`,
     );
+  // What the checking itself costs: the same operation with it on and with it off, whichever of the two the runner came as.
+  const started = own["count/scanner-realtime-on"];
+  const withScan = started === 0 ? on?.[at] : own[at];
+  const without = started === 0 ? own[at] : off?.[at];
+  if (withScan !== undefined && without !== undefined) {
+    const ratio = withScan / without;
+    const shown =
+      ratio >= 1
+        ? `${timesOf(ratio)} as long as with it off`
+        : `${timesOf(1 / ratio)} faster than with it off`;
+    out.push(
+      ratio < 1.25
+        ? `So Windows Defender's checking is not what makes a file dear on Windows: with the checking on, creating a file took ${shown}.`
+        : ratio < 2
+          ? `So Windows Defender's checking is part of what makes a file dear on Windows, not all of it: with the checking on, creating a file took ${shown}.`
+          : `So Windows Defender's checking is a large part of what makes a file dear on Windows: with the checking on, creating a file took ${shown}.`,
+    );
+  }
   return out;
 }
 
@@ -1036,7 +1054,8 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
 <p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
 <p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (records, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p>
-<p>Charts "on Windows" and "on macOS" are the same measurement on those systems' own GitHub-hosted machines, drawn from those builds alone: a time on one system is never plotted in a column of another, because the machines differ in processor, disk and file system, and the times only read against their own system's earlier ones. Those two are measured when a change is merged to main and every night, not on every pull request, so they have fewer columns. What the systems cost per file, and whether Windows Defender is the reason a file is dearer on Windows, is under the charts.</p></details>
+<p>Charts "on Windows" and "on macOS" are the same measurement on those systems' own GitHub-hosted machines, drawn from those builds alone: a time on one system is never plotted in a column of another, because the machines differ in processor, disk and file system, and the times only read against their own system's earlier ones. Those two are measured when a change is merged to main and every night, not on every pull request, so they have fewer columns. What the systems cost per file, and whether Windows Defender is the reason a file is dearer on Windows, is under the charts.</p>
+<p>Why the two are not measured on every pull request: a pull request is shown only when its slowest check is done. A Windows run took about 10 minutes and a macOS run about 3 (November 2026, a hosted runner each), against about 9 minutes for the slowest check, so the Windows run would have become the slowest check of every pull request. They are measured on the main branch and by hand, and a hand-started run of any branch can name them.</p></details>
 <p class="toc">${[...titled.map((chart) => `<a href="#${esc(chart.id ?? chart.key)}">${esc(chart.title)}</a><br>`), ...(fileOps.length === 0 ? [] : ['<a href="#file-ops">What one file costs on each operating system</a><br>'])].join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
 ${fileOpsSection(fileOps)}
