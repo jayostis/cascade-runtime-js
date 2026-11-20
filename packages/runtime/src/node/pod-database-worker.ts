@@ -9,7 +9,7 @@ import {
 
 const { path, whole, profile } = workerData as WholeBuildJob;
 const { key, ...build } = whole;
-const steps: [string, number][] = [];
+const steps: [string, number, number][] = [];
 /** Times each step of the build only when the caller is probing: a build that is not goes as it always did. */
 const timedStep: BuildStep | undefined = profile
   ? (name, run) => {
@@ -17,7 +17,11 @@ const timedStep: BuildStep | undefined = profile
       try {
         run();
       } finally {
-        steps.push([name, performance.now() - started]);
+        steps.push([
+          name,
+          performance.now() - started,
+          performance.timeOrigin + started,
+        ]);
       }
     }
   : undefined;
@@ -40,7 +44,11 @@ try {
     const started = performance.now();
     db.close();
     if (profile)
-      steps.push(["pod-database.build.close", performance.now() - started]);
+      steps.push([
+        "pod-database.build.close",
+        performance.now() - started,
+        performance.timeOrigin + started,
+      ]);
   }
   done = { steps };
 } catch (error) {

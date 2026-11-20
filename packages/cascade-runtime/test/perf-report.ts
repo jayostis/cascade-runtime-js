@@ -2,7 +2,17 @@ import "./offline.js";
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { availableParallelism, cpus, release, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -11,7 +21,8 @@ import { gunzipSync } from "node:zlib";
 import { pullFiles, openPod, tablesBeside } from "cascade-runtime";
 import { componentsOf, findRoot } from "@cascade-runtime/runtime/node";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
-import { explain } from "./perf-glossary.js";
+import { explain, explainSpan } from "./perf-glossary.js";
+import { chromeTrace, selfTimes } from "./perf-trace.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
 import {
   answersBeside,
@@ -25,12 +36,16 @@ import {
  * bench/result.schema.json), so one reader and one comparison serve every repository.
  *
  * Run it as `npm run perf -- [--scenario fresh-first-screen,...] [--size synthea-10y,...] [--encryption plain|encrypted|both]
- * [--repeats 3] [--no-probe] [--out file]`.
+ * [--repeats 3] [--no-probe] [--out file] [--profiles folder [--no-cpu-profile]]`.
  *
  * Two kinds of run, never mixed: the headline rows (`<scenario>/total` and the rest that are not under `stage/` or
  * `count/`) come from UNPROBED runs, each in a process of its own, a plain `performance.now()` around each step, repeated
  * (median, range, samples); the stage and count rows come from ONE separate PROBED run, which times some work one at a
  * time and so is slower than a real run: its stages are for finding where time goes, never for adding up to a total.
+ *
+ * With `--profiles`, the folder also gets, for each scenario, a trace of the probed run (`<scenario>-<size>.trace.json`, every
+ * call as a Chrome trace event) and a CPU profile of one more, unprobed run (`<scenario>-<size>.cpuprofile`, which node
+ * writes), and `flame.json` that lists them with the steps whose own time was longest. speedscope opens both.
  */
 
 /** Each scenario's fixed id: the first part of every row's name. */
@@ -273,6 +288,8 @@ interface Job {
   readonly dataset: DatasetId;
   readonly encrypted: boolean;
   readonly probed: boolean;
+  /** Where a probed run writes the trace of each scenario it ran. */
+  readonly profiles?: string;
   readonly folder: string;
   readonly claim: readonly string[];
   readonly out: string;
@@ -290,7 +307,32 @@ export interface Measured {
   readonly seen?: Tabulated;
   /** The close alone, for a fresh run: its own probe. */
   readonly closeSeen?: Tabulated;
+  /** The traces a probed run wrote. */
+  readonly traces?: readonly TraceNote[];
 }
+
+/** A trace file a probed run wrote, and what is worth saying of it without opening it. */
+export interface TraceNote {
+  readonly scenario: Scenario;
+  readonly dataset: DatasetId;
+  readonly encrypted: boolean;
+  readonly file: string;
+  readonly bytes: number;
+  /** Calls the probe saw, and calls the file draws. */
+  readonly calls: number;
+  readonly drawn: number;
+  /** Calls shorter than this are not drawn, in milliseconds; 0 when all are. */
+  readonly shortestMs: number;
+  readonly top: readonly {
+    name: string;
+    selfMs: number;
+    calls: number;
+    says?: string;
+  }[];
+}
+
+/** The most own time a trace's top list names. */
+const TOP = 10;
 
 export interface Tabulated {
   /** Each span's calls, the sum of their own times (`ms`) and the time some call of it was in progress (`wallMs`). */
@@ -299,14 +341,23 @@ export interface Tabulated {
     calls: number;
     ms: number;
     wallMs: number;
+    /** The time some call of it was in progress with none of the spans inside it in progress; only for a traced run. */
+    selfWallMs?: number;
   }[];
   readonly counts: Readonly<Record<string, number>>;
 }
 
 export function tabulated(seen: Seen): Tabulated {
+  const selves = seen.events === undefined ? undefined : selfTimes(seen.events);
   return {
     spans: [...seen.spans]
-      .map(([name, { calls, ms, wallMs }]) => ({ name, calls, ms, wallMs }))
+      .map(([name, { calls, ms, wallMs }]) => ({
+        name,
+        calls,
+        ms,
+        wallMs,
+        ...(selves?.has(name) && { selfWallMs: selves.get(name) as number }),
+      }))
       .sort((a, b) => b.wallMs - a.wallMs),
     counts: Object.fromEntries(
       [...seen.counts].sort(([a], [b]) => (a < b ? -1 : 1)),
@@ -325,13 +376,73 @@ async function openedAt(folder: string, encrypted: boolean) {
   return openFolderPod(parts, folder, encrypted ? { secret: SECRET } : {});
 }
 
+/** The run's own scenario's name: the first part of the names of its rows and files. */
+
+/** A scenario at a size, the first part of the names of its rows and files. */
+const nameOf = (scenario: Scenario, dataset: DatasetId, encrypted: boolean) =>
+  `${scenario}-${dataset}${encrypted ? "-encrypted" : ""}`;
+
+/** The trace of a probed run, written to `dir`, and what to say of it. */
+async function traced(
+  dir: string,
+  scenario: Scenario,
+  job: Job,
+  seen: Seen,
+  table: Tabulated,
+): Promise<TraceNote> {
+  const name = nameOf(scenario, job.dataset, job.encrypted);
+  const {
+    file,
+    seen: calls,
+    kept,
+    shortestMs,
+  } = chromeTrace(seen.events ?? [], {
+    title: `${scenario} on ${job.dataset}${job.encrypted ? ", encrypted" : ""}: the probed run`,
+    says: (span) => explainSpan(part(span)),
+  });
+  const text = JSON.stringify(file);
+  const path = `${name}.trace.json`;
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, path), text);
+  const top = [...table.spans]
+    .filter(({ selfWallMs = 0 }) => selfWallMs > 0)
+    .sort((a, b) => (b.selfWallMs ?? 0) - (a.selfWallMs ?? 0))
+    .slice(0, TOP)
+    .map(({ name: span, selfWallMs = 0, calls: count }) => {
+      const says = explainSpan(part(span));
+      return {
+        name: span,
+        selfMs: fixed(selfWallMs, 3),
+        calls: count,
+        ...(says !== undefined && { says }),
+      };
+    });
+  return {
+    scenario,
+    dataset: job.dataset,
+    encrypted: job.encrypted,
+    file: path,
+    bytes: Buffer.byteLength(text),
+    calls,
+    drawn: kept,
+    shortestMs: fixed(shortestMs, 3),
+    top,
+  };
+}
+
+/** The work as a probed run when the job is one, and its trace written where the job says. */
 async function maybeProbed<T>(
-  on: boolean,
+  job: Job,
+  scenario: Scenario,
+  notes: TraceNote[],
   work: () => Promise<T>,
 ): Promise<{ result: T; seen?: Tabulated }> {
-  if (!on) return { result: await work() };
-  const { result, seen } = await probing(work);
-  return { result, seen: tabulated(seen) };
+  if (!job.probed) return { result: await work() };
+  const { result, seen } = await probing(work, { trace: true });
+  const table = tabulated(seen);
+  if (job.profiles !== undefined)
+    notes.push(await traced(job.profiles, scenario, job, seen, table));
+  return { result, seen: table };
 }
 
 /** One scenario in this process, which is as fresh as a process is: nothing is warm that a run of the app would not have warm. */
@@ -354,62 +465,73 @@ async function measure(job: Job): Promise<Measured> {
   let rssBytes = 0;
   let seen: Tabulated | undefined;
   let closeSeen: Tabulated | undefined;
+  const notes: TraceNote[] = [];
   let pod: Awaited<ReturnType<typeof openedAt>> | undefined;
   if (job.scenario === "fresh") {
     // The harness's own copy of the record is dropped before the pod opens, so it is not in what the pod is charged.
     (data as { bundle: unknown }).bundle = undefined;
-    const body = await maybeProbed(job.probed, async () => {
-      pod = await step("open", () => openedAt(job.folder, job.encrypted));
-      const opened = pod;
-      const marks: { part: string; at: number }[] = [];
-      const done = await step("import", () =>
-        opened.import(pull as ReadonlyMap<string, Uint8Array>, {
-          claimProfiles: job.claim,
-          onProgress: ({ part: named }) => {
-            marks.push({ part: named, at: performance.now() });
-          },
-        }),
-      );
-      pull = undefined;
-      if (done.refused !== undefined)
-        throw new Error(`the import was refused: ${done.refused}`);
-      wrote = done.wrote.length;
-      const ended = performance.now();
-      marks.forEach(({ part: named, at }, index) => {
-        const next = marks[index + 1]?.at ?? ended;
-        parts[named] = (parts[named] ?? 0) + (next - at) / 1000;
-      });
-      // All together, as the kit's `asked` starts them: the questions, the tables newer than the pod's, and the profile's.
-      await step("first-screen", async () => {
-        await Promise.all([
-          opened.unheldTableVersions(),
-          opened.ask(THEN),
-          ...FIRST_SCREEN.map((question) => opened.ask(question)),
-        ]);
-      });
-    });
+    const body = await maybeProbed(
+      job,
+      "fresh-first-screen",
+      notes,
+      async () => {
+        pod = await step("open", () => openedAt(job.folder, job.encrypted));
+        const opened = pod;
+        const marks: { part: string; at: number }[] = [];
+        const done = await step("import", () =>
+          opened.import(pull as ReadonlyMap<string, Uint8Array>, {
+            claimProfiles: job.claim,
+            onProgress: ({ part: named }) => {
+              marks.push({ part: named, at: performance.now() });
+            },
+          }),
+        );
+        pull = undefined;
+        if (done.refused !== undefined)
+          throw new Error(`the import was refused: ${done.refused}`);
+        wrote = done.wrote.length;
+        const ended = performance.now();
+        marks.forEach(({ part: named, at }, index) => {
+          const next = marks[index + 1]?.at ?? ended;
+          parts[named] = (parts[named] ?? 0) + (next - at) / 1000;
+        });
+        // All together, as the kit's `asked` starts them: the questions, the tables newer than the pod's, and the profile's.
+        await step("first-screen", async () => {
+          await Promise.all([
+            opened.unheldTableVersions(),
+            opened.ask(THEN),
+            ...FIRST_SCREEN.map((question) => opened.ask(question)),
+          ]);
+        });
+      },
+    );
     seen = body.seen;
     rssBytes = process.memoryUsage.rss();
-    const closing = await maybeProbed(job.probed, () =>
+    const closing = await maybeProbed(job, "close", notes, () =>
       step("close", () => (pod as NonNullable<typeof pod>).close()),
     );
     closeSeen = closing.seen;
   } else if (job.scenario === "reopen") {
-    const body = await maybeProbed(job.probed, async () => {
-      const opened = await step("open", () =>
-        openedAt(job.folder, job.encrypted),
-      );
-      await step("first-read", () => opened.ask(FIRST_READ));
-      await step("second-read", () => opened.ask(SECOND_READ));
-      rssBytes = process.memoryUsage.rss();
-      await step("close", () => opened.close());
-    });
+    const body = await maybeProbed(
+      job,
+      "reopen-first-answer",
+      notes,
+      async () => {
+        const opened = await step("open", () =>
+          openedAt(job.folder, job.encrypted),
+        );
+        await step("first-read", () => opened.ask(FIRST_READ));
+        await step("second-read", () => opened.ask(SECOND_READ));
+        rssBytes = process.memoryUsage.rss();
+        await step("close", () => opened.close());
+      },
+    );
     seen = body.seen;
   } else {
     const opened = await openedAt(job.folder, job.encrypted);
     await opened.ask(FIRST_READ);
     rssBytes = process.memoryUsage.rss();
-    const body = await maybeProbed(job.probed, async () => {
+    const body = await maybeProbed(job, "question-page", notes, async () => {
       for (const question of PAGES) {
         const started = performance.now();
         await opened.askPage(question, { size: PAGE_SIZE });
@@ -428,23 +550,89 @@ async function measure(job: Job): Promise<Measured> {
     ...(wrote > 0 && { wrote }),
     ...(seen && { seen }),
     ...(closeSeen && { closeSeen }),
+    ...(notes.length > 0 && { traces: notes }),
   };
 }
 
 // ------------------------------------------------------------------ the parent
 
-async function child(job: Omit<Job, "out">, dir: string): Promise<Measured> {
+/** A CPU profile node wrote for one run, and those of the worker threads the run started. */
+export interface CpuNote {
+  readonly file: string;
+  readonly bytes: number;
+  readonly workers: readonly { file: string; bytes: number; role: string }[];
+}
+
+/** The most often the processor is sampled while a CPU profile is taken, in microseconds: node's own is 1000. */
+const CPU_INTERVAL = 500;
+
+/**
+ * Gives the profiles `--cpu-prof` wrote in `from` the names a reader opens them by: the main thread's is `<name>.cpuprofile`
+ * and each worker's `<name>.<role>.cpuprofile`, the role being the worker's script (`pod-database-worker`).
+ */
+export async function keptCpu(
+  from: string,
+  into: string,
+  name: string,
+): Promise<CpuNote> {
+  await mkdir(into, { recursive: true });
+  const found = (await readdir(from)).filter((each) =>
+    each.endsWith(".cpuprofile"),
+  );
+  // CPU.<date>.<time>.<pid>.<thread>.<n>.cpuprofile: the main thread is thread 0.
+  const thread = (each: string) => Number(each.split(".").at(-3));
+  const main = found.find((each) => thread(each) === 0);
+  if (main === undefined)
+    throw new Error(`node wrote no CPU profile of the main thread in ${from}`);
+  const file = `${name}.cpuprofile`;
+  await copyFile(join(from, main), join(into, file));
+  const workers: { file: string; bytes: number; role: string }[] = [];
+  const roles = new Map<string, number>();
+  const threads = found
+    .filter((other) => thread(other) !== 0)
+    .sort((a, b) => thread(a) - thread(b));
+  for (const each of threads) {
+    const text = await readFile(join(from, each), "utf8");
+    const role = /\/([a-z-]+-worker)\.js/.exec(text)?.[1] ?? "worker";
+    const seen = (roles.get(role) ?? 0) + 1;
+    roles.set(role, seen);
+    const named = `${name}.${role}${seen > 1 ? `-${seen}` : ""}.cpuprofile`;
+    await writeFile(join(into, named), text);
+    workers.push({ file: named, bytes: Buffer.byteLength(text), role });
+  }
+  return { file, bytes: (await stat(join(into, file))).size, workers };
+}
+
+async function child(
+  job: Omit<Job, "out">,
+  dir: string,
+  /** Where to keep the CPU profile of this process, under which name, when one is wanted. */
+  cpu?: { into: string; name: string; notes: Map<string, CpuNote> },
+): Promise<Measured> {
   const out = join(dir, `result-${Math.random().toString(36).slice(2)}.json`);
+  const profiled =
+    cpu === undefined ? undefined : await mkdtemp(join(dir, "cpuprof-"));
   await run(
     process.execPath,
     [
       ...process.execArgv,
+      ...(profiled === undefined
+        ? []
+        : [
+            "--cpu-prof",
+            `--cpu-prof-dir=${profiled}`,
+            `--cpu-prof-interval=${CPU_INTERVAL}`,
+          ]),
       fileURLToPath(import.meta.url),
       CHILD,
       JSON.stringify({ ...job, out }),
     ],
     { maxBuffer: 1 << 26, timeout: 3 * 3_600_000 },
   );
+  if (cpu !== undefined && profiled !== undefined) {
+    cpu.notes.set(cpu.name, await keptCpu(profiled, cpu.into, cpu.name));
+    await rm(profiled, { recursive: true, force: true });
+  }
   return JSON.parse(await readFile(out, "utf8")) as Measured;
 }
 
@@ -503,9 +691,12 @@ export function probedRows(
 ): Row[] {
   const taken = new Set<string>();
   const rows: Row[] = [];
-  for (const { name, calls, ms, wallMs } of seen.spans.slice(0, limit))
+  /** Each span's name as its stage row has it, which its own-time row repeats. */
+  const named = new Map<string, string>();
+  for (const { name, calls, ms, wallMs } of seen.spans.slice(0, limit)) {
+    named.set(name, unique(taken, part(name)));
     rows.push({
-      name: `${prefix}/stage/${unique(taken, part(name))}`,
+      name: `${prefix}/stage/${named.get(name)}`,
       unit: "s",
       value: fixed(wallMs / 1000, 6),
       kind: "clock",
@@ -513,6 +704,22 @@ export function probedRows(
       range: `${(wallMs / 1000).toFixed(6)}-${(wallMs / 1000).toFixed(6)}`,
       extra: `probed run; the time some call of it was in progress, inclusive of the spans inside it; ${calls} calls whose own times sum to ${(ms / 1000).toFixed(6)} s (more than the time in progress where calls overlap); ${name.slice(0, 140)}`,
     });
+  }
+  for (const { name, calls, selfWallMs } of [...seen.spans]
+    .filter(({ selfWallMs: own }) => own !== undefined)
+    .sort((a, b) => (b.selfWallMs ?? 0) - (a.selfWallMs ?? 0))
+    .slice(0, limit)) {
+    const self = (selfWallMs ?? 0) / 1000;
+    rows.push({
+      name: `${prefix}/self/${named.get(name) ?? unique(taken, part(name))}`,
+      unit: "s",
+      value: fixed(self, 6),
+      kind: "clock",
+      samples: 1,
+      range: `${self.toFixed(6)}-${self.toFixed(6)}`,
+      extra: `probed run; the time some call of it was in progress with none of the spans inside it in progress; ${calls} calls; ${name.slice(0, 140)}`,
+    });
+  }
   const counted = new Set<string>();
   for (const [name, value] of Object.entries(seen.counts)
     .sort(([, a], [, b]) => b - a)
@@ -533,10 +740,55 @@ export interface Plan {
   readonly encryption: "plain" | "encrypted" | "both" | "auto";
   readonly repeats: number;
   readonly probe: boolean;
+  /** The folder the traces, the CPU profiles and `flame.json` go to; none are made without it. */
+  readonly profiles?: string;
+  /** Whether each scenario also gets a CPU profile, when there is a folder: one more run of it, unprobed. */
+  readonly cpuProfile?: boolean;
 }
 
-const nameOf = (scenario: Scenario, dataset: DatasetId, encrypted: boolean) =>
-  `${scenario}-${dataset}${encrypted ? "-encrypted" : ""}`;
+/** What the runs left in the profiles folder: the traces written by probed runs and the CPU profiles kept, by scenario name. */
+interface Flame {
+  readonly traces: TraceNote[];
+  readonly cpu: Map<string, CpuNote>;
+}
+
+/** One build of a scenario at a size, as `flame.json` lists it. */
+export interface FlameBuild {
+  /** `<scenario>-<size>[-encrypted]`, as the rows name it. */
+  readonly name: string;
+  readonly scenario: Scenario;
+  readonly dataset: DatasetId;
+  readonly encrypted: boolean;
+  readonly trace: Omit<TraceNote, "scenario" | "dataset" | "encrypted">;
+  readonly cpu?: CpuNote & {
+    /** The scenario whose process this profile is, when it is not this one's: a close is the last step of a fresh run. */
+    readonly processOf?: Scenario;
+  };
+}
+
+/** The builds of a run, each scenario's trace with the CPU profile that goes with it. */
+export function flameBuilds(flame: Flame): FlameBuild[] {
+  return flame.traces.map(({ scenario, dataset, encrypted, ...trace }) => {
+    const name = nameOf(scenario, dataset, encrypted);
+    const own = flame.cpu.get(name);
+    const fresh = flame.cpu.get(
+      nameOf("fresh-first-screen", dataset, encrypted),
+    );
+    const cpu =
+      own ??
+      (scenario === "close" && fresh !== undefined
+        ? { ...fresh, processOf: "fresh-first-screen" as const }
+        : undefined);
+    return {
+      name,
+      scenario,
+      dataset,
+      encrypted,
+      trace,
+      ...(cpu !== undefined && { cpu }),
+    };
+  });
+}
 
 /** Every scenario wanted at one size, encrypted or not: runs them and gives their rows. */
 async function scenariosAt(
@@ -545,6 +797,7 @@ async function scenariosAt(
   encrypted: boolean,
   work: string,
   log: (line: string) => void,
+  flame: Flame,
 ): Promise<Row[]> {
   const data = await loadDataset(dataset);
   const claim = await profileOfPatient(data);
@@ -663,9 +916,14 @@ async function scenariosAt(
   if (plan.probe && (wants("fresh-first-screen") || wants("close"))) {
     log(`${dataset}${encrypted ? " encrypted" : ""}: fresh run, probed`);
     const probed = await child(
-      { ...unprobed("fresh-probed", "fresh"), probed: true },
+      {
+        ...unprobed("fresh-probed", "fresh"),
+        probed: true,
+        ...(plan.profiles !== undefined && { profiles: plan.profiles }),
+      },
       work,
     );
+    flame.traces.push(...(probed.traces ?? []));
     await rm(dirname(place("fresh-probed")), { recursive: true, force: true });
     const note = `probed run: some work runs one at a time, so these are slower than the same steps unprobed`;
     if (wants("fresh-first-screen") && probed.seen !== undefined) {
@@ -696,6 +954,25 @@ async function scenariosAt(
     }
   }
 
+  // The CPU profile: one more fresh run, unprobed, so that it is the code as it runs. The close is its last step.
+  if (
+    plan.profiles !== undefined &&
+    plan.cpuProfile &&
+    (wants("fresh-first-screen") || wants("close"))
+  ) {
+    log(`${dataset}${encrypted ? " encrypted" : ""}: fresh run, CPU profile`);
+    await child(unprobed("fresh-cpu", "fresh"), work, {
+      into: plan.profiles,
+      name: nameOf(
+        wants("fresh-first-screen") ? "fresh-first-screen" : "close",
+        dataset,
+        encrypted,
+      ),
+      notes: flame.cpu,
+    });
+    await rm(dirname(place("fresh-cpu")), { recursive: true, force: true });
+  }
+
   // reopen and question-page, on the last pod a fresh run left.
   for (const [scenario, kind] of [
     ["reopen-first-answer", "reopen"],
@@ -707,11 +984,25 @@ async function scenariosAt(
     // headline says, and none finds what an earlier run left in the folder.
     const keptFolder = dirname(kept);
     let copies = 0;
-    const onACopy = async (probed: boolean): Promise<Measured> => {
+    const onACopy = async (
+      probed: boolean,
+      profiled = false,
+    ): Promise<Measured> => {
       const label = `${kind}-${copies++}`;
       await cp(keptFolder, join(work, label), { recursive: true });
       try {
-        return await child({ ...unprobed(label, kind), probed }, work);
+        return await child(
+          {
+            ...unprobed(label, kind),
+            probed,
+            ...(probed &&
+              plan.profiles !== undefined && { profiles: plan.profiles }),
+          },
+          work,
+          profiled && plan.profiles !== undefined
+            ? { into: plan.profiles, name, notes: flame.cpu }
+            : undefined,
+        );
       } finally {
         await rm(join(work, label), { recursive: true, force: true });
       }
@@ -810,6 +1101,7 @@ async function scenariosAt(
     if (plan.probe) {
       log(`${dataset}${encrypted ? " encrypted" : ""}: ${scenario}, probed`);
       const probed = await onACopy(true);
+      flame.traces.push(...(probed.traces ?? []));
       if (probed.seen !== undefined) {
         const total =
           kind === "reopen"
@@ -828,6 +1120,12 @@ async function scenariosAt(
           ...probedRows(name, probed.seen),
         );
       }
+    }
+    if (plan.profiles !== undefined && plan.cpuProfile) {
+      log(
+        `${dataset}${encrypted ? " encrypted" : ""}: ${scenario}, CPU profile`,
+      );
+      await onACopy(false, true);
     }
   }
   if (kept !== undefined)
@@ -963,6 +1261,10 @@ function parsed(args: string[]): { plan: Plan; out: string | undefined } {
       encryption,
       repeats: Number(value("--repeats") ?? 3),
       probe: !args.includes("--no-probe"),
+      ...(value("--profiles") !== undefined && {
+        profiles: value("--profiles") as string,
+      }),
+      cpuProfile: !args.includes("--no-cpu-profile"),
     },
     out: value("--out"),
   };
@@ -996,6 +1298,16 @@ export async function perfFile(
   partial: (file: PerfFile) => Promise<void> = () => Promise.resolve(),
 ): Promise<PerfFile> {
   const work = await mkdtemp(join(tmpdir(), "perf-report-"));
+  const flame: Flame = { traces: [], cpu: new Map() };
+  const flamed = async (): Promise<void> => {
+    if (plan.profiles === undefined) return;
+    await mkdir(plan.profiles, { recursive: true });
+    await writeFile(
+      join(plan.profiles, "flame.json"),
+      `${JSON.stringify({ builds: flameBuilds(flame) }, null, 2)}
+`,
+    );
+  };
   try {
     const results: Row[] = [];
     for (const size of plan.sizes) {
@@ -1009,7 +1321,10 @@ export async function perfFile(
               ? [false, true]
               : [false];
       for (const encrypted of modes) {
-        results.push(...(await scenariosAt(plan, size, encrypted, work, log)));
+        results.push(
+          ...(await scenariosAt(plan, size, encrypted, work, log, flame)),
+        );
+        await flamed();
         await partial({
           env: envOf(plan),
           commit: await commits(),

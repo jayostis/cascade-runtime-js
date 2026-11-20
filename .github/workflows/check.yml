@@ -971,6 +971,14 @@ jobs:
           else
             mkdir -p build/pages/perf
             cp -r "$RUNNER_TEMP/perf-data/perf/." build/pages/perf/
+            # The flame graphs: the speedscope viewer (the pinned package's own release, with its licence) at /perf/speedscope/,
+            # and the newest builds' traces and CPU profiles at /perf/runs/<run>-<sha7>/ with an index of them at /perf/runs/.
+            # The viewer reads a file by its address, so the files are served from the same site.
+            if ! node scripts/perf-runs.mjs pages --data "$RUNNER_TEMP/perf-data" --out build/pages/perf \
+              --viewer node_modules/speedscope/dist/release --viewer-license node_modules/speedscope/LICENSE \
+              --repo "$GITHUB_REPOSITORY" --pages "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf"; then
+              echo "::warning::/perf/runs/ is skipped: the builds' flame graphs could not be put in the site"
+            fi
           fi
       - uses: actions/upload-pages-artifact@v5
         with:

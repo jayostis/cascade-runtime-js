@@ -11,6 +11,7 @@ import {
   probing,
   recorded,
   type Seen,
+  type SpanEvent,
   timed,
 } from "@cascade-runtime/runtime/probe";
 import { explain, glossaryMarkdown } from "./perf-glossary.js";
@@ -221,15 +222,18 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       const claimProfiles = await profileOf("first");
       const pod = await openPod();
       try {
-        const { seen } = await probing(async () => {
-          await pod.import(syntheticPull(20), { claimProfiles });
-          await pod.ask(FIRST_SCREEN[8] as string);
-          await pod.askPage(PAGES[0] as string, { size: 5 });
-        });
+        const { seen } = await probing(
+          async () => {
+            await pod.import(syntheticPull(20), { claimProfiles });
+            await pod.ask(FIRST_SCREEN[8] as string);
+            await pod.askPage(PAGES[0] as string, { size: 5 });
+          },
+          { trace: true },
+        );
         spans = [...seen.spans.keys()];
         seenRuns.push(seen);
       } finally {
-        seenRuns.push((await probing(() => pod.close())).seen);
+        seenRuns.push((await probing(() => pod.close(), { trace: true })).seen);
       }
     });
 
@@ -245,11 +249,28 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.ok(spans.includes(`question.page:${PAGES[0]}`));
     });
 
-    it("has a plain sentence for every stage and count the probe saw, in a row of the performance file", () => {
+    it("draws the Bridge's stages on a track of their own, as children of the convert that waited for them", () => {
+      const [imported] = seenRuns.map(({ events }) => events ?? []);
+      const parentOf = (events: readonly SpanEvent[], prefix: string) => {
+        const found = events.find(({ name }) => name.startsWith(prefix));
+        assert.ok(found !== undefined, prefix);
+        return {
+          track: found.track,
+          parent: events[found.parent]?.name,
+        };
+      };
+      assert.deepEqual(parentOf(imported as SpanEvent[], "bridge.stage:"), {
+        track: "Bridge stages",
+        parent: "arrivals.convert",
+      });
+    });
+
+    it("has a plain sentence for every stage, own time and count the probe saw, in a row of the performance file", () => {
       const rows = seenRuns.flatMap((seen) =>
         probedRows("fresh-first-screen-synthea-10y", tabulated(seen), 100_000),
       );
       assert.ok(rows.length > 20);
+      assert.ok(rows.some(({ name }) => name.includes("/self/")));
       assert.deepEqual(
         rows
           .filter(({ name }) => explain(name) === undefined)

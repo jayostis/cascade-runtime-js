@@ -12,6 +12,12 @@ name: perf
 #   feeds the file's headline rows and slowest stages to github-action-benchmark, which keeps the history page's data and
 #   index.html under perf/ on that branch; the `build-pages` job of check.yml copies perf/ into the site, so the page is
 #   served at /perf/ by the next deploy (the nightly run is early enough for the 03:17 deploy to hold it).
+# - Every run, a pull request's too, also makes flame graphs to drill into: a trace of each scenario's probed run (where the
+#   time went, step inside step) and a CPU profile of one more, unprobed run (which code took it), as the artifact
+#   `perf-flame`, with a short list of each scenario's longest steps in the job summary and the comment. A push, the
+#   nightly run and a hand-started run also keep them on `perf-data` beside the file, in the folder
+#   runtime/YYYY/MM/DD/<run>-<sha7>-<event>/ (the newest 30 builds' keep theirs; the large size's, the newest 3's); the
+#   `build-pages` job of check.yml serves them with the speedscope viewer at /perf/runs/.
 # - A hand-started run can name one scenario and one size.
 
 on:
@@ -52,6 +58,9 @@ jobs:
     name: performance file
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      # The day the files are kept under, decided once so that a run that crosses midnight names one folder.
+      day: ${{ steps.what.outputs.day }}
     env:
       CASCADE_TEST_OFFLINE: "1"
       # Read by the file's environment: the runner is a hosted one, which other jobs share the machine of.
@@ -115,8 +124,10 @@ jobs:
           args="--size $sizes"
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
+          echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
+      # The traces and CPU profiles are made by the same run: a trace from its probed run, a CPU profile from one more run.
       - name: The performance file
-        run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json"
+        run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json" --profiles "$RUNNER_TEMP/flame"
       - name: The summary
         if: ${{ !cancelled() }}
         shell: bash
@@ -128,6 +139,51 @@ jobs:
       - name: The rows for the history page
         shell: bash
         run: node scripts/perf-history.mjs "$RUNNER_TEMP/perf.json" > "$RUNNER_TEMP/history.json"
+      - name: What the flame graph files weigh
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "$RUNNER_TEMP/flame" ]; then
+            echo "### The flame graph files" >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+            echo '| file | size |' >> "$GITHUB_STEP_SUMMARY"
+            echo '|---|---:|' >> "$GITHUB_STEP_SUMMARY"
+            for file in "$RUNNER_TEMP/flame"/*; do
+              printf '| %s | %s |\n' "$(basename "$file")" "$(du -h "$file" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
+      # A pull request's files can only be downloaded from here; a push's, the nightly run's and a hand-started run's on main
+      # are on `perf-data` once the `publish` job has run, and the links read them there.
+      - uses: actions/upload-artifact@v7
+        id: flame
+        if: ${{ !cancelled() }}
+        with:
+          name: perf-flame
+          path: ${{ runner.temp }}/flame
+          if-no-files-found: error
+      - name: Where the time went
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          DAY: ${{ steps.what.outputs.day }}
+          DOWNLOAD: ${{ steps.flame.outputs.artifact-url }}
+          KEPT: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/where.md"
+          [ -f "$RUNNER_TEMP/flame/flame.json" ] || exit 0
+          site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/speedscope/"
+          if [ "$KEPT" = true ]; then
+            raw="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/perf-data/runtime/${DAY}/${GITHUB_RUN_ID}-${GITHUB_SHA::7}-${EVENT}"
+            node scripts/perf-flame.mjs summary "$RUNNER_TEMP/flame" --markdown --files "$raw" --viewer "$site" > "$RUNNER_TEMP/where.md"
+            echo >> "$RUNNER_TEMP/where.md"
+            echo "Every build's: [flame graphs and CPU profiles](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/runs/) (a push's appear there with the next deploy)." >> "$RUNNER_TEMP/where.md"
+          else
+            node scripts/perf-flame.mjs summary "$RUNNER_TEMP/flame" --markdown --download "$DOWNLOAD" --viewer "$site" > "$RUNNER_TEMP/where.md"
+          fi
+          cat "$RUNNER_TEMP/where.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -135,6 +191,7 @@ jobs:
           path: |
             ${{ runner.temp }}/perf.json
             ${{ runner.temp }}/history.json
+            ${{ runner.temp }}/where.md
           if-no-files-found: error
 
   # A pull request: the file against the latest push to main on `perf-data`, in one comment that each push updates. A
@@ -186,6 +243,10 @@ jobs:
               node scripts/perf-compare.mjs compare "$base" pr/perf.json --markdown
             fi
             echo
+            if [ -f pr/where.md ]; then
+              cat pr/where.md
+              echo
+            fi
             echo "What each row means: [the glossary](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/perf-glossary.md). Every main build over time: [performance history](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/)."
             echo
             echo "[Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
@@ -216,14 +277,20 @@ jobs:
         with:
           name: perf
           path: file
+      - uses: actions/download-artifact@v7
+        with:
+          name: perf-flame
+          path: flame
       - name: Commit it to perf-data
         shell: bash
         env:
           TOKEN: ${{ github.token }}
+          DAY: ${{ needs.perf.outputs.day }}
         run: |
           set -euo pipefail
           sha7="${GITHUB_SHA::7}"
-          path="runtime/$(date -u +%Y/%m/%d)/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}.json"
+          path="runtime/${DAY}/${GITHUB_RUN_ID}-${sha7}-${GITHUB_EVENT_NAME}.json"
+          folder="${path%.json}"
           remote="https://github.com/${GITHUB_REPOSITORY}"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
           echo "::add-mask::$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
@@ -242,6 +309,23 @@ jobs:
             mkdir -p "$(dirname "$path")"
             cp ../file/perf.json "$path"
             git add "$path"
+            # The flame graph files beside it. Only the newest 30 builds' are kept, and the large size's of the newest 3, so
+            # that the branch, which a deploy clones whole, does not grow without end; the results files are kept always.
+            mkdir -p "$folder"
+            cp -r ../flame/. "$folder/"
+            git add "$folder"
+            mapfile -t builds < <(git ls-files | grep -E '^runtime/[0-9]{4}/[0-9]{2}/[0-9]{2}/[^/]+/flame\.json$' | sed 's|/flame\.json$||' | sort -r)
+            at=0
+            large=0
+            for build in "${builds[@]}"; do
+              at=$((at + 1))
+              if [ "$at" -gt 30 ]; then
+                git rm -rq -- "$build"
+              elif compgen -G "$build/*synthea-lifetime*" > /dev/null; then
+                large=$((large + 1))
+                if [ "$large" -gt 3 ]; then git rm -q -- "$build"/*synthea-lifetime*; fi
+              fi
+            done
             # A push to main names its file for the pull requests; a push that finished after a newer one does not.
             if [ "$GITHUB_EVENT_NAME" = push ]; then
               current=$(cat runtime/latest-push.txt 2>/dev/null || true)

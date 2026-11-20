@@ -5,8 +5,8 @@
 //   perf-history.mjs <perf.json> [--stages 6] > benchmark.json
 //
 // A chart per measurement is only readable while there are not hundreds: the page takes every headline time and the peak
-// memory, and each probed run's slowest few stages (the stages of a probed run say where time goes, not what a person
-// waits for). Counts stay in the file kept on `perf-data`, not on the page.
+// memory, and each probed run's few slowest stages and few steps with the longest own time (those of a probed run say
+// where time goes, not what a person waits for; own time is what points at the step to change). Counts stay in the file kept on `perf-data`, not on the page.
 
 import { readFileSync } from "node:fs";
 import process from "node:process";
@@ -18,12 +18,13 @@ const HEADLINE =
 export function forHistory(file, { stages = 6 } = {}) {
   const keep = file.results.filter((row) => HEADLINE.test(row.name));
   const slowest = new Map();
-  for (const row of file.results) {
-    const at = row.name.indexOf("/stage/");
-    if (at === -1 || row.name.includes("/stage/scenario.")) continue;
-    const group = row.name.slice(0, at);
-    slowest.set(group, [...(slowest.get(group) ?? []), row]);
-  }
+  for (const kind of ["stage", "self"])
+    for (const row of file.results) {
+      const at = row.name.indexOf(`/${kind}/`);
+      if (at === -1 || row.name.includes(`/${kind}/scenario.`)) continue;
+      const group = row.name.slice(0, at) + kind;
+      slowest.set(group, [...(slowest.get(group) ?? []), row]);
+    }
   for (const rows of slowest.values())
     keep.push(...rows.sort((a, b) => b.value - a.value).slice(0, stages));
   return keep.map(({ name, unit, value, range, extra }) => ({

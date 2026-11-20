@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import { type Database, DatabaseKeyRefused } from "../src/database.js";
 import { readText } from "../src/files.js";
+import { probing } from "../src/probe.js";
 import { Refusal } from "../src/refusal.js";
 import { databaseAt, openDatabase } from "../src/node/sqlite.js";
 import { builtWholeIn, type Screens } from "../src/pod-database.js";
@@ -309,6 +310,38 @@ describe("Building a pod's database whole beside it · databaseAt()", () => {
       );
     } finally {
       db.close();
+    }
+  });
+
+  it("draws each step the worker timed, when the run is traced, on a track of its own as a child of the span that waited for the worker", async () => {
+    const { seen } = await probing(
+      () =>
+        databaseAt(join(folder, "traced.db")).builtWhole({
+          schema,
+          views: [],
+          dump: dumpOf(2, 3),
+          graphs: graphsOf(2),
+          fingerprint: "traced",
+        }),
+      { trace: true },
+    );
+    const events = seen.events ?? [];
+    const waited = events.findIndex(
+      ({ name }) => name === "pod-database.build.worker",
+    );
+    const steps = events.filter(({ track }) => track === "pod.db build worker");
+    assert.ok(waited >= 0 && steps.length >= 2, JSON.stringify(events));
+    const worker = events[waited];
+    for (const step of steps) {
+      assert.equal(step.parent, waited);
+      assert.ok(step.end >= step.start);
+      // The worker's clock is its own: its steps are placed on this thread's, inside the time the build took.
+      assert.ok(
+        worker !== undefined &&
+          step.start >= worker.start - 5 &&
+          step.end <= worker.end + 5,
+        `${step.name} ${step.start}-${step.end} outside ${worker?.start}-${worker?.end}`,
+      );
     }
   });
 

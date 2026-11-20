@@ -15,8 +15,12 @@ import { join, relative } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-/** What a row is, from its name: a stage of the probed run (its total included), a count, or a headline time or size. */
+/**
+ * What a row is, from its name: a stage of the probed run (its total included), a step's own time in it, a count, or a
+ * headline time or size.
+ */
 export function kindOf(name) {
+  if (/\/self\//.test(name)) return "self";
   if (/\/stage\//.test(name) || /\/probed-total$/.test(name)) return "stage";
   if (/\/count\//.test(name)) return "count";
   return "headline";
@@ -258,6 +262,27 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
       "",
     );
   }
+  const movedOwn = rowsOf("self")
+    .filter(({ from, to }) => from !== undefined && to !== undefined)
+    .sort(
+      (a, b) =>
+        Math.abs(b.to.value - b.from.value) -
+        Math.abs(a.to.value - a.from.value),
+    )
+    .slice(0, stages);
+  if (movedOwn.length > 0) {
+    head(
+      `Steps whose own time moved most (one probed run each; own time is the time some call of the step was in progress with none of the steps inside it in progress, so it points at the step to change)`,
+    );
+    out.push(
+      table(
+        ["", "before", "after", "change"],
+        movedOwn.map((pair) => line(pair)),
+        markdown,
+      ),
+      "",
+    );
+  }
   const commits = (file) =>
     Object.entries(file.commit ?? {})
       .map(([name, sha]) => `${name} ${sha.slice(0, 7)}`)
@@ -321,6 +346,29 @@ export function summary(file, { markdown = false, stages = 10 } = {}) {
       "",
     );
   }
+  for (const [group, rows] of grouped(
+    file.results.filter((row) => kindOf(row.name) === "self"),
+  )) {
+    const top = rows
+      .filter((row) => !/\/self\/scenario\./.test(row.name))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, stages);
+    out.push(
+      markdown
+        ? `**${group}: longest own time (one probed run)**`
+        : `${group}: longest own time (one probed run)`,
+      "",
+      table(
+        ["step", "own time"],
+        top.map((row) => [
+          row.name.split("/self/")[1],
+          shown(row.value, row.unit),
+        ]),
+        markdown,
+      ),
+      "",
+    );
+  }
   out.push(
     `commit: ${Object.entries(file.commit ?? {})
       .map(([name, sha]) => `${name} ${sha.slice(0, 7)}`)
@@ -335,7 +383,12 @@ function filesUnder(folder) {
   for (const entry of readdirSync(folder)) {
     const path = join(folder, entry);
     if (statSync(path).isDirectory()) found.push(...filesUnder(path));
-    else if (entry.endsWith(".json")) found.push(path);
+    else if (
+      entry.endsWith(".json") &&
+      !entry.endsWith(".trace.json") &&
+      entry !== "flame.json"
+    )
+      found.push(path);
   }
   return found.sort();
 }

@@ -197,6 +197,14 @@ Rows named `<scenario>-<dataset>/stage/<stage>`: where time goes inside one run 
 | `question-*` | The answer to: `<name>`. Sits inside `scenario.first-screen`. |
 | `core-pod.step.rebuild-*` | Re-deriving the pod's answers after a step of this kind: `<name>`. Sits inside `scenario.import`. |
 
+## Own time of the probed run
+
+Rows named `<scenario>-<dataset>/self/<stage>`, for the same stages: Own time: the time some call of it was in progress with none of the spans inside it in progress, that is the time spent in its own code, or waiting. Unlike its stage time it leaves out what the spans inside it took, so the largest own times are the places to look first.
+
+## Flame graphs of every build
+
+Each build also keeps a trace of its probed run ("Where the time went": every call with its start, end and the call it ran inside, drawn as a flame graph) and a CPU profile of an unprobed run ("Which code took it": every function the processor was sampled in), both opened in speedscope. The builds are listed at https://jayostis.github.io/cascade-runtime-js/perf/runs/, newest first. A trace of the large size leaves out its shortest calls, whose time is their parent's own.
+
 ## Counts of the probed run
 
 Rows named `<scenario>-<dataset>/count/<count>`.

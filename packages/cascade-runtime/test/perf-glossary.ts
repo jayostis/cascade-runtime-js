@@ -14,6 +14,8 @@ interface Glossary {
   readonly scenarios: Readonly<Record<string, { says: string; total: string }>>;
   readonly measures: Readonly<Record<string, string>>;
   readonly measureFamilies: readonly Family[];
+  readonly selfRows: string;
+  readonly runs: string;
   readonly spans: Readonly<Record<string, { says: string; within?: string }>>;
   readonly families: readonly Family[];
   readonly counts: Readonly<Record<string, string>>;
@@ -86,17 +88,24 @@ const countOf = (name: string): string | undefined =>
     name,
   );
 
+/** What a span is, from its name in the form a row has it (see `part` in perf-report.ts), or undefined for one the glossary lacks. */
+export function explainSpan(name: string): string | undefined {
+  const found = spanOf(name);
+  if (found === undefined) return undefined;
+  return found.within === undefined
+    ? found.says
+    : `${found.says} Sits inside ${found.within}.`;
+}
+
 /** The sentence a row's `extra` begins with, or undefined for a name the glossary lacks. */
 export function explain(rowName: string): string | undefined {
   const row = parsed(rowName);
   if (row === undefined) return undefined;
   const { scenario, rest } = row;
-  if (rest.startsWith("stage/")) {
-    const found = spanOf(rest.slice(6));
-    if (found === undefined) return undefined;
-    return found.within === undefined
-      ? found.says
-      : `${found.says} Sits inside ${found.within}.`;
+  if (rest.startsWith("stage/")) return explainSpan(rest.slice(6));
+  if (rest.startsWith("self/")) {
+    const says = explainSpan(rest.slice(5));
+    return says === undefined ? undefined : `${says} ${glossary.selfRows}`;
   }
   if (rest.startsWith("count/")) return countOf(rest.slice(6));
   if (rest === "total") return glossary.scenarios[scenario]?.total;
@@ -171,6 +180,15 @@ export function glossaryMarkdown(): string {
       ]),
       ...family(glossary.families),
     ]),
+    "",
+    "## Own time of the probed run",
+    "",
+    "Rows named `<scenario>-<dataset>/self/<stage>`, for the same stages: " +
+      glossary.selfRows,
+    "",
+    "## Flame graphs of every build",
+    "",
+    glossary.runs,
     "",
     "## Counts of the probed run",
     "",
