@@ -5,6 +5,7 @@ import {
   sameBytes,
   under,
   writeAll,
+  writeEach,
 } from "./files.js";
 import { same } from "./pod.js";
 import { timedAside } from "./probe.js";
@@ -30,6 +31,8 @@ const MAX_PASSPHRASE_WRAPS = 6;
 /** The most Argon2 work, the sum of `t` times `m` over a header's passphrase wraps, that a header may ask for: eight times a new pod's wrap, or two wraps of the largest cost. */
 export const MAX_ARGON2_COST = 8 * 3 * 65536;
 const SEAL_MAX_BYTES = 256 * 1024 * 1024;
+/** How many files `writeMany` seals at once. */
+const SEALING_AT_ONCE = 16;
 const NONCE = 12;
 const TAG = 16;
 
@@ -1433,7 +1436,7 @@ export class SealedIndex {
     );
     const counters = await this.#storedUnchanged();
     const before = this.#swept ? [] : await this.#files.list(SEALED);
-    await writeAll(this.#files, [
+    await writeEach(this.#files, [
       ...sealed.map(([, name, bytes]) => [name, bytes] as const),
       ...plain,
     ]);
@@ -1541,6 +1544,10 @@ export class EncryptedFiles implements Files {
   readonly #maxBytes: number;
   readonly #kind: "pod" | "answers";
   readonly #index: SealedIndex | undefined;
+  /** Seals the files, then has the files beneath write them several at once; there only where they can, and with no index. */
+  readonly writeMany?: (
+    files: Iterable<readonly [string, Uint8Array]>,
+  ) => Promise<void>;
 
   constructor(files: Files, key: PodKey, options: EncryptedFilesOptions = {}) {
     this.#files = files;
@@ -1556,6 +1563,8 @@ export class EncryptedFiles implements Files {
       throw new Error(
         "a 1.3 pod's files are read through its sealed index: open it with SealedIndex.open",
       );
+    if (files.writeMany !== undefined && this.#index === undefined)
+      this.writeMany = (written) => this.#writeSealed(written);
   }
 
   get iri(): string {
@@ -1616,10 +1625,10 @@ export class EncryptedFiles implements Files {
       );
   }
 
-  /** Seals every file, then writes them in one `writeAll` beneath, once the header is the one the key was opened from. */
-  async writeAll(
+  /** The files' canonical paths, each refused where a pod's own files are, or too large to seal. */
+  #given(
     files: Iterable<readonly [string, Uint8Array]>,
-  ): Promise<void> {
+  ): (readonly [string, Uint8Array])[] {
     const given: (readonly [string, Uint8Array])[] = [];
     for (const [pathOrIri, bytes] of files) {
       const path = this.#path(pathOrIri);
@@ -1641,21 +1650,51 @@ export class EncryptedFiles implements Files {
         );
       given.push([path, bytes]);
     }
+    return given;
+  }
+
+  #sealed(path: string, bytes: Uint8Array): Promise<Uint8Array> | Uint8Array {
+    return this.#plain(path)
+      ? bytes
+      : seal(
+          this.#key.key,
+          bytes,
+          boundTo(this.#kind, this.#key.version, path),
+        );
+  }
+
+  /** Seals every file, then writes them in one `writeAll` beneath, once the header is the one the key was opened from. */
+  async writeAll(
+    files: Iterable<readonly [string, Uint8Array]>,
+  ): Promise<void> {
+    const given = this.#given(files);
     if (this.#index !== undefined) return this.#index.write(given);
     if (this.#kind === "pod") await this.#headerUnchanged();
     const sealed: (readonly [string, Uint8Array])[] = [];
     for (const [path, bytes] of given)
-      sealed.push([
-        path,
-        this.#plain(path)
-          ? bytes
-          : await seal(
-              this.#key.key,
-              bytes,
-              boundTo(this.#kind, this.#key.version, path),
-            ),
-      ]);
+      sealed.push([path, await this.#sealed(path, bytes)]);
     await writeAll(this.#files, sealed);
+  }
+
+  /** As `writeAll`, but the files are sealed, and then written beneath, several at once. */
+  async #writeSealed(
+    files: Iterable<readonly [string, Uint8Array]>,
+  ): Promise<void> {
+    const given = this.#given(files);
+    if (this.#kind === "pod") await this.#headerUnchanged();
+    const sealed: (readonly [string, Uint8Array])[] = [];
+    for (let from = 0; from < given.length; from += SEALING_AT_ONCE)
+      sealed.push(
+        ...(await Promise.all(
+          given
+            .slice(from, from + SEALING_AT_ONCE)
+            .map(
+              async ([path, bytes]) =>
+                [path, await this.#sealed(path, bytes)] as const,
+            ),
+        )),
+      );
+    await writeEach(this.#files, sealed);
   }
 
   /** Every path beneath, but a pod's header: above the sealing, a pod holds only its own files. */

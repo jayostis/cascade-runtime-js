@@ -281,6 +281,29 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
       });
       assert.deepEqual(batches, [[...paths, "acts/a"]]);
     });
+
+    it("rejects with the failure of a wave, writing no file of a later wave and not its act's file", async () => {
+      const { writes } = waved([1, 1, 2, 3]);
+      writes.act({ name: "urn:act", path: "acts/a", triples: [] });
+      const files = new MemoryFiles(ADDRESS);
+      const started: string[] = [];
+      await assert.rejects(
+        writes.commit({
+          iri: ADDRESS,
+          read: (path) => files.read(path),
+          list: (folder) => files.list(folder),
+          write: async (path) => {
+            started.push(path);
+          },
+          writeMany: async (written) => {
+            started.push(...[...written].map(([path]) => path));
+            throw new Error("the first wave fails");
+          },
+        }),
+        /the first wave fails/,
+      );
+      assert.deepEqual(started, ["files/0", "files/1"]);
+    });
   });
 
   describe("CorePod.open()", () => {

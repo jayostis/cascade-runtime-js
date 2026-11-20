@@ -76,6 +76,10 @@ const LAST_UPDATE_ON = `${PAV}lastUpdateOn`;
 const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const CURRENT_REVISIONS = `${QUERIES}derivations/current-revisions.rq`;
 const LADDER_LENS = "everyday";
+/** The waves of an import's files (W1): its content-addressed files, then its revisions, then the findings that name them, then its act. */
+const CONTENT_WAVE = 1;
+const REVISION_WAVE = 2;
+const FINDING_WAVE = 3;
 const SERVER = `${CASCADE}Server`;
 const DOCUMENT_IMPORT = `${CASCADE}DocumentImport`;
 const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
@@ -747,10 +751,15 @@ export class Revisions {
   /** Adds the record and its version, and holds the revision after each of the record's heads (A2, A5) until `write`. */
   async revise(arrival: Arrival, writes: StepWrites): Promise<string> {
     const record = arrival.record.value;
-    writes.add(arrival.place.path(record), ntriples(arrival.recordTriples));
+    writes.add(
+      arrival.place.path(record),
+      ntriples(arrival.recordTriples),
+      CONTENT_WAVE,
+    );
     writes.add(
       this.layout.version(arrival.place, arrival.version.value),
       ntriples(arrival.versionTriples),
+      CONTENT_WAVE,
     );
     const placeholder = iri(THIS_REVISION);
     const previous = (this.#heads.get(record) ?? [])
@@ -912,6 +921,7 @@ export class Revisions {
     writes.add(
       this.layout.place(FINDING).path(name),
       ntriples(content(iri(name))),
+      FINDING_WAVE,
     );
   }
 
@@ -986,7 +996,8 @@ export class Revisions {
     writes: StepWrites,
     wentBack: readonly WentBack[] = [],
   ): Promise<void> {
-    for (const [path, bytes] of this.#files) writes.add(path, bytes);
+    for (const [path, bytes] of this.#files)
+      writes.add(path, bytes, REVISION_WAVE);
     await this.#fileFindings(writes, wentBack);
     const shared = this.#shared;
     this.#shared = undefined;
@@ -1304,10 +1315,11 @@ export async function fileExport(
         if (contradicted.length > 0) wentBack.push({ older, contradicted });
       }
     });
-    writes.add(layout.storedBytes.path(documentIri), found.bytes);
+    writes.add(layout.storedBytes.path(documentIri), found.bytes, CONTENT_WAVE);
     writes.add(
       layout.place(`${PROV}Entity`).path(documentIri),
       ntriples(graph.closure(subject)),
+      CONTENT_WAVE,
     );
     kept.set(documentIri, importDescription(graph, subject, name, found.path));
     for (const base of graph.objects(subject, SERVER_BASE_URL)) {
@@ -1316,6 +1328,7 @@ export async function fileExport(
         writes.add(
           server.place.path(server.record.value),
           ntriples(server.triples),
+          CONTENT_WAVE,
         );
     }
   }

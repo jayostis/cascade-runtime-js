@@ -24,7 +24,13 @@ import {
 } from "./dataset.js";
 import type { SamesStillJoined } from "./derive.js";
 import { Unopened } from "./encryption.js";
-import { type Files, MemoryFiles, relative, writeAll } from "./files.js";
+import {
+  type Files,
+  MemoryFiles,
+  relative,
+  writeAll,
+  writeEach,
+} from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
@@ -275,6 +281,8 @@ class HeldFiles implements Files {
 
   constructor(pod: Files) {
     this.#pod = pod;
+    if (pod.writeMany !== undefined)
+      this.writeMany = (files) => this.#writeChanged(files, writeEach);
   }
 
   get written(): number {
@@ -318,8 +326,24 @@ class HeldFiles implements Files {
    * Writes, in one `writeAll` on the pod, each file it does not hold with the same bytes; held once all are written.
    * When the write fails, what is held is dropped and read from the pod again, which may hold some of them.
    */
-  async writeAll(
+  writeAll(files: Iterable<readonly [string, Uint8Array]>): Promise<void> {
+    return this.#writeChanged(files, writeAll);
+  }
+
+  /**
+   * As `writeAll`, but the pod is given the files in one `writeMany`, which writes them several at once. It is there
+   * only where the pod has one: a pod that takes a batch whole, or none, is given every file of a step in one batch.
+   */
+  readonly writeMany?: (
     files: Iterable<readonly [string, Uint8Array]>,
+  ) => Promise<void>;
+
+  async #writeChanged(
+    files: Iterable<readonly [string, Uint8Array]>,
+    writing: (
+      pod: Files,
+      changed: readonly (readonly [string, Uint8Array])[],
+    ) => Promise<void>,
   ): Promise<void> {
     const changed: [string, Uint8Array][] = [];
     for (const [pathOrIri, bytes] of files) {
@@ -332,7 +356,7 @@ class HeldFiles implements Files {
     const listed = await this.#listed();
     this.#written += 1;
     try {
-      await writeAll(this.#pod, changed);
+      await writing(this.#pod, changed);
     } catch (error) {
       this.#paths = undefined;
       this.#bytes.clear();

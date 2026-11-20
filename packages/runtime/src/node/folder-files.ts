@@ -30,6 +30,9 @@ import { Refusal } from "../step.js";
 const WRITING = /\.\d+\.\d+\.writing$/;
 let writes = 0;
 
+/** How many files `writeMany` has in hand at once, which is what the descriptors and libuv's threads give. */
+const WRITING_AT_ONCE = 16;
+
 /** What touches one path in this process: Windows refuses a rename over a file while any handle on it is open, so a write waits for the reads to end and holds new ones. */
 interface Touching {
   reads: number;
@@ -345,10 +348,32 @@ export class FolderFiles implements Files {
     return this.#again(pathOrIri, () => this.#write(pathOrIri, bytes));
   }
 
+  /**
+   * Writes the files with up to `WRITING_AT_ONCE` in hand, each as `write` does. After a failure it starts no more and,
+   * once those begun have settled, throws the first failure.
+   */
   async writeMany(
     files: Iterable<readonly [string, Uint8Array]>,
   ): Promise<void> {
-    for (const [path, bytes] of files) await this.write(path, bytes);
+    const queue = files[Symbol.iterator]();
+    let failure: { readonly error: unknown } | undefined;
+    const writer = async (): Promise<void> => {
+      for (
+        let next = queue.next();
+        next.done !== true && failure === undefined;
+        next = queue.next()
+      ) {
+        try {
+          await this.write(...next.value);
+        } catch (error) {
+          failure ??= { error };
+        }
+      }
+    };
+    await Promise.allSettled(
+      Array.from({ length: WRITING_AT_ONCE }, () => writer()),
+    );
+    if (failure !== undefined) throw failure.error;
   }
 
   async #write(pathOrIri: string, bytes: Uint8Array): Promise<void> {

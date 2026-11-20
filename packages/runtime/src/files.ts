@@ -83,6 +83,7 @@ export async function writeEach(
   files: Files,
   written: readonly (readonly [string, Uint8Array])[],
 ): Promise<void> {
+  if (files.writeMany !== undefined) return files.writeMany(written);
   return writeAll(files, written);
 }
 

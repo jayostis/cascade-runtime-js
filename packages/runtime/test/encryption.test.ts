@@ -628,7 +628,7 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
         ]) ?? Promise.resolve(),
         Refusal,
       );
-      assert.deepEqual(memory.batches, []);
+      assert.equal(memory.batches.length, 0);
       const names = Array.from({ length: 40 }, (_, n) => `f/${n}.ttl`);
       await files.writeMany?.(names.map((name) => [name, encoded(name)]));
       assert.equal(memory.batches.length, 1);
