@@ -146,8 +146,8 @@ export async function measureFileOps(job: Job): Promise<Measured> {
   };
 }
 
-/** Whether the machine's virus scanner was as it is, with its live checking off, or with the folder excluded from it. */
-export type ScannerState = "as-is" | "off" | "excluded";
+/** Whether the machine's virus scanner was as it is, with its live checking switched off or on, or on with the folder excluded from it. */
+export type ScannerState = "as-is" | "off" | "on" | "excluded";
 
 const NAME = "file-ops-3000-files";
 
@@ -162,7 +162,9 @@ export function fileOpsRows(
       ? "the machine as it is"
       : state === "off"
         ? "the virus scanner's live checking switched off for the run"
-        : "the virus scanner's live checking on, the folder excluded from it"
+        : state === "on"
+          ? "the virus scanner's live checking switched on for the run, which the runner has off"
+          : "the virus scanner's live checking on, the folder excluded from it"
   }`;
   const samples = (pick: (run: FileOpsRun) => number | undefined) =>
     runs.flatMap((run) => pick(run) ?? []);
@@ -333,47 +335,67 @@ export async function fileOpsAt(
       "read from Windows Defender after the first measurement",
     ),
   );
-  if (!plan.scannerCompare || !startedOn) return rows;
+  if (!plan.scannerCompare) return rows;
 
-  let off = false;
-  let refusal = "";
+  // Live checking is flipped to the other state for a run: off where the runner has it on, on where it has it off, to read what
+  // it costs either way. The folder's exclusion is read with it on.
+  const flipTo = !startedOn;
+  const flipName = flipTo ? "on" : "off";
+  let flipped = false;
   let touched = false;
+  const restore = async (): Promise<void> => {
+    // A switch that took no effect has nothing to put back: a refusal to put back what was never changed is no failure.
+    await scanner.setRealtime(startedOn).catch((error: unknown) => {
+      if (flipped || !touched) throw error;
+      log(`real-time protection could not be put back: ${message(error)}`);
+    });
+  };
   try {
+    let refusal = "";
     try {
       touched = true;
-      await scanner.setRealtime(false);
-      off = (await scanner.realtimeOn()) === false;
-      if (!off) refusal = "real-time protection was still on after the switch";
+      await scanner.setRealtime(flipTo);
+      flipped = (await scanner.realtimeOn()) === flipTo;
+      if (!flipped)
+        refusal = `real-time protection was still ${startedOn ? "on" : "off"} after the switch`;
     } catch (error) {
       refusal = message(error);
     }
     rows.push(
       countRow(
-        `${NAME}/count/scanner-switch-off-allowed`,
-        off ? 1 : 0,
-        off
-          ? "Set-MpPreference -DisableRealtimeMonitoring $true took effect, read back from Get-MpComputerStatus"
+        `${NAME}/count/scanner-switch-${flipName}-allowed`,
+        flipped ? 1 : 0,
+        flipped
+          ? `Set-MpPreference -DisableRealtimeMonitoring $${flipTo ? "false" : "true"} took effect, read back from Get-MpComputerStatus`
           : `refused: ${refusal}`,
       ),
     );
-    if (off) {
-      rows.push(...(await batch("off")));
+    if (flipped) {
+      rows.push(...(await batch(flipName)));
       rows.push(
         countRow(
-          `${NAME}-scanner-off/count/scanner-realtime-on`,
-          (await scanner.realtimeOn()) === false ? 0 : 1,
-          "read back before the run",
+          `${NAME}-scanner-${flipName}/count/scanner-realtime-on`,
+          (await scanner.realtimeOn()) === true ? 1 : 0,
+          "read back after the run",
         ),
       );
     }
+    if (startedOn) await restore();
+    if (startedOn || flipped)
+      rows.push(...(await excludedRows(scanner, work, batch)));
   } finally {
-    // A switch that took no effect has nothing to put back: a refusal to put back what was never changed is no failure.
-    await scanner.setRealtime(true).catch((error: unknown) => {
-      if (off || !touched) throw error;
-      log(`real-time protection could not be set on again: ${message(error)}`);
-    });
+    await restore();
   }
+  return rows;
+}
 
+/** The folder excluded from a scanner whose live checking is on, one run, and the exclusion removed again. */
+async function excludedRows(
+  scanner: Scanner,
+  work: string,
+  batch: (state: ScannerState) => Promise<Row[]>,
+): Promise<Row[]> {
+  const rows: Row[] = [];
   let excluded = false;
   let tried = false;
   let why = "";

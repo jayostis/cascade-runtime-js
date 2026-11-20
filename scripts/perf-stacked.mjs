@@ -747,7 +747,8 @@ const OPS_ROWS = [
   ],
 ];
 const AT_ONCE = [1, 16, 64];
-const ROW_OF_FILES = /^file-ops-3000-files(?:-scanner-(off|excluded))?\/(.+)$/;
+const ROW_OF_FILES =
+  /^file-ops-3000-files(?:-scanner-(off|on|excluded))?\/(.+)$/;
 
 /**
  * What one small file costs on each system, from each system's newest build that measured it: its times by the state of the
@@ -809,13 +810,22 @@ function lessBy(before, after) {
 function scannerSentences(system, linux) {
   const own = system.states["as-is"] ?? {};
   const off = system.states.off;
+  const on = system.states.on;
   const excluded = system.states.excluded;
   const note = (state, key) => system.notes[state]?.[key];
   const at = "create/in-flight-16";
   const out = [];
   if (own["count/scanner-realtime-on"] === 0)
     out.push(
-      "Windows Defender's live checking of files was already off on this runner, so there was nothing to switch off and compare.",
+      "Windows Defender's live checking of files was off on this runner as it came, so the first column is a runner with no scanning.",
+    );
+  if (on !== undefined && own[at] !== undefined && on[at] !== undefined)
+    out.push(
+      `With Windows Defender's live checking switched on, creating a file (16 at once) took ${micro(on[at])} instead of ${micro(own[at])}: ${lessBy(own[at], on[at])}.`,
+    );
+  else if (own["count/scanner-switch-on-allowed"] === 0)
+    out.push(
+      `The runner did not let Windows Defender's live checking be switched on (${note("as-is", "count/scanner-switch-on-allowed") ?? "no reason recorded"}), so that comparison could not be made.`,
     );
   if (off !== undefined && own[at] !== undefined && off[at] !== undefined)
     out.push(
@@ -839,11 +849,15 @@ function scannerSentences(system, linux) {
     );
   const linuxAt = linux?.states["as-is"]?.[at];
   const best = Math.min(
-    ...[own[at], off?.[at], excluded?.[at]].filter(
+    ...[own[at], off?.[at], on?.[at], excluded?.[at]].filter(
       (value) => value !== undefined,
     ),
   );
-  if (linuxAt !== undefined && Number.isFinite(best) && off !== undefined)
+  if (
+    linuxAt !== undefined &&
+    Number.isFinite(best) &&
+    (off !== undefined || on !== undefined)
+  )
     out.push(
       `At its fastest here a file took ${micro(best)} to create, ${timesOf(best / linuxAt)} what it takes on Linux (${micro(linuxAt)}).`,
     );
@@ -881,6 +895,7 @@ function fileOpsSection(systems) {
   const scanned = systems.filter(
     ({ states, notes }) =>
       states.off !== undefined ||
+      states.on !== undefined ||
       states.excluded !== undefined ||
       Object.keys(notes["as-is"] ?? {}).some((key) => key.includes("scanner")),
   );
@@ -889,6 +904,7 @@ function fileOpsSection(systems) {
       const states = [
         ["as-is", "As the runner has it"],
         ["off", "Live checking switched off"],
+        ["on", "Live checking switched on"],
         ["excluded", "Folder excluded, checking on"],
       ].filter(([state]) => system.states[state] !== undefined);
       const lines = OPS_ROWS.map(
