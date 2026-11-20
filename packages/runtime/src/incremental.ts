@@ -62,7 +62,7 @@ function batches<T>(all: readonly T[]): T[][] {
  * patterns are alternatives, each given the IRIs itself: Oxigraph's JavaScript build evaluates a UNION whole before
  * joining it to the VALUES outside it.
  */
-async function boundValues(
+export async function boundValues(
   union: Union,
   iris: Iterable<string>,
   where: string | readonly string[],
@@ -74,6 +74,21 @@ async function boundValues(
   counted("incremental.boundValues.calls");
   counted("incremental.boundValues.iris", bounded.length);
   await timed("incremental.boundValues", async () => {
+    // Every pattern binds `?bound` in a triple or a GRAPH pattern, so `?bound` only restricts which rows it gives and
+    // patterns that give none unbound give none for any batch. A `?bound` met only in a FILTER restricts nothing
+    // unbound (the filter errors, the rows are lost), so a pattern with one is not asked. Nor is a path that may be no
+    // step long (`*`): the unbound ask over it is true whenever the union holds any node, so it skips nothing.
+    if (
+      bounded.length > AT_ONCE &&
+      !patterns.some(
+        (pattern) =>
+          pattern.includes("*") || /\bFILTER\b[^]*\?bound\b/i.test(pattern),
+      ) &&
+      !(await union.ask(
+        `${PREFIXES}ASK { ${patterns.map((pattern) => `{ ${pattern} }`).join(" UNION ")} }`,
+      ))
+    )
+      return;
     for (const batch of batches(bounded)) {
       const bound = `VALUES ?bound { ${values(batch)} }`;
       counted("incremental.boundValues.batches");
@@ -164,7 +179,7 @@ export class KeptBuild {
   #builtOut = false;
   /** The layout's triples, each blank node the node the union held, while it is out of the union. */
   #layoutOut: readonly Triple[] = [];
-  /** The quads the steps have put in the union in place of others since `moved` was last read. */
+  /** The quads the steps have taken out of the union, to put others in their place, since `moved` was last read. */
   #moved = 0;
   #held: ReadonlySet<string>;
   /**
@@ -695,30 +710,33 @@ export class KeptBuild {
       );
   }
 
-  /** Puts the subjects' triples in the graph, of a file the build writes, in place of what it held of them. */
+  /**
+   * Puts the subjects' triples in the graph, of a file the build writes, in place of what it held of them: `held` is
+   * how many triples the build held of them, which is how many the union removes.
+   */
   async #replacedSubjects(
     graph: string,
     gone: readonly string[],
     fresh: readonly Triple[],
+    held: number,
   ): Promise<void> {
     this.recording?.push({ graph, gone, fresh });
     if (this.#builtOut) return;
     await this.#union.removeSubjects(graph, gone);
+    this.#moved += held;
     await this.#union.add(fresh, graph);
-    this.#moved += fresh.length;
   }
 
   /** Puts the triples in the graph of the type index or the manifest in place of what it held. */
   async #replaced(graph: string, triples: readonly Triple[]): Promise<void> {
-    this.#closingFiles.set(
-      graph.slice(this.#rebuilding.address.length),
-      triples,
-    );
+    const path = graph.slice(this.#rebuilding.address.length);
+    const held = this.#closingFiles.get(path)?.length ?? 0;
+    this.#closingFiles.set(path, triples);
     this.recording?.push({ graph, whole: triples });
     if (this.#builtOut) return;
     await this.#union.drop(graph);
     await this.#union.add(triples, graph);
-    this.#moved += triples.length;
+    this.#moved += held;
   }
 
   /** Puts the manifest's triples in place of what the build held of it, as a retitle writes it between steps. */
@@ -779,8 +797,9 @@ export class KeptBuild {
   }
 
   /**
-   * The quads the steps since this was last read put in the union in place of others: a store keeps something of each
-   * quad it removes, so the pod moves the build to a store of its own after enough of them.
+   * The quads the steps since this was last read took out of the union to put others in their place: a store keeps
+   * something of each quad it removes, so the pod moves the build to a store of its own after enough of them; a quad
+   * added where none was removed leaves nothing to reclaim.
    */
   moved(): number {
     const moved = this.#moved;
@@ -1265,7 +1284,9 @@ export class KeptBuild {
       ...oldEntries,
       ...this.#globalDerived,
     ];
-    await union.removeSubjects(derivedGraph, derivedGone);
+    this.#moved += await union.removeSubjects(derivedGraph, derivedGone, {
+      count: true,
+    });
     const derivedAdded = added.filter(
       ([subject]) =>
         inScope.has(subject.value) || candidates.has(subject.value),
@@ -1276,7 +1297,6 @@ export class KeptBuild {
       gone: derivedGone,
       fresh: derivedAdded,
     });
-    this.#moved += derivedAdded.length;
     this.#globalDerived = candidates;
 
     // The views.
@@ -1301,6 +1321,7 @@ export class KeptBuild {
             view,
             before.map(([subject]) => subject.value),
             made,
+            before.length,
           );
           this.#always.set(path, made);
           changed.set(path, made);
@@ -1308,11 +1329,13 @@ export class KeptBuild {
         }
         let groups = this.#views.get(path);
         const gone: string[] = [];
+        let held = 0;
         for (const hash of oldHashes) {
           const entry = `${view}#${hash}`;
           entryNames.add(entry);
           const triples = groups?.get(entry);
           if (triples === undefined) continue;
+          held += triples.length;
           gone.push(...new Set(triples.map(([subject]) => subject.value)));
           groups?.delete(entry);
         }
@@ -1327,6 +1350,7 @@ export class KeptBuild {
           const before = groups.get("") ?? [];
           if (!sameTriples(before, own)) {
             gone.push(view);
+            held += before.length;
             groups.set("", own);
             fresh.push(...own);
           }
@@ -1338,7 +1362,7 @@ export class KeptBuild {
           }
         }
         if (gone.length === 0 && fresh.length === 0) return;
-        await this.#replacedSubjects(view, gone, fresh);
+        await this.#replacedSubjects(view, gone, fresh, held);
         if (groups !== undefined) changed.set(path, flat(groups));
       });
     }
@@ -1368,11 +1392,15 @@ export class KeptBuild {
       const madeBySubject = bySubject(made);
       const gone: string[] = [];
       const fresh: Triple[] = [];
-      for (const subject of replaced)
-        if (subjects.has(subject) && !madeBySubject.has(subject)) {
+      let held = 0;
+      for (const subject of replaced) {
+        const before = subjects.get(subject);
+        if (before !== undefined && !madeBySubject.has(subject)) {
+          held += before.length;
           subjects.delete(subject);
           gone.push(subject);
         }
+      }
       for (const [subject, triples] of madeBySubject) {
         if (
           !replaced.has(subject) &&
@@ -1388,12 +1416,15 @@ export class KeptBuild {
             ? triples
             : least(before, triples);
         if (before !== undefined && sameTriples(before, after)) continue;
-        if (before !== undefined) gone.push(subject);
+        if (before !== undefined) {
+          gone.push(subject);
+          held += before.length;
+        }
         subjects.set(subject, after);
         fresh.push(...after);
       }
       if (gone.length === 0 && fresh.length === 0) continue;
-      await this.#replacedSubjects(graph, gone, fresh);
+      await this.#replacedSubjects(graph, gone, fresh, held);
       changed.set(path, flat(subjects));
     }
 

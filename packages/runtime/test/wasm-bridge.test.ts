@@ -427,6 +427,54 @@ describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWor
       });
     });
 
+    it("loads the configured adapters at the same time, and returns them in the order configured though the first is the last to be ready", async () => {
+      const [first, second] = components.config.adapters;
+      assert.ok(first !== undefined && second !== undefined);
+      let secondAsked = (): void => undefined;
+      const asked = new Promise<void>((done) => {
+        secondAsked = done;
+      });
+      const gated: Components = {
+        ...components,
+        resolve: async (followed) => {
+          if (followed === second) secondAsked();
+          if (followed === first) {
+            let giveUp: NodeJS.Timeout | undefined;
+            const refused = new Promise<never>((_, reject) => {
+              giveUp = setTimeout(
+                () =>
+                  reject(new Error("the second adapter waited for the first")),
+                5_000,
+              );
+            });
+            try {
+              await Promise.race([asked, refused]);
+            } finally {
+              clearTimeout(giveUp);
+            }
+            await new Promise((done) => setTimeout(done, 300));
+          }
+          return components.resolve(followed);
+        },
+      };
+      const bridge = new WasmBridge(spawn);
+      const configured = await loadSharedAdapters(
+        bridgeFolder,
+        bridge,
+        [first, second],
+        gated,
+      );
+      for (const { adapter } of configured) await adapter.free();
+      bridge.close();
+      assert.deepEqual(
+        configured.map(({ resolved }) => resolved.iri),
+        [
+          (await components.resolve(first)).iri,
+          (await components.resolve(second)).iri,
+        ],
+      );
+    });
+
     it("reads, to load an adapter, only the files its description lists and the vocabulary files it names", async () => {
       const { folder, copied } = await adapterCopy();
       await mkdir(join(folder, "unlisted"), { recursive: true });

@@ -690,6 +690,21 @@ export class OxigraphStore implements Store {
     for (const graph of graphs as string[]) this.#graphs.add(graph);
   }
 
+  /** How many quads the graph holds of the subjects in `values`, a `VALUES` block. */
+  #held(named: string, values: string): number {
+    const answer = parseResults(
+      queried(() =>
+        this.#store.query(
+          `SELECT (COUNT(*) AS ?n) WHERE { GRAPH ${named} { ${values} ?s ?p ?o } }`,
+          { results_format: RESULTS_JSON },
+        ),
+      ) as string,
+    );
+    if (typeof answer === "boolean")
+      throw new Error("a SELECT was run as an ASK");
+    return Number(answer.rows[0]?.get("n")?.value ?? 0);
+  }
+
   async drop(graph: string): Promise<void> {
     if (this.#oxigraph === undefined) return;
     this.#oxigraph.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
@@ -699,19 +714,25 @@ export class OxigraphStore implements Store {
   async removeSubjects(
     graph: string,
     subjects: Iterable<string>,
-  ): Promise<void> {
-    if (this.#oxigraph === undefined) return;
+    options: { count?: boolean } = {},
+  ): Promise<number> {
+    if (this.#oxigraph === undefined) return 0;
     const all = [...new Set(subjects)];
     const named = written(iri(graph));
+    let removed = 0;
     for (let start = 0; start < all.length; start += SUBJECTS_AT_ONCE) {
-      const values = all
+      const values = `VALUES ?s { ${all
         .slice(start, start + SUBJECTS_AT_ONCE)
         .map((subject) => written(iri(subject)))
-        .join(" ");
+        .join(" ")} }`;
+      const held = options.count === true ? this.#held(named, values) : 0;
+      if (options.count === true && held === 0) continue;
       this.#oxigraph.update(
-        `DELETE { GRAPH ${named} { ?s ?p ?o } } WHERE { GRAPH ${named} { VALUES ?s { ${values} } ?s ?p ?o } }`,
+        `DELETE { GRAPH ${named} { ?s ?p ?o } } WHERE { GRAPH ${named} { ${values} ?s ?p ?o } }`,
       );
+      removed += held;
     }
+    return removed;
   }
 
   async select(query: string, union: ReadonlySet<string>): Promise<Rows> {

@@ -600,7 +600,8 @@ export async function endSharedAdapters(folder?: string): Promise<void> {
  * holding them stay out of the way of the process ending. What the adapter was given is looked at again on every call,
  * as the caller's own components resolve it (the adapter's folder, and the vocabulary it names) and as it is on disk (by
  * each file's path, size and time of change, and the build of the Bridge); what differs loads again, and the adapter it
- * replaces is ended. A run says which version of each it used on every call.
+ * replaces is ended. A run says which version of each it used on every call. The adapters load at the same time, and
+ * are returned in the order given, which decides the first that accepts a document.
  */
 export async function loadSharedAdapters(
   bridgeFolder: string,
@@ -609,33 +610,35 @@ export async function loadSharedAdapters(
   components: Components,
 ): Promise<ConfiguredAdapter[]> {
   const build = await buildStamp(bridgeFolder);
-  const out: ConfiguredAdapter[] = [];
-  for (const followed of adapters) {
-    const resolved = await components.resolve(followed);
-    const base = [bridgeFolder, resolved.folder].join(" ");
-    const repository = vocabularies.get(base);
-    const vocabulary =
-      repository === undefined
-        ? undefined
-        : await components.resolve({ repository });
-    const found = await sharedAt(
-      base,
-      `${base} ${vocabulary?.folder ?? ""}`,
-      vocabulary,
-      build,
-      resolved,
-      followed,
-      bridge.spawn,
-      components,
-    );
-    out.push({
-      ...found.loaded,
-      adapter: found.pool.adapter,
-      resolved,
-      shared: true,
-    });
-  }
-  return out;
+  // If one fails, the others keep loading into the shared cache, each by its own slot and memoized per promise, so a
+  // later call reuses them; the error is whichever failed first in time, not first in the order given.
+  return Promise.all(
+    adapters.map(async (followed): Promise<ConfiguredAdapter> => {
+      const resolved = await components.resolve(followed);
+      const base = [bridgeFolder, resolved.folder].join(" ");
+      const repository = vocabularies.get(base);
+      const vocabulary =
+        repository === undefined
+          ? undefined
+          : await components.resolve({ repository });
+      const found = await sharedAt(
+        base,
+        `${base} ${vocabulary?.folder ?? ""}`,
+        vocabulary,
+        build,
+        resolved,
+        followed,
+        bridge.spawn,
+        components,
+      );
+      return {
+        ...found.loaded,
+        adapter: found.pool.adapter,
+        resolved,
+        shared: true,
+      };
+    }),
+  );
 }
 
 /** The live entry of the slot if it matches what this caller sees, otherwise a new one in its place. */
