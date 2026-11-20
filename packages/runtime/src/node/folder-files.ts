@@ -30,6 +30,9 @@ import { Refusal } from "../step.js";
 const WRITING = /\.\d+\.\d+\.writing$/;
 let writes = 0;
 
+/** How many files `writeMany` has in hand at once, which is what the descriptors and libuv's threads give. */
+const WRITING_AT_ONCE = 16;
+
 /** What touches one path in this process: Windows refuses a rename over a file while any handle on it is open, so a write waits for the reads to end and holds new ones. */
 interface Touching {
   reads: number;
@@ -205,6 +208,9 @@ export class FolderFiles implements Files {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
+    if (await this.#isFolder(root, parts)) return;
+    // A writer's look that began before this mkdir finished may be the one joined, and it found no folder.
+    this.#checked.delete(parts.join("/"));
     if (!(await this.#isFolder(root, parts)))
       throw new Error(`${join(root, ...parts)} is no folder`);
   }
@@ -343,6 +349,33 @@ export class FolderFiles implements Files {
 
   write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
     return this.#again(pathOrIri, () => this.#write(pathOrIri, bytes));
+  }
+
+  /**
+   * Writes the files with up to `WRITING_AT_ONCE` in hand, each as `write` does. After a failure it starts no more and,
+   * once those begun have settled, throws the first failure.
+   */
+  async writeMany(
+    files: Iterable<readonly [string, Uint8Array]>,
+  ): Promise<void> {
+    const queue = files[Symbol.iterator]();
+    let failure: { readonly error: unknown } | undefined;
+    const writer = async (): Promise<void> => {
+      try {
+        for (
+          let next = queue.next();
+          next.done !== true && failure === undefined;
+          next = queue.next()
+        )
+          await this.write(...next.value);
+      } catch (error) {
+        failure ??= { error };
+      }
+    };
+    await Promise.allSettled(
+      Array.from({ length: WRITING_AT_ONCE }, () => writer()),
+    );
+    if (failure !== undefined) throw failure.error;
   }
 
   async #write(pathOrIri: string, bytes: Uint8Array): Promise<void> {

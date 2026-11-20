@@ -63,6 +63,19 @@ async function outcomeOf(opening: Promise<unknown>): Promise<string> {
   }
 }
 
+/** Files that write several at once (`writeMany`), keeping each batch of paths they were given. */
+class Concurrent extends MemoryFiles {
+  readonly batches: string[][] = [];
+
+  async writeMany(
+    files: Iterable<readonly [string, Uint8Array]>,
+  ): Promise<void> {
+    const given = [...files];
+    this.batches.push(given.map(([path]) => path));
+    await Promise.all(given.map(([path, bytes]) => super.write(path, bytes)));
+  }
+}
+
 async function sealedPod(options?: EncryptedFilesOptions) {
   const memory = new MemoryFiles("urn:test:pod/");
   const derive = fastDerive();
@@ -579,6 +592,60 @@ describe("Sealing a pod's files · newHeader(), openHeader(), EncryptedFiles", (
       );
       await assert.rejects(files.read("a.ttl"), changed, "read");
       assert.deepEqual(await memory.list(""), held);
+    });
+  });
+
+  describe("given files beneath that write several at once (`Files.writeMany`)", () => {
+    it("has the sealed index write the files it names in one `writeMany`, and reads each back", async () => {
+      const memory = new Concurrent("urn:test:pod/");
+      const made = await newHeader(SECRET, fastDerive());
+      assert.ok(await madeNewPod(memory, made));
+      const files = new EncryptedFiles(memory, made.key, {
+        index: await SealedIndex.open(memory, made.key),
+      });
+      assert.equal(files.writeMany, undefined);
+      await files.writeAll(
+        ["a", "b", "c"].map((name) => [`${name}.ttl`, encoded(name)]),
+      );
+      const [batch = []] = memory.batches;
+      assert.equal(memory.batches.length, 1);
+      assert.equal(batch.length, 3);
+      assert.ok(batch.every((path) => path.startsWith("sealed/")));
+      for (const name of ["a", "b", "c"])
+        assert.equal(text(await files.read(`${name}.ttl`)), name);
+    });
+
+    it("seals the files of a pod with no index and gives them to `writeMany` beneath, each read back, and none for a path refused", async () => {
+      const memory = new Concurrent("urn:test:pod/");
+      const { bytes, key } = await newHeader(SECRET, fastDerive());
+      await memory.write(HEADER, bytes);
+      const files = new EncryptedFiles(memory, { ...key, version: "1.2" });
+      assert.ok(files.writeMany !== undefined);
+      await assert.rejects(
+        files.writeMany?.([
+          ["a.ttl", encoded("a")],
+          [HEADER, encoded("{}")],
+        ]) ?? Promise.resolve(),
+        Refusal,
+      );
+      assert.equal(memory.batches.length, 0);
+      const names = Array.from({ length: 40 }, (_, n) => `f/${n}.ttl`);
+      await files.writeMany?.(names.map((name) => [name, encoded(name)]));
+      assert.equal(memory.batches.length, 1);
+      assert.equal(memory.batches[0]?.length, 40);
+      for (const name of names) {
+        assert.equal(text(await files.read(name)), name);
+        assert.notEqual(text(await memory.read(name)), name, "not sealed");
+      }
+    });
+
+    it("has no `writeMany` of its own where the files beneath have none", async () => {
+      const memory = new MemoryFiles("urn:test:pod/");
+      const { key } = await newHeader(SECRET, fastDerive());
+      assert.equal(
+        new EncryptedFiles(memory, { ...key, version: "1.2" }).writeMany,
+        undefined,
+      );
     });
   });
 
