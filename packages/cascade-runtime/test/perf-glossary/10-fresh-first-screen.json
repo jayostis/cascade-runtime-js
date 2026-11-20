@@ -22,7 +22,7 @@
     }
   },
   "counts": {
-    "records": "How many records the person's source file holds.",
+    "records": "How many entries the person's source file holds (its Bundle's entries). It is not the number of records the pod keeps: that is the stored scenario's pod-records.",
     "files-written": "How many files the import wrote to the pod."
   }
 }

@@ -12,6 +12,35 @@ Generated from the files of `packages/cascade-runtime/test/perf-glossary/`; edit
 | `question-page` | Fetching one page of 20 answers to each of the app's questions, from the saved database. |
 | `close` | Closing a pod straight after it took in a record and drew the first screen. |
 | `floor` | The same input as a fresh import, loaded plainly into one SQLite file, to read a fresh import against. It is not a lower bound. |
+| `stored` | What a pod holds once a fresh import and its close are done, counted exactly by the kinds of file the pod's layout names: files, statements and bytes, and the pod's database by table and index. |
+
+## What a pod holds
+
+The `stored` scenario counts the pod a fresh import and its close left, in rows named `stored-<dataset>[-encrypted]/files/<kind>`, `/statements/<kind>`, `/bytes/<kind>`, `/predicates/<vocabulary>`, `/database/<table or index>` and `/count/<count>`. The rule for what is the source's data, history, bookkeeping or derived: a kind of file counts as the source's data when it holds what the source said (a version's content, every statement of a version file but the one that links it to its record, and the source's own bytes); as history when it holds what the pod keeps about how it learnt that (the record each version belongs to, the link from each version to it, and a revision for each time an import saw a version); as derived when the pod can write it again from its other files (the views and labels); and as bookkeeping for everything else the pod keeps to run it. The kind of a file comes from where the pod's layout places it, and, inside a folder of records, from the statements it holds: a file that states a version's link to its record is a version, one that states a revision's link is a revision, any other is the record's own.
+
+| Term | Meaning |
+|---|---|
+| `records` | Pod records: the name each thing is known by (history). A record's own file: the name the pod gives one thing the source described (a lab result, a medication, a condition), with its type and the source's own id for it. It holds no content; its versions and revisions point at it. |
+| `versions` | Versions: what the source said (data). One file for each distinct thing the source said of a record: the content (codes, names, dates, values) and one statement naming the record it is a version of. A later pull that says something different adds a version; one that says the same adds none. |
+| `revisions` | Revisions: each time it was seen (history). One file for each time an import saw a version: when, in which document and at which place in it, and which version. The pod's own history, not something the source said. |
+| `servers` | Servers: where a pull came from (bookkeeping). The records, versions and revisions of the servers a pull came from (a hospital's address and name), kept as any other record is. |
+| `findings` | Findings for review (bookkeeping). What the pod noticed and left for its owner to look at. |
+| `judgments` | Judgments and their retractions (bookkeeping). What the owner decided, such as which records say the same thing, and the retractions of those decisions. |
+| `matcher-output` | Matcher output (bookkeeping). The assertions the matcher made while it looked for records that say the same thing. |
+| `references` | Reference series (bookkeeping). The versions of the reference tables (code lists and series) the pod kept for its answers. |
+| `acts` | Acts: each import and activity (bookkeeping). What was done to the pod: each import (what it used and when), each other activity, each sync from another writer. |
+| `documents` | Descriptions of the source documents (bookkeeping). One file of statements for each source document an import was given: its name by content and its kind. The document's bytes are the stored documents. |
+| `stored-documents` | Stored documents: the source's own bytes (data). The source document's own bytes, kept as they came: no statements, the file is the document. |
+| `views` | Views and labels: rebuilt copies (derived). The files the pod writes again after every import from its other files: a list of each kind of record and the names shown for things. They repeat statements the versions, records and revisions already hold. |
+| `creation-settings` | Creation and settings (bookkeeping). What makes the pod a pod: the person it is about, its manifest, its profile card, its preferences and its type index. |
+| `other` | Other files (bookkeeping). Any file the layout places nowhere, such as an encrypted pod's header. |
+
+| Term | Meaning |
+|---|---|
+| `data` | What the person's source said: the content of every version (its codes, names, dates and values), and the source's own bytes. The one statement of each version file that says which record it is a version of is not counted here: it is history. |
+| `history` | What the pod keeps about how it learnt it: the record each version belongs to, the link from each version to it, and a revision for each time an import saw a version. |
+| `bookkeeping` | What the pod keeps to run: acts, descriptions of documents, judgments, the matcher's output, findings, reference series, servers, the pod's creation and settings, and anything else. |
+| `derived` | Copies the pod writes again from its other files after every import, which hold nothing new and can be rebuilt: the views and the labels. |
 
 ## Datasets
 
@@ -55,8 +84,24 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `phase-converting` | Import part: converting the source record into the pod's own format. |
 | `phase-saving` | Import part: writing the converted records into the pod. |
 | `phase-judging` | Import part: claiming, as the pod's owner, the profiles the person confirmed are theirs. |
+| `files/all` | Every file the pod holds, counted by the pod's layout: the kinds' counts add up to it. |
+| `files/on-disk` | Every file in the pod's folder as the disk has it. For a plain pod it equals the count above; for an encrypted pod it also counts the sealed index. |
+| `files/beside` | The files kept beside the pod: its database, its kept build and its kept answers. |
+| `statements/all` | Every statement in the pod's files, a statement that a view repeats counted in each file that holds it: the kinds' counts add up to it. |
+| `bytes/all` | What the pod's files hold, in bytes, read back (an encrypted pod's once opened): the bytes of their content, not the space they take on a disk. The kinds' counts add up to it. |
+| `bytes/on-disk` | What the files of the pod's folder add up to as the disk holds them: sealed files are larger than what they hold, and the sealed index is a file of its own. |
+| `bytes/in-4k-blocks` | What the files of the pod's folder take when each is rounded up to whole 4 KiB blocks, as NTFS and most other file systems allocate: the cost of many small files, which the bytes they hold do not show. |
+| `bytes/beside` | The bytes of the files kept beside the pod: its database, its kept build and its kept answers. |
+| `database/file` | The size of the database the pod keeps beside it, in bytes. |
+| `database/statements` | How many statements the database holds, in its table of statements. |
+| `database/terms` | How many distinct terms the database holds, each kept once. |
+| `database/tables` | Bytes the database's tables take, from SQLite's dbstat table; not given where the SQLite build has none. |
+| `database/indexes` | Bytes the database's indexes take, from SQLite's dbstat table; not given where the SQLite build has none. |
 | `phase-*` | Import part: `<name>`. |
 | `question-*` | One page of 20 answers to: `<name>`. |
+| `predicates/*` | How many statements in the pod's files have a property from the `<name>` vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other). |
+| `database/table-*` | Bytes the database's table `<name>` takes, one of the largest. |
+| `database/index-*` | Bytes the database's index `<name>` takes, one of the largest. |
 
 ## Stages of the probed run
 
@@ -218,7 +263,7 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 
 | Term | Meaning |
 |---|---|
-| `records` | How many records the person's source file holds. |
+| `records` | How many entries the person's source file holds (its Bundle's entries). It is not the number of records the pod keeps: that is the stored scenario's pod-records. |
 | `files-written` | How many files the import wrote to the pod. |
 | `rows` | How many rows the floor inserted, one for each resource that has a type: a fresh import's records count is every entry of the Bundle. |
 | `graph.scans` | How many times the in-memory facts were searched from end to end. |
@@ -250,6 +295,9 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `files.absent.check.read` | How many of those checks had to read the file from the pod, the rest being files whose name fixes their bytes, answered by the pod's listing. |
 | `files.absent.recheck` | How many files were looked at again before a batch was written. |
 | `files.absent.recheck.read` | How many of those looks had to read the file from the pod. |
+| `entries` | How many entries the source's Bundle holds, the same as the fresh import's count of records: the source's own count, which is not the number of records the pod keeps (see pod-records). |
+| `version-links` | How many of the statements in version files link a version to its record, one for each version: the pod's own statement, which counts as history, not as what the source said. |
+| `pod-records` | How many records the pod holds: a file for each thing the source described, the servers' included, each with versions and revisions beside it. Not the source's entries. |
 | `*.graph.quadsvisited` | How many individual facts the searches inside '`<name>`' looked at. |
 | `*.graph.scans` | How many times the in-memory facts were searched end to end inside '`<name>`'. |
 | `*.store.queries` | How many fact-store questions '`<name>`' put. |
