@@ -14,6 +14,7 @@ import {
   timedSync,
 } from "@cascade-runtime/runtime/probe";
 import { explainSpan, explain } from "./perf-glossary.js";
+import { rowsOfHeld } from "./perf-held.js";
 import { keptCpu, part, probedRows, tabulated } from "./perf-report.js";
 import { chromeTrace, MAX_TRACKS, selfTimes } from "./perf-trace.js";
 
@@ -31,6 +32,7 @@ interface Flame {
 interface Runs {
   runsIn(data: string): { folder: string; id: string; event: string }[];
   pages(options: object): { id: string; kept: Set<string> }[];
+  runsPage(runs: object[], options: object): string;
 }
 interface Compare {
   compare(before: object, after: object, options?: object): string;
@@ -786,6 +788,44 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       assert.match(build("300-ccccccc"), /<td[^>]*>5,000<\/td>/);
       assert.doesNotMatch(build("100-aaaaaaa"), /Import takes/);
       assert.match(build("100-aaaaaaa"), /Where the time went/);
+    });
+  });
+
+  describe("given a build whose performance file holds the counts of a pod", () => {
+    it("shows in the build's entry what the pod held, apart from the flame graphs, with the files, statements and megabytes of each kind and its share", async () => {
+      const { runsPage } = await script<Runs>("perf-runs.mjs");
+      const { storedOf } = await script<{
+        storedOf(file: object, key: string): object | undefined;
+      }>("perf-stored.mjs");
+      const stored = storedOf({ results: rowsOfHeld() }, "stored-synthea-10y");
+      assert.ok(stored !== undefined);
+      const run = (stored: object[]) => ({
+        id: "1-aaaaaaa",
+        date: "2026-11-20",
+        event: "push",
+        run: "1",
+        sha: "aaaaaaa",
+        flame: { builds: [] },
+        kept: new Set<string>(),
+        speeds: [],
+        stored,
+      });
+      const options = {
+        repo: "owner/repo",
+        pages: "https://site.test/perf",
+        viewer: "https://site.test/perf/speedscope/",
+      };
+      const page = runsPage([run([stored])], options);
+      const block =
+        /<div class="box stored">[\s\S]*?<\/table>/.exec(page)?.[0] ?? "";
+      assert.match(block, /<h2>What a pod holds<\/h2>/);
+      assert.match(
+        block,
+        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MB\)/,
+      );
+      assert.match(block, /<td class="n">600<\/td>/);
+      assert.match(block, /<td class="n">60%<\/td>/);
+      assert.doesNotMatch(runsPage([run([])], options), /What a pod holds/);
     });
   });
 
