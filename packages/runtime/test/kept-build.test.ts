@@ -887,8 +887,11 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
   });
 
   describe("when a step puts quads in the kept build, and the pod moves the build to a store of its own after enough of them replace others", () => {
-    /** How many times the pod moved its kept build to a store of its own over the replay of one example of the arrivals. */
-    async function compactionsOver(example: string): Promise<number> {
+    /** How many times the pod moved its kept build to a store of its own, over the replay of one example of the arrivals, once `threshold` quads had been replaced. */
+    async function compactionsOver(
+      example: string,
+      threshold: number,
+    ): Promise<number> {
       const build = await vocabularyBuild(await vocabulary(), await layout());
       const { seen } = await probing(() =>
         replayed("runtime/arrivals.feature", example, {
@@ -897,17 +900,18 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
             lens: "everyday",
             derive: deriveWith(build),
             incremental: build,
-            renewAfterMoved: 1,
+            renewAfterMoved: threshold,
           },
         }),
       );
       return seen.counts.get("core-pod.compactions") ?? 0;
     }
 
-    it("does not move the build when the only step is an import into a pod that held nothing, whatever the threshold, for nothing is there to replace", async () => {
+    it("does not move the build when the only step is an import into a pod that held nothing, though it adds more quads than the threshold, for little is there to replace", async () => {
       assert.equal(
         await compactionsOver(
           "each record's first arrival is its first version and a revision that follows none",
+          50,
         ),
         0,
       );
@@ -917,6 +921,7 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.ok(
         (await compactionsOver(
           "the peanut allergy changes and changes back, and its third revision sets its first version again",
+          20,
         )) > 0,
       );
     });
@@ -999,6 +1004,16 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       const none = await over(iris(256), [], TYPED_PATTERN);
       assert.deepEqual([...none.found], []);
       assert.deepEqual([none.asks, none.selects], [0, 1]);
+    });
+
+    it("runs the batches, with no ask, for a path that may be no step long, which no ask over the union's nodes can answer for the bound IRIs", async () => {
+      const done = await over(
+        iris(300),
+        ["urn:test:r3"],
+        "?bound (<urn:test:next>)* ?found",
+      );
+      assert.deepEqual([...done.found], ["urn:test:r3"]);
+      assert.deepEqual([done.asks, done.selects], [0, 2]);
     });
   });
 
