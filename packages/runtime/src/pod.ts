@@ -1,5 +1,19 @@
 import { type Files, writeAll, writeEach } from "./files.js";
+import { counted, timedAside } from "./probe.js";
 import { ntriples, type Triple } from "./rdf.js";
+
+/** Files that hold the pod's listing, so which of the paths they lack is answered from it, with no read of each. */
+export interface ListedFiles extends Files {
+  /**
+   * The paths of those given that the pod's listing lacks and that are not held: a file that reached the pod after
+   * the listing is not found, the pod being written only through these files.
+   */
+  lacking(paths: readonly string[]): Promise<ReadonlySet<string>>;
+}
+
+function lists(pod: Files): pod is ListedFiles {
+  return typeof (pod as Partial<ListedFiles>).lacking === "function";
+}
 
 export function same(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, index) => byte === b[index]);
@@ -84,16 +98,31 @@ export class StepWrites {
    */
   async commit(pod: Files, finish?: FinishAct): Promise<string[]> {
     const fresh: [string, Uint8Array][] = [];
-    for (const [path, bytes] of this.#files) {
-      const held = await pod.read(path);
-      if (held === undefined) fresh.push([path, bytes]);
-      else if (!same(held, bytes))
-        throw new Error(`${path} is in the pod already, holding other bytes`);
-    }
+    await timedAside("files.absent.check", async () => {
+      const lacking = lists(pod)
+        ? await pod.lacking([...this.#files.keys()])
+        : undefined;
+      counted("files.absent.check", this.#files.size);
+      for (const [path, bytes] of this.#files) {
+        if (lacking?.has(path) === true) {
+          fresh.push([path, bytes]);
+          continue;
+        }
+        counted("files.absent.check.read");
+        const held = await pod.read(path);
+        if (held === undefined) fresh.push([path, bytes]);
+        else if (!same(held, bytes))
+          throw new Error(`${path} is in the pod already, holding other bytes`);
+      }
+    });
     const act = this.#act;
     if (act !== undefined) {
-      if ((await pod.read(act.path)) !== undefined)
-        throw new Error(`${act.path} is in the pod already`);
+      await timedAside("files.absent.check", async () => {
+        counted("files.absent.check");
+        counted("files.absent.check.read");
+        if ((await pod.read(act.path)) !== undefined)
+          throw new Error(`${act.path} is in the pod already`);
+      });
       const finished = (await finish?.(act, [...fresh], this.#arrived)) ?? [];
       fresh.push([act.path, ntriples([...act.triples, ...finished])]);
     }

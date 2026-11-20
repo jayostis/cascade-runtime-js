@@ -351,12 +351,19 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
         assert.ok(await files.read(path), `${path} was not written`);
     });
 
-    it("shows its absence checks in the trace: one span, a count of the paths and a count of those read from the pod", async () => {
+    it("shows its absence checks in the trace: a span, a count of the paths and a count of those read from the pod, for the check before it writes and the look again before each batch", async () => {
       const { pod } = await listed();
       const { seen } = await probing(() => waved().commit(pod.files));
-      assert.ok((seen.spans.get("files.absent.check")?.calls ?? 0) >= 1);
-      assert.equal(seen.counts.get("files.absent.check"), FRESH.length);
-      assert.equal(seen.counts.get("files.absent.check.read") ?? 0, 0);
+      for (const span of ["files.absent.check", "files.absent.recheck"])
+        assert.ok((seen.spans.get(span)?.calls ?? 0) >= 1, span);
+      const counts = Object.fromEntries(
+        [...seen.counts].filter(([name]) => name.startsWith("files.absent.")),
+      );
+      assert.deepEqual(counts, {
+        "files.absent.check": FRESH.length + 1,
+        "files.absent.check.read": 1,
+        "files.absent.recheck": FRESH.length + 1,
+      });
     });
 
     it("reads a file the listing has and compares it, refusing other bytes and not writing the same ones again", async () => {
@@ -382,6 +389,29 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
         other.commit(pod.files),
         /files\/0 is in the pod already, holding other bytes/,
       );
+    });
+
+    it("looks for the files again after a wave fails, so a retry writes only what the failed wave left unwritten", async () => {
+      const files = new Reading(ADDRESS);
+      let failing = true;
+      files.writeMany = async (written) => {
+        const [first] = [...written];
+        if (!failing)
+          return Overlapping.prototype.writeMany.call(files, written);
+        if (first !== undefined) await files.write(first[0], first[1]);
+        throw new Error("the first wave fails");
+      };
+      const pod = new CorePod(
+        options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+      );
+      await pod.create();
+      await assert.rejects(waved().commit(pod.files), /the first wave fails/);
+      failing = false;
+      files.log.length = 0;
+      const committed = await waved().commit(pod.files);
+      assert.deepEqual(committed, [...FRESH.slice(1), "acts/a"]);
+      for (const path of [...FRESH, "acts/a"])
+        assert.ok(await files.read(path), `${path} was not written`);
     });
 
     it("writes over a file that reached the pod after the listing with the bytes it holds, the name being the bytes' hash", async () => {
