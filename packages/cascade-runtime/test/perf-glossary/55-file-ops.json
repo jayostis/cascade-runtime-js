@@ -10,7 +10,9 @@
     "3000-files": "3,000 small files of 280 bytes each, made in a temporary folder on the machine's own disk, the machine as it is.",
     "3000-files-scanner-off": "The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live checking of files switched off, to see what that checking costs.",
     "3000-files-scanner-on": "The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live, file-opening and script checking switched on and the folders the runner leaves out of it taken off its list for the run, to see what the checking costs; the runner is put back as it was afterwards.",
-    "3000-files-scanner-excluded": "The same 3,000 small files, made while the scanner's live checking is on but the folder the files are made in is excluded from it, to see what an exclusion saves."
+    "3000-files-scanner-excluded": "The same 3,000 small files, made while the scanner's live checking is on but the folder the files are made in is excluded from it, to see what an exclusion saves.",
+    "3000-files-scanner-in-excluded-folder": "The same 3,000 small files, made on a machine whose virus scanner (Windows Defender) is NOT changed in any way, in a folder inside one the scanner leaves alone. Read it beside the next one: it is a natural experiment on one machine, the same code and disk, with only the folder differing.",
+    "3000-files-scanner-in-scanned-folder": "The same 3,000 small files, made on the same machine, with its scanner not changed, in a folder outside every folder the scanner leaves alone (the system's temporary folder unless one was named). Read it beside the one made in an excluded folder: where the two differ by more than their ranges, the scanner's checking is the likely difference, and this page does not say it is the only one."
   },
   "measureFamilies": [
     {
@@ -42,6 +44,6 @@
     "scanner-exclusion-allowed": "Whether the runner let the run exclude the folder from the virus scanner and the scanner listed it: 1 for yes, 0 for no; the row's note says why not.",
     "scanner-restored": "Whether the virus scanner was read back as it was before the run changed it, every setting and every excluded folder: 1 for yes, 0 for no; the row's note says what it read.",
     "work-folder": "Where the files were made: the folder's own path and the drive it is on, in the row's note. 1 when recorded.",
-    "scanner-folder-excluded": "Whether the folder the files were made in was on the scanner's list of excluded folders while they were made: 1 for yes, 0 for no."
+    "scanner-folder-excluded": "Whether the folder the files were made in was on the scanner's list of excluded folders, or inside one, while they were made: 1 for yes, 0 for no. In the comparison that changes nothing it is checked by the folder's real path against the list read from Windows Defender, and the row's note names the folder and the list entry it is inside."
   }
 }

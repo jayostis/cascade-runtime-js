@@ -719,6 +719,12 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
             ...fileOpsRows("", ops(0.0004), 0.25),
             ...fileOpsRows("-scanner-on", ops(0.0003), 0.25),
             ...fileOpsRows("-scanner-excluded", ops(0.0002), 0.25),
+            // One run far from the others.
+            ...fileOpsRows(
+              "-scanner-excluded",
+              { "full-path/in-flight-16": 0.001 },
+              0.9,
+            ),
             count(
               "/count/scanner-realtime-on",
               0,
@@ -767,6 +773,14 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
       assert.match(
         page,
         /creating a file took 10× as long as on Linux one at a time, 10× at 16 at once and 10× at 64 at once/,
+      );
+      // A range that wide is marked, and a narrow one is not.
+      assert.match(page, /range 100-1900 µs, one slow run<\/span>/);
+      assert.doesNotMatch(page, /range 150-250 µs, one slow run/);
+      // The ratio moves with the Linux chip, and says by how much it has.
+      assert.match(
+        page,
+        /move with the chip GitHub gave the Linux build.*15 µs.*Xeon 6975P.*45 µs.*EPYC 7763.*between 5 and 45 times/,
       );
       // No sentence is picked by a cut-off.
       assert.doesNotMatch(page, /is not what makes a file dear/);

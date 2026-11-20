@@ -2,12 +2,14 @@ import { execFile } from "node:child_process";
 import {
   lstat,
   mkdir,
+  mkdtemp,
   open,
   realpath,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { promisify } from "node:util";
 import { child } from "../perf-child.js";
@@ -148,18 +150,29 @@ export async function measureFileOps(job: Job): Promise<Measured> {
 
 /**
  * Whether the machine's virus scanner was as it is, with its live checking switched off, with its live, file and script checking on and none
- * of the runner's excluded folders, or with those on and the folder excluded.
+ * of the runner's excluded folders, or with those on and the folder excluded; or, on a machine whose scanner is not changed at all,
+ * in a folder inside one the scanner leaves alone or in a folder outside every one.
  */
-export type ScannerState = "as-is" | "off" | "on" | "excluded";
+export type ScannerState =
+  | "as-is"
+  | "off"
+  | "on"
+  | "excluded"
+  | "in-excluded-folder"
+  | "in-scanned-folder";
 
 const NAME = "file-ops-3000-files";
+
+/** The prefix of a state's rows. */
+const rowsOf = (state: ScannerState): string =>
+  state === "as-is" ? NAME : `${NAME}-scanner-${state}`;
 
 /** The rows of one state: the median over the runs of each operation, and the files counted. */
 export function fileOpsRows(
   state: ScannerState,
   runs: readonly FileOpsRun[],
 ): Row[] {
-  const name = state === "as-is" ? NAME : `${NAME}-scanner-${state}`;
+  const name = rowsOf(state);
   const how = `median of ${runs.length} runs, each in a process of its own, over ${runs[0]?.files ?? 0} files of ${OBJECT.length} bytes; ${
     state === "as-is"
       ? "the machine as it is"
@@ -167,7 +180,11 @@ export function fileOpsRows(
         ? "the virus scanner's live checking switched off for the run"
         : state === "on"
           ? "the virus scanner's live, file and script checking switched on for the run and the runner's excluded folders taken off its list"
-          : "the virus scanner's checking on, the folder excluded from it"
+          : state === "excluded"
+            ? "the virus scanner's checking on, the folder excluded from it"
+            : state === "in-excluded-folder"
+              ? "the scanner as the machine has it, the files made in a folder inside one the scanner leaves alone"
+              : "the scanner as the machine has it, the files made in a folder outside every one the scanner leaves alone"
   }`;
   const samples = (pick: (run: FileOpsRun) => number | undefined) =>
     runs.flatMap((run) => pick(run) ?? []);
@@ -216,6 +233,11 @@ export interface ScannerSettings {
   readonly excludedFolders: readonly string[];
   /** How the scanner runs, as it names it, where it says. */
   readonly mode?: string;
+  /** What the scanner's status says of itself (Get-MpComputerStatus), which can differ from what its preferences say. */
+  readonly reported?: {
+    readonly fileOpening: boolean;
+    readonly behaviour: boolean;
+  };
 }
 
 /** What the machine's virus scanner can be asked and told, where it has one. */
@@ -245,7 +267,7 @@ export function sameSettings(a: ScannerSettings, b: ScannerSettings): boolean {
 /** The settings in a sentence, for the row that records them. */
 export function describeSettings(settings: ScannerSettings): string {
   const kind = (on: boolean) => (on ? "on" : "off");
-  return `live checking ${kind(settings.realtime)}, file-opening checking ${kind(settings.fileOpening)}, behaviour monitoring ${kind(settings.behaviour)}, script scanning ${kind(settings.scripts)}, excluded folders [${settings.excludedFolders.join(", ")}]${settings.mode === undefined ? "" : `, running mode ${settings.mode}`}`;
+  return `live checking ${kind(settings.realtime)}, file-opening checking ${kind(settings.fileOpening)}, behaviour monitoring ${kind(settings.behaviour)}, script scanning ${kind(settings.scripts)}, excluded folders [${settings.excludedFolders.join(", ")}]${settings.mode === undefined ? "" : `, running mode ${settings.mode}`}${settings.reported === undefined ? "" : `; Get-MpComputerStatus: IoavProtectionEnabled ${settings.reported.fileOpening}, BehaviorMonitorEnabled ${settings.reported.behaviour}`}`;
 }
 
 const execute = promisify(execFile);
@@ -268,7 +290,7 @@ export function windowsScanner(
       const said = JSON.parse(
         (
           await powershell(
-            "$p = Get-MpPreference; $s = Get-MpComputerStatus; [pscustomobject]@{ realtime = [bool]$s.RealTimeProtectionEnabled; fileOpening = -not $p.DisableIOAVProtection; behaviour = -not $p.DisableBehaviorMonitoring; scripts = -not $p.DisableScriptScanning; excludedFolders = @($p.ExclusionPath | Where-Object { $_ }); mode = [string]$s.AMRunningMode } | ConvertTo-Json -Compress",
+            "$p = Get-MpPreference; $s = Get-MpComputerStatus; [pscustomobject]@{ realtime = [bool]$s.RealTimeProtectionEnabled; fileOpening = -not $p.DisableIOAVProtection; behaviour = -not $p.DisableBehaviorMonitoring; scripts = -not $p.DisableScriptScanning; excludedFolders = @($p.ExclusionPath | Where-Object { $_ }); mode = [string]$s.AMRunningMode; reportedFileOpening = [bool]$s.IoavProtectionEnabled; reportedBehaviour = [bool]$s.BehaviorMonitorEnabled } | ConvertTo-Json -Compress",
           )
         ).trim(),
       ) as Record<string, unknown>;
@@ -285,6 +307,15 @@ export function windowsScanner(
         excludedFolders: folders.map(String),
         ...(typeof said.mode === "string" && said.mode !== ""
           ? { mode: said.mode }
+          : {}),
+        ...(typeof said.reportedFileOpening === "boolean" &&
+        typeof said.reportedBehaviour === "boolean"
+          ? {
+              reported: {
+                fileOpening: said.reportedFileOpening,
+                behaviour: said.reportedBehaviour,
+              },
+            }
           : {}),
       };
     } catch {
@@ -336,28 +367,273 @@ const message = (error: unknown): string =>
     .replace(/\s+/g, " ")
     .slice(0, 400);
 
+/** The signals that stop a process, and the exit code each ends with (128 and the signal's number; SIGBREAK is Ctrl-Break on Windows). */
+const STOPS = {
+  SIGINT: 130,
+  SIGTERM: 143,
+  SIGHUP: 129,
+  SIGBREAK: 149,
+} as const;
+
 /** What a process offers to put a scanner back when it is stopped. */
 export interface SignalHost {
-  once(signal: "SIGINT" | "SIGTERM", handler: () => void): unknown;
-  off(signal: "SIGINT" | "SIGTERM", handler: () => void): unknown;
+  on(signal: keyof typeof STOPS, handler: () => void): unknown;
+  off(signal: keyof typeof STOPS, handler: () => void): unknown;
   exit(code: number): unknown;
 }
 
-/** Runs `restore` when the process is interrupted or told to stop, then exits; the returned function takes the handlers off. */
+/**
+ * Runs `restore` when the process is interrupted, told to stop, or its terminal is closed, then exits; the returned function
+ * takes the handlers off. The handlers stay on while the settings are put back, and a second signal in that time is ignored,
+ * where Node's own handling of it would end the process with the settings still changed.
+ */
 export function restoringOnSignals(
   restore: () => Promise<void>,
   host: SignalHost = process as unknown as SignalHost,
 ): () => void {
-  const installed = (["SIGINT", "SIGTERM"] as const).map((signal) => {
-    const handler = () => {
-      void restore().finally(() => host.exit(signal === "SIGINT" ? 130 : 143));
-    };
-    host.once(signal, handler);
-    return [signal, handler] as const;
-  });
+  let stopping = false;
+  const installed = (Object.keys(STOPS) as (keyof typeof STOPS)[]).map(
+    (signal) => {
+      const handler = () => {
+        if (stopping) return;
+        stopping = true;
+        void restore().finally(() => host.exit(STOPS[signal]));
+      };
+      host.on(signal, handler);
+      return [signal, handler] as const;
+    },
+  );
   return () => {
     for (const [signal, handler] of installed) host.off(signal, handler);
   };
+}
+
+/** Runs the jobs it is given one after another, each after the one before has ended, whether it was fulfilled or not. */
+export function inTurn(): <T>(job: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return (job) => {
+    const next = tail.then(job, job);
+    tail = next.catch(() => undefined);
+    return next;
+  };
+}
+
+/** Whether a folder is a folder of the list or inside one (a path in the list that holds a wildcard or a variable is not matched). */
+export function insideListed(
+  path: string,
+  listed: readonly string[],
+): string | undefined {
+  const key = folderKey(path);
+  return listed.find((entry) => {
+    if (/[*?%]/.test(entry)) return false;
+    const at = folderKey(entry);
+    return key === at || key.startsWith(`${at}\\`) || key.startsWith(`${at}/`);
+  });
+}
+
+/** Defender lists this, and nothing else, to a shell that is not an administrator's. */
+const hidden = (entry: string): boolean => /^N\/A/i.test(entry);
+
+const microseconds = (seconds: number): string => {
+  const us = seconds * 1e6;
+  return `${us >= 100 ? Math.round(us) : us >= 10 ? +us.toFixed(1) : +us.toFixed(2)} µs`;
+};
+
+/** A range of a row, `0.000225-0.000375` seconds, as `225-375 µs`. */
+const rangeIn = (row: Row | undefined): string => {
+  const [low, high] = String(row?.range ?? "")
+    .split("-")
+    .map(Number);
+  if (low === undefined || high === undefined || !(high >= low)) return "";
+  const plain = (seconds: number) => microseconds(seconds).replace(" µs", "");
+  return `${plain(low)}-${plain(high)} µs`;
+};
+
+/** Whether the range of a row is so wide that one run was far from the others, so its median says little. */
+export const wide = (row: Row | undefined): boolean => {
+  const [low, high] = String(row?.range ?? "")
+    .split("-")
+    .map(Number);
+  return (
+    low !== undefined &&
+    high !== undefined &&
+    high > 0 &&
+    high > Math.max(low, 1e-12) * 3
+  );
+};
+
+/** What the read-only comparison prints: each folder's times with their ranges, and what the scanner was read as. */
+export function foldersReport(
+  rows: readonly Row[],
+  settings: ScannerSettings,
+  where: Record<"in-excluded-folder" | "in-scanned-folder", string>,
+): string[] {
+  type Folder = "in-excluded-folder" | "in-scanned-folder";
+  const find = (state: Folder, key: string) =>
+    rows.find(({ name }) => name === `${rowsOf(state)}/${key}`);
+  const cell = (state: Folder, key: string): string => {
+    const row = find(state, key);
+    if (row === undefined) return "-";
+    const range = rangeIn(row);
+    return `${microseconds(row.value)}${range === "" ? "" : ` (range ${range})`}${wide(row) ? " one slow run" : ""}`;
+  };
+  const lines: [string, string][] = [
+    ...[1, 16, 64].map<[string, string]>((at) => [
+      `create a file, ${at} at once, per file`,
+      `create/in-flight-${at}`,
+    ]),
+    ["all the files' bytes as one file, whole", "one-file/whole"],
+    ["the same, flushed first, whole", "one-file/whole-flushed"],
+  ];
+  return [
+    "Nothing on this machine was changed: Windows Defender's settings were only read.",
+    `Windows Defender read as: ${describeSettings(settings)}`,
+    `In the excluded folder: ${where["in-excluded-folder"]}`,
+    `In the scanned folder: ${where["in-scanned-folder"]}`,
+    ...lines.flatMap(([text, key]) => [
+      `${text}: excluded folder ${cell("in-excluded-folder", key)}; scanned folder ${cell("in-scanned-folder", key)}`,
+    ]),
+    "Read it as one machine, two folders: a difference between the columns is what the scanner costs here only where their ranges do not overlap.",
+  ];
+}
+
+/**
+ * The micro-bench in a folder the scanner leaves alone and in one it does not, on the machine as it is, and nothing is
+ * changed: the scanner is only read. Which folder is which is checked against its list by real path, and a pair that is in the
+ * same state is refused. The runs alternate between the two folders so that the machine's drift falls on both.
+ */
+export async function foldersCompared(
+  plan: Plan,
+  log: (line: string) => void,
+  deps: {
+    scanner?: Pick<Scanner, "read">;
+    once: (folder: string) => Promise<FileOpsRun>;
+    tmp?: string;
+  },
+): Promise<Row[]> {
+  const scanner =
+    deps.scanner ??
+    (process.platform === "win32" ? windowsScanner() : undefined);
+  const settings = await scanner?.read();
+  if (settings === undefined)
+    throw new Error(
+      "--scanner-folders reads Windows Defender's list of excluded folders (Get-MpPreference) and could not: this machine has no Windows Defender, or PowerShell would not read it. Nothing was changed.",
+    );
+  const listed = settings.excludedFolders;
+  const hiddenFrom = listed.find(hidden);
+  if (hiddenFrom !== undefined)
+    throw new Error(
+      `Windows Defender hides its list of excluded folders from a shell that is not an administrator's (it answered "${hiddenFrom}"): run this again from an administrator PowerShell. Only the list is read; nothing is changed.`,
+    );
+  const state = async (folder: string) => {
+    const real = await realpath(folder).catch(() => {
+      throw new Error(`${folder} is not a folder that exists`);
+    });
+    return { real, entry: insideListed(real, listed) };
+  };
+  // The folder that is excluded: the one asked for, or the first excluded folder that can be written to.
+  const writableRoots: { real: string; entry: string | undefined }[] = [];
+  if (plan.folderExcluded !== undefined) {
+    const found = await state(plan.folderExcluded);
+    if (found.entry === undefined)
+      throw new Error(
+        `--folder-excluded ${plan.folderExcluded} (${found.real}) is not inside any folder Windows Defender leaves alone; its list is [${listed.join(", ")}]`,
+      );
+    writableRoots.push(found);
+  } else {
+    // A drive's root last: a folder made there can need more than a person has.
+    const ordered = [...listed].sort(
+      (a, b) => Number(parse(a).base === "") - Number(parse(b).base === ""),
+    );
+    for (const entry of ordered) {
+      if (/[*?%]/.test(entry)) continue;
+      const found = await state(entry).catch(() => undefined);
+      if (found !== undefined && found.entry !== undefined)
+        writableRoots.push(found);
+    }
+    if (writableRoots.length === 0)
+      throw new Error(
+        `no folder is excluded from Windows Defender on this machine that exists (its list is [${listed.join(", ")}]), so there is no excluded folder to compare; name one with --folder-excluded. Nothing was changed.`,
+      );
+  }
+  const scannedAsked = plan.folderScanned ?? deps.tmp ?? tmpdir();
+  const scanned = await state(scannedAsked);
+  if (scanned.entry !== undefined)
+    throw new Error(
+      `${plan.folderScanned === undefined ? "the temporary folder" : "--folder-scanned"} ${scannedAsked} (${scanned.real}) is inside ${scanned.entry}, which Windows Defender leaves alone, so both folders are in the same state; name a folder outside every one with --folder-scanned. Nothing was changed.`,
+    );
+  const folders: Record<"in-excluded-folder" | "in-scanned-folder", string> = {
+    "in-excluded-folder": "",
+    "in-scanned-folder": "",
+  };
+  const roots: string[] = [];
+  const where = {} as Record<keyof typeof folders, string>;
+  const entryOf: Record<string, string | undefined> = {};
+  try {
+    for (const candidate of writableRoots) {
+      try {
+        folders["in-excluded-folder"] = await mkdtemp(
+          join(candidate.real, "cascade-perf-"),
+        );
+        entryOf["in-excluded-folder"] = candidate.entry;
+        break;
+      } catch {
+        continue;
+      }
+    }
+    if (folders["in-excluded-folder"] === "")
+      throw new Error(
+        `no excluded folder could be written to (tried ${writableRoots.map(({ real }) => real).join(", ")}); name one with --folder-excluded. Nothing was changed.`,
+      );
+    roots.push(folders["in-excluded-folder"]);
+    folders["in-scanned-folder"] = await mkdtemp(
+      join(scanned.real, "cascade-perf-"),
+    );
+    roots.push(folders["in-scanned-folder"]);
+    entryOf["in-scanned-folder"] = undefined;
+    for (const each of Object.keys(folders) as (keyof typeof folders)[])
+      where[each] =
+        each === "in-excluded-folder"
+          ? `${folders[each]}, inside ${entryOf[each]}, which Windows Defender leaves alone`
+          : `${folders[each]}, inside none of the ${listed.length} folders Windows Defender leaves alone`;
+    // The folders as made are checked once more, by real path, against the same list.
+    for (const each of Object.keys(folders) as (keyof typeof folders)[]) {
+      const now = await state(folders[each]);
+      if ((now.entry !== undefined) !== (each === "in-excluded-folder"))
+        throw new Error(
+          `${folders[each]} is ${now.entry === undefined ? "not " : ""}inside a folder Windows Defender leaves alone, not as expected; nothing was changed`,
+        );
+    }
+    const runs: Record<keyof typeof folders, FileOpsRun[]> = {
+      "in-excluded-folder": [],
+      "in-scanned-folder": [],
+    };
+    const order = Object.keys(folders) as (keyof typeof folders)[];
+    for (let at = 0; at < plan.repeats; at++)
+      for (const each of at % 2 === 0 ? order : [...order].reverse()) {
+        log(`file operations, ${each}: run ${at + 1}/${plan.repeats}`);
+        runs[each].push(
+          await deps.once(join(folders[each], `file-ops-${each}-${at}`)),
+        );
+      }
+    const rows = order.flatMap((each) => [
+      ...fileOpsRows(each, runs[each]),
+      countRow(
+        `${rowsOf(each)}/count/scanner-folder-excluded`,
+        each === "in-excluded-folder" ? 1 : 0,
+        `${where[each]}; its real path was compared with Get-MpPreference's ExclusionPath, which was only read`,
+      ),
+      countRow(
+        `${rowsOf(each)}/count/scanner-realtime-on`,
+        settings.realtime ? 1 : 0,
+        describeSettings(settings),
+      ),
+    ]);
+    for (const line of foldersReport(rows, settings, where)) log(line);
+    return rows;
+  } finally {
+    for (const root of roots) await rm(root, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -400,6 +676,9 @@ export async function fileOpsAt(
         throw new Error("the file micro-bench measured nothing");
       return fileOps;
     });
+  // Nothing is changed in the machine's scanner: it is read, and two folders are measured.
+  if (plan.scannerFolders === true)
+    return foldersCompared(plan, log, { scanner, once });
   // The scanner is told to leave this folder alone, not the whole of `work`, which holds the runs' own results too.
   const excludedHome = join(work, "left-alone");
   const batch = async (state: ScannerState): Promise<Row[]> => {
@@ -451,7 +730,10 @@ export async function fileOpsAt(
   };
   let changed = false;
   let restored: { ok: boolean; says: string } | undefined;
-  const restore = async (): Promise<void> => {
+  // A change and a put-back never run at the same time: a signal in the middle of a change waits for it to end.
+  const inTurnOf = inTurn();
+  const restore = (): Promise<void> => inTurnOf(putBack);
+  const putBack = async (): Promise<void> => {
     if (!changed || restored?.ok === true) return;
     let refusal = "";
     await scanner.set(start).catch((error: unknown) => {
@@ -474,7 +756,7 @@ export async function fileOpsAt(
   };
   /** Sets the scanner to `settings`, records whether it let that be, and measures when it did. */
   const attempt = async (
-    state: Exclude<ScannerState, "as-is">,
+    state: "off" | "on" | "excluded",
     settings: ScannerSettings,
   ): Promise<boolean> => {
     const allowedName = {
@@ -486,7 +768,7 @@ export async function fileOpsAt(
     changed = true;
     log(`scanner, ${state}: setting ${describeSettings(settings)}`);
     try {
-      await scanner.set(settings);
+      await inTurnOf(() => scanner.set(settings));
     } catch (error) {
       refusal = message(error);
     }

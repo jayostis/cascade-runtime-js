@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -28,6 +29,7 @@ import {
   type SpanEvent,
   timed,
 } from "@cascade-runtime/runtime/probe";
+import { type Plan } from "./perf-plan.js";
 import { explain, glossaryMarkdown, readGlossary } from "./perf-glossary.js";
 import { flatten, loadPlainly } from "./perf-floor.js";
 import { profileOf, syntheticPull } from "./import-bench.js";
@@ -47,6 +49,7 @@ import {
   tabulated,
   explained,
   fileOpsAt,
+  foldersCompared,
   fileOpsOnce,
   fileOpsRows,
   FILE_OPS,
@@ -61,6 +64,9 @@ import {
   RUNTIME_ROOT,
   SCENARIOS,
   restoringOnSignals,
+  windowsScanner,
+  wide,
+  inTurn,
   type Scanner,
   type ScannerSettings,
   THEN,
@@ -1698,15 +1704,45 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
           .scannerCompare,
         true,
       );
-      assert.equal(
-        parsedPlan(["--scanner-compare"], {
-          CASCADE_PERF_ALLOW_LOCAL_SCANNER: "1",
-        }).plan.scannerCompare,
-        true,
+      // Nothing lifts it on a person's machine: the escape that did is gone.
+      for (const env of [
+        {},
+        { CASCADE_PERF_ALLOW_LOCAL_SCANNER: "1" },
+        { GITHUB_ACTIONS: "false" },
+      ])
+        assert.throws(
+          () => parsedPlan(["--scanner-compare"], env),
+          /GitHub Actions' throwaway runners only.*--scanner-folders/,
+        );
+    });
+
+    it("reads --scanner-folders as a file micro-bench that changes nothing, with the two folders if they are named, and not with --scanner-compare", () => {
+      const asked = parsedPlan(
+        [
+          "--scanner-folders",
+          "--folder-excluded",
+          "ex",
+          "--folder-scanned",
+          "sc",
+        ],
+        {},
+      ).plan;
+      assert.equal(asked.scannerFolders, true);
+      assert.equal(asked.scannerCompare, false);
+      assert.equal(asked.scenarios.has("file-ops"), true);
+      assert.equal(asked.folderExcluded, "ex");
+      assert.equal(asked.folderScanned, "sc");
+      assert.equal(parsedPlan([], {}).plan.scannerFolders, false);
+      assert.throws(
+        () =>
+          parsedPlan(["--scanner-folders", "--scanner-compare"], {
+            GITHUB_ACTIONS: "true",
+          }),
+        /use one/,
       );
       assert.throws(
-        () => parsedPlan(["--scanner-compare"], {}),
-        /GitHub Actions only.*CASCADE_PERF_ALLOW_LOCAL_SCANNER=1/,
+        () => parsedPlan(["--folder-scanned", "sc"], {}),
+        /--scanner-folders, which was not given/,
       );
     });
   });
@@ -1866,24 +1902,184 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.deepEqual(s.state(), hosted);
     });
 
-    it("puts it back, and then exits, when the process is interrupted or told to stop, and takes its handlers off when the run is over", async () => {
+    /** A process that records its exit. */
+    const process_ = () => {
       const host = new EventEmitter() as EventEmitter & {
         exit(code: number): void;
       };
-      const exited = new Promise<number>((resolve) => {
-        host.exit = resolve;
-      });
-      let restored = false;
-      const stop = restoringOnSignals(() => {
-        restored = true;
-        return Promise.resolve();
-      }, host);
+      const exits: number[] = [];
+      host.exit = (code) => {
+        exits.push(code);
+      };
+      return { host, exits };
+    };
+    const until = async (done: () => boolean): Promise<void> => {
+      const waited = Date.now();
+      while (!done() && Date.now() - waited < 3000)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    };
+
+    it("puts it back, and then exits, when the process is interrupted, told to stop, hung up on or sent Ctrl-Break, and takes its handlers off when the run is over", async () => {
+      for (const [signal, code] of [
+        ["SIGINT", 130],
+        ["SIGTERM", 143],
+        ["SIGHUP", 129],
+        ["SIGBREAK", 149],
+      ] as const) {
+        const { host, exits } = process_();
+        let restored = false;
+        const stop = restoringOnSignals(() => {
+          restored = true;
+          return Promise.resolve();
+        }, host);
+        host.emit(signal);
+        await until(() => exits.length > 0);
+        assert.deepEqual(exits, [code], signal);
+        assert.equal(restored, true);
+        stop();
+        for (const each of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"])
+          assert.equal(host.listenerCount(each), 0, each);
+      }
+    });
+
+    it("lets a second Ctrl-C come while the settings are being put back without ending the put-back or putting them back twice", async () => {
+      const { host, exits } = process_();
+      let started = 0;
+      let finish: () => void = () => undefined;
+      restoringOnSignals(
+        () =>
+          new Promise<void>((resolve) => {
+            started += 1;
+            finish = resolve;
+          }),
+        host,
+      );
+      host.emit("SIGINT");
+      host.emit("SIGINT");
       host.emit("SIGTERM");
-      assert.equal(await exited, 143);
-      assert.equal(restored, true);
-      stop();
-      assert.equal(host.listenerCount("SIGINT"), 0);
-      assert.equal(host.listenerCount("SIGTERM"), 0);
+      // The handler is still there to take it: Node's own handling of a second one would end the process.
+      assert.equal(host.listenerCount("SIGINT"), 1);
+      assert.equal(started, 1);
+      assert.deepEqual(exits, []);
+      finish();
+      await until(() => exits.length > 0);
+      assert.deepEqual(exits, [130]);
+    });
+
+    it("puts the scanner back, and exits, when told to stop while a measurement is still running", async () => {
+      const s = scanner({ start: hosted });
+      const { host, exits } = process_();
+      let calls = 0;
+      fileOpsAt({ ...plan, scannerCompare: true }, "work", () => undefined, {
+        scanner: s.fake,
+        signals: host,
+        // The scanner has been changed when the fourth begins; it never ends.
+        once: () => {
+          calls += 1;
+          if (calls < 4) return Promise.resolve(run);
+          host.emit("SIGTERM");
+          return new Promise<never>(() => undefined);
+        },
+      }).catch(() => undefined);
+      await until(() => exits.length > 0);
+      assert.deepEqual(exits, [143], "the process was never told to exit");
+      assert.deepEqual(s.state(), hosted);
+    });
+
+    it("does not put it back while it is being set: a signal in the middle of a change waits for it", async () => {
+      let active = 0;
+      let most = 0;
+      let settings = hosted;
+      const { host, exits } = process_();
+      const slow: Scanner = {
+        read: () => Promise.resolve(settings),
+        set: async (to) => {
+          active += 1;
+          most = Math.max(most, active);
+          if (active === 1 && exits.length === 0) host.emit("SIGTERM");
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          settings = to;
+          active -= 1;
+        },
+      };
+      let calls = 0;
+      fileOpsAt({ ...plan, scannerCompare: true }, "work", () => undefined, {
+        scanner: slow,
+        signals: host,
+        once: () => {
+          calls += 1;
+          return calls < 4
+            ? Promise.resolve(run)
+            : new Promise<never>(() => undefined);
+        },
+      }).catch(() => undefined);
+      await until(() => exits.length > 0);
+      assert.deepEqual(exits, [143]);
+      assert.equal(most, 1);
+      assert.deepEqual(settings, hosted);
+    });
+
+    it("runs jobs in turn, the next after the one before has failed too", async () => {
+      const turn = inTurn();
+      const seen: string[] = [];
+      const first = turn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        seen.push("first");
+        throw new Error("no");
+      });
+      const second = turn(() => {
+        seen.push("second");
+        return Promise.resolve(2);
+      });
+      await assert.rejects(first, /no/);
+      assert.equal(await second, 2);
+      assert.deepEqual(seen, ["first", "second"]);
+    });
+
+    it("puts the excluded folders back before the switch that Defender refuses, through the commands PowerShell is given", async () => {
+      const scripts: string[] = [];
+      let excluded = ["/left"];
+      const read = {
+        realtime: true,
+        fileOpening: true,
+        behaviour: false,
+        scripts: true,
+        mode: "Normal",
+      };
+      const powershell = (script: string): Promise<string> => {
+        scripts.push(script);
+        if (script.startsWith("$p = Get-MpPreference"))
+          return Promise.resolve(
+            JSON.stringify({ ...read, excludedFolders: excluded }),
+          );
+        const path = /'([^']*)'$/.exec(script)?.[1] ?? "";
+        if (script.startsWith("Remove-MpPreference"))
+          excluded = excluded.filter((each) => each !== path);
+        else if (script.startsWith("Add-MpPreference")) excluded.push(path);
+        else if (script.startsWith("Set-MpPreference"))
+          return Promise.reject(new Error("spawn EPERM"));
+        return Promise.resolve("");
+      };
+      await assert.rejects(
+        windowsScanner(powershell).set({
+          realtime: false,
+          fileOpening: false,
+          behaviour: false,
+          scripts: false,
+          excludedFolders: ["/d", "/c"],
+        }),
+        /EPERM/,
+      );
+      const commands = scripts
+        .filter((script) => !script.startsWith("$p = Get-MpPreference"))
+        .map((script) => script.split(" ").slice(0, 3).join(" "));
+      assert.deepEqual(commands, [
+        "Remove-MpPreference -ExclusionPath '/left'",
+        "Add-MpPreference -ExclusionPath '/d'",
+        "Add-MpPreference -ExclusionPath '/c'",
+        "Set-MpPreference -DisableRealtimeMonitoring $true",
+      ]);
+      assert.deepEqual(excluded, ["/d", "/c"]);
     });
 
     it("records that switching it off was refused, and measures no run it would have named off", async () => {
@@ -1921,6 +2117,214 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.ok(
         rows.every(({ name }) => name.startsWith("file-ops-3000-files/")),
       );
+    });
+  });
+
+  describe("given the file micro-bench and a machine whose scanner is only read", () => {
+    const run = {
+      files: 3000,
+      perFile: { "create/in-flight-1": 1 },
+      whole: 1,
+    };
+    /** A folder the scanner leaves alone and one it does not, on this machine's own disk. */
+    const places = async () => {
+      const base = await mkdtemp(join(tmpdir(), "folders-"));
+      const left = join(base, "left");
+      const scanned = join(base, "scanned");
+      await mkdir(left);
+      await mkdir(scanned);
+      return {
+        base,
+        left: await realpath(left),
+        scanned: await realpath(scanned),
+      };
+    };
+    /** PowerShell as Defender has it: it answers a read, and the commands that change it are recorded and refused. */
+    const defender = (excludedFolders: string[]) => {
+      const scripts: string[] = [];
+      const powershell = (script: string): Promise<string> => {
+        scripts.push(script);
+        if (/(Set|Add|Remove)-MpPreference/.test(script))
+          return Promise.reject(new Error("a change was asked for"));
+        return Promise.resolve(
+          JSON.stringify({
+            realtime: true,
+            fileOpening: true,
+            behaviour: true,
+            scripts: true,
+            excludedFolders,
+            mode: "Normal",
+            reportedFileOpening: true,
+            reportedBehaviour: true,
+          }),
+        );
+      };
+      return { scripts, scanner: windowsScanner(powershell) };
+    };
+    const asked = (...flags: string[]): Plan => ({
+      ...parsedPlan(["--scanner-folders", ...flags], {}).plan,
+      repeats: 2,
+    });
+    const never = () => Promise.reject(new Error("nothing should be run"));
+    const noChange = (scripts: readonly string[]) => {
+      assert.ok(scripts.length > 0, "the scanner was read");
+      assert.deepEqual(
+        scripts.filter((script) =>
+          /(Set|Add|Remove)-MpPreference/.test(script),
+        ),
+        [],
+      );
+    };
+
+    it("measures a folder inside an excluded one and one outside, alternating, never changes the scanner, and removes what it made", async () => {
+      const { base, left, scanned } = await places();
+      const { scripts, scanner: reading } = defender([left, "/elsewhere"]);
+      const made: string[] = [];
+      const said: string[] = [];
+      const rows = await foldersCompared(
+        asked("--folder-excluded", left, "--folder-scanned", scanned),
+        (line) => said.push(line),
+        {
+          scanner: reading,
+          once: (folder) => {
+            made.push(folder);
+            return Promise.resolve({
+              ...run,
+              perFile: {
+                "create/in-flight-1": folder.startsWith(left) ? 1e-5 : 3e-5,
+                "create/in-flight-16": 1e-5,
+                "create/in-flight-64": 1e-5,
+              },
+            });
+          },
+        },
+      );
+      noChange(scripts);
+      assert.deepEqual(
+        made.map((folder) =>
+          folder.startsWith(left) ? "excluded" : "scanned",
+        ),
+        ["excluded", "scanned", "scanned", "excluded"],
+      );
+      const value = (name: string) =>
+        rows.find((row) => row.name === name)?.value;
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-excluded-folder/count/scanner-folder-excluded",
+        ),
+        1,
+      );
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-scanned-folder/count/scanner-folder-excluded",
+        ),
+        0,
+      );
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-scanned-folder/create/in-flight-1",
+        ),
+        3e-5,
+      );
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-excluded-folder/count/scanner-realtime-on",
+        ),
+        1,
+      );
+      assert.match(
+        rows.find((row) =>
+          row.name.endsWith("-in-scanned-folder/count/scanner-realtime-on"),
+        )?.extra ?? "",
+        /excluded folders \[.*elsewhere\].*running mode Normal.*IoavProtectionEnabled true, BehaviorMonitorEnabled true/,
+      );
+      assert.deepEqual(explained(rows).missing, []);
+      assert.equal(said[0], "file operations, in-excluded-folder: run 1/2");
+      assert.match(said.join("\n"), /Nothing on this machine was changed/);
+      assert.match(said.join("\n"), /create a file, 16 at once/);
+      assert.deepEqual(await readdir(left), []);
+      assert.deepEqual(await readdir(scanned), []);
+      await rm(base, { recursive: true });
+    });
+
+    it("finds the folders when none is named: the first excluded folder that can be written to, and the temporary folder", async () => {
+      const { base, left, scanned } = await places();
+      const { scripts, scanner: reading } = defender(["/nowhere", left]);
+      const made: string[] = [];
+      await foldersCompared(asked(), () => undefined, {
+        scanner: reading,
+        tmp: scanned,
+        once: (folder) => {
+          made.push(folder);
+          return Promise.resolve(run);
+        },
+      });
+      noChange(scripts);
+      assert.ok(made.some((folder) => folder.startsWith(left)));
+      assert.ok(made.some((folder) => folder.startsWith(scanned)));
+      await rm(base, { recursive: true });
+    });
+
+    it("refuses, with nothing run and nothing changed, a scanner it cannot read, a list hidden from a shell that is not an administrator's, an empty list, a folder not in the list, and two folders in the same state", async () => {
+      const { base, left, scanned } = await places();
+      const ask = (
+        reading: Pick<Scanner, "read">,
+        flags: string[] = [],
+        tmp?: string,
+      ) =>
+        foldersCompared(asked(...flags), () => undefined, {
+          scanner: reading,
+          once: never,
+          ...(tmp !== undefined && { tmp }),
+        });
+      await assert.rejects(
+        ask(windowsScanner(() => Promise.reject(new Error("no powershell")))),
+        /could not.*Nothing was changed/,
+      );
+      const hiddenList = defender([
+        "N/A: Must be an administrator to view exclusions",
+      ]);
+      await assert.rejects(ask(hiddenList.scanner), /administrator PowerShell/);
+      const empty = defender([]);
+      await assert.rejects(ask(empty.scanner), /no folder is excluded/);
+      const listing = defender([left]);
+      await assert.rejects(
+        ask(listing.scanner, [
+          "--folder-excluded",
+          scanned,
+          "--folder-scanned",
+          scanned,
+        ]),
+        /--folder-excluded .* is not inside any folder Windows Defender leaves alone/,
+      );
+      await assert.rejects(
+        ask(listing.scanner, [
+          "--folder-excluded",
+          left,
+          "--folder-scanned",
+          left,
+        ]),
+        /same state/,
+      );
+      await assert.rejects(
+        ask(listing.scanner, [], left),
+        /the temporary folder .* is inside .*same state/,
+      );
+      for (const used of [hiddenList, empty, listing]) noChange(used.scripts);
+      await rm(base, { recursive: true });
+    });
+
+    it("marks a range so wide that one run was far from the others", () => {
+      const row = (range: string, value: number): Row => ({
+        name: "x",
+        unit: "s",
+        value,
+        kind: "clock",
+        range,
+      });
+      assert.equal(wide(row("0.000010-0.000100", 0.00001)), true);
+      assert.equal(wide(row("0.000010-0.000020", 0.000015)), false);
+      assert.equal(wide(undefined), false);
     });
   });
 

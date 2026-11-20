@@ -796,6 +796,16 @@ export function fileOpsOf(files) {
   });
 }
 
+/** Whether a range, `0.000010-0.000100` in seconds, is so wide that one run was far from the others, so its median is not a figure to quote. */
+export function wideRange(range) {
+  const [low, high] = String(range).split("-").map(Number);
+  return (
+    Number.isFinite(low) &&
+    Number.isFinite(high) &&
+    high > Math.max(low, 1e-12) * 3
+  );
+}
+
 /** A time per file as a person reads it: `830 µs`, `45 µs`, `7.2 µs`. */
 export function micro(seconds) {
   const us = seconds * 1e6;
@@ -845,6 +855,10 @@ function scannerFacts(system) {
     );
   return said;
 }
+
+/** Why a ratio to Linux moves with the build, said wherever one is given. */
+const LINUX_CHIP_NOTE =
+  "These ratios move with the chip GitHub gave the Linux build, which is named in each column's header: creating a file at 16 at once took 15 µs on one Linux machine (an Intel Xeon 6975P) and 45 µs on another (an AMD EPYC 7763), three times as long, so the same Windows time has been between 5 and 45 times Linux's depending on the draw. Compare a ratio with another only where the Linux chip is the same.";
 
 /** How many times as long a system took to create a file as Linux, for each number of files at once. */
 function againstLinux(system, linux) {
@@ -916,7 +930,10 @@ function fileOpsSection(systems) {
         const value = system.states[state][key];
         if (value === undefined) return '<td class="n">-</td>';
         const range = microRange(system.ranges?.[state]?.[key]);
-        return `<td class="n">${micro(value)}${range === undefined ? "" : `<br><span class="note">range ${range}</span>`}</td>`;
+        const slow = wideRange(system.ranges?.[state]?.[key])
+          ? ", one slow run"
+          : "";
+        return `<td class="n">${micro(value)}${range === undefined ? "" : `<br><span class="note">range ${range}${slow}</span>`}</td>`;
       };
       const lines = OPS_ROWS.map(
         ([op, text]) =>
@@ -932,7 +949,7 @@ function fileOpsSection(systems) {
 ${lines.join("\n")}
 </tbody>
 </table></div>
-<p class="note">Each time is the median of the runs for one file, with the range over the runs under it. Two columns differ only where their ranges do not overlap; this page picks no cause from them. The scanner was changed only for these runs and put back after them.</p>`;
+<p class="note">Each time is the median of the runs for one file, with the range over the runs under it. Two columns differ only where their ranges do not overlap; this page picks no cause from them. A range marked "one slow run" is so wide that one run was far from the others, so that median is not a figure to quote. The scanner was changed only for these runs and put back after them.</p>`;
     })
     .join("\n");
   return `<section class="chart" id="file-ops">
@@ -947,7 +964,7 @@ ${asOne("one-file/whole-flushed", "The same one file, flushed to the drive first
 </tbody>
 </table></div>
 <p class="note">"As one file" is what a pod would pay if it kept its new files together in one file instead of one file each; its time for the whole file is divided by the 3,000 files it holds.</p>
-${ratios.length === 0 ? "" : `<p>${ratios.map(esc).join(" ")}</p>`}
+${ratios.length === 0 ? "" : `<p>${ratios.map(esc).join(" ")} ${esc(LINUX_CHIP_NOTE)}</p>`}
 ${scanner}
 </section>`;
 }

@@ -44,7 +44,9 @@ name: perf
 #   scenario, `--file-ops`): asking whether it is there, creating it, renaming it, what the folder host does for a file, and one
 #   file for all of them. A pull request does not run it. A hand-started run with `scanner` set also does it on the Windows leg
 #   with Windows Defender's checking as the runner has it, with all of it on and no folder left out, and with the folder
-#   excluded (`--scanner-compare`), and puts every setting back; no other run does, as those runs would pay for it every time.
+#   excluded (`--scanner-compare`), and puts every setting back; no other run does, as those runs would pay for it every time. It
+#   is honoured with `scenario` all only, as the file micro-bench is run with that alone. The flag refuses to run outside GitHub
+#   Actions: on a person's machine, `--scanner-folders` compares a folder Defender leaves alone with one it scans and changes nothing.
 
 on:
   push:
@@ -79,7 +81,7 @@ on:
         type: boolean
         default: false
       scanner:
-        description: "On the Windows leg, also time the file micro-bench with Windows Defender's checking as the runner has it, all on, and the folder excluded"
+        description: "With scenario all only: on the Windows leg, also time the file micro-bench with Windows Defender's checking as the runner has it, all on, and the folder excluded (a hosted runner only; it is changed and put back)"
         type: boolean
         default: false
       systems:
@@ -459,8 +461,9 @@ jobs:
           args="--size $sizes"
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           if [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; then args="$args --file-ops"; fi
-          # Windows Defender's settings are changed, and put back, for more runs of the file micro-bench, only when a person asks.
-          if [ "$SYSTEM" = windows ] && [ "$SCANNER" = true ]; then args="$args --scanner-compare"; fi
+          # Windows Defender's settings are changed, and put back, for more runs of the file micro-bench, only when a person asks, and
+          # only with every scenario: the file micro-bench runs with `all` alone, and the comparison is part of it.
+          if [ "$SYSTEM" = windows ] && [ "$SCANNER" = true ] && { [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; }; then args="$args --scanner-compare"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
           echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
       - name: The performance file
@@ -468,7 +471,7 @@ jobs:
       # What Defender settings the runner is left with and what it did while the comparison ran: a run that ends without its file is
       # read from here.
       - name: What Windows Defender did
-        if: ${{ !cancelled() && matrix.system == 'windows' && inputs.scanner }}
+        if: ${{ !cancelled() && matrix.system == 'windows' && inputs.scanner && (inputs.scenario == 'all' || inputs.scenario == '') }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'

@@ -28,6 +28,11 @@ export interface Plan {
   readonly probe: boolean;
   /** Whether the file micro-bench is also run with the virus scanner's live checking off and with the folder excluded; where the machine has one. */
   readonly scannerCompare?: boolean;
+  /** Whether the file micro-bench is run in a folder the scanner leaves alone and in one it does not, the scanner only read and nothing changed. */
+  readonly scannerFolders?: boolean;
+  /** The folders for that, where a person names them; otherwise they are found. */
+  readonly folderExcluded?: string;
+  readonly folderScanned?: string;
   /** The folder the traces, the CPU profiles and `flame.json` go to; none are made without it. */
   readonly profiles?: string;
   /** Whether each scenario also gets a CPU profile, when there is a folder: one more run of it, unprobed. */
@@ -62,15 +67,24 @@ export function parsed(
     Object.keys(DATASETS) as DatasetId[],
     "size",
   );
-  // The comparison changes the machine's virus scanner and puts it back in this process only: a stopped parent can leave it changed, which a
-  // hosted runner thrown away after the job does not mind and a person's computer does.
+  // The comparison changes the machine's virus scanner and puts it back in this process only: a stopped parent can leave it changed
+  // (Defender can end the process itself), which a hosted runner thrown away after the job does not mind and a person's computer
+  // does. Nothing lifts this on a machine that is not a runner; `--scanner-folders` compares without changing anything.
+  if (args.includes("--scanner-compare") && env.GITHUB_ACTIONS !== "true")
+    throw new Error(
+      "--scanner-compare changes Windows Defender's settings and puts them back; it runs on GitHub Actions' throwaway runners only, never on a person's machine. To compare on this machine without changing anything, use --scanner-folders",
+    );
+  if (args.includes("--scanner-compare") && args.includes("--scanner-folders"))
+    throw new Error(
+      "--scanner-compare and --scanner-folders are two ways to compare; use one",
+    );
   if (
-    args.includes("--scanner-compare") &&
-    env.GITHUB_ACTIONS !== "true" &&
-    env.CASCADE_PERF_ALLOW_LOCAL_SCANNER !== "1"
+    !args.includes("--scanner-folders") &&
+    (value("--folder-excluded") !== undefined ||
+      value("--folder-scanned") !== undefined)
   )
     throw new Error(
-      "--scanner-compare changes Windows Defender's settings and puts them back; it runs on GitHub Actions only. To run it deliberately on this machine, from an administrator's shell, set CASCADE_PERF_ALLOW_LOCAL_SCANNER=1",
+      "--folder-excluded and --folder-scanned name the folders of --scanner-folders, which was not given",
     );
   const encryption = (value("--encryption") ?? "auto") as Plan["encryption"];
   if (!["plain", "encrypted", "both", "auto"].includes(encryption))
@@ -79,9 +93,18 @@ export function parsed(
     plan: {
       scenarios: new Set([
         ...list(value("--scenario"), SCENARIOS, "scenario", ASKED_FOR),
-        ...(args.includes("--file-ops") ? ["file-ops" as const] : []),
+        ...(args.includes("--file-ops") || args.includes("--scanner-folders")
+          ? ["file-ops" as const]
+          : []),
       ]),
       scannerCompare: args.includes("--scanner-compare"),
+      scannerFolders: args.includes("--scanner-folders"),
+      ...(value("--folder-excluded") !== undefined && {
+        folderExcluded: value("--folder-excluded") as string,
+      }),
+      ...(value("--folder-scanned") !== undefined && {
+        folderScanned: value("--folder-scanned") as string,
+      }),
       sizes,
       encryption,
       repeats: Number(value("--repeats") ?? 3),
