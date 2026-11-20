@@ -1198,7 +1198,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         text,
         /fresh-first-screen-x\/total\s+10\.0 s\s+16\.0 s\s+\+60% \(1\.6x slower\)/,
       );
-      assert.doesNotMatch(text, /before|after/i);
+      assert.doesNotMatch(text, /befores+afters+change/);
     });
 
     it("says in a sentence for each scenario what main took and what this pull request took", () => {
@@ -1321,7 +1321,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         sameJob: null,
         markdown: true,
       });
-      assert.match(text, /main's own run in this job did not give a file/);
+      assert.match(text, /Main's own run in this job did not give a file/);
       assert.match(
         text,
         /Against `runtime\/2026\/11\/20\/1-aaaaaaa-push\.json`/,

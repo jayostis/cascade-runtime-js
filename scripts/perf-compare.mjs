@@ -5,6 +5,10 @@
 //
 //   perf-compare.mjs compare <before.json> <after.json> [--markdown] [--stages 15]
 //   perf-compare.mjs summary <file.json> [--markdown] [--stages 10] [--without-own-time]
+//   perf-compare.mjs against <pull.json> [--same-job <main.json>] [--latest <file.json> --latest-name <name>] [--markdown]
+//                    [--without-own-time]
+//     What a pull request's comment says: its file against main's taken in the same job, else against the latest push to
+//     main's; a main file that is missing or unreadable is said and falls back, and the exit status stays 0.
 //   perf-compare.mjs history --name <glob> [--since 7d] [--dir <folder of files>]
 //
 // A name's glob uses `*` for any run of characters, `/` included. History reads every `*.json` under the folder (the
@@ -90,6 +94,67 @@ export function environmentNote(before, after) {
   return differs.length === 0
     ? ""
     : `The two files were taken on different ${differs.join(", ")}; times do not compare across them.`;
+}
+
+/** The processor model a file's runner names (`github-actions Linux; <model>; other load: ...`), undefined where it names none. */
+export function cpuModelOf(file) {
+  const model = (file.env?.runner ?? "").split(";")[1]?.trim();
+  return model === undefined ||
+    model === "" ||
+    model.startsWith("other load:") ||
+    model === "unknown cpu"
+    ? undefined
+    : model;
+}
+
+/**
+ * What is said of the machines of two files taken one after the other in one job. Both runs are on one hosted runner and so
+ * on one processor model; that is checked from what each file records and said in words, and never fails the job: a
+ * different model, or none recorded, is a sentence that the totals are not comparable.
+ */
+export function machinesLine(main, pull) {
+  const one = cpuModelOf(main);
+  const other = cpuModelOf(pull);
+  const measured =
+    "Main and this pull request were measured one after the other in the same job";
+  if (one === undefined || other === undefined)
+    return `${measured}. A file records no CPU model, so whether the two runs landed on the same CPU is not known; totals may not be comparable.`;
+  if (one !== other)
+    return `${measured}. The two runs landed on different CPUs; totals are not comparable. Main ran on ${one}; this pull request on ${other}.`;
+  const others = environmentNote(main, pull);
+  return `${measured}, on the same runner, both on ${one}.${others === "" ? "" : ` ${others}`}`;
+}
+
+const short = (sha) => (sha ?? "").slice(0, 7);
+
+/**
+ * Which Bridge each side read. A pull request resolves its Bridge as its own run does (the head of the pull request a
+ * `Depends-On:` line names, else a branch of its name, else the newest build of the default branch); main's run resolves it as a
+ * push to main does, the newest build of the default branch, so a pair of pull requests is measured against the Bridge that
+ * pairs with the other, and main against the one that main reads.
+ */
+export function bridgeLine(main, pull) {
+  const one = main.commit?.bridge;
+  const other = pull.commit?.bridge;
+  if (one === undefined || other === undefined)
+    return "The Bridge build is not recorded in one of the files.";
+  if (one === other) return `Both runs read the Bridge build ${short(one)}.`;
+  return `Each side read its own Bridge: main's run read the Bridge build ${short(one)} (picked as a push to main picks it, the newest build of its default branch); this pull request's read ${short(other)} (picked as its own run picks it: the head of the pull request a Depends-On line names, else the branch of its name, else the newest build of the default branch).`;
+}
+
+/** The components other than the runtime and the Bridge that the two files read at different commits, one line each. */
+export function otherComponents(main, pull) {
+  const names = new Set([
+    ...Object.keys(main.commit ?? {}),
+    ...Object.keys(pull.commit ?? {}),
+  ]);
+  return [...names]
+    .filter((name) => name !== "runtime" && name !== "bridge")
+    .filter((name) => main.commit?.[name] !== pull.commit?.[name])
+    .map(
+      (name) =>
+        `${name}: main ${short(main.commit?.[name]) || "none"}, this pull request ${short(pull.commit?.[name]) || "none"}`,
+    );
 }
 
 /** The dataset and its digest a row names in its `extra`, which a comparison of different data is told of. */
@@ -301,8 +366,33 @@ export function speedSection(file, { markdown = false } = {}) {
   return out;
 }
 
-/** The report of two files: headline rows, then the counts that changed, then the stages that changed most. */
-export function compare(before, after, { markdown = false, stages = 15 } = {}) {
+/**
+ * In words, for each scenario and size, what main took and what this pull request took: the total of each, with the change.
+ * `was` and `now` are the rows of the two files by name.
+ */
+function sameJobSentences(was, now, { markdown }) {
+  return [...now.keys()]
+    .filter((name) => /\/total$/.test(name) && was.has(name))
+    .map((name) => {
+      const [group] = name.split("/");
+      const from = was.get(name);
+      const to = now.get(name);
+      return `${markdown ? "- " : ""}${group}: main ${shown(from.value, from.unit)}, this pull request ${shown(to.value, to.unit)}: ${change(from.value, to.value)}`;
+    });
+}
+
+/**
+ * The report of two files: headline rows, then the counts that changed, then the stages that changed most. With `sameJob`,
+ * the files are main's and a pull request's, taken one after the other in one job, and every heading says so.
+ */
+export function compare(
+  before,
+  after,
+  { markdown = false, stages = 15, sameJob = false } = {},
+) {
+  const [was$, now$] = sameJob
+    ? ["main", "this pull request"]
+    : ["before", "after"];
   // A scenario and size the after file did not run (the nightly's large one, against a pull request's) is not a row gone.
   const ran = new Set(after.results.map(({ name }) => name.split("/")[0]));
   const left = before.results.filter(
@@ -313,7 +403,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
   });
   const now = byName(after);
   const out = [];
-  const note = environmentNote(before, after);
+  const note = sameJob ? "" : environmentNote(before, after);
   if (note) out.push(markdown ? `> ${note}` : note, "");
   if (left.length > 0) {
     const sizes = [...new Set(left.map(({ name }) => name.split("/")[0]))];
@@ -376,10 +466,16 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
       name,
     );
   const lines = (pairs) => pairs.map((pair) => line(pair));
-  head("Headline: unprobed runs, median of the samples, before -> after");
+  head(
+    `Headline: unprobed runs, median of the samples, ${was$} -> ${now$}${sameJob ? ", measured in the same job" : ""}`,
+  );
+  if (sameJob) {
+    const said = sameJobSentences(was, now, { markdown });
+    if (said.length > 0) out.push(...said, "");
+  }
   out.push(
     table(
-      ["", "before", "after", "change"],
+      ["", was$, now$, "change"],
       lines(headline.filter(({ name }) => main(name))),
       markdown,
     ),
@@ -387,11 +483,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
   );
   const rest = headline.filter(({ name }) => !main(name));
   if (rest.length > 0) {
-    const detail = table(
-      ["", "before", "after", "change"],
-      lines(rest),
-      markdown,
-    );
+    const detail = table(["", was$, now$, "change"], lines(rest), markdown);
     out.push(
       ...(markdown
         ? [
@@ -419,7 +511,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
     );
     out.push(
       table(
-        ["", "before", "after", "change"],
+        ["", was$, now$, "change"],
         counts.map((pair) => line(pair)),
         markdown,
       ),
@@ -440,7 +532,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
     );
     out.push(
       table(
-        ["", "before", "after", "change", "what it is"],
+        ["", was$, now$, "change", "what it is"],
         moved.map((pair) => said(pair)),
         markdown,
         [4],
@@ -462,7 +554,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
     );
     out.push(
       table(
-        ["", "before", "after", "change", "what it is"],
+        ["", was$, now$, "change", "what it is"],
         movedOwn.map((pair) => said(pair)),
         markdown,
         [4],
@@ -474,7 +566,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
     Object.entries(file.commit ?? {})
       .map(([name, sha]) => `${name} ${sha.slice(0, 7)}`)
       .join(", ");
-  out.push(`before: ${commits(before)}`, `after: ${commits(after)}`);
+  out.push(`${was$}: ${commits(before)}`, `${now$}: ${commits(after)}`);
   return out.join("\n");
 }
 
@@ -576,6 +668,65 @@ export function summary(
   return out.join("\n");
 }
 
+/**
+ * What a pull request's performance comment says about the comparison, as the files allow. `sameJob` is main's file taken in
+ * the same job as `pull` (the comparison that is made when there is one); `null` is the job having tried and having none, which
+ * is said, and the comparison is then with `latest`, the latest push to main's file (named `latestName`), taken on another run;
+ * `undefined` is a run that does not measure main in its own job. With neither file there is only `pull`'s own report.
+ */
+export function comparison(
+  pull,
+  { sameJob, latest, latestName = "", markdown = false, own = true } = {},
+) {
+  const quote = (text) => (markdown ? `> ${text}` : text);
+  const out = [];
+  if (sameJob) {
+    out.push(
+      quote(machinesLine(sameJob, pull)),
+      "",
+      quote(bridgeLine(sameJob, pull)),
+      "",
+    );
+    const others = otherComponents(sameJob, pull);
+    if (others.length > 0)
+      out.push(
+        quote(
+          `Other components read at different commits: ${others.join("; ")}.`,
+        ),
+        "",
+      );
+    out.push(
+      "Unprobed medians; no threshold, nothing here fails the run.",
+      "",
+      compare(sameJob, pull, { markdown, sameJob: true }),
+    );
+    return out.join("\n");
+  }
+  if (sameJob === null)
+    out.push(
+      "Main's own run in this job did not give a file (its step in the job's log says why), so main is not measured beside this pull request.",
+      "",
+    );
+  if (latest === undefined) {
+    out.push(
+      "main has no performance file yet, so there is nothing to compare with. This pull request's:",
+      "",
+      summary(pull, { markdown, own }),
+    );
+    return out.join("\n");
+  }
+  const elsewhere =
+    sameJob === null
+      ? ", which was taken on another run, perhaps on another machine; the same commits took 23% longer on one run than on another when the runners had different processors"
+      : "";
+  out.push(
+    `Against \`${latestName}\`, the latest push to main's file${elsewhere}. Unprobed medians; no threshold, nothing here fails the run.`,
+    "",
+    compare(latest, pull, { markdown }),
+  );
+  return out.join("\n");
+}
+
 function filesUnder(folder) {
   const found = [];
   for (const entry of readdirSync(folder)) {
@@ -649,7 +800,15 @@ function main(args) {
     const at = rest.indexOf(name);
     return at === -1 ? undefined : rest[at + 1];
   };
-  const valued = new Set(["--name", "--since", "--dir", "--stages"]);
+  const valued = new Set([
+    "--name",
+    "--since",
+    "--dir",
+    "--stages",
+    "--same-job",
+    "--latest",
+    "--latest-name",
+  ]);
   const positional = rest.filter(
     (arg, at) => !arg.startsWith("--") && !valued.has(rest[at - 1]),
   );
@@ -661,6 +820,27 @@ function main(args) {
     ...(stages !== undefined && { stages }),
     ...(rest.includes("--without-own-time") && { own: false }),
   };
+  if (command === "against" && positional.length === 1) {
+    const usable = (path) => {
+      try {
+        return read(path);
+      } catch {
+        return undefined;
+      }
+    };
+    const named = flag("--same-job");
+    const sameJob = named === undefined ? undefined : (usable(named) ?? null);
+    const kept = flag("--latest");
+    const latest = kept === undefined ? undefined : usable(kept);
+    return say(
+      comparison(read(positional[0]), {
+        ...options,
+        ...(sameJob !== undefined && { sameJob }),
+        ...(latest !== undefined && { latest }),
+        latestName: flag("--latest-name") ?? "",
+      }),
+    );
+  }
   if (command === "compare" && positional.length === 2)
     return say(compare(read(positional[0]), read(positional[1]), options));
   if (command === "summary" && positional.length === 1)
@@ -670,7 +850,7 @@ function main(args) {
       history(flag("--dir") ?? "perf-data", flag("--name"), flag("--since")),
     );
   process.stderr.write(
-    "usage: perf-compare.mjs compare <before.json> <after.json> | summary <file.json> | history --name <glob> [--since 7d] [--dir folder]\n",
+    "usage: perf-compare.mjs compare <before.json> <after.json> | against <pull.json> [--same-job f] [--latest f --latest-name n] | summary <file.json> | history --name <glob> [--since 7d] [--dir folder]\n",
   );
   process.exitCode = 2;
 }
