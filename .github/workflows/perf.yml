@@ -1,6 +1,6 @@
 name: perf
 
-# The runtime's performance file (packages/cascade-runtime/test/perf-report.ts): fixed scenarios over one Synthea
+# The runtime's performance file (packages/cascade-runtime/test/perf-report.ts, a module for each scenario in perf-scenarios/): fixed scenarios over one Synthea
 # patient's record, rows in the Bridge spec's result format. Nothing here fails on a slowdown: the files are kept, and a
 # pull request is shown its before -> after against the latest push to main.
 #

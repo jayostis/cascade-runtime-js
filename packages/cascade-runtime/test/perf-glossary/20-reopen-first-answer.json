@@ -1,0 +1,20 @@
+{
+  "scenarios": {
+    "reopen-first-answer": {
+      "says": "A pod that already holds the record is opened again and answers its first question.",
+      "total": "Opening an existing pod and answering its first read: what a returning person waits for."
+    }
+  },
+  "measures": {
+    "first-read": "The first question asked of the reopened pod ('My active conditions').",
+    "second-read": "A second question asked of the reopened pod ('My active medications')."
+  },
+  "spans": {
+    "scenario.first-read": {
+      "says": "The first question asked of a reopened pod."
+    },
+    "scenario.second-read": {
+      "says": "A second, different question asked of the reopened pod."
+    }
+  }
+}

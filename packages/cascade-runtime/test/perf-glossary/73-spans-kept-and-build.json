@@ -1,0 +1,83 @@
+{
+  "spans": {
+    "kept.step": {
+      "says": "Keeping the saved answers current after one step.",
+      "within": "core-pod.step.keptafter"
+    },
+    "kept.step.scoped": {
+      "says": "Finding the part of the pod a step touched.",
+      "within": "kept.step"
+    },
+    "kept.step.podfiles": {
+      "says": "Reading the pod files that part holds.",
+      "within": "kept.step"
+    },
+    "kept.step.namedbefore": {
+      "says": "Finding what the touched records were called before the step.",
+      "within": "kept.step"
+    },
+    "kept.step.reached": {
+      "says": "Finding every record the step's changes reach.",
+      "within": "kept.step"
+    },
+    "kept.step.closed": {
+      "says": "Widening the touched part until nothing else depends on it.",
+      "within": "kept.step"
+    },
+    "kept.step.rebuilt": {
+      "says": "Re-deriving the answers for the touched part.",
+      "within": "kept.step"
+    },
+    "kept.reached.judged": {
+      "says": "Finding what the judgment files a step wrote refer to."
+    },
+    "kept.rebuilt.filesof": {
+      "says": "Finding the files of the records being re-derived."
+    },
+    "kept.rebuilt.podfiles": {
+      "says": "Reading the pod files of the records being re-derived."
+    },
+    "kept.rebuilt.derive": {
+      "says": "Re-deriving the answers for the re-derived records."
+    },
+    "kept.rebuilt.held": {
+      "says": "Setting aside the answers that stay as they were."
+    },
+    "kept.whole": {
+      "says": "Keeping the saved answers current by re-deriving all of them."
+    },
+    "kept.whole.derive": {
+      "says": "Deriving every answer from every record.",
+      "within": "kept.whole"
+    },
+    "kept.whole.podfiles": {
+      "says": "Reading every pod file.",
+      "within": "kept.whole"
+    },
+    "kept.whole.recordsandtheirs": {
+      "says": "Gathering every record with what belongs to it.",
+      "within": "kept.whole"
+    },
+    "kept.scoped.podfiles": {
+      "says": "Reading the pod files of just the part being kept current."
+    },
+    "build.queried": {
+      "says": "Building the pod's answer files by running each of the pod's questions over its facts."
+    },
+    "build.queried.currentversions": {
+      "says": "Picking the current version of each record.",
+      "within": "build.queried"
+    },
+    "build.queried.viewsheld": {
+      "says": "Working out which answer files the pod's records call for.",
+      "within": "build.queried"
+    },
+    "build.queried.written": {
+      "says": "Writing the answer files that changed.",
+      "within": "build.queried"
+    },
+    "incremental.boundvalues": {
+      "says": "Narrowing a question to only the records that changed."
+    }
+  }
+}

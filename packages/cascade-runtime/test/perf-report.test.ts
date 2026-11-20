@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { after, before, describe, it } from "node:test";
@@ -18,13 +18,20 @@ import {
   type SpanEvent,
   timed,
 } from "@cascade-runtime/runtime/probe";
-import { explain, glossaryMarkdown } from "./perf-glossary.js";
+import { explain, glossaryMarkdown, readGlossary } from "./perf-glossary.js";
 import { flatten, loadPlainly } from "./perf-floor.js";
 import { profileOf, syntheticPull } from "./import-bench.js";
 import {
   clockRow,
   commits,
+  folderFingerprint,
+  openedAt,
+  PINNED,
+  pinClock,
+  pinnedAt,
+  pinOf,
   countRow,
+  unitOfCounter,
   envOf,
   floorRows,
   tabulated,
@@ -53,6 +60,14 @@ const history = (await import(
   ): { name: string; value: number; extra?: string }[];
 };
 
+const stacked = (await import(
+  pathToFileURL(
+    fileURLToPath(
+      new URL("../../../../scripts/perf-stacked.mjs", import.meta.url),
+    ),
+  ).href
+)) as { readGlossary(folder?: string): object };
+
 interface Rates {
   lines?: number;
   files?: number;
@@ -73,6 +88,7 @@ interface Compare {
   summary(file: object, options?: object): string;
   speedOf(file: object, key: string): Speed | undefined;
   floorLine(speed: Speed | undefined): string | undefined;
+  shown(value: number | undefined, unit: string): string;
 }
 
 const scratch: string[] = [];
@@ -239,6 +255,223 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
     it("says that two files taken on different machines do not compare", () => {
       const other = { ...after, env: { ...after.env, cpus: 8 } };
       assert.match(compare.compare(before, other), /different cpus/);
+    });
+  });
+
+  describe("given a count of bytes, as a handoff's is", () => {
+    const bytes = (value: number): Row[] => [
+      {
+        name: "fresh-first-screen-x/count/handoff.1-document.bytes",
+        unit: "By",
+        value,
+        kind: "cost",
+      },
+      {
+        name: "fresh-first-screen-x/count/handoff.1-document.items",
+        unit: "{count}",
+        value: 3,
+        kind: "cost",
+      },
+    ];
+
+    it("is a row in bytes where its counter's name ends in .bytes, and a count of things otherwise", () => {
+      const count = countRow(
+        "x-y/count/handoff.2-answer.bytes",
+        19_600_000,
+        undefined,
+        unitOfCounter("handoff:2-answer.bytes"),
+      );
+      assert.deepEqual([count.unit, count.kind], ["By", "cost"]);
+      assert.equal(refused(count), undefined);
+      assert.equal(
+        countRow("x-y/count/handoff.2-answer.items", 4).unit,
+        "{count}",
+      );
+      assert.equal(unitOfCounter("bytesome"), "{count}");
+    });
+
+    it("is in bytes when its row's name was cut at the length a part allows, or numbered because another had it", () => {
+      const long = `${"a".repeat(120)}.bytes`;
+      assert.equal(part(long).endsWith(".bytes"), false, "the cut lost it");
+      const rows = probedRows("x-y", {
+        spans: [],
+        counts: {
+          [long]: 5,
+          [`${"a".repeat(110)}.bytes`]: 6,
+          [`${"a".repeat(110)}.items`]: 7,
+        },
+      });
+      assert.equal(rows.length, 3);
+      assert.deepEqual(rows.map(({ unit }) => unit).sort(), [
+        "By",
+        "By",
+        "{count}",
+      ]);
+      assert.ok(
+        rows.some(({ name }) => /-\d+$/.test(name)),
+        "one was numbered",
+      );
+      for (const row of rows) assert.equal(refused(row), undefined);
+    });
+
+    it("is written as bytes by the probed run's count rows too", () => {
+      const rows = probedRows("x-y", {
+        spans: [],
+        counts: { "handoff:2-answer.bytes": 7, "handoff:2-answer.items": 2 },
+      });
+      const unitOf = (suffix: string) =>
+        rows.find(({ name }) => name.endsWith(suffix))?.unit;
+      assert.equal(unitOf(".bytes"), "By");
+      assert.equal(unitOf(".items"), "{count}");
+    });
+
+    it("is compared as an exact count, in whole bytes, with no word of faster or slower", () => {
+      const text = compare.compare(
+        file(bytes(19_600_000)),
+        file(bytes(19_500_000)),
+      );
+      assert.match(
+        text,
+        /count\/handoff\.1-document\.bytes\s+19,600,000 By\s+19,500,000 By\s+-0\.5% \(1\.0x\)/,
+      );
+      assert.doesNotMatch(text, /faster|slower/);
+      assert.doesNotMatch(text, /handoff\.1-document\.items/);
+    });
+
+    it("is shown in whole mebibytes as a headline size is, and a small one in tenths of one", () => {
+      assert.equal(compare.shown(300 * 1048576, "By"), "300 MiB");
+      assert.equal(compare.shown(1_500_000, "By"), "1.4 MiB");
+    });
+  });
+
+  describe("given a process whose clock is pinned", () => {
+    it("gives every date and id asked of it the same instant and the next number, and a date it is given as it was", async () => {
+      const unpin = pinClock();
+      try {
+        const asked = performance.now();
+        await sleep(20);
+        assert.equal(new Date().toISOString(), PINNED);
+        assert.equal(Date.now(), Date.parse(PINNED));
+        assert.equal(new Date(Date.now()).toISOString(), PINNED);
+        assert.equal(new Date().getTime(), Date.parse(PINNED));
+        assert.equal(new Date(0).toISOString(), "1970-01-01T00:00:00.000Z");
+        assert.equal(Date.parse("2020-01-01T00:00:00Z"), 1577836800000);
+        assert.equal(new Date() instanceof Date, true);
+        assert.equal(typeof Date(), "string");
+        assert.ok(performance.now() - asked >= 15, "durations still run");
+        const first = crypto.randomUUID();
+        assert.match(
+          first,
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+        assert.notEqual(crypto.randomUUID(), first);
+        unpin();
+        const again = pinClock();
+        assert.equal(crypto.randomUUID(), first, "the numbering starts again");
+        again();
+      } finally {
+        unpin();
+      }
+    });
+
+    it("gives two jobs ids that differ and a later job a later time, and the same job the same ids and time again", () => {
+      const drawn = (pin: Parameters<typeof pinClock>[0]) => {
+        const unpin = pinClock(pin);
+        try {
+          return {
+            ids: [crypto.randomUUID(), crypto.randomUUID()],
+            at: Date.now(),
+          };
+        } finally {
+          unpin();
+        }
+      };
+      const job = { scenario: "fresh", dataset: "x", encrypted: false };
+      const first = drawn(pinOf({ ...job, label: "import", n: 0 }));
+      const later = drawn(pinOf({ ...job, label: "a later pull", n: 1 }));
+      const alike = drawn(pinOf({ ...job, label: "import", n: 0 }));
+      assert.deepEqual(alike, first, "the same job repeats");
+      for (const id of later.ids) assert.ok(!first.ids.includes(id));
+      assert.ok(later.at > first.at, "the later job is later");
+      assert.equal(first.at, pinnedAt(0));
+      assert.equal(first.at, Date.parse(PINNED));
+      const elsewhere = drawn(
+        pinOf({ ...job, label: "import", scenario: "reopen" }),
+      );
+      for (const id of elsewhere.ids) assert.ok(!first.ids.includes(id));
+    });
+
+    it("puts the real clock and the real ids back", async () => {
+      pinClock()();
+      const before = Date.now();
+      await sleep(5);
+      assert.ok(Date.now() > before);
+      assert.notEqual(crypto.randomUUID(), crypto.randomUUID());
+      assert.notEqual(new Date().toISOString(), PINNED);
+    });
+
+    it("writes the same pod from the same record on two runs, which a clock left running does not", async () => {
+      const claimProfiles = await profileOf("first");
+      const folder = await mkdtemp(join(tmpdir(), "pinned-"));
+      scratch.push(folder);
+      const imported = async (name: string) => {
+        const pod = await openedAt(join(folder, name, "pod"), false);
+        await pod.import(syntheticPull(20), { claimProfiles });
+        await pod.close();
+        return folderFingerprint(join(folder, name, "pod"));
+      };
+      const unpin = pinClock();
+      let a, b;
+      try {
+        a = await imported("pinned-1");
+        unpin();
+        const unpinAgain = pinClock();
+        b = await imported("pinned-2");
+        unpinAgain();
+      } finally {
+        unpin();
+      }
+      assert.ok(a.files > 20, "files written");
+      assert.deepEqual(a, b);
+      const running = await imported("running-1");
+      assert.notEqual(running.sha256, (await imported("running-2")).sha256);
+    });
+
+    it("has the fingerprint of a folder tell two statements apart, and not two labels of one blank node", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "fingerprint-"));
+      scratch.push(folder);
+      const holding = async (name: string, text: string) => {
+        await mkdir(join(folder, name), { recursive: true });
+        await writeFile(join(folder, name, "judgment.ttl"), text);
+        return (await folderFingerprint(join(folder, name))).sha256;
+      };
+      const was = (label: string, object: string) =>
+        `<urn:a> <urn:was> _:${label} .\n_:${label} <urn:is> ${object} .\n`;
+      const one = await holding(
+        "one",
+        was("b54691f5b548c1716b41a26b585b05b1", "<urn:x>"),
+      );
+      assert.equal(
+        await holding("two", was("edf3f236a17f1520697b3359340125f", "<urn:x>")),
+        one,
+        "another label",
+      );
+      assert.notEqual(
+        await holding(
+          "three",
+          was("b54691f5b548c1716b41a26b585b05b1", "<urn:y>"),
+        ),
+        one,
+        "another statement",
+      );
+      // The store sorts a file's lines, and a label decides where its lines fall.
+      const before = `_:${"0".repeat(32)} <urn:is> <urn:x> .\n<urn:a> <urn:was> _:${"0".repeat(32)} .\n`;
+      const after = `<urn:a> <urn:was> _:${"f".repeat(32)} .\n_:${"f".repeat(32)} <urn:is> <urn:x> .\n`;
+      assert.equal(
+        await holding("four", after),
+        await holding("five", before),
+        "lines in another order because of another label",
+      );
     });
   });
 
@@ -707,6 +940,88 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         glossaryMarkdown(),
         "regenerate: node packages/cascade-runtime/dist/test/perf-glossary.js > docs/perf-glossary.md",
       );
+    });
+  });
+
+  describe("given the glossary as the files of a folder, one for each scenario", () => {
+    it("has a file named for each scenario that holds that scenario's sentence, and the sentences of no other", async () => {
+      const { readdir } = await import("node:fs/promises");
+      const folder = new URL("../../test/perf-glossary/", import.meta.url);
+      const files = (await readdir(folder)).filter((each) =>
+        each.endsWith(".json"),
+      );
+      for (const scenario of SCENARIOS) {
+        const own = files.filter((each) => each.endsWith(`-${scenario}.json`));
+        assert.equal(own.length, 1, `the file of ${scenario}`);
+        const fragment = JSON.parse(
+          await readFile(new URL(own[0] as string, folder), "utf8"),
+        ) as { scenarios?: Record<string, unknown> };
+        assert.deepEqual(Object.keys(fragment.scenarios ?? {}), [scenario]);
+      }
+    });
+
+    it("is read the same by the runtime's test code and by the page scripts", () => {
+      assert.deepEqual(stacked.readGlossary(), readGlossary());
+    });
+
+    it("joins the files in the order of their names, and refuses a key or a text that two of them give", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "glossary-"));
+      try {
+        const given = (file: string, body: object) =>
+          writeFile(join(folder, file), JSON.stringify(body));
+        await given("10-b.json", {
+          about: "a",
+          measures: { y: "b" },
+          families: [{ says: "second" }],
+        });
+        await given("05-a.json", {
+          measures: { x: "a" },
+          families: [{ says: "first" }],
+        });
+        const merged = readGlossary(pathToFileURL(`${folder}/`)) as unknown as {
+          measures: object;
+          families: { says: string }[];
+        };
+        assert.deepEqual(Object.keys(merged.measures), ["x", "y"]);
+        assert.deepEqual(
+          merged.families.map(({ says }) => says),
+          ["first", "second"],
+        );
+        await given("20-c.json", { measures: { x: "again" } });
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          /20-c\.json gives measures\.x/,
+        );
+        await rm(join(folder, "20-c.json"));
+        await given("20-e.json", { families: [{ says: "first" }] });
+        const listedTwice = /20-e\.json lists .*"first".* in families/;
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          listedTwice,
+        );
+        assert.throws(
+          () => stacked.readGlossary(`${folder}/`),
+          listedTwice,
+          "the page script too",
+        );
+        await rm(join(folder, "20-e.json"));
+        await given("20-f.json", {
+          families: [{ says: "within" }, { says: "within" }],
+        });
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          /20-f\.json lists .*"within".* in families/,
+          "twice in one file",
+        );
+        await rm(join(folder, "20-f.json"));
+        await given("20-d.json", { about: "twice" });
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          /20-d\.json gives about/,
+        );
+      } finally {
+        await rm(folder, { recursive: true, force: true });
+      }
     });
   });
 

@@ -1,0 +1,71 @@
+{
+  "spans": {
+    "core-pod.selectstated.podfiles": {
+      "says": "Reading the pod files a question about stated facts needs."
+    },
+    "core-pod.filled.podfiles": {
+      "says": "Reading the pod files that fill in a half-built answer."
+    },
+    "core-pod.step.readback": {
+      "says": "Reading the pod's saved answers back in before a step, so the step can carry on from them.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.database": {
+      "says": "Updating the saved database after a step.",
+      "within": "scenario.import"
+    },
+    "core-pod.builtdigests": {
+      "says": "Checking that each saved answer file is still the one the saved state was made with."
+    },
+    "core-pod.besidedigest": {
+      "says": "Fingerprinting the saved state kept beside the pod, to check it is intact when the pod opens."
+    },
+    "arrivals.records.podfiles": {
+      "says": "Reading the pod files that hold the records an import compares with.",
+      "within": "scenario.import"
+    },
+    "arrivals.shared.podfiles": {
+      "says": "Reading the pod files of facts shared between records.",
+      "within": "scenario.import"
+    },
+    "arrivals.current.podfiles": {
+      "says": "Reading the pod files of the current versions of records.",
+      "within": "scenario.import"
+    },
+    "kept.reached.recordsofjudged": {
+      "says": "Finding the records those judgments are about."
+    },
+    "kept.readback": {
+      "says": "Reading the saved answers back in when the pod opens."
+    },
+    "kept.readback.restore": {
+      "says": "Restoring the saved answers into memory.",
+      "within": "kept.readback"
+    },
+    "kept.readback.index": {
+      "says": "Rebuilding the lookup list of the saved answers.",
+      "within": "kept.readback"
+    },
+    "kept.reached.written": {
+      "says": "Finding the records whose files the step wrote."
+    },
+    "matcher.view.podfiles": {
+      "says": "Reading the pod files the matcher compares."
+    },
+    "matcher.recheck": {
+      "says": "Checking again each earlier 'same record' judgment made with a table or rule that has since changed."
+    },
+    "matcher.filenolongerreached": {
+      "says": "Writing a finding for review that names the earlier 'same record' judgments the newer rule list no longer reaches."
+    },
+    "pod-database.keyed.graphs": {
+      "says": "Updating the saved database's facts, one group of facts at a time."
+    },
+    "pod-database.keyed.screens": {
+      "says": "Updating the saved database's ready-made answer tables."
+    },
+    "pod-database.keyed.ledger": {
+      "says": "Recording what the saved database now holds."
+    }
+  }
+}

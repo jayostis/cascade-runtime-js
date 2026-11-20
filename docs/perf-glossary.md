@@ -1,6 +1,6 @@
 # What the performance numbers mean
 
-Generated from `packages/cascade-runtime/test/perf-glossary.json`; edit that file, then run
+Generated from the files of `packages/cascade-runtime/test/perf-glossary/`; edit them, then run
 `node packages/cascade-runtime/dist/test/perf-glossary.js > docs/perf-glossary.md`. A test fails if this page is out of date or if the performance file names something the glossary lacks.
 
 ## Scenarios

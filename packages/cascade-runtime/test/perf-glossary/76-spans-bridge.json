@@ -1,0 +1,44 @@
+{
+  "spans": {
+    "bridge.stage-records": {
+      "says": "The Bridge makes the pod's records, with their versions, from what its mappings produced.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-mapping": {
+      "says": "The Bridge runs the adapter's mappings over the source record's facts to produce the pod's facts.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-index": {
+      "says": "The Bridge builds a lookup index of the source facts for its compiled queries.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-lift": {
+      "says": "The Bridge lifts the source record into facts.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-documenttable": {
+      "says": "The Bridge builds the table of documents that the source record contains.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-serialising": {
+      "says": "The Bridge writes its result out as text.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-summary": {
+      "says": "The Bridge totals what it converted.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-dataset": {
+      "says": "The Bridge sets up the facts its queries will read.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-detect": {
+      "says": "The Bridge recognises what kind of record this is.",
+      "within": "arrivals.convert"
+    },
+    "bridge.query-detect.rq": {
+      "says": "The query that recognises what kind of record this is.",
+      "within": "bridge.stage-detect"
+    }
+  }
+}

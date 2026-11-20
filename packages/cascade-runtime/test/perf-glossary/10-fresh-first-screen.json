@@ -1,0 +1,28 @@
+{
+  "scenarios": {
+    "fresh-first-screen": {
+      "says": "A new, empty pod takes in a person's whole record and shows the first screen.",
+      "total": "Opening a new pod, importing the whole record and asking the first screen's questions: what a person waits for the first time."
+    }
+  },
+  "measures": {
+    "open": "Opening the pod.",
+    "import": "Importing the whole record into the pod.",
+    "first-screen": "Asking the questions the first screen shows."
+  },
+  "spans": {
+    "scenario.open": {
+      "says": "Opening the pod: finding its folder, its keys and its saved state."
+    },
+    "scenario.import": {
+      "says": "Bringing the whole record into the pod: converting it, checking it, saving it and judging which records are the same."
+    },
+    "scenario.first-screen": {
+      "says": "Asking the questions the app's first screen shows, so the first screen can be drawn."
+    }
+  },
+  "counts": {
+    "records": "How many records the person's source file holds.",
+    "files-written": "How many files the import wrote to the pod."
+  }
+}

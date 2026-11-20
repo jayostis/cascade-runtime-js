@@ -1,0 +1,81 @@
+{
+  "spans": {
+    "core-pod.step.perform": {
+      "says": "Doing the work of one import step: taking in the new records.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.commit": {
+      "says": "Writing the step's results to the pod's files and recording that it happened.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.finished": {
+      "says": "Working out what an act's file holds beside its description: the runtime that did the work and a snapshot of the pod's files.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.keptafter": {
+      "says": "Bringing the saved answers up to date after a step.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.rebuild-import": {
+      "says": "Re-deriving what the imported records change.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.rebuild-match": {
+      "says": "Re-deriving what the 'same record' matching changes.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.rebuild-other": {
+      "says": "Re-deriving everything else a step changes.",
+      "within": "scenario.import"
+    },
+    "core-pod.import.adapters": {
+      "says": "Reading the adapter that knows how to convert this kind of record.",
+      "within": "scenario.import"
+    },
+    "core-pod.import.documents": {
+      "says": "Taking in the documents (notes, reports) that came with the record.",
+      "within": "scenario.import"
+    },
+    "core-pod.inputshash": {
+      "says": "Working out a fingerprint of everything a result depends on, to know when it can be reused."
+    },
+    "core-pod.matcherselect": {
+      "says": "A question the 'same record' matcher puts to the pod's facts, as the matcher reads them."
+    },
+    "core-pod.matcherview": {
+      "says": "Preparing the pod's facts for the 'same record' matcher."
+    },
+    "core-pod.databaseanswers": {
+      "says": "Checking whether the saved database holds the pod as it stands now, so it can answer in place of a rebuild."
+    },
+    "core-pod.rebuild.writeall": {
+      "says": "Writing every rebuilt file out to the pod."
+    },
+    "core-pod.rebuild.bytes": {
+      "says": "Turning rebuilt facts into the bytes that are written."
+    },
+    "core-pod.keepdatabase": {
+      "says": "Saving the pod's database so the next opening is fast.",
+      "within": "scenario.close"
+    },
+    "core-pod.keepdatabase.whole": {
+      "says": "Saving the database whole, from the pod's current facts.",
+      "within": "core-pod.keepdatabase"
+    },
+    "core-pod.keepbuild": {
+      "says": "Preparing the content of the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "core-pod.keepbuild.dump": {
+      "says": "Gathering the pod's facts to put in the saved database.",
+      "within": "core-pod.keepbuild"
+    },
+    "core-pod.keepbuild.write": {
+      "says": "Writing the gathered facts into the saved database.",
+      "within": "core-pod.keepbuild"
+    },
+    "core-pod.compact": {
+      "says": "Tidying the pod's files into fewer, larger ones."
+    }
+  }
+}
