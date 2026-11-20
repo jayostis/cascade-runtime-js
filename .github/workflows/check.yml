@@ -112,40 +112,32 @@ jobs:
           if-no-files-found: warn
       - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run lint
-      # The test files each package's test/spec.json lists as randomOrder, run in a random order: one that needs another to
-      # run first fails here. The seed is in the log; rerun with --test-random-seed=N to repeat it.
+      # The suite is run once, in two parts. First the test files each package's test/spec.json lists as randomOrder, in a
+      # random order: one that needs another to run first fails here. The seed is in the log; rerun with
+      # --test-random-seed=N to repeat it.
       - name: Tests in random order
+        id: listed
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: |
           node scripts/transpile.mjs
-          node scripts/random-order.mjs cascade-runtime
-          node scripts/random-order.mjs apple-health
-          node scripts/random-order.mjs fhir-pull
-          node scripts/random-order.mjs ccda-download
-          node scripts/random-order.mjs graphdb
-          node scripts/random-order.mjs mcp
-          node scripts/random-order.mjs site
-      # The same for the files packages/runtime/test/spec.json lists. random-order.mjs preloads cascade-runtime's offline.js for every package.
-      - name: Tests of the runtime core in random order
-        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
-        run: node scripts/random-order.mjs runtime
-      # The same for the files packages/evals/test/spec.json lists. One of them writes into the package's runs/ folder, so this is one
-      # run, never several at once.
-      - name: Tests of the eval harness in random order
-        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
-        run: node scripts/random-order.mjs evals
+          node scripts/test.mjs --listed --test-randomize \
+            --test-reporter=./scripts/junit-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/junit-listed.xml" \
+            --test-reporter=spec --test-reporter-destination=stdout
       # The import bench at 1,000 resources against the time each stage of an import may take (import-budget.json: ms on
       # this Linux runner, about three times the slowest of the CI runs it names). A stage over its budget, or gone from the
       # run, is measured once more, and fails here, named, only if it is over in both runs.
       - name: Import time budget
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run bench:import -- 1000 --budget packages/cascade-runtime/test/import-budget.json
-      # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice. Its JUnit report is
-      # read for the test page's shape below, as the `runtime-tests` job reads its own.
-      - id: suite
+      # Then the files that are not listed, as written. Nightly, the `runtime-tests` job runs the suite and keeps its report:
+      # once a night, not twice. The JUnit reports of the two parts are read for the test page's shape below, as the
+      # `runtime-tests` job reads its own.
+      - name: The tests not listed as randomOrder
+        id: suite
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' && github.event_name != 'schedule' }}
         run: |
-          npm test -- --test-reporter=./scripts/junit-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/junit.xml" \
+          node scripts/test.mjs --unlisted \
+            --test-reporter=./scripts/junit-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/junit-unlisted.xml" \
             --test-reporter=spec --test-reporter-destination=stdout
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -156,19 +148,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -f "$RUNNER_TEMP/junit.xml" ]; then
+          reports=()
+          for part in listed unlisted; do
+            if [ -f "$RUNNER_TEMP/junit-$part.xml" ]; then reports+=("$RUNNER_TEMP/junit-$part.xml"); fi
+          done
+          if [ "${#reports[@]}" -eq 0 ]; then
             echo "::warning::the runtime's tests wrote no JUnit report, so there is nothing to check"
             exit 0
           fi
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/cascade-runtime/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/apple-health/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/fhir-pull/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/ccda-download/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/graphdb/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/mcp/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/runtime/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/site/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/evals/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/cascade-runtime/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/apple-health/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/fhir-pull/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/ccda-download/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/graphdb/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/mcp/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/runtime/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/site/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/evals/test/spec.json
 
   # The runtime on Oxigraph's native build, built here from native/oxigraph as the oxigraph-native workflow builds it
   # for Linux: the conformance command runs on each build and every test must have the same outcome on both, and the
@@ -247,10 +243,13 @@ jobs:
           CASCADE_OXIGRAPH=native npm run --silent conformance -- --report "$RUNNER_TEMP/native.nt" 2> >(tee "$RUNNER_TEMP/native.log" >&2)
           grep -q "on Oxigraph's native build" "$RUNNER_TEMP/native.log"
           node scripts/same-outcomes.mjs "$RUNNER_TEMP/wasm.nt" "$RUNNER_TEMP/native.nt"
+      # The suite asserts on the report of the native build's conformance run just above, as the `tests and conformance` job's
+      # asserts on the one its start step wrote, instead of running the command a third time.
       - name: The runtime's tests on the native build
         if: ${{ !cancelled() }}
         env:
           CASCADE_OXIGRAPH: native
+          CASCADE_CONFORMANCE_REPORT: ${{ runner.temp }}/native.nt
           GITHUB_TOKEN: ${{ github.token }}
         run: npm test
 

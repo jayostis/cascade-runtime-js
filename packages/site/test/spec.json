@@ -41,7 +41,8 @@
     "Failures node:test leaves out of its report · declaredFailures()",
     "Test results for an agent · <repository>.ctrf.json",
     "Checking that tests read as a specification · checkShape()",
-    "Checking a package's tests from the command line · scripts/spec-shape.mjs"
+    "Checking a package's tests from the command line · scripts/spec-shape.mjs",
+    "Choosing the files a suite runs · scripts/test-files.mjs"
   ],
   "glossary": [
     {
@@ -368,6 +369,7 @@
     "ctrf.test.ts",
     "junit-reporter.test.ts",
     "spec-shape.test.ts",
+    "test-files.test.ts",
     "sections.test.ts",
     "find-your-way.test.ts",
     "first-pages.test.ts",

@@ -16,7 +16,7 @@ import { type BridgeRecord, pinOfRecord } from "@cascade-runtime/runtime/node";
 configureTables({ checkOnOpen: false });
 
 /**
- * With `CASCADE_TEST_OFFLINE=1`, which `npm test` and the random-order runs set, no test reaches the network: a git call
+ * With `CASCADE_TEST_OFFLINE=1`, which `scripts/test.mjs` sets, no test reaches the network: a git call
  * that names a URL, and a request to any host but this machine, fail at once saying so (a test that stubs `fetch` itself
  * still can). The Bridge is the build `npm run bridge` recorded, pinned for the run, so none looks at the remote for the
  * newest one; when it is not in the cache the run stops and says to run `npm run bridge`. A job that installs the package

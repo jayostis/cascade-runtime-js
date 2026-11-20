@@ -1,29 +1,30 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { compiledTests } from "./test-files.mjs";
 
-const packages = readdirSync("packages", { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
-  .sort();
+/**
+ * Runs the compiled tests of every package, `node scripts/test.mjs [--listed | --unlisted] [node:test options]`. The
+ * options go to `node --test`. `--listed` runs only the files each package's `test/spec.json` lists as `randomOrder`, the
+ * ones proven not to need another test to run first, and `--unlisted` the files it does not: together they are the whole
+ * suite once, so CI runs the first with `--test-randomize` and the second as written.
+ */
+const GROUPS = ["--listed", "--unlisted"];
+const given = process.argv.slice(2);
+const chosen = given.filter((argument) => GROUPS.includes(argument));
+if (chosen.length > 1) {
+  process.stderr.write(`Name one of ${GROUPS.join(" and ")}, not both.\n`);
+  process.exit(2);
+}
+const compiled = compiledTests(chosen[0]?.slice(2));
+const forwarded = given.filter((argument) => !GROUPS.includes(argument));
 
-const compiled = [];
-for (const name of packages) {
-  let entries;
-  try {
-    entries = readdirSync(join("packages", name, "test"), { recursive: true });
-  } catch (error) {
-    if (error.code === "ENOENT") continue;
-    throw error;
-  }
-  for (const entry of entries.sort()) {
-    if (!entry.endsWith(".test.ts")) continue;
-    compiled.push(
-      join("packages", name, "dist", "test", entry.slice(0, -3) + ".js"),
-    );
-  }
+// With no file named, `node --test` runs every test file it finds, not none.
+if (compiled.length === 0) {
+  process.stdout.write("No test file to run.\n");
+  process.exit(0);
 }
 
 const missing = compiled.filter((path) => !existsSync(path));
@@ -42,7 +43,7 @@ const run = spawnSync(
       join("packages", "cascade-runtime", "dist", "test", "offline.js"),
     ).href,
     "--test",
-    ...process.argv.slice(2),
+    ...forwarded,
     ...compiled,
   ],
   {

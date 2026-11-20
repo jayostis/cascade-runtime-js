@@ -427,7 +427,7 @@ describe("Checking that tests read as a specification · checkShape()", () => {
 });
 
 /**
- * `node scripts/spec-shape.mjs <junit> <spec.json>` runs the check in CI on each package's `spec.json`. Its exit status says
+ * `node scripts/spec-shape.mjs <junit>... <spec.json>` runs the check in CI on each package's `spec.json`. Its exit status says
  * which of three things happened: the tests read as a specification (or the check was skipped), a title breaks a rule, or
  * it could not check.
  */
@@ -480,6 +480,44 @@ describe("Checking a package's tests from the command line · scripts/spec-shape
       assert.equal(done.status, 1);
       assert.match(done.stdout, /Something else › returns rows/);
       assert.match(done.stdout, /should return rows/);
+    });
+  });
+
+  describe("with the suite run in two parts, a report of each", () => {
+    const parts = (reports: number) => {
+      const specFile = join(folder, FOLDER, "test", "spec.json");
+      mkdirSync(dirname(specFile), { recursive: true });
+      writeFileSync(
+        specFile,
+        JSON.stringify({
+          ...SPEC,
+          shaped: ["sample.test.ts", "other.test.ts"],
+        }),
+      );
+      const cases: [string, ...string[]][] = [
+        ["sample.test.ts", CAPABILITY, "openPod()", "returns rows"],
+        ["other.test.ts", CAPABILITY, "openPod()", "returns an address"],
+      ];
+      const junits = cases.slice(0, reports).map((one, at) => {
+        const junit = join(folder, `part-${at}.xml`);
+        writeFileSync(junit, xml([one]));
+        return junit;
+      });
+      return spawnSync(process.execPath, [CLI, ...junits, specFile], {
+        encoding: "utf8",
+      });
+    };
+
+    it("exits 0, checking the cases of both as one run", () => {
+      const done = parts(2);
+      assert.equal(done.status, 0, done.stdout);
+      assert.match(done.stdout, /2 cases checked, 0 problems/);
+    });
+
+    it("exits 1 when a shaped file has a case in neither", () => {
+      const done = parts(1);
+      assert.equal(done.status, 1);
+      assert.match(done.stdout, /other\.test\.ts/);
     });
   });
 

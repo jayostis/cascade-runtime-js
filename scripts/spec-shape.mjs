@@ -4,23 +4,26 @@ import { readJunit } from "../packages/site/src/junit.ts";
 import { checkShape } from "../packages/site/src/spec-shape.ts";
 
 /**
- * Whether a package's test results read as a specification: `node scripts/spec-shape.mjs <junit.xml> <spec.json>`, the
- * rules in `packages/site/src/spec-shape.ts`. Exits 1 and names each case that breaks one; 0 when none does, or when the
+ * Whether a package's test results read as a specification: `node scripts/spec-shape.mjs <junit.xml>... <spec.json>`, the
+ * rules in `packages/site/src/spec-shape.ts`. The last argument is the spec and each one before it a report, all read as
+ * one run when the suite was run in parts. Exits 1 and names each case that breaks one; 0 when none does, or when the
  * spec lists no `capabilities` and the package is skipped; 2 when it cannot read its arguments. Another repository runs it
  * from a sparse checkout of this one's `scripts` and `packages/site/src`; Node runs the TypeScript there by stripping its
  * types (Node 22.18 or later).
  */
-function run([junit, specFile, ...rest]) {
-  if (junit === undefined || specFile === undefined || rest.length > 0) {
+function run(args) {
+  const specFile = args.at(-1);
+  const junits = args.slice(0, -1);
+  if (junits.length === 0) {
     process.stderr.write(
-      "usage: node scripts/spec-shape.mjs <junit.xml> <spec.json>\n",
+      "usage: node scripts/spec-shape.mjs <junit.xml>... <spec.json>\n",
     );
     return 2;
   }
   let report;
   try {
     report = checkShape(
-      readJunit(readFileSync(junit, "utf8")).cases,
+      junits.flatMap((junit) => readJunit(readFileSync(junit, "utf8")).cases),
       JSON.parse(readFileSync(specFile, "utf8")),
       specFile,
     );
