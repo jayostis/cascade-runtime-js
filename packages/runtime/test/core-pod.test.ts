@@ -7,6 +7,7 @@ import { parseGraph } from "../src/graph.js";
 import { randomId } from "../src/ids.js";
 import type { Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { probing } from "../src/probe.js";
 import { StepWrites } from "../src/pod.js";
 import { iri, literal, type Triple, XSD } from "../src/rdf.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
@@ -86,6 +87,17 @@ class Overlapping extends MemoryFiles {
     await Promise.all(
       [...files].map(([path, bytes]) => this.#put(path, bytes)),
     );
+  }
+}
+
+/** Files that take several writes at once and log the path of each read, with whether it found a file. */
+class Reading extends Overlapping {
+  readonly reads: { path: string; found: boolean }[] = [];
+
+  override async read(path: string): Promise<Uint8Array | undefined> {
+    const bytes = await super.read(path);
+    this.reads.push({ path, found: bytes !== undefined });
+    return bytes;
   }
 }
 
@@ -293,6 +305,95 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
         /the first wave fails/,
       );
       assert.deepEqual(started, ["files/0", "files/1"]);
+    });
+  });
+
+  describe("given a pod whose listing `CorePod.files` holds, StepWrites.commit()", () => {
+    const body = (text: string): Uint8Array => new TextEncoder().encode(text);
+    const FRESH = ["files/0", "files/1", "files/2", "files/3"];
+
+    /** A pod made over files that log their reads, and the files, once the listing is taken and the log is empty. */
+    async function listed(): Promise<{ files: Reading; pod: CorePod }> {
+      const files = new Reading(ADDRESS);
+      const pod = new CorePod(
+        options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+      );
+      await pod.create();
+      files.reads.length = 0;
+      files.log.length = 0;
+      return { files, pod };
+    }
+
+    const waved = (): StepWrites => {
+      const writes = new StepWrites();
+      FRESH.forEach((path, n) => writes.add(path, body(path), n < 2 ? 1 : 2));
+      writes.act({ name: "urn:act", path: "acts/a", triples: [] });
+      return writes;
+    };
+
+    it("reads no file the listing lacks, in the first wave or the second, and still writes the second wave after the first", async () => {
+      const { files, pod } = await listed();
+      await waved().commit(pod.files);
+      assert.deepEqual(
+        files.reads.filter(({ path }) => path !== "acts/a"),
+        [],
+      );
+      assert.deepEqual(
+        files.reads.filter(({ path }) => path === "acts/a"),
+        [{ path: "acts/a", found: false }],
+      );
+      assert.ok(
+        within(files.log, FRESH.slice(0, 2)).last <
+          within(files.log, FRESH.slice(2)).first,
+        "the second wave started before the first was written",
+      );
+      for (const path of [...FRESH, "acts/a"])
+        assert.ok(await files.read(path), `${path} was not written`);
+    });
+
+    it("shows its absence checks in the trace: one span, a count of the paths and a count of those read from the pod", async () => {
+      const { pod } = await listed();
+      const { seen } = await probing(() => waved().commit(pod.files));
+      assert.ok((seen.spans.get("files.absent.check")?.calls ?? 0) >= 1);
+      assert.equal(seen.counts.get("files.absent.check"), FRESH.length);
+      assert.equal(seen.counts.get("files.absent.check.read") ?? 0, 0);
+    });
+
+    it("reads a file the listing has and compares it, refusing other bytes and not writing the same ones again", async () => {
+      const { files, pod } = await listed();
+      await pod.files.write("files/0", body("files/0"));
+      files.reads.length = 0;
+      files.log.length = 0;
+      const same = new StepWrites();
+      same.add("files/0", body("files/0"));
+      same.add("files/1", body("files/1"));
+      await same.commit(pod.files);
+      assert.deepEqual(
+        files.reads.filter(({ found }) => found),
+        [],
+      );
+      assert.deepEqual(
+        files.log.filter(({ at }) => at === "start").map(({ path }) => path),
+        ["files/1"],
+      );
+      const other = new StepWrites();
+      other.add("files/0", body("other bytes"));
+      await assert.rejects(
+        other.commit(pod.files),
+        /files\/0 is in the pod already, holding other bytes/,
+      );
+    });
+
+    it("writes over a file that reached the pod after the listing with the bytes it holds, the name being the bytes' hash", async () => {
+      const { files, pod } = await listed();
+      await files.write("files/0", body("files/0"));
+      const writes = new StepWrites();
+      writes.add("files/0", body("files/0"));
+      await writes.commit(pod.files);
+      assert.equal(
+        new TextDecoder().decode(await files.read("files/0")),
+        "files/0",
+      );
     });
   });
 
