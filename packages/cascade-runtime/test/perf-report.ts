@@ -1,4 +1,5 @@
 import "./offline.js";
+import { writeSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { CHILD } from "./perf-child.js";
@@ -60,14 +61,22 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   const { plan, out } = parsed(args);
-  // A run that ends without its file says how it ended.
+  // A run that ends without its file says how it ended, and by which signal it was told to.
   let finished = false;
+  const say = (text: string) =>
+    writeSync(
+      2,
+      `${text}
+`,
+    );
   process.on("exit", (code) => {
-    if (!finished)
-      process.stderr.write(
-        `the performance run ended early, exit code ${code}\n`,
-      );
+    if (!finished) say(`the performance run ended early, exit code ${code}`);
   });
+  process.on("beforeExit", () => {
+    if (!finished) say("the performance run has nothing left to wait for");
+  });
+  for (const signal of ["SIGHUP", "SIGBREAK", "SIGINT", "SIGTERM"] as const)
+    process.on(signal, () => say(`the performance run was sent ${signal}`));
   const started = performance.now();
   const file = await perfFile(
     plan,
