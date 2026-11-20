@@ -31,6 +31,9 @@ name: perf
 #   one SQLite transaction), so that a fresh import's time is read against what loading that input costs: the job summary, the
 #   comment, /perf/ and /perf/runs/ say "Import takes X; a plain load of the same input into SQLite takes Y (Zx)", with what each
 #   import handled and how fast saving went.
+# - Every run also measures what people do after the first import (the `reimport-identical`, `reimport-changed`, `add-one-record`,
+#   `reopen-after-kill` and `question-after-update` scenarios), each on a copy of the pod the first import left: /perf/, /perf/runs/, the
+#   summary and the comment have a line for each under "What people do after the first import".
 # - A hand-started run can name one scenario (`fresh-first-screen,floor` is the import and its floor) and one size.
 
 on:
@@ -54,6 +57,13 @@ on:
             reopen-first-answer,
             question-page,
             close,
+            stored,
+            reimport-identical,
+            reimport-changed,
+            add-one-record,
+            reopen-after-kill,
+            question-after-update,
+            "reimport-identical,reimport-changed,add-one-record,reopen-after-kill,question-after-update",
           ]
         default: all
       size:
