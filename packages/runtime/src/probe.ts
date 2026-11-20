@@ -144,16 +144,15 @@ class Probe implements Seen {
     }
   }
 
-  /** A span measured elsewhere, as an event. */
+  /** A span measured elsewhere, as an event; one whose position is not known is no event. */
   place(name: string, ms: number, calls: number, where?: Placed): void {
-    if (this.events === undefined) return;
-    const end = where === undefined ? performance.now() : where.start + ms;
+    if (this.events === undefined || where === undefined) return;
     this.events.push({
       name,
-      start: end - ms,
-      end,
+      start: where.start,
+      end: where.start + ms,
       parent: this.#context?.getStore() ?? -1,
-      track: where?.track ?? "measured elsewhere",
+      track: where.track,
       calls,
     });
   }
@@ -283,7 +282,8 @@ export function queried<T>(run: () => T): T {
  * Records a span measured elsewhere (by another thread, or by the Bridge's own clock) as `calls` calls taking `ms`
  * in all, while probing, which is also its wall time: what was measured elsewhere is not overlapped with itself here.
  * A traced run draws it as one event on the track it is `placed` on, a child of the span it is recorded inside of, ending
- * where it began plus `ms`; one not placed is drawn on the track `measured elsewhere`, ending now. Nothing when it is off.
+ * where it began plus `ms`; one not placed has a span's totals and no event, for where it ran is not known. Nothing when
+ * it is off.
  */
 export function recorded(
   name: string,

@@ -318,16 +318,27 @@ export interface TraceNote {
   readonly encrypted: boolean;
   readonly file: string;
   readonly bytes: number;
-  /** Calls the probe saw, and calls the file draws. */
+  /** Calls the probe saw, and calls the file draws, each as an event of its own. */
   readonly calls: number;
   readonly drawn: number;
   /** Calls shorter than this are not drawn, in milliseconds; 0 when all are. */
   readonly shortestMs: number;
-  /** Calls not drawn because too many ran at the same time. */
-  readonly overlapSkipped: number;
+  /** Calls drawn together because too many ran at the same time, and the merged events that stand for them. */
+  readonly merged: number;
+  readonly mergedEvents: number;
   readonly top: readonly {
     name: string;
     selfMs: number;
+    calls: number;
+    says?: string;
+  }[];
+  /**
+   * The Bridge's queries by their total time, which the file does not draw: the Bridge says how long each took in all and
+   * not when, and a stage's own time includes the queries it ran.
+   */
+  readonly bridgeQueries: readonly {
+    name: string;
+    ms: number;
     calls: number;
     says?: string;
   }[];
@@ -335,6 +346,9 @@ export interface TraceNote {
 
 /** The most own time a trace's top list names. */
 const TOP = 10;
+
+/** What the name of a span of one of the Bridge's queries begins with, as `bridgeSpans` records it. */
+const BRIDGE_QUERY = "bridge.query:";
 
 export interface Tabulated {
   /** Each span's calls, the sum of their own times (`ms`) and the time some call of it was in progress (`wallMs`). */
@@ -378,8 +392,6 @@ async function openedAt(folder: string, encrypted: boolean) {
   return openFolderPod(parts, folder, encrypted ? { secret: SECRET } : {});
 }
 
-/** The run's own scenario's name: the first part of the names of its rows and files. */
-
 /** A scenario at a size, the first part of the names of its rows and files. */
 const nameOf = (scenario: Scenario, dataset: DatasetId, encrypted: boolean) =>
   `${scenario}-${dataset}${encrypted ? "-encrypted" : ""}`;
@@ -398,7 +410,8 @@ async function traced(
     seen: calls,
     kept,
     shortestMs,
-    overlapSkipped,
+    merged,
+    mergedEvents,
   } = chromeTrace(seen.events ?? [], {
     title: `${scenario} on ${job.dataset}${job.encrypted ? ", encrypted" : ""}: the probed run`,
     says: (span) => explainSpan(part(span)),
@@ -429,8 +442,22 @@ async function traced(
     calls,
     drawn: kept,
     shortestMs: fixed(shortestMs, 3),
-    overlapSkipped,
+    merged,
+    mergedEvents,
     top,
+    bridgeQueries: table.spans
+      .filter(({ name: span }) => span.startsWith(BRIDGE_QUERY))
+      .sort((a, b) => b.wallMs - a.wallMs)
+      .slice(0, TOP)
+      .map(({ name: span, wallMs, calls: count }) => {
+        const says = explainSpan(part(span));
+        return {
+          name: span.slice(BRIDGE_QUERY.length).replace(/^.*\//, ""),
+          ms: fixed(wallMs, 3),
+          calls: count,
+          ...(says !== undefined && { says }),
+        };
+      }),
   };
 }
 

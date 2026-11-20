@@ -203,7 +203,7 @@ Rows named `<scenario>-<dataset>/self/<stage>`, for the same stages: Own time: t
 
 ## Flame graphs of every build
 
-Each build also keeps a trace of its probed run ("Where the time went": every call with its start, end and the call it ran inside, drawn as a flame graph) and a CPU profile of an unprobed run ("Which code took it": every function the processor was sampled in), both opened in speedscope. The builds are listed at https://jayostis.github.io/cascade-runtime-js/perf/runs/, newest first. A trace of the large size leaves out its shortest calls, whose time is their parent's own.
+Each build also keeps a trace of its probed run ("Where the time went": every call with its start, end and the call it ran inside, drawn as a flame graph) and a CPU profile of an unprobed run ("Which code took it": every function the processor was sampled in), both opened in speedscope. The builds are listed at https://jayostis.github.io/cascade-runtime-js/perf/runs/, newest first, with the files each still has: traces for the newest 30 builds, CPU profiles for the newest 5, and the large size's files for the newest 7 builds that ran it. A trace draws each call under the call that ran it, side by side where calls ran at the same time; where more than 32 calls of one step ran at once, they are drawn as one merged bar for each stretch of time some of them were running, labelled with how many (for example "files.encrypt × 40 at once"), so no time is left out of the picture. The Bridge says how long each of its queries took in all and not when it ran, so a trace does not draw them: the index lists, for each build, the time per Bridge query, positions unknown, and a Bridge stage's own time includes the queries it ran.
 
 ## Counts of the probed run
 

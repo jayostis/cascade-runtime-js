@@ -90,13 +90,15 @@ export interface Trace {
     otherData: Record<string, unknown>;
   };
   /**
-   * Calls seen, calls written (the whole-run event not among them), the shortest duration written in milliseconds, and the
-   * calls left out because more than `MAX_TRACKS` tracks of one name would have been needed to draw them.
+   * Calls seen; calls drawn each as an event of its own (the whole-run event not among them); the shortest duration of the
+   * calls kept, in milliseconds; and the calls that would have needed more than `MAX_TRACKS` tracks of one name, which
+   * are drawn as `mergedEvents` merged events, one for each stretch of time some of them were running.
    */
   readonly seen: number;
   readonly kept: number;
   readonly shortestMs: number;
-  readonly overlapSkipped: number;
+  readonly merged: number;
+  readonly mergedEvents: number;
 }
 
 /** The most events a trace is allowed by default: speedscope opens a few hundred thousand, slowly. */
@@ -110,10 +112,13 @@ const MAIN = "main thread";
 /**
  * The run as a Chrome trace: every call a complete event (`ph: "X"`) from the span's name, start and duration, in whole
  * microseconds so that a call that ends where the next begins does so exactly, and one track (`tid`) for each stack of calls
- * that nest properly. A call goes on its parent's track where it nests in what is open there, else on the first track it
- * nests in, else on a new one, so work that ran at the same time shows as tracks side by side; a call measured
- * elsewhere (a worker thread, the Bridge's clock) is on a track of its own name. What each span is, in the glossary's
- * words, is in `otherData.says`. At most `MAX_TRACKS` tracks are made for one name; a call that would need one more is left out.
+ * that nest properly. A call is drawn under the call it ran inside of and nowhere else: on its parent's track where the
+ * parent, or a call the parent ran inside of, is the innermost one open there, else on the first track where that holds,
+ * else on a new one, so work that ran at the same time shows as tracks side by side; a call measured elsewhere (a worker
+ * thread, the Bridge's clock) is on a track of its own name. What each span is, in the glossary's words, is in
+ * `otherData.says`. At most `MAX_TRACKS` tracks are made for one name. The calls of a name that would need one more are
+ * drawn together, one event for each stretch of time some of them were running, labelled `<name> × <calls> at once`, on a
+ * track of their own, so that the time drawn for the name is the time it took.
  */
 export function chromeTrace(
   events: readonly SpanEvent[],
@@ -153,9 +158,14 @@ export function chromeTrace(
   // Earlier first; of two that begin together, the longer (it holds the other), then the one called first.
   kept.sort((a, b) => startOf(a) - startOf(b) || endOf(b) - endOf(a) || a - b);
 
+  /** A call open on a track: where it ends, and which call it is. */
+  interface Open {
+    readonly end: number;
+    readonly at: number;
+  }
   interface Lane {
     readonly tid: number;
-    readonly open: number[];
+    readonly open: Open[];
   }
   const lanes = new Map<string, Lane[]>();
   const names = new Map<number, string>();
@@ -175,18 +185,38 @@ export function chromeTrace(
   newLane(MAIN);
   const laneOf = new Map<number, Lane>();
   const out: TraceEvent[] = [];
-  let overlapSkipped = 0;
   const meant: Record<string, string> = {};
-  /** Whether the call nests in what is open on the lane at its start: the ends of those that ended are dropped. */
-  const fits = (lane: Lane, start: number, end: number): boolean => {
+  const say = (name: string) => {
+    if (name in meant) return;
+    const sentence = says(name);
+    if (sentence !== undefined) meant[name] = sentence;
+  };
+  /** Whether the call `above` is the call `at` ran inside of, or one that call ran inside of, however far up. */
+  const holds = (above: number, at: number): boolean => {
+    for (
+      let up = (events[at] as SpanEvent).parent;
+      up >= 0;
+      up = (events[up] as SpanEvent).parent
+    )
+      if (up === above) return true;
+    return false;
+  };
+  /**
+   * Whether the call can be drawn on the lane: nothing is open there, or the innermost call open at its start (the ends of
+   * those that ended are dropped) holds it in time and is the call it ran inside of or one that call did.
+   */
+  const fits = (lane: Lane, at: number): boolean => {
+    const start = startOf(at);
     while (
       lane.open.length > 0 &&
-      (lane.open[lane.open.length - 1] as number) <= start
+      (lane.open[lane.open.length - 1] as Open).end <= start
     )
       lane.open.pop();
     const top = lane.open[lane.open.length - 1];
-    return top === undefined || end <= top;
+    return top === undefined || (endOf(at) <= top.end && holds(top.at, at));
   };
+  /** The calls of each name that no track was left for, by where they ran. */
+  const overflow = new Map<string, number[]>();
   for (const at of kept) {
     const event = events[at] as SpanEvent;
     const where = track(at);
@@ -198,19 +228,15 @@ export function chromeTrace(
       ...(parentLane === undefined ? [] : [parentLane]),
       ...(lanes.get(where) ?? []),
     ];
-    const lane =
-      candidates.find((each) => fits(each, startOf(at), endOf(at))) ??
-      newLane(where);
+    const lane = candidates.find((each) => fits(each, at)) ?? newLane(where);
+    say(event.name);
     if (lane === undefined) {
-      overlapSkipped += 1;
+      const key = `${where}\u0000${event.name}`;
+      overflow.set(key, [...(overflow.get(key) ?? []), at]);
       continue;
     }
-    lane.open.push(endOf(at));
+    lane.open.push({ end: endOf(at), at });
     laneOf.set(at, lane);
-    if (!(event.name in meant)) {
-      const sentence = says(event.name);
-      if (sentence !== undefined) meant[event.name] = sentence;
-    }
     out.push({
       name: event.name,
       cat: where === MAIN ? "span" : "measured elsewhere",
@@ -221,6 +247,39 @@ export function chromeTrace(
       tid: lane.tid,
     });
   }
+  const drawn = out.length;
+  let merged = 0;
+  let mergedEvents = 0;
+  for (const [key, calls] of overflow) {
+    const [where, name] = key.split("\u0000") as [string, string];
+    const tid = ++tids;
+    names.set(
+      tid,
+      `${name}: more than ${MAX_TRACKS} at once, merged${where === MAIN ? "" : ` (${where})`}`,
+    );
+    const stretches: { from: number; to: number; calls: number }[] = [];
+    for (const at of [...calls].sort((a, b) => startOf(a) - startOf(b))) {
+      const last = stretches[stretches.length - 1];
+      if (last !== undefined && startOf(at) <= last.to) {
+        last.to = Math.max(last.to, endOf(at));
+        last.calls += 1;
+      } else stretches.push({ from: startOf(at), to: endOf(at), calls: 1 });
+    }
+    merged += calls.length;
+    mergedEvents += stretches.length;
+    for (const { from, to, calls: count } of stretches)
+      out.push({
+        name: count === 1 ? name : `${name} × ${count} at once`,
+        cat: "merged",
+        ph: "X",
+        ts: from,
+        dur: to - from,
+        pid: 1,
+        tid,
+      });
+  }
+  // Earlier first, the longer of two that begin together, so that a track's events come in the order they nest.
+  out.sort((a, b) => a.ts - b.ts || b.dur - a.dur);
   const whole: TraceEvent = {
     name: title,
     cat: "run",
@@ -251,15 +310,16 @@ export function chromeTrace(
         ...(floor > 0 && {
           leftOut: `${seen - kept.length} of the shortest calls (${floor.toFixed(3)} ms or less) are not drawn; their time is their parent's own`,
         }),
-        ...(overlapSkipped > 0 && {
-          overlapLeftOut: `${overlapSkipped} calls that ran at the same time as more than ${MAX_TRACKS} others are not drawn`,
+        ...(merged > 0 && {
+          merged: `${merged} calls that ran at the same time as more than ${MAX_TRACKS} others of their name are drawn as ${mergedEvents} merged events, each the stretch of time some of them were running, on tracks of their own`,
         }),
         says: meant,
       },
     },
     seen,
-    kept: out.length,
+    kept: drawn,
     shortestMs: floor,
-    overlapSkipped,
+    merged,
+    mergedEvents,
   };
 }

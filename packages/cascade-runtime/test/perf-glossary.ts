@@ -105,7 +105,7 @@ export function explain(rowName: string): string | undefined {
   if (rest.startsWith("stage/")) return explainSpan(rest.slice(6));
   if (rest.startsWith("self/")) {
     const says = explainSpan(rest.slice(5));
-    return says === undefined ? undefined : `${says} ${glossary.selfRows}`;
+    return says === undefined ? undefined : `${says} | ${glossary.selfRows}`;
   }
   if (rest.startsWith("count/")) return countOf(rest.slice(6));
   if (rest === "total") return glossary.scenarios[scenario]?.total;

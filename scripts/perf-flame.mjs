@@ -32,6 +32,27 @@ export function titleOf(build) {
   return `${build.scenario} on ${build.dataset}${build.encrypted ? ", encrypted" : ""}`;
 }
 
+/** A glossary sentence as one cell of a table, or nothing for a step it has none for. */
+export const plain = (says) => (says ?? "").replaceAll("|", "/");
+
+/** What a trace file does not draw, and why its time is still counted: calls merged, and calls left out for being short. */
+export function drawnNotes(trace) {
+  const merged = trace.merged ?? 0;
+  const left = trace.calls - trace.drawn - merged;
+  return [
+    ...(merged > 0
+      ? [
+          `${merged.toLocaleString("en-US")} calls ran at once, more than a track holds side by side; they are drawn merged, ${(trace.mergedEvents ?? 0).toLocaleString("en-US")} bars labelled "<step> × N at once", so their time is in the picture.`,
+        ]
+      : []),
+    ...(left > 0
+      ? [
+          `${left.toLocaleString("en-US")} of the shortest calls are not drawn; their time is their parent's own.`,
+        ]
+      : []),
+  ];
+}
+
 /**
  * The text that says where each scenario's time went: its `top` steps by own time (the time a step was running with none of
  * the steps inside it running), and the links to its trace and CPU profile.
@@ -72,14 +93,16 @@ export function summary(
         `${markdown ? "_" : ""}The CPU profile is of the whole fresh run; the close is its last step.${markdown ? "_" : ""}`,
         "",
       );
+    for (const note of drawnNotes(build.trace))
+      out.push(`${markdown ? "_" : ""}${note}${markdown ? "_" : ""}`, "");
     const rows = build.trace.top.slice(0, top);
     if (markdown)
       out.push(
-        "| step | own time | calls |",
-        "|---|---:|---:|",
+        "| step | what it is | own time | calls |",
+        "|---|---|---:|---:|",
         ...rows.map(
           (row) =>
-            `| \`${row.name}\` | ${shown(row.selfMs / 1000, "s")} | ${row.calls.toLocaleString("en-US")} |`,
+            `| \`${row.name}\` | ${plain(row.says)} | ${shown(row.selfMs / 1000, "s")} | ${row.calls.toLocaleString("en-US")} |`,
         ),
         "",
       );
@@ -87,10 +110,35 @@ export function summary(
       out.push(
         ...rows.map(
           (row) =>
-            `  ${shown(row.selfMs / 1000, "s").padStart(8)}  ${row.name} (${row.calls} calls)`,
+            `  ${shown(row.selfMs / 1000, "s").padStart(8)}  ${row.name} (${row.calls} calls)${row.says === undefined ? "" : `: ${row.says}`}`,
         ),
         "",
       );
+    const queries = (build.trace.bridgeQueries ?? []).slice(0, top);
+    if (queries.length > 0) {
+      out.push(
+        `${markdown ? "_" : ""}Time per Bridge query, positions unknown: the Bridge says how long each took in all and not when, so the trace does not draw them, and a Bridge stage's own time includes the queries it ran.${markdown ? "_" : ""}`,
+        "",
+      );
+      if (markdown)
+        out.push(
+          "| Bridge query | what it is | time | runs |",
+          "|---|---|---:|---:|",
+          ...queries.map(
+            (row) =>
+              `| \`${row.name}\` | ${plain(row.says)} | ${shown(row.ms / 1000, "s")} | ${row.calls.toLocaleString("en-US")} |`,
+          ),
+          "",
+        );
+      else
+        out.push(
+          ...queries.map(
+            (row) =>
+              `  ${shown(row.ms / 1000, "s").padStart(8)}  ${row.name} (${row.calls} runs)`,
+          ),
+          "",
+        );
+    }
   }
   if (download !== undefined && viewer !== undefined)
     out.push(

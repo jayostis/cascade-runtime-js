@@ -4,7 +4,7 @@
 // slowdown.
 //
 //   perf-compare.mjs compare <before.json> <after.json> [--markdown] [--stages 15]
-//   perf-compare.mjs summary <file.json> [--markdown] [--stages 10]
+//   perf-compare.mjs summary <file.json> [--markdown] [--stages 10] [--without-own-time]
 //   perf-compare.mjs history --name <glob> [--since 7d] [--dir <folder of files>]
 //
 // A name's glob uses `*` for any run of characters, `/` included. History reads every `*.json` under the folder (the
@@ -103,11 +103,13 @@ function grouped(rows) {
   return groups;
 }
 
-function table(header, lines, markdown) {
+/** A table whose columns are numbers, right-aligned, except the first and those in `text`. */
+function table(header, lines, markdown, text = []) {
+  const left = (at) => at === 0 || text.includes(at);
   if (markdown)
     return [
       `| ${header.join(" | ")} |`,
-      `|${header.map((_, at) => (at === 0 ? "---" : "---:")).join("|")}|`,
+      `|${header.map((_, at) => (left(at) ? "---" : "---:")).join("|")}|`,
       ...lines.map((line) => `| ${line.join(" | ")} |`),
     ].join("\n");
   const widths = header.map((cell, at) =>
@@ -116,12 +118,17 @@ function table(header, lines, markdown) {
   const pad = (line) =>
     line
       .map((cell, at) =>
-        at === 0
+        left(at)
           ? String(cell).padEnd(widths[at])
           : String(cell).padStart(widths[at]),
       )
       .join("  ");
   return [pad(header), ...lines.map(pad)].join("\n");
+}
+
+/** The sentence a row's `extra` begins with, which says what the step is in plain words; a table cell. */
+export function says(row) {
+  return (row?.extra ?? "").split(" | ")[0].replaceAll("|", "/");
 }
 
 /** The report of two files: headline rows, then the counts that changed, then the stages that changed most. */
@@ -170,6 +177,8 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
             : change(from.value, to.value);
     return [label, shown(from?.value, unit), shown(to?.value, unit), verdict];
   };
+  /** A line with the plain sentence of the step after its change. */
+  const said = (pair) => [...line(pair), says(pair.to ?? pair.from)];
   const headline = rowsOf("headline").filter(
     ({ from, to }) =>
       (to ?? from).unit !== "{count}" || from?.value !== to?.value,
@@ -255,9 +264,10 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
     );
     out.push(
       table(
-        ["", "before", "after", "change"],
-        moved.map((pair) => line(pair)),
+        ["", "before", "after", "change", "what it is"],
+        moved.map((pair) => said(pair)),
         markdown,
+        [4],
       ),
       "",
     );
@@ -276,9 +286,10 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
     );
     out.push(
       table(
-        ["", "before", "after", "change"],
-        movedOwn.map((pair) => line(pair)),
+        ["", "before", "after", "change", "what it is"],
+        movedOwn.map((pair) => said(pair)),
         markdown,
+        [4],
       ),
       "",
     );
@@ -291,8 +302,14 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
   return out.join("\n");
 }
 
-/** One file as text: the headline rows, then each scenario's slowest stages. */
-export function summary(file, { markdown = false, stages = 10 } = {}) {
+/**
+ * One file as text: the headline rows, then each scenario's slowest stages and, unless `own` is false (a caller that lists
+ * the steps with the longest own time itself, with their links), the steps with the longest own time.
+ */
+export function summary(
+  file,
+  { markdown = false, stages = 10, own = true } = {},
+) {
   const out = [];
   const headline = file.results.filter(
     (row) => kindOf(row.name) === "headline",
@@ -336,18 +353,20 @@ export function summary(file, { markdown = false, stages = 10 } = {}) {
     );
     out.push(
       table(
-        ["stage", "time"],
+        ["stage", "time", "what it is"],
         top.map((row) => [
           row.name.split("/stage/")[1] ?? "(probed total of the run's steps)",
           shown(row.value, row.unit),
+          says(row),
         ]),
         markdown,
+        [2],
       ),
       "",
     );
   }
   for (const [group, rows] of grouped(
-    file.results.filter((row) => kindOf(row.name) === "self"),
+    own ? file.results.filter((row) => kindOf(row.name) === "self") : [],
   )) {
     const top = rows
       .filter((row) => !/\/self\/scenario\./.test(row.name))
@@ -359,12 +378,14 @@ export function summary(file, { markdown = false, stages = 10 } = {}) {
         : `${group}: longest own time (one probed run)`,
       "",
       table(
-        ["step", "own time"],
+        ["step", "own time", "what it is"],
         top.map((row) => [
           row.name.split("/self/")[1],
           shown(row.value, row.unit),
+          says(row),
         ]),
         markdown,
+        [2],
       ),
       "",
     );
@@ -383,12 +404,7 @@ function filesUnder(folder) {
   for (const entry of readdirSync(folder)) {
     const path = join(folder, entry);
     if (statSync(path).isDirectory()) found.push(...filesUnder(path));
-    else if (
-      entry.endsWith(".json") &&
-      !entry.endsWith(".trace.json") &&
-      entry !== "flame.json"
-    )
-      found.push(path);
+    else if (entry.endsWith(".json")) found.push(path);
   }
   return found.sort();
 }
@@ -463,7 +479,11 @@ function main(args) {
   const markdown = rest.includes("--markdown");
   const stages =
     flag("--stages") === undefined ? undefined : Number(flag("--stages"));
-  const options = { markdown, ...(stages !== undefined && { stages }) };
+  const options = {
+    markdown,
+    ...(stages !== undefined && { stages }),
+    ...(rest.includes("--without-own-time") && { own: false }),
+  };
   if (command === "compare" && positional.length === 2)
     return say(compare(read(positional[0]), read(positional[1]), options));
   if (command === "summary" && positional.length === 1)

@@ -1145,8 +1145,9 @@ function read(found: ExportDocument, started: string): Uint8Array {
 
 /**
  * The Bridge's own stages and queries of a profiled convert, recorded as spans that sit inside `arrivals.convert`. A trace
- * draws them from `began`, when the convert did: the stages end to end on one track, and the queries, which the stages
- * contain, end to end on another, for the Bridge gave only each one's total.
+ * draws the stages from `began`, when the convert did, end to end on one track, which is the order the Bridge ran them
+ * in. The queries are recorded with their totals only: the Bridge says how long each took in all and not when, and a
+ * stage's own time includes the queries it ran, so none is drawn and none is taken out of its stage's own time.
  */
 function bridgeSpans(conversion: Conversion, began: number): void {
   let stageAt = began;
@@ -1157,13 +1158,8 @@ function bridgeSpans(conversion: Conversion, began: number): void {
     });
     stageAt += seconds * 1000;
   }
-  let queryAt = began;
   for (const { iri, executions, rows, seconds } of conversion.queries ?? []) {
-    recorded(`bridge.query:${iri}`, seconds * 1000, executions, {
-      track: "Bridge queries",
-      start: queryAt,
-    });
-    queryAt += seconds * 1000;
+    recorded(`bridge.query:${iri}`, seconds * 1000, executions);
     counted("bridge.query.rows", rows);
   }
 }

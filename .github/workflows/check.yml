@@ -972,9 +972,17 @@ jobs:
             mkdir -p build/pages/perf
             cp -r "$RUNNER_TEMP/perf-data/perf/." build/pages/perf/
             # The flame graphs: the speedscope viewer (the pinned package's own release, with its licence) at /perf/speedscope/,
-            # and the newest builds' traces and CPU profiles at /perf/runs/<run>-<sha7>/ with an index of them at /perf/runs/.
-            # The viewer reads a file by its address, so the files are served from the same site.
-            if ! node scripts/perf-runs.mjs pages --data "$RUNNER_TEMP/perf-data" --out build/pages/perf \
+            # and the builds' traces and CPU profiles at /perf/runs/<run>-<sha7>/ with an index of them at /perf/runs/, from the
+            # orphan branch `perf-flame` (one commit, which perf.yml writes with the window of builds it keeps). The viewer
+            # reads a file by its address, so the files are served from the same site. A branch that does not exist yet, or
+            # cannot be cloned, is an index with no builds.
+            mkdir -p "$RUNNER_TEMP/perf-flame"
+            if git ls-remote --exit-code --heads "$remote" perf-flame >/dev/null 2>&1; then
+              rm -rf "$RUNNER_TEMP/perf-flame"
+              git clone -q --depth 1 --branch perf-flame "$remote" "$RUNNER_TEMP/perf-flame" \
+                || { mkdir -p "$RUNNER_TEMP/perf-flame"; echo "::warning::/perf/runs/ lists no builds: the perf-flame branch could not be cloned"; }
+            fi
+            if ! node scripts/perf-runs.mjs pages --data "$RUNNER_TEMP/perf-flame" --out build/pages/perf \
               --viewer node_modules/speedscope/dist/release --viewer-license node_modules/speedscope/LICENSE \
               --repo "$GITHUB_REPOSITORY" --pages "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf"; then
               echo "::warning::/perf/runs/ is skipped: the builds' flame graphs could not be put in the site"

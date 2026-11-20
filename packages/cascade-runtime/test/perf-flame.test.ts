@@ -219,24 +219,158 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       assert.ok(names.includes("a worker"), names.join());
     });
 
-    it("makes no more than MAX_TRACKS tracks for calls that all overlap, and says how many it left out", () => {
-      // Each begins before the last ended and ends after it, so none nests in another.
-      const overlapping = Array.from({ length: MAX_TRACKS + 8 }, (_, at) =>
-        event("sealing", at, 1000 + at),
-      );
+    it("makes no more than MAX_TRACKS tracks of one name for calls that all overlap, and draws the rest as one merged event for each stretch of time they ran, with how many", () => {
+      // Each begins before the last ended and ends after it, so none nests in another; the second group is 4 too many, later.
+      const overlapping = [
+        ...Array.from({ length: MAX_TRACKS + 8 }, (_, at) =>
+          event("sealing", at, 1000 + at),
+        ),
+        ...Array.from({ length: MAX_TRACKS + 4 }, (_, at) =>
+          event("sealing", 3000 + at, 4000 + at),
+        ),
+      ];
       const trace = chromeTrace(overlapping, {
         title: "t",
-        says: () => undefined,
+        says: () => "seals a file",
       });
-      const tracks = new Set(
-        (trace.file.traceEvents as { ph: string; tid: number }[])
-          .filter((each) => each.ph === "X")
-          .map((each) => each.tid),
+      const drawn = trace.file.traceEvents as {
+        ph: string;
+        tid: number;
+        name: string;
+        ts: number;
+        dur: number;
+        args?: { name: string };
+      }[];
+      const placed = drawn.filter(
+        (each) => each.ph === "X" && !each.name.includes("at once"),
       );
-      assert.equal(tracks.size, MAX_TRACKS);
-      assert.equal(trace.overlapSkipped, 8);
-      assert.equal(trace.kept, MAX_TRACKS);
-      assert.match(String(trace.file.otherData.overlapLeftOut), /8 calls/);
+      const solo = placed.filter((each) => each.name === "sealing");
+      assert.equal(new Set(solo.map((each) => each.tid)).size, MAX_TRACKS);
+      assert.equal(trace.kept, 2 * MAX_TRACKS);
+      assert.equal(trace.merged, 12);
+      assert.equal(trace.mergedEvents, 2);
+      const merges = drawn.filter((each) => each.name.includes("at once"));
+      assert.deepEqual(
+        merges.map(({ name, ts, dur }) => [name, ts, dur]),
+        [
+          [
+            "sealing × 8 at once",
+            MAX_TRACKS * 1000,
+            (1039 - MAX_TRACKS) * 1000,
+          ],
+          [
+            "sealing × 4 at once",
+            (3000 + MAX_TRACKS) * 1000,
+            (4035 - 3000 - MAX_TRACKS) * 1000,
+          ],
+        ],
+      );
+      assert.equal(new Set(merges.map((each) => each.tid)).size, 1);
+      assert.match(
+        drawn.find((each) => each.args?.name?.includes("merged"))?.args?.name ??
+          "",
+        /sealing: more than 32 at once, merged/,
+      );
+      assert.match(String(trace.file.otherData.merged), /12 calls.*2 merged/);
+      assert.equal(
+        (trace.file.otherData.says as Record<string, string>).sealing,
+        "seals a file",
+      );
+    });
+
+    it("keeps no span of the Bridge's queries in the trace or in any own time, for the Bridge gave no position for them", async () => {
+      const { seen } = await probing(
+        async () => {
+          await timedAside("arrivals.convert", async () => {
+            await sleep(10);
+            recorded("bridge.stage:mapping", 8, 1, {
+              track: "Bridge stages",
+              start: performance.now() - 9,
+            });
+            recorded("bridge.query:https://x.test/detect.rq", 6, 3);
+          });
+        },
+        { trace: true },
+      );
+      const events = seen.events ?? [];
+      assert.deepEqual(events.map(({ name }) => name).sort(), [
+        "arrivals.convert",
+        "bridge.stage:mapping",
+      ]);
+      assert.equal(
+        seen.spans.get("bridge.query:https://x.test/detect.rq")?.calls,
+        3,
+      );
+      const own = selfTimes(events);
+      assert.ok(!own.has("bridge.query:https://x.test/detect.rq"));
+    });
+  });
+
+  describe("given calls that ran at the same time inside different calls", () => {
+    // Two questions ask at once: the calls of B begin inside A's time, though A did not make them.
+    const events = [
+      event("import", 0, 200),
+      event("question.A", 0, 100, 0),
+      event("question.B", 5, 105, 0),
+      event("A.child", 10, 20, 1),
+      event("B.q1", 30, 60, 2),
+      event("B.q2", 40, 70, 2),
+      event("B.q1.deep", 45, 50, 4),
+    ];
+
+    /** Every drawn event with the event it is drawn directly under on its track, by name. */
+    const drawnUnder = (trace: ReturnType<typeof chromeTrace>) => {
+      const drawn = (
+        trace.file.traceEvents as {
+          ph: string;
+          tid: number;
+          ts: number;
+          dur: number;
+          name: string;
+          cat: string;
+        }[]
+      ).filter((each) => each.ph === "X" && each.cat !== "run");
+      const pairs: [string, string | undefined][] = [];
+      for (const tid of new Set(drawn.map((each) => each.tid))) {
+        const open: { name: string; end: number }[] = [];
+        for (const each of drawn.filter((one) => one.tid === tid)) {
+          while (
+            open.length > 0 &&
+            (open.at(-1) as { end: number }).end <= each.ts
+          )
+            open.pop();
+          pairs.push([each.name, open.at(-1)?.name]);
+          open.push({ name: each.name, end: each.ts + each.dur });
+        }
+      }
+      return pairs;
+    };
+    const ancestors = (name: string): string[] => {
+      const found: string[] = [];
+      let at = events.findIndex((each) => each.name === name);
+      while ((events[at] as SpanEvent).parent >= 0) {
+        at = (events[at] as SpanEvent).parent;
+        found.push((events[at] as SpanEvent).name);
+      }
+      return found;
+    };
+
+    it("draws each call only under a call that ran it or one that ran that, never under another that was open at the time", () => {
+      const trace = chromeTrace(events, { title: "t", says: () => undefined });
+      const pairs = drawnUnder(trace);
+      assert.equal(pairs.length, events.length);
+      for (const [name, under] of pairs)
+        if (under !== undefined)
+          assert.ok(
+            ancestors(name).includes(under),
+            `${name} is drawn under ${under}, which did not run it`,
+          );
+      const under = new Map(pairs);
+      assert.equal(under.get("B.q1"), "question.B");
+      assert.equal(under.get("B.q1.deep"), "B.q1");
+      assert.equal(under.get("A.child"), "question.A");
+      // B.q2 overlaps B.q1 without nesting, so it is beside it, and above all not under the question that did not run it.
+      assert.notEqual(under.get("B.q2"), "question.A");
     });
   });
 
@@ -336,11 +470,15 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         calls: 100,
         drawn: 100,
         shortestMs: 0,
+        merged: 0,
+        mergedEvents: 0,
         top: [1, 2, 3, 4, 5, 6].map((at) => ({
           name: `step.${at}`,
           selfMs: 1000 - at * 100,
           calls: at,
+          says: `Does thing ${at}.`,
         })),
+        bridgeQueries: [] as { name: string; ms: number; calls: number }[],
       },
       cpu: {
         file: `${scenario}-${dataset}.cpuprofile`,
@@ -360,7 +498,8 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       assert.match(text, /\*\*fresh-first-screen on synthea-10y\*\*/);
       assert.equal((text.match(/`step\.\d`/g) ?? []).length, 10);
       assert.doesNotMatch(text, /step\.6/);
-      assert.match(text, /\| `step\.1` \| 900 ms \| 1 \|/);
+      assert.match(text, /\| `step\.1` \| Does thing 1\. \| 900 ms \| 1 \|/);
+      assert.match(text, /\| step \| what it is \| own time \| calls \|/);
       assert.match(text, /\(https:\/\/example\.test\/artifact\/1\)/);
       assert.match(text, /drop a `\.trace\.json`/);
     });
@@ -384,6 +523,39 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       assert.doesNotMatch(text, /drop a/);
     });
 
+    it("says how many calls a trace draws merged and how many it leaves out, and lists the Bridge's queries apart with their positions unknown", async () => {
+      const { summary } = await script<Flame>("perf-flame.mjs");
+      const base = build("fresh-first-screen");
+      const text = summary(
+        {
+          builds: [
+            {
+              ...base,
+              trace: {
+                ...base.trace,
+                calls: 1000,
+                drawn: 900,
+                merged: 90,
+                mergedEvents: 3,
+                bridgeQueries: [
+                  { name: "detect.rq", ms: 2500, calls: 4, says: "Finds it." },
+                ],
+              },
+            },
+          ],
+        },
+        { markdown: true },
+      );
+      assert.match(text, /90 calls ran at once.*3 bars/);
+      assert.match(text, /10 of the shortest calls are not drawn/);
+      assert.match(text, /Time per Bridge query, positions unknown/);
+      assert.match(text, /\| `detect\.rq` \| Finds it\. \| 2\.50 s \| 4 \|/);
+      assert.doesNotMatch(
+        summary(flame, { markdown: true }),
+        /not drawn|positions unknown/,
+      );
+    });
+
     it("says that a close's CPU profile is the whole fresh run", async () => {
       const { summary } = await script<Flame>("perf-flame.mjs");
       const text = summary(
@@ -405,13 +577,15 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
     });
   });
 
-  describe("given the perf-data branch holding the builds' folders", () => {
+  describe("given the perf-flame branch holding the builds' folders", () => {
     const put = async (
       data: string,
       day: string,
       id: string,
       event: string,
       datasets: string[],
+      /** Files the branch no longer has, because their build fell outside the window it keeps. */
+      pruned: string[] = [],
     ) => {
       const dir = join(data, "runtime", day, `${id}-${event}`);
       await mkdir(dir, { recursive: true });
@@ -426,16 +600,20 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
           calls: 1,
           drawn: 1,
           shortestMs: 0,
+          merged: 0,
+          mergedEvents: 0,
           top: [],
+          bridgeQueries: [],
         },
         cpu: { file: `close-${dataset}.cpuprofile`, bytes: 10, workers: [] },
       }));
       await writeFile(join(dir, "flame.json"), JSON.stringify({ builds }));
-      for (const dataset of datasets) {
-        await writeFile(join(dir, `close-${dataset}.trace.json`), "{}");
-        await writeFile(join(dir, `close-${dataset}.cpuprofile`), "{}");
-      }
-      await writeFile(`${dir}.json`, JSON.stringify({ results: [] }));
+      for (const dataset of datasets)
+        for (const file of [
+          `close-${dataset}.trace.json`,
+          `close-${dataset}.cpuprofile`,
+        ])
+          if (!pruned.includes(file)) await writeFile(join(dir, file), "{}");
     };
 
     it("lists them newest first and serves the viewer, the newest builds' files, an index of them, and a link to it from the history page", async () => {
@@ -450,12 +628,27 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         join(out, "index.html"),
         '<body><header id="header"></header></body>',
       );
-      await put(data, "2026/11/19", "100-aaaaaaa", "push", ["synthea-10y"]);
+      // The oldest build kept lost its CPU profile and the nightly run its large size's files to the window of the branch.
+      await put(
+        data,
+        "2026/11/19",
+        "100-aaaaaaa",
+        "push",
+        ["synthea-10y"],
+        ["close-synthea-10y.cpuprofile"],
+      );
       await put(data, "2026/11/20", "300-ccccccc", "push", ["synthea-10y"]);
-      await put(data, "2026/11/20", "200-bbbbbbb", "schedule", [
-        "synthea-10y",
-        "synthea-lifetime",
-      ]);
+      await put(
+        data,
+        "2026/11/20",
+        "200-bbbbbbb",
+        "schedule",
+        ["synthea-10y", "synthea-lifetime"],
+        [
+          "close-synthea-lifetime.trace.json",
+          "close-synthea-lifetime.cpuprofile",
+        ],
+      );
       assert.deepEqual(
         runsIn(data).map(({ id }) => id),
         ["300-ccccccc", "200-bbbbbbb", "100-aaaaaaa"],
@@ -467,12 +660,10 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         viewerLicense: join(viewer, "LICENSE-given"),
         repo: "owner/repo",
         pagesAt: "https://owner.github.io/repo/perf",
-        keep: 2,
-        keepLarge: 0,
       });
       assert.deepEqual(
         kept.map(({ id }) => id),
-        ["300-ccccccc", "200-bbbbbbb"],
+        ["300-ccccccc", "200-bbbbbbb", "100-aaaaaaa"],
       );
       assert.ok(existsSync(join(out, "speedscope", "index.html")));
       assert.ok(existsSync(join(out, "speedscope", "LICENSE")));
@@ -494,7 +685,16 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
           join(out, "runs", "200-bbbbbbb", "close-synthea-lifetime.trace.json"),
         ),
       );
-      assert.ok(!existsSync(join(out, "runs", "100-aaaaaaa")));
+      assert.ok(
+        existsSync(
+          join(out, "runs", "100-aaaaaaa", "close-synthea-10y.trace.json"),
+        ),
+      );
+      assert.ok(
+        !existsSync(
+          join(out, "runs", "100-aaaaaaa", "close-synthea-10y.cpuprofile"),
+        ),
+      );
       const index = await readFile(join(out, "runs", "index.html"), "utf8");
       assert.ok(index.indexOf("run 300") !== -1);
       assert.ok(index.indexOf("run 300") < index.indexOf("run 200"));
@@ -502,7 +702,22 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         index,
         /#profileURL=https%3A%2F%2Fowner\.github\.io%2Frepo%2Fperf%2Fruns%2F300-ccccccc%2Fclose-synthea-10y\.trace\.json/,
       );
-      assert.match(index, /not kept, it is large/);
+      // Each missing file says why: the window it fell outside of, not that it is large.
+      assert.match(
+        index,
+        /not kept, outside the newest 7 builds that ran the large size/,
+      );
+      assert.match(
+        index,
+        /Which code took it: not kept, outside the newest 5 builds/,
+      );
+      assert.doesNotMatch(index, /it is large/);
+      assert.match(index, /<section id="300-ccccccc">/);
+      assert.match(
+        index,
+        /speedscope's <em>Sandwich<\/em> covers one track at a time/,
+      );
+      assert.doesNotMatch(index, /Sandwich<\/em> ranks steps/);
       assert.match(
         await readFile(join(out, "index.html"), "utf8"),
         /<a href="runs\/">/,
@@ -511,33 +726,53 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
   });
 
   describe("given two files with the own time of a step", () => {
-    const row = (name: string, value: number) => ({
+    const row = (name: string, value: number, extra?: string) => ({
       name,
       unit: "s",
       value,
       kind: "clock",
       samples: 1,
       range: `${value}-${value}`,
+      ...(extra !== undefined && { extra }),
     });
     const file = (own: number) => ({
       env: { os: "linux", runner: "ci; cpu", cpus: 4, node: "24.0.0" },
       commit: {},
       results: [
         row("close-synthea-10y/total", 1),
-        row("close-synthea-10y/stage/a", 1),
-        row("close-synthea-10y/self/a", own),
+        row(
+          "close-synthea-10y/stage/a",
+          1,
+          "Step a does a thing. | probed run",
+        ),
+        row(
+          "close-synthea-10y/self/a",
+          own,
+          "Step a does a thing. | Own time: what it did itself. | probed run",
+        ),
         row("close-synthea-10y/self/b", 0.1),
       ],
     });
 
-    it("ranks the steps whose own time moved, apart from the stages, in a comparison and in a summary", async () => {
+    it("ranks the steps whose own time moved, apart from the stages, in a comparison and in a summary, each with its plain sentence", async () => {
       const { compare, summary } = await script<Compare>("perf-compare.mjs");
       const text = compare(file(0.5), file(0.25));
       assert.match(text, /Steps whose own time moved most/i);
-      assert.match(text, /close-synthea-10y\/self\/a\s+500 ms\s+250 ms\s+-50%/);
+      assert.match(
+        text,
+        /close-synthea-10y\/self\/a\s+500 ms\s+250 ms\s+-50%[^\n]*Step a does a thing\.$/m,
+      );
+      assert.doesNotMatch(text, /Own time: what it did itself/);
       const listed = summary(file(0.5));
       assert.match(listed, /longest own time/i);
-      assert.match(listed, /a\s+500 ms/);
+      assert.match(listed, /a\s+500 ms\s+Step a does a thing\./);
+    });
+
+    it("lists the stages once and leaves out the steps with the longest own time when the caller lists them itself", async () => {
+      const { summary } = await script<Compare>("perf-compare.mjs");
+      const listed = summary(file(0.5), { own: false });
+      assert.match(listed, /slowest stages/);
+      assert.doesNotMatch(listed, /longest own time/i);
     });
 
     it("keeps the longest own times for the history page beside the longest stages", async () => {
