@@ -71,7 +71,7 @@
     "views": {
       "label": "Views and labels: rebuilt copies",
       "class": "derived",
-      "says": "The files the pod writes again after every import from its other files: a list of each kind of record and the names shown for things. They repeat statements the versions, records and revisions already hold."
+      "says": "The files the pod writes again after every import from its other files: a list of each kind of record and the names shown for things. Everything in them is rebuildable from the pod's other files: some of it is statements the versions, records and revisions hold, the rest is derived from them (labels, padded dates, workflow status)."
     },
     "creation-settings": {
       "label": "Creation and settings",
@@ -88,13 +88,13 @@
     "files/all": "Every file the pod holds, counted by the pod's layout: the kinds' counts add up to it.",
     "files/on-disk": "Every file in the pod's folder as the disk has it. For a plain pod it equals the count above; for an encrypted pod it also counts the sealed index.",
     "files/beside": "The files kept beside the pod: its database, its kept build and its kept answers.",
-    "statements/all": "Every statement in the pod's files, a statement that a view repeats counted in each file that holds it: the kinds' counts add up to it.",
+    "statements/all": "Every statement in the pod's files, one for each line: a statement a view holds again is counted in each file that holds it, and the kinds' counts add up to it. A statement is one fact the pod keeps, a thing, one of its properties and the value. The lines are counted as N-Triples, one statement to a line, which is how this runtime writes them: a pod written by another writer in Turtle would be miscounted.",
     "bytes/all": "What the pod's files hold, in bytes, read back (an encrypted pod's once opened): the bytes of their content, not the space they take on a disk. The kinds' counts add up to it.",
     "bytes/on-disk": "What the files of the pod's folder add up to as the disk holds them: sealed files are larger than what they hold, and the sealed index is a file of its own.",
     "bytes/in-4k-blocks": "What the files of the pod's folder take when each is rounded up to whole 4 KiB blocks, as NTFS and most other file systems allocate: the cost of many small files, which the bytes they hold do not show.",
     "bytes/beside": "The bytes of the files kept beside the pod: its database, its kept build and its kept answers.",
     "database/file": "The size of the database the pod keeps beside it, in bytes.",
-    "database/statements": "How many statements the database holds, in its table of statements.",
+    "database/statements": "How many statements the database holds, in its table of statements: those of the pod's files, each loaded once (the count of lines of a file equals the database's count for the graph that file is), and the graphs derived from them, which no file holds. So it is more than the statements of the files.",
     "database/terms": "How many distinct terms the database holds, each kept once.",
     "database/tables": "Bytes the database's tables take, from SQLite's dbstat table; not given where the SQLite build has none.",
     "database/indexes": "Bytes the database's indexes take, from SQLite's dbstat table; not given where the SQLite build has none."
@@ -102,7 +102,7 @@
   "measureFamilies": [
     {
       "startsWith": "predicates/",
-      "says": "How many statements in the pod's files have a property from the {name} vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other)."
+      "says": "How many statements in the pod's files have a property from the {name} vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other: mainly rdfs for labels, oa for where in a document a revision's source sits, solid and obo)."
     },
     {
       "startsWith": "database/table-",

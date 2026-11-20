@@ -566,12 +566,38 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
         /<section class="stored"[\s\S]*?<\/section>/.exec(page)?.[0] ?? "";
       assert.match(
         block,
-        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MB\) and 1,050 statements/,
+        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MiB\) and 1,050 statements/,
       );
       assert.match(block, /<td[^>]*>640<\/td>/);
       assert.doesNotMatch(block, /<td[^>]*>590<\/td>/);
       assert.match(block, /bbbbbbb/);
       assert.doesNotMatch(block, /threshold|alarm|limit/i);
+    });
+
+    it("says source entries or pod records wherever it gives a count, never a bare number of records, on the page and in the glossary", async () => {
+      const { pages } = await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      const out = await mkdtemp(join(tmpdir(), "perf-stacked-out-"));
+      scratch.push(data, out);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      const base = file(100, 2, { "scenario.open": 1 }).file;
+      await writeFile(
+        join(day, "100-aaaaaaa-push.json"),
+        JSON.stringify({ results: [...base.results, ...rowsOfHeld(held())] }),
+      );
+      pages({ data, out, repo: "owner/repo" });
+      const page = (await readFile(join(out, "index.html"), "utf8"))
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ");
+      const glossary = await readFile(
+        new URL("../../../../docs/perf-glossary.md", import.meta.url),
+        "utf8",
+      );
+      const bare = /\b\d[\d,]* records\b/g;
+      assert.match(page, /647 source entries/, "the chart's size is said");
+      assert.deepEqual(page.match(bare) ?? [], [], "on the page");
+      assert.deepEqual(glossary.match(bare) ?? [], [], "in the glossary");
     });
 
     it("writes no section for builds none of whose files hold them", async () => {

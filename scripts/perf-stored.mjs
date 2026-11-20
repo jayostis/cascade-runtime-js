@@ -68,11 +68,9 @@ export function storedOf(file, key, glossary = readGlossary()) {
   const classes = Object.keys(glossary.storedClasses ?? {}).map((each) => {
     const of = kinds.filter((kind) => kind.class === each);
     const sum = (pick) => of.reduce((all, kind) => all + pick(kind), 0);
-    const moved = of.some((kind) => kind.id === "versions")
-      ? -links
-      : each === "history"
-        ? links
-        : 0;
+    const moved =
+      (of.some((kind) => kind.id === "versions") ? -links : 0) +
+      (each === "history" ? links : 0);
     return {
       class: each,
       files: sum((kind) => kind.files),
@@ -129,8 +127,8 @@ export function storedOf(file, key, glossary = readGlossary()) {
 const whole = (value) => Math.round(value).toLocaleString("en-US");
 /** A figure with one decimal under a hundred, whole above: 4.1, 32.4, 100. */
 const ratio = (value) => (value >= 100 ? whole(value) : value.toFixed(1));
-/** Megabytes (of 1,048,576 bytes) with one decimal. */
-export const megabytes = (bytes) =>
+/** Mebibytes (of 1,048,576 bytes) with one decimal. */
+export const mebibytes = (bytes) =>
   (bytes / MEGABYTE).toLocaleString("en-US", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -141,6 +139,53 @@ const share = (part, all) => {
   const percent = (100 * part) / all;
   return percent < 0.5 ? "<1%" : `${Math.round(percent)}%`;
 };
+
+/** The measure of a row after the pod's key, in words: "files, Versions: what the source said", "pod.db size". */
+const MEASURE_WORDS = {
+  "count/entries": "source entries",
+  "count/pod-records": "pod records",
+  "count/version-links": "version-to-record links",
+  "files/all": "files, all kinds",
+  "files/on-disk": "files in the folder",
+  "files/beside": "files beside the pod",
+  "statements/all": "statements, all kinds",
+  "bytes/all": "size of the files, all kinds",
+  "bytes/on-disk": "size of the folder as the disk holds it",
+  "bytes/in-4k-blocks": "size of the folder in 4 KiB blocks",
+  "bytes/beside": "size of what is kept beside the pod",
+  "database/file": "pod.db size",
+  "database/statements": "pod.db statements",
+  "database/terms": "pod.db terms",
+  "database/tables": "pod.db tables size",
+  "database/indexes": "pod.db indexes size",
+};
+
+/**
+ * A row of the stored scenario as a person reads its name: the pod ("647 source entries, encrypted pod") and what is counted
+ * ("statements, Versions: what the source said", "pod.db size"). `entries` is the pod's count of source entries, where the file
+ * has it.
+ */
+export function storedRowName(name, entries, glossary = readGlossary()) {
+  const key = name.slice(0, name.indexOf("/"));
+  const rest = name.slice(key.length + 1);
+  const [, dataset = "", sealed] =
+    /^stored-(.+?)(-encrypted)?$/.exec(key) ?? [];
+  const pod = storedTitle({
+    entries,
+    dataset,
+    encrypted: sealed !== undefined,
+  });
+  const [measure, kind = ""] = rest.split("/");
+  const label = glossary.storedKinds?.[kind]?.label;
+  const words =
+    MEASURE_WORDS[rest] ??
+    (label !== undefined && ["files", "statements", "bytes"].includes(measure)
+      ? `${measure === "bytes" ? "size" : measure}, ${label}`
+      : measure === "predicates"
+        ? `statements with a ${kind} property`
+        : rest.replace(/\//g, " ").replace(/-/g, " "));
+  return `${pod}: ${words}`;
+}
 
 /** The class of a page, by name. */
 const classOf = (page, name) =>
@@ -164,7 +209,7 @@ export function storedLine(page) {
   const { total, entries = 0, podRecords = 0 } = page;
   const of = (name) => classOf(page, name)?.statements ?? 0;
   const per = (count, by) => (by > 0 ? ratio(count / by) : "-");
-  return `A fresh import${page.encrypted ? " into an encrypted pod" : ""} of ${whole(entries)} source entries left ${whole(podRecords)} pod records in ${whole(total.files)} files (${megabytes(total.bytes)} MB) and ${whole(total.statements)} statements; ${share(of("data"), total.statements)} of the statements are the source's own data, ${share(of("history"), total.statements)} history, ${share(of("bookkeeping"), total.statements)} bookkeeping and ${share(of("derived"), total.statements)} derived copies. That is ${per(total.files, podRecords)} files and ${per(total.statements, podRecords)} statements for each pod record, and ${per(total.statements, entries)} statements for each source entry.`;
+  return `A fresh import${page.encrypted ? " into an encrypted pod" : ""} of ${whole(entries)} source entries left ${whole(podRecords)} pod records in ${whole(total.files)} files (${mebibytes(total.bytes)} MiB) and ${whole(total.statements)} statements; ${share(of("data"), total.statements)} of the statements are the source's own data, ${share(of("history"), total.statements)} history, ${share(of("bookkeeping"), total.statements)} bookkeeping and ${share(of("derived"), total.statements)} derived copies. That is ${per(total.files, podRecords)} files and ${per(total.statements, podRecords)} statements for each pod record, and ${per(total.statements, entries)} statements for each source entry.`;
 }
 
 /**
@@ -173,32 +218,32 @@ export function storedLine(page) {
  */
 export function storedNotes(page) {
   const out = [
-    "Counts are exact, from the pod the fresh import left once it was closed. A statement is counted in every file that holds it, so a view that repeats the statements of a record counts them again; the kinds add up to the totals. MB are 1,048,576 bytes of what the files hold.",
+    "Counts are exact, from the pod the fresh import left once it was closed. A statement is one fact the pod keeps as one line of a file: a thing, one of its properties and the value (this result's code is 4548-4). It is counted in every file that holds it, so a statement a view holds again is counted again; the kinds add up to the totals. The lines are counted as N-Triples, one statement to a line, which is how this runtime writes them. MiB are 1,048,576 bytes of what the files hold.",
   ];
   const { onDisk, beside, database, predicates } = page;
   if (onDisk.blocks !== undefined && onDisk.files !== undefined)
     out.push(
-      `On a disk each file also takes a whole number of 4 KiB blocks: the ${whole(onDisk.files)} files of the folder take ${megabytes(onDisk.blocks)} MB that way, against ${megabytes(onDisk.bytes ?? 0)} MB of what they hold.`,
+      `On a disk each file also takes a whole number of 4 KiB blocks: the ${whole(onDisk.files)} files of the folder take ${mebibytes(onDisk.blocks)} MiB that way, against ${mebibytes(onDisk.bytes ?? 0)} MiB of what they hold.`,
     );
   if (database !== undefined) {
     const split =
       database.tables === undefined || database.indexes === undefined
         ? " (this SQLite build does not say how it divides between tables and indexes)"
-        : `: its tables take ${megabytes(database.tables)} MB and its indexes ${megabytes(database.indexes)} MB`;
+        : `: its tables take ${mebibytes(database.tables)} MiB and its indexes ${mebibytes(database.indexes)} MiB`;
     const biggest = database.largest?.[0];
     out.push(
-      `Beside the pod, its database, pod.db, is ${megabytes(database.file)} MB${split}${biggest === undefined ? "" : `; the largest is ${biggest.name.replace("-", " ")} at ${megabytes(biggest.bytes)} MB`}${database.statements === undefined ? "" : `; it holds ${whole(database.statements)} statements`}. Everything kept beside the pod takes ${megabytes(beside.bytes ?? 0)} MB in ${whole(beside.files ?? 0)} files.`,
+      `Beside the pod, its database, pod.db, is ${mebibytes(database.file)} MiB${split}${biggest === undefined ? "" : `; the largest is ${biggest.name.replace("-", " ")} at ${mebibytes(biggest.bytes)} MiB`}${database.statements === undefined ? "" : `; it holds ${whole(database.statements)} statements: those of the pod's files, each loaded once, and the graphs derived from them, which no file holds`}. Everything kept beside the pod takes ${mebibytes(beside.bytes ?? 0)} MiB in ${whole(beside.files ?? 0)} files.`,
     );
   } else if (beside.files !== undefined && beside.files > 0)
     out.push(
-      `Beside the pod, what it keeps takes ${megabytes(beside.bytes ?? 0)} MB in ${whole(beside.files)} files; its database is sealed and is not read here.`,
+      `Beside the pod, what it keeps takes ${mebibytes(beside.bytes ?? 0)} MiB in ${whole(beside.files)} files; its database is sealed and is not read here.`,
     );
   const vocabularies = Object.entries(predicates ?? {}).filter(
     ([, count]) => count > 0,
   );
   if (vocabularies.length > 0)
     out.push(
-      `By the vocabulary of their property, the statements are ${vocabularies
+      `By the vocabulary of their property (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself; other is rdfs for labels, oa for where in a document a revision's source sits, solid, obo and the rest), the statements are ${vocabularies
         .map(
           ([name, count]) => `${share(count, page.total.statements)} ${name}`,
         )
@@ -212,7 +257,7 @@ export const CLASS_HEAD = [
   "What it is",
   "Files",
   "Statements",
-  "MB",
+  "MiB",
   "Share of statements",
 ];
 
@@ -224,7 +269,7 @@ export function classCells(page) {
       CLASS_LABEL[each.class] ?? each.class,
       whole(each.files),
       whole(each.statements),
-      megabytes(each.bytes),
+      mebibytes(each.bytes),
       share(each.statements, page.total.statements),
     ]);
 }
@@ -235,7 +280,7 @@ export const KIND_HEAD = [
   "Counts as",
   "Files",
   "Statements",
-  "MB",
+  "MiB",
   "Share of statements",
 ];
 
@@ -246,7 +291,7 @@ export function kindCells(page) {
     kind.class,
     whole(kind.files),
     whole(kind.statements),
-    megabytes(kind.bytes),
+    mebibytes(kind.bytes),
     share(kind.statements, page.total.statements),
   ]);
 }

@@ -821,7 +821,7 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       assert.match(block, /<h2>What a pod holds<\/h2>/);
       assert.match(
         block,
-        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MB\)/,
+        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MiB\)/,
       );
       assert.match(block, /<td class="n">590<\/td>/);
       assert.match(block, /<td class="n">59%<\/td>/);

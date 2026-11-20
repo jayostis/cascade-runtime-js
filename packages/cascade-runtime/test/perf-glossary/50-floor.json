@@ -12,6 +12,6 @@
     "insert": "Floor stage: creating a table for each resource type and inserting every row in one transaction into a SQLite file on disk, then closing the file."
   },
   "counts": {
-    "rows": "How many rows the floor inserted, one for each resource that has a type: a fresh import's records count is every entry of the Bundle."
+    "rows": "How many rows the floor inserted, one for each resource that has a type: a fresh import's count of source entries is every entry of the Bundle."
   }
 }

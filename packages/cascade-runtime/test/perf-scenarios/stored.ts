@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   type Database,
   EncryptedFiles,
@@ -10,7 +10,11 @@ import {
 } from "@cascade-runtime/runtime";
 import { headerIn } from "@cascade-runtime/runtime/node";
 import { podKey } from "../../src/encrypted.js";
-import { databaseBeside, resolved } from "../../src/node/resolved.js";
+import {
+  besideFolder,
+  databaseBeside,
+  resolved,
+} from "../../src/node/resolved.js";
 import { type Job, type Measured, SECRET } from "../perf-job.js";
 import { outputRow, part, type Row, unique } from "../perf-rows.js";
 
@@ -348,7 +352,7 @@ export async function storedIn(
       }),
     );
   const disk = await filesUnder(folder);
-  const beside = join(dirname(resolve(folder)), ".answers", basename(folder));
+  const beside = besideFolder(folder);
   const kept = await filesUnder(beside).catch(() => []);
   const database = await databaseOf(folder, encrypted, beside);
   return {

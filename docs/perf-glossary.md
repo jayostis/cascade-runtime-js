@@ -31,7 +31,7 @@ The `stored` scenario counts the pod a fresh import and its close left, in rows 
 | `acts` | Acts: each import and activity (bookkeeping). What was done to the pod: each import (what it used and when), each other activity, each sync from another writer. |
 | `documents` | Descriptions of the source documents (bookkeeping). One file of statements for each source document an import was given: its name by content and its kind. The document's bytes are the stored documents. |
 | `stored-documents` | Stored documents: the source's own bytes (data). The source document's own bytes, kept as they came: no statements, the file is the document. |
-| `views` | Views and labels: rebuilt copies (derived). The files the pod writes again after every import from its other files: a list of each kind of record and the names shown for things. They repeat statements the versions, records and revisions already hold. |
+| `views` | Views and labels: rebuilt copies (derived). The files the pod writes again after every import from its other files: a list of each kind of record and the names shown for things. Everything in them is rebuildable from the pod's other files: some of it is statements the versions, records and revisions hold, the rest is derived from them (labels, padded dates, workflow status). |
 | `creation-settings` | Creation and settings (bookkeeping). What makes the pod a pod: the person it is about, its manifest, its profile card, its preferences and its type index. |
 | `other` | Other files (bookkeeping). Any file the layout places nowhere, such as an encrypted pod's header. |
 
@@ -46,8 +46,8 @@ The `stored` scenario counts the pod a fresh import and its close left, in rows 
 
 | Term | Meaning |
 |---|---|
-| `synthea-10y` | Synthea's realistic synthetic patient, a 10-year record of 647 records. No real person's data. |
-| `synthea-lifetime` | A synthetic patient's whole life, 16,833 records: the large size, run nightly. |
+| `synthea-10y` | Synthea's realistic synthetic patient, a 10-year record of 647 source entries. No real person's data. |
+| `synthea-lifetime` | A synthetic patient's whole life, 16,833 source entries: the large size, run nightly. |
 
 ## Plain and encrypted
 
@@ -87,19 +87,19 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `files/all` | Every file the pod holds, counted by the pod's layout: the kinds' counts add up to it. |
 | `files/on-disk` | Every file in the pod's folder as the disk has it. For a plain pod it equals the count above; for an encrypted pod it also counts the sealed index. |
 | `files/beside` | The files kept beside the pod: its database, its kept build and its kept answers. |
-| `statements/all` | Every statement in the pod's files, a statement that a view repeats counted in each file that holds it: the kinds' counts add up to it. |
+| `statements/all` | Every statement in the pod's files, one for each line: a statement a view holds again is counted in each file that holds it, and the kinds' counts add up to it. A statement is one fact the pod keeps, a thing, one of its properties and the value. The lines are counted as N-Triples, one statement to a line, which is how this runtime writes them: a pod written by another writer in Turtle would be miscounted. |
 | `bytes/all` | What the pod's files hold, in bytes, read back (an encrypted pod's once opened): the bytes of their content, not the space they take on a disk. The kinds' counts add up to it. |
 | `bytes/on-disk` | What the files of the pod's folder add up to as the disk holds them: sealed files are larger than what they hold, and the sealed index is a file of its own. |
 | `bytes/in-4k-blocks` | What the files of the pod's folder take when each is rounded up to whole 4 KiB blocks, as NTFS and most other file systems allocate: the cost of many small files, which the bytes they hold do not show. |
 | `bytes/beside` | The bytes of the files kept beside the pod: its database, its kept build and its kept answers. |
 | `database/file` | The size of the database the pod keeps beside it, in bytes. |
-| `database/statements` | How many statements the database holds, in its table of statements. |
+| `database/statements` | How many statements the database holds, in its table of statements: those of the pod's files, each loaded once (the count of lines of a file equals the database's count for the graph that file is), and the graphs derived from them, which no file holds. So it is more than the statements of the files. |
 | `database/terms` | How many distinct terms the database holds, each kept once. |
 | `database/tables` | Bytes the database's tables take, from SQLite's dbstat table; not given where the SQLite build has none. |
 | `database/indexes` | Bytes the database's indexes take, from SQLite's dbstat table; not given where the SQLite build has none. |
 | `phase-*` | Import part: `<name>`. |
 | `question-*` | One page of 20 answers to: `<name>`. |
-| `predicates/*` | How many statements in the pod's files have a property from the `<name>` vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other). |
+| `predicates/*` | How many statements in the pod's files have a property from the `<name>` vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other: mainly rdfs for labels, oa for where in a document a revision's source sits, solid and obo). |
 | `database/table-*` | Bytes the database's table `<name>` takes, one of the largest. |
 | `database/index-*` | Bytes the database's index `<name>` takes, one of the largest. |
 
@@ -264,15 +264,15 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | Term | Meaning |
 |---|---|
 | `records` | How many entries the person's source file holds (its Bundle's entries). It is not the number of records the pod keeps: that is the stored scenario's pod-records. |
-| `files-written` | How many files the import wrote to the pod. |
-| `rows` | How many rows the floor inserted, one for each resource that has a type: a fresh import's records count is every entry of the Bundle. |
+| `files-written` | How many files the import wrote to the pod. It is a few fewer than the files the pod holds (13 fewer at 647 source entries, 15 at the large size); not chased, the pod's creation and settings files may be the reason (unverified). |
+| `rows` | How many rows the floor inserted, one for each resource that has a type: a fresh import's count of source entries is every entry of the Bundle. |
 | `graph.scans` | How many times the in-memory facts were searched from end to end. |
 | `graph.quadsvisited` | How many individual facts those searches looked at. |
 | `store.queries` | How many questions were put to the pod's fact store. |
 | `bridge.query.rows` | How many rows the Bridge's queries returned in all. |
 | `bridge.workers` | How many helper processes the Bridge used. |
 | `bridge.package.found` | Whether the Bridge's package was found, 1 if so. |
-| `built.lines.total` | How many lines the answer files hold in all. |
+| `built.lines.total` | How many lines the import built for the pod's files, counted each time a file is built. It is more than the statements the pod's files hold (the stored scenario's statements/all) because some files are built more than once: measured at 647 source entries, it is 21,631 lines against 19,636 statements, of which 1,775 are each record's file being built twice (once to write it and once as the copy held for its revision) and 220 are files a later build replaced. That the large size has the same cause is likely and not measured. |
 | `built.lines.written` | How many answer-file lines were written. |
 | `built.lines.sorted` | How many answer-file lines had to be sorted. |
 | `view.quadsmoved` | How many facts were set aside and put back while answer files were rebuilt. |

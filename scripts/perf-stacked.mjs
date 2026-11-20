@@ -389,13 +389,13 @@ const TITLES = {
   close: "Closing the pod",
 };
 
-/** A size as a person reads it: "647 records", "16,833 records, nightly"; encrypted says so. */
+/** A size as a person reads it: "647 source entries", "16,833 source entries, measured nightly"; encrypted says so. */
 function sizeOf(chart, glossary) {
   const sentence = glossary.datasets[chart.dataset] ?? chart.dataset;
-  const records = /([\d,]+) records/.exec(sentence)?.[1];
+  const entries = /([\d,]+) source entries/.exec(sentence)?.[1];
   const nightly = chart.dataset === "synthea-lifetime";
   return [
-    records === undefined ? chart.dataset : `${records} records`,
+    entries === undefined ? chart.dataset : `${entries} source entries`,
     ...(nightly ? ["measured nightly"] : []),
     ...(chart.encrypted ? ["encrypted pod"] : []),
   ].join(", ");
@@ -763,8 +763,8 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <p>Each chart follows one thing a person waits for. Every column is one build of the runtime, oldest on the left, so the chart shows whether it got faster or slower. A column's height is how long it took, in seconds; its coloured bands are the steps inside that took the time, so a band that grows is the step that slowed things down. Move over a column to see its numbers; click it to open that build's flame graphs.</p>
 <details class="how"><summary>How the bands are worked out</summary>
 <p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
-<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
-<p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (records, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p></details>
+<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 source entries are one synthetic patient's ten years, measured on every build; 16,833 source entries are a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
+<p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (source entries, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p></details>
 <p class="toc">${titled.map((chart) => `<a href="#${esc(chart.key)}">${esc(chart.title)}</a><br>`).join("\n")}${stored.length === 0 ? "" : `<a href="#stored">What a pod holds</a><br>`}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
 ${storedBlock(stored, repo, glossary)}

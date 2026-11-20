@@ -28,6 +28,7 @@ import {
   storedKeys,
   storedLine,
   storedNotes,
+  storedRowName,
   storedOf,
   storedTitle,
   STORED_ROW,
@@ -311,7 +312,7 @@ export const FLOOR_NOTE =
 
 /** How to read the table of what an import handled. */
 export const THROUGHPUT_NOTE =
-  "Counts are exact and come from the probed run of the same import; answer-file lines are the lines the import built for the pod's answer files. A rate is the run's whole count divided by the time of the phase that writes it, from the unprobed runs. It is shown only for saving, the phase that writes the files and their lines.";
+  "Counts are exact and come from the probed run of the same import; answer-file lines are the lines the import built for the pod's files, counted each time a file is built: more than the statements the files hold, because some files are built more than once (at 647 source entries, 21,631 lines against 19,636 statements). A rate is the run's whole count divided by the time of the phase that writes it, from the unprobed runs. It is shown only for saving, the phase that writes the files and their lines.";
 
 export const THROUGHPUT_HEAD = [
   "Source entries",
@@ -456,6 +457,13 @@ function storedChanges(before, after, { markdown, was$, now$ }) {
       ),
       "",
     );
+  const entries = (key) =>
+    now.get(`${key}/count/entries`)?.value ??
+    was.get(`${key}/count/entries`)?.value;
+  const sized = (value, unit) =>
+    unit === "By"
+      ? `${(value / 1048576).toFixed(2)} MiB`
+      : shown(value, unit, true);
   const changed = [...now.values()].flatMap((row) => {
     const key = row.name.slice(0, row.name.indexOf("/"));
     const from = was.get(row.name);
@@ -463,9 +471,9 @@ function storedChanges(before, after, { markdown, was$, now$ }) {
       ? []
       : [
           [
-            row.name,
-            from === undefined ? "" : shown(from.value, row.unit, true),
-            shown(row.value, row.unit, true),
+            storedRowName(row.name, entries(key)),
+            from === undefined ? "" : sized(from.value, row.unit),
+            sized(row.value, row.unit),
             from === undefined ? "new" : countChange(from.value, row.value),
           ],
         ];

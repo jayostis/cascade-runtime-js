@@ -160,7 +160,11 @@ const stored$ = (await import(
   ).href
 )) as {
   storedKeys(file: object): string[];
-  storedOf(file: object, key: string): StoredPage | undefined;
+  storedOf(
+    file: object,
+    key: string,
+    glossary?: object,
+  ): StoredPage | undefined;
   storedLine(page: StoredPage): string;
 };
 
@@ -2043,6 +2047,51 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.equal(by("derived")?.statements, 80);
     });
 
+    it("keeps the version-to-record links in history and every class adding up to the total, whichever class the versions are given", async () => {
+      const { readGlossary } = (await import(
+        pathToFileURL(
+          fileURLToPath(
+            new URL("../../../../scripts/perf-glossary.mjs", import.meta.url),
+          ),
+        ).href
+      )) as {
+        readGlossary(): { storedKinds: { versions: { class: string } } };
+      };
+      const links = held().versionLinks;
+      assert.ok(links > 0);
+      const asBuilt = stored$.storedOf(
+        heldFile(),
+        "stored-synthea-10y",
+      ) as StoredPage;
+      for (const reclassed of ["data", "history", "bookkeeping", "derived"]) {
+        const glossary = readGlossary();
+        glossary.storedKinds.versions.class = reclassed;
+        const page = stored$.storedOf(
+          heldFile(),
+          "stored-synthea-10y",
+          glossary,
+        ) as StoredPage;
+        assert.equal(
+          page.classes.reduce((all, each) => all + each.statements, 0),
+          1000,
+          `versions as ${reclassed}: the classes add up to the total`,
+        );
+        const history = page.classes.find((each) => each.class === "history");
+        const versions = page.kinds.find((each) => each.id === "versions");
+        const others = page.kinds
+          .filter((each) => each.class === "history" && each.id !== "versions")
+          .reduce((all, each) => all + each.statements, 0);
+        assert.equal(
+          history?.statements,
+          others +
+            links +
+            (reclassed === "history" ? (versions?.statements ?? 0) - links : 0),
+          `versions as ${reclassed}: the links are history`,
+        );
+      }
+      assert.equal(asBuilt.versionLinks, links);
+    });
+
     it("says in one line what a fresh import left, per pod record and per source entry, and how much of it is the source's own data", () => {
       const page = stored$.storedOf(
         heldFile(),
@@ -2051,7 +2100,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       const line = stored$.storedLine(page);
       assert.match(
         line,
-        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MB\) and 1,000 statements/,
+        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MiB\) and 1,000 statements/,
       );
       assert.match(
         line,
@@ -2092,8 +2141,25 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       });
       assert.match(
         moved,
-        /stored-synthea-10y\/statements\/versions \| 600 \| 650 \| \+8\.3% \(1\.1x\)/,
+        /647 source entries: statements, Versions: what the source said \| 600 \| 650 \| \+8\.3% \(1\.1x\)/,
       );
+      assert.doesNotMatch(moved, /stored-synthea-10y\//, "plain names only");
+      const grown = compare.compare(
+        heldFile(),
+        heldFile({
+          ...held(),
+          kinds: {
+            ...held().kinds,
+            versions: { files: 10, statements: 600, bytes: 4194304 },
+          },
+        }),
+        { markdown: true, sameJob: true },
+      );
+      assert.match(
+        grown,
+        /647 source entries: size, Versions: what the source said \| 3\.00 MiB \| 4\.00 MiB \|/,
+      );
+      assert.doesNotMatch(grown, /\d By\b/, "sizes are not raw bytes");
       assert.doesNotMatch(
         moved,
         /stored-synthea-10y\/files\/versions/,
