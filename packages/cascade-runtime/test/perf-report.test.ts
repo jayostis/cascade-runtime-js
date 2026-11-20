@@ -7,10 +7,12 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
+import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { after, before, describe, it } from "node:test";
@@ -28,6 +30,7 @@ import {
   type SpanEvent,
   timed,
 } from "@cascade-runtime/runtime/probe";
+import { type Plan } from "./perf-plan.js";
 import { explain, glossaryMarkdown, readGlossary } from "./perf-glossary.js";
 import { type Database } from "@cascade-runtime/runtime";
 import { resolved } from "../src/node/resolved.js";
@@ -50,16 +53,33 @@ import {
   envOf,
   floorRows,
   tabulated,
+  explained,
+  fileOpsAt,
+  foldersCompared,
+  fileOpsOnce,
+  fileOpsRows,
+  FILE_OPS,
   FIRST_SCREEN,
+  IN_FLIGHT,
   KIT,
   PAGES,
+  parsed as parsedPlan,
   part,
   probedRows,
   refused,
   RUNTIME_ROOT,
   SCENARIOS,
+  restoringOnSignals,
+  Refusal,
+  scannerNotes,
+  systemFolder,
+  windowsScanner,
+  wide,
+  inTurn,
   storedIn,
   STORED_KINDS,
+  type Scanner,
+  type ScannerSettings,
   THEN,
   type Row,
   type Stored,
@@ -1619,6 +1639,967 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
           `${question} is not in said.ts`,
         );
       assert.ok(api.includes(`"${THEN}"`), `${THEN} is not in pod-api.ts`);
+    });
+  });
+
+  describe("given the file micro-bench, which says what one file costs on the machine it runs on", () => {
+    it("times each operation per file at 1, 16 and 64 in flight and the one-file write, and leaves nothing in its folder", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "file-ops-test-"));
+      scratch.push(folder);
+      const run = await fileOpsOnce(folder, 24);
+      assert.equal(run.files, 24);
+      assert.deepEqual(
+        Object.keys(run.perFile).sort(),
+        FILE_OPS.flatMap((op) =>
+          IN_FLIGHT.map((at) => `${op}/in-flight-${at}`),
+        ).sort(),
+      );
+      for (const [name, seconds] of Object.entries(run.perFile))
+        assert.ok(seconds > 0 && Number.isFinite(seconds), name);
+      assert.ok(run.whole > 0);
+      assert.deepEqual(await readdir(folder), []);
+    });
+
+    it("makes rows under file-ops-3000-files that the result schema takes and the glossary explains, with the files counted", () => {
+      const run = {
+        files: 3000,
+        perFile: Object.fromEntries(
+          FILE_OPS.flatMap((op) =>
+            IN_FLIGHT.map((at) => [`${op}/in-flight-${at}`, 0.00083]),
+          ),
+        ),
+        whole: 0.002,
+      };
+      const rows = fileOpsRows("as-is", [run, run, run]);
+      const names = rows.map(({ name }) => name);
+      assert.ok(names.includes("file-ops-3000-files/create/in-flight-16"));
+      assert.ok(names.includes("file-ops-3000-files/full-path/in-flight-64"));
+      assert.ok(names.includes("file-ops-3000-files/one-file/whole"));
+      assert.ok(names.includes("file-ops-3000-files/count/files"));
+      assert.equal(new Set(names).size, names.length);
+      assert.deepEqual(rows.map(refused).filter(Boolean), []);
+      assert.deepEqual(explained(rows).missing, []);
+      const create = rows.find(
+        ({ name }) => name === "file-ops-3000-files/create/in-flight-1",
+      );
+      assert.deepEqual(
+        [create?.unit, create?.kind, create?.samples, create?.value],
+        ["s", "clock", 3, 0.00083],
+      );
+    });
+
+    it("names the state of the virus scanner in the rows of a run made with it off or the folder excluded", () => {
+      const run = {
+        files: 3000,
+        perFile: { "create/in-flight-1": 0.0005 },
+        whole: 0.001,
+      };
+      for (const state of ["off", "excluded"] as const) {
+        const rows = fileOpsRows(state, [run]);
+        assert.ok(
+          rows.every(({ name }) =>
+            name.startsWith(`file-ops-3000-files-scanner-${state}/`),
+          ),
+        );
+        assert.deepEqual(explained(rows).missing, []);
+      }
+    });
+
+    it("is on the history page at 16 in flight, with and without the scanner, and the whole file written at once, and no other count", () => {
+      const row = (name: string, unit: Row["unit"] = "s"): Row => ({
+        name,
+        unit,
+        value: 1,
+        kind: unit === "s" ? "clock" : "cost",
+        extra: "meaning",
+      });
+      const kept = history.forHistory(
+        file([
+          row("file-ops-3000-files/create/in-flight-1"),
+          row("file-ops-3000-files/create/in-flight-16"),
+          row("file-ops-3000-files-scanner-off/full-path/in-flight-16"),
+          row("file-ops-3000-files/one-file/whole"),
+          row("file-ops-3000-files/count/files", "{count}"),
+        ]),
+      );
+      assert.deepEqual(
+        kept.map(({ name }) => name),
+        [
+          "file-ops-3000-files/create/in-flight-16",
+          "file-ops-3000-files-scanner-off/full-path/in-flight-16",
+          "file-ops-3000-files/one-file/whole",
+        ],
+      );
+    });
+
+    it("is run on request, never by default, and alone when it is named", () => {
+      assert.equal(parsedPlan([]).plan.scenarios.has("file-ops"), false);
+      assert.equal(
+        parsedPlan(["--file-ops"]).plan.scenarios.has("fresh-first-screen"),
+        true,
+      );
+      assert.equal(
+        parsedPlan(["--file-ops"]).plan.scenarios.has("file-ops"),
+        true,
+      );
+      assert.deepEqual(
+        [...parsedPlan(["--scenario", "file-ops"]).plan.scenarios],
+        ["file-ops"],
+      );
+      assert.equal(parsedPlan([]).plan.scannerCompare, false);
+      assert.equal(
+        parsedPlan(["--scanner-compare"], { GITHUB_ACTIONS: "true" }).plan
+          .scannerCompare,
+        true,
+      );
+      // Nothing lifts it on a person's machine: the escape that did is gone.
+      for (const env of [
+        {},
+        { CASCADE_PERF_ALLOW_LOCAL_SCANNER: "1" },
+        { GITHUB_ACTIONS: "false" },
+      ])
+        assert.throws(
+          () => parsedPlan(["--scanner-compare"], env),
+          /GitHub Actions' throwaway runners only.*--scanner-folders/,
+        );
+    });
+
+    it("reads --scanner-folders as a file micro-bench that changes nothing, with the two folders if they are named, and not with --scanner-compare", () => {
+      const asked = parsedPlan(
+        [
+          "--scanner-folders",
+          "--folder-excluded",
+          "ex",
+          "--folder-scanned",
+          "sc",
+        ],
+        {},
+      ).plan;
+      assert.equal(asked.scannerFolders, true);
+      assert.equal(asked.scannerCompare, false);
+      assert.equal(asked.scenarios.has("file-ops"), true);
+      assert.equal(asked.folderExcluded, "ex");
+      assert.equal(asked.folderScanned, "sc");
+      assert.equal(parsedPlan([], {}).plan.scannerFolders, false);
+      assert.throws(
+        () =>
+          parsedPlan(["--scanner-folders", "--scanner-compare"], {
+            GITHUB_ACTIONS: "true",
+          }),
+        /use one/,
+      );
+      assert.throws(
+        () => parsedPlan(["--folder-scanned", "sc"], {}),
+        /--scanner-folders, which was not given/,
+      );
+    });
+
+    it("ends a refusal with its message alone and exit code 2, no stack trace", async () => {
+      const failed = await execFileAsync(
+        process.execPath,
+        [
+          fileURLToPath(new URL("./perf-report.js", import.meta.url)),
+          "--scanner-folders",
+          "--scenario",
+          "floor",
+        ],
+        { env: { ...process.env, GITHUB_ACTIONS: "" } },
+      ).then(
+        () => undefined,
+        (error: { code: number; stderr: string }) => error,
+      );
+      assert.equal(failed?.code, 2);
+      assert.match(
+        failed?.stderr ?? "",
+        /^--scanner-folders measures the file operations only/,
+      );
+      assert.doesNotMatch(failed?.stderr ?? "", /\n\s+at |Error:|ended early/);
+    });
+
+    it("measures only the file operations when --scanner-folders is given, not the suite the plan runs without it, and refuses another scenario beside it", () => {
+      assert.deepEqual(
+        [
+          ...parsedPlan(["--scanner-folders", "--out", "x.json"], {}).plan
+            .scenarios,
+        ],
+        ["file-ops"],
+      );
+      assert.deepEqual(
+        [
+          ...parsedPlan(["--scanner-folders", "--scenario", "file-ops"], {})
+            .plan.scenarios,
+        ],
+        ["file-ops"],
+      );
+      assert.ok(parsedPlan([], {}).plan.scenarios.has("floor"));
+      assert.throws(
+        () => parsedPlan(["--scanner-folders", "--scenario", "floor"], {}),
+        (error) =>
+          error instanceof Refusal &&
+          /file operations only/.test(error.message),
+      );
+    });
+  });
+
+  describe("given the file micro-bench and a scanner whose checking can be switched and a folder excluded", () => {
+    const plan = parsedPlan(["--scenario", "file-ops"]).plan;
+    const run = {
+      files: 3000,
+      perFile: { "create/in-flight-1": 1 },
+      whole: 1,
+    };
+    /** A laptop's scanner: everything on, nothing left alone. */
+    const checking: ScannerSettings = {
+      realtime: true,
+      fileOpening: true,
+      behaviour: true,
+      scripts: true,
+      excludedFolders: [],
+    };
+    /** The hosted image's: nothing checks, and both drives are left alone. */
+    const hosted: ScannerSettings = {
+      realtime: false,
+      fileOpening: false,
+      behaviour: false,
+      scripts: false,
+      excludedFolders: ["D:\\", "C:\\"],
+      mode: "Normal",
+    };
+    /** A scanner that remembers what it is set to, and can refuse to have its live checking switched off. */
+    const scanner = (
+      options: { refuseOff?: boolean; start?: ScannerSettings } = {},
+    ) => {
+      const calls: string[] = [];
+      let settings = options.start ?? checking;
+      const fake: Scanner = {
+        read: () => Promise.resolve(settings),
+        set: (to) => {
+          calls.push("set");
+          if (options.refuseOff && settings.realtime && !to.realtime)
+            return Promise.reject(new Error("tamper protection"));
+          settings = to;
+          return Promise.resolve();
+        },
+      };
+      return { fake, calls, state: () => settings };
+    };
+    const seenBy = (s: ReturnType<typeof scanner>, seen: string[]) => () => {
+      const now = s.state();
+      seen.push(
+        `${now.realtime ? "live" : "no-live"} ${now.fileOpening ? "opening" : "no-opening"} [${now.excludedFolders.join(",")}]`,
+      );
+      return Promise.resolve(run);
+    };
+
+    it("measures as it is, then with live checking off, then with the folder excluded, and leaves a scanner that checked everything as it found it", async () => {
+      const s = scanner();
+      const seen: string[] = [];
+      const rows = await fileOpsAt(
+        { ...plan, scannerCompare: true },
+        "work",
+        () => undefined,
+        { scanner: s.fake, once: seenBy(s, seen) },
+      );
+      assert.deepEqual(
+        [...new Set(seen)],
+        [
+          "live opening []",
+          "no-live opening []",
+          `live opening [${join("work", "left-alone")}]`,
+        ],
+      );
+      assert.deepEqual(s.state(), checking);
+      const states = new Set(rows.map(({ name }) => name.split("/")[0]));
+      assert.deepEqual(
+        [...states].sort(),
+        [
+          "file-ops-3000-files",
+          "file-ops-3000-files-scanner-excluded",
+          "file-ops-3000-files-scanner-off",
+        ].sort(),
+      );
+      const value = (name: string) =>
+        rows.find((row) => row.name === name)?.value;
+      assert.equal(value("file-ops-3000-files/count/scanner-realtime-on"), 1);
+      assert.equal(
+        value("file-ops-3000-files-scanner-off/count/scanner-realtime-on"),
+        0,
+      );
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-excluded/count/scanner-folder-excluded",
+        ),
+        1,
+      );
+      assert.equal(value("file-ops-3000-files/count/scanner-restored"), 1);
+      assert.deepEqual(explained(rows).missing, []);
+    });
+
+    it("records what the runner's scanner is set to and where the files were made, switches all its checking on and takes its excluded folders off for a run, then excludes the folder, and puts every setting back", async () => {
+      const s = scanner({ start: hosted });
+      const seen: string[] = [];
+      const rows = await fileOpsAt(
+        { ...plan, scannerCompare: true },
+        "work",
+        () => undefined,
+        { scanner: s.fake, once: seenBy(s, seen) },
+      );
+      assert.deepEqual(
+        [...new Set(seen)],
+        [
+          "no-live no-opening [D:\\,C:\\]",
+          "live opening []",
+          `live opening [${join("work", "left-alone")}]`,
+        ],
+      );
+      assert.deepEqual(s.state(), hosted);
+      const row = (name: string) => rows.find((each) => each.name === name);
+      assert.equal(
+        row("file-ops-3000-files/count/scanner-realtime-on")?.value,
+        0,
+      );
+      assert.match(
+        row("file-ops-3000-files/count/scanner-realtime-on")?.extra ?? "",
+        /live checking off.*file-opening checking off.*excluded folders \[D:\\, C:\\\].*running mode Normal/,
+      );
+      assert.match(
+        row("file-ops-3000-files/count/work-folder")?.extra ?? "",
+        /made under work, on the drive/,
+      );
+      assert.equal(
+        row("file-ops-3000-files-scanner-on/count/scanner-realtime-on")?.value,
+        1,
+      );
+      assert.equal(
+        row("file-ops-3000-files/count/scanner-switch-on-allowed")?.value,
+        1,
+      );
+      assert.equal(row("file-ops-3000-files/count/scanner-restored")?.value, 1);
+      assert.deepEqual(explained(rows).missing, []);
+    });
+
+    it("puts it back even when a measurement fails", async () => {
+      const s = scanner({ start: hosted });
+      let calls = 0;
+      await assert.rejects(
+        fileOpsAt({ ...plan, scannerCompare: true }, "work", () => undefined, {
+          scanner: s.fake,
+          once: () => {
+            calls += 1;
+            return calls === 4
+              ? Promise.reject(new Error("disk full"))
+              : Promise.resolve(run);
+          },
+        }),
+        /disk full/,
+      );
+      assert.deepEqual(s.state(), hosted);
+    });
+
+    /** A process that records its exit. */
+    const process_ = () => {
+      const host = new EventEmitter() as EventEmitter & {
+        exit(code: number): void;
+      };
+      const exits: number[] = [];
+      host.exit = (code) => {
+        exits.push(code);
+      };
+      return { host, exits };
+    };
+    const until = async (done: () => boolean): Promise<void> => {
+      const waited = Date.now();
+      while (!done() && Date.now() - waited < 3000)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    };
+
+    it("puts it back, and then exits, when the process is interrupted, told to stop, hung up on or sent Ctrl-Break, and takes its handlers off when the run is over", async () => {
+      for (const [signal, code] of [
+        ["SIGINT", 130],
+        ["SIGTERM", 143],
+        ["SIGHUP", 129],
+        ["SIGBREAK", 149],
+      ] as const) {
+        const { host, exits } = process_();
+        let restored = false;
+        const stop = restoringOnSignals(() => {
+          restored = true;
+          return Promise.resolve();
+        }, host);
+        host.emit(signal);
+        await until(() => exits.length > 0);
+        assert.deepEqual(exits, [code], signal);
+        assert.equal(restored, true);
+        stop();
+        for (const each of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"])
+          assert.equal(host.listenerCount(each), 0, each);
+      }
+    });
+
+    it("lets a second Ctrl-C come while the settings are being put back without ending the put-back or putting them back twice", async () => {
+      const { host, exits } = process_();
+      let started = 0;
+      let finish: () => void = () => undefined;
+      restoringOnSignals(
+        () =>
+          new Promise<void>((resolve) => {
+            started += 1;
+            finish = resolve;
+          }),
+        host,
+      );
+      host.emit("SIGINT");
+      host.emit("SIGINT");
+      host.emit("SIGTERM");
+      // The handler is still there to take it: Node's own handling of a second one would end the process.
+      assert.equal(host.listenerCount("SIGINT"), 1);
+      assert.equal(started, 1);
+      assert.deepEqual(exits, []);
+      finish();
+      await until(() => exits.length > 0);
+      assert.deepEqual(exits, [130]);
+    });
+
+    it("puts the scanner back, and exits, when told to stop while a measurement is still running", async () => {
+      const s = scanner({ start: hosted });
+      const { host, exits } = process_();
+      let calls = 0;
+      fileOpsAt({ ...plan, scannerCompare: true }, "work", () => undefined, {
+        scanner: s.fake,
+        signals: host,
+        // The scanner has been changed when the fourth begins; it never ends.
+        once: () => {
+          calls += 1;
+          if (calls < 4) return Promise.resolve(run);
+          host.emit("SIGTERM");
+          return new Promise<never>(() => undefined);
+        },
+      }).catch(() => undefined);
+      await until(() => exits.length > 0);
+      assert.deepEqual(exits, [143], "the process was never told to exit");
+      assert.deepEqual(s.state(), hosted);
+    });
+
+    it("does not put it back while it is being set: a signal in the middle of a change waits for it", async () => {
+      let active = 0;
+      let most = 0;
+      let settings = hosted;
+      const { host, exits } = process_();
+      const slow: Scanner = {
+        read: () => Promise.resolve(settings),
+        set: async (to) => {
+          active += 1;
+          most = Math.max(most, active);
+          if (active === 1 && exits.length === 0) host.emit("SIGTERM");
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          settings = to;
+          active -= 1;
+        },
+      };
+      let calls = 0;
+      fileOpsAt({ ...plan, scannerCompare: true }, "work", () => undefined, {
+        scanner: slow,
+        signals: host,
+        once: () => {
+          calls += 1;
+          return calls < 4
+            ? Promise.resolve(run)
+            : new Promise<never>(() => undefined);
+        },
+      }).catch(() => undefined);
+      await until(() => exits.length > 0);
+      assert.deepEqual(exits, [143]);
+      assert.equal(most, 1);
+      assert.deepEqual(settings, hosted);
+    });
+
+    it("runs jobs in turn, the next after the one before has failed too", async () => {
+      const turn = inTurn();
+      const seen: string[] = [];
+      const first = turn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        seen.push("first");
+        throw new Error("no");
+      });
+      const second = turn(() => {
+        seen.push("second");
+        return Promise.resolve(2);
+      });
+      await assert.rejects(first, /no/);
+      assert.equal(await second, 2);
+      assert.deepEqual(seen, ["first", "second"]);
+    });
+
+    it("puts the excluded folders back before the switch that Defender refuses, through the commands PowerShell is given", async () => {
+      const scripts: string[] = [];
+      let excluded = ["/left"];
+      const read = {
+        realtime: true,
+        fileOpening: true,
+        behaviour: false,
+        scripts: true,
+        mode: "Normal",
+      };
+      const powershell = (script: string): Promise<string> => {
+        scripts.push(script);
+        if (script.startsWith("$p = Get-MpPreference"))
+          return Promise.resolve(
+            JSON.stringify({ ...read, excludedFolders: excluded }),
+          );
+        const path = /'([^']*)'$/.exec(script)?.[1] ?? "";
+        if (script.startsWith("Remove-MpPreference"))
+          excluded = excluded.filter((each) => each !== path);
+        else if (script.startsWith("Add-MpPreference")) excluded.push(path);
+        else if (script.startsWith("Set-MpPreference"))
+          return Promise.reject(new Error("spawn EPERM"));
+        return Promise.resolve("");
+      };
+      await assert.rejects(
+        windowsScanner(powershell).set({
+          realtime: false,
+          fileOpening: false,
+          behaviour: false,
+          scripts: false,
+          excludedFolders: ["/d", "/c"],
+        }),
+        /EPERM/,
+      );
+      const commands = scripts
+        .filter((script) => !script.startsWith("$p = Get-MpPreference"))
+        .map((script) => script.split(" ").slice(0, 3).join(" "));
+      assert.deepEqual(commands, [
+        "Remove-MpPreference -ExclusionPath '/left'",
+        "Add-MpPreference -ExclusionPath '/d'",
+        "Add-MpPreference -ExclusionPath '/c'",
+        "Set-MpPreference -DisableRealtimeMonitoring $true",
+      ]);
+      assert.deepEqual(excluded, ["/d", "/c"]);
+    });
+
+    it("records that switching it off was refused, and measures no run it would have named off", async () => {
+      const s = scanner({ refuseOff: true });
+      const rows = await fileOpsAt(
+        { ...plan, scannerCompare: true },
+        "work",
+        () => undefined,
+        { scanner: s.fake, once: () => Promise.resolve(run) },
+      );
+      assert.ok(
+        rows.every(
+          ({ name }) =>
+            !name.startsWith("file-ops-3000-files-scanner-off/") ||
+            name.includes("/count/"),
+        ),
+      );
+      const refusedRow = rows.find(
+        ({ name }) =>
+          name === "file-ops-3000-files/count/scanner-switch-off-allowed",
+      );
+      assert.equal(refusedRow?.value, 0);
+      assert.match(refusedRow?.extra ?? "", /tamper protection/);
+      assert.deepEqual(s.state(), checking);
+      assert.deepEqual(explained(rows).missing, []);
+    });
+
+    it("never touches the scanner unless asked to compare", async () => {
+      const s = scanner();
+      const rows = await fileOpsAt(plan, "work", () => undefined, {
+        scanner: s.fake,
+        once: () => Promise.resolve(run),
+      });
+      assert.deepEqual(s.calls, []);
+      assert.ok(
+        rows.every(({ name }) => name.startsWith("file-ops-3000-files/")),
+      );
+    });
+  });
+
+  describe("given the file micro-bench and a machine whose scanner is only read", () => {
+    const run = {
+      files: 3000,
+      perFile: { "create/in-flight-1": 1 },
+      whole: 1,
+    };
+    /** A folder the scanner leaves alone and one it does not, on this machine's own disk. */
+    const places = async () => {
+      const base = await mkdtemp(join(tmpdir(), "folders-"));
+      const left = join(base, "left");
+      const scanned = join(base, "scanned");
+      await mkdir(left);
+      await mkdir(scanned);
+      return {
+        base,
+        left: await realpath(left),
+        scanned: await realpath(scanned),
+      };
+    };
+    /** PowerShell as Defender has it: it answers a read, and the commands that change it are recorded and refused. */
+    const defender = (
+      excludedFolders: string[],
+      status: { realtime?: boolean; mode?: string } = {},
+    ) => {
+      const scripts: string[] = [];
+      const powershell = (script: string): Promise<string> => {
+        scripts.push(script);
+        if (/(Set|Add|Remove)-MpPreference/.test(script))
+          return Promise.reject(new Error("a change was asked for"));
+        return Promise.resolve(
+          JSON.stringify({
+            realtime: status.realtime ?? true,
+            fileOpening: true,
+            behaviour: true,
+            scripts: true,
+            excludedFolders,
+            mode: status.mode ?? "Normal",
+            reportedFileOpening: true,
+            reportedBehaviour: true,
+          }),
+        );
+      };
+      return { scripts, scanner: windowsScanner(powershell) };
+    };
+    const asked = (...flags: string[]): Plan => ({
+      ...parsedPlan(["--scanner-folders", ...flags], {}).plan,
+      repeats: 2,
+    });
+    const never = () => Promise.reject(new Error("nothing should be run"));
+    const noChange = (scripts: readonly string[]) => {
+      assert.ok(scripts.length > 0, "the scanner was read");
+      assert.deepEqual(
+        scripts.filter((script) =>
+          /(Set|Add|Remove)-MpPreference/.test(script),
+        ),
+        [],
+      );
+    };
+
+    it("measures a folder inside an excluded one and one outside, alternating, never changes the scanner, and removes what it made", async () => {
+      const { base, left, scanned } = await places();
+      const { scripts, scanner: reading } = defender([left, "/elsewhere"]);
+      const made: string[] = [];
+      const said: string[] = [];
+      const rows = await foldersCompared(
+        asked("--folder-excluded", left, "--folder-scanned", scanned),
+        (line) => said.push(line),
+        {
+          scanner: reading,
+          once: (folder) => {
+            made.push(folder);
+            return Promise.resolve({
+              ...run,
+              perFile: {
+                "create/in-flight-1": folder.startsWith(left) ? 1e-5 : 3e-5,
+                "create/in-flight-16": 1e-5,
+                "create/in-flight-64": 1e-5,
+              },
+            });
+          },
+        },
+      );
+      noChange(scripts);
+      assert.deepEqual(
+        made.map((folder) =>
+          folder.startsWith(left) ? "excluded" : "scanned",
+        ),
+        ["excluded", "scanned", "scanned", "excluded"],
+      );
+      const value = (name: string) =>
+        rows.find((row) => row.name === name)?.value;
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-excluded-folder/count/scanner-folder-excluded",
+        ),
+        1,
+      );
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-scanned-folder/count/scanner-folder-excluded",
+        ),
+        0,
+      );
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-scanned-folder/create/in-flight-1",
+        ),
+        3e-5,
+      );
+      assert.equal(
+        value(
+          "file-ops-3000-files-scanner-in-excluded-folder/count/scanner-realtime-on",
+        ),
+        1,
+      );
+      assert.match(
+        rows.find((row) =>
+          row.name.endsWith("-in-scanned-folder/count/scanner-realtime-on"),
+        )?.extra ?? "",
+        /excluded folders \[.*elsewhere\].*running mode Normal.*IoavProtectionEnabled true, BehaviorMonitorEnabled true/,
+      );
+      assert.deepEqual(explained(rows).missing, []);
+      assert.ok(said.includes("file operations, in-excluded-folder: run 1/2"));
+      assert.match(said.join("\n"), /Nothing on this machine was changed/);
+      assert.match(said.join("\n"), /create a file, 16 at once/);
+      assert.deepEqual(await readdir(left), []);
+      assert.deepEqual(await readdir(scanned), []);
+      await rm(base, { recursive: true });
+    });
+
+    it("finds the folders when none is named: the first excluded folder that can be written to, and the temporary folder", async () => {
+      const { base, left, scanned } = await places();
+      const { scripts, scanner: reading } = defender(["/nowhere", left]);
+      const made: string[] = [];
+      await foldersCompared(asked(), () => undefined, {
+        scanner: reading,
+        tmp: scanned,
+        once: (folder) => {
+          made.push(folder);
+          return Promise.resolve(run);
+        },
+      });
+      noChange(scripts);
+      assert.ok(made.some((folder) => folder.startsWith(left)));
+      assert.ok(made.some((folder) => folder.startsWith(scanned)));
+      await rm(base, { recursive: true });
+    });
+
+    it("refuses, with nothing run and nothing changed, a scanner it cannot read, a list hidden from a shell that is not an administrator's, an empty list, a folder not in the list, and two folders in the same state", async () => {
+      const { base, left, scanned } = await places();
+      const ask = (
+        reading: Pick<Scanner, "read">,
+        flags: string[] = [],
+        tmp?: string,
+      ) =>
+        foldersCompared(asked(...flags), () => undefined, {
+          scanner: reading,
+          once: never,
+          ...(tmp !== undefined && { tmp }),
+        });
+      await assert.rejects(
+        ask(windowsScanner(() => Promise.reject(new Error("no powershell")))),
+        /could not.*Nothing was changed/,
+      );
+      const hiddenList = defender([
+        "N/A: Must be an administrator to view exclusions",
+      ]);
+      await assert.rejects(ask(hiddenList.scanner), /administrator PowerShell/);
+      const empty = defender([]);
+      await assert.rejects(ask(empty.scanner), /no folder is excluded/);
+      const listing = defender([left]);
+      await assert.rejects(
+        ask(listing.scanner, [
+          "--folder-excluded",
+          scanned,
+          "--folder-scanned",
+          scanned,
+        ]),
+        /--folder-excluded .* is not inside any folder Windows Defender leaves alone/,
+      );
+      await assert.rejects(
+        ask(listing.scanner, [
+          "--folder-excluded",
+          left,
+          "--folder-scanned",
+          left,
+        ]),
+        /same state/,
+      );
+      await assert.rejects(
+        ask(listing.scanner, [], left),
+        /the temporary folder .* is inside .*same state/,
+      );
+      for (const used of [hiddenList, empty, listing]) noChange(used.scripts);
+      await rm(base, { recursive: true });
+    });
+
+    it("says that neither folder is being scanned when live checking is off or Defender is passive, in what it prints before the runs and in its report, and when an entry of the list was not compared", async () => {
+      const { base, left, scanned } = await places();
+      for (const [status, listed, what] of [
+        [{ realtime: false }, [left], /live checking is off/],
+        [
+          { mode: "Passive" },
+          [left],
+          /runs in Passive mode.*another antivirus/,
+        ],
+        [
+          {},
+          [left, "%TEMP%\\work"],
+          /1 of the excluded list's entries.*%TEMP%\\work.*not compared/,
+        ],
+      ] as const) {
+        const said: string[] = [];
+        const { scanner: reading } = defender([...listed], status);
+        await foldersCompared(
+          asked("--folder-excluded", left, "--folder-scanned", scanned),
+          (line) => said.push(line),
+          { scanner: reading, once: () => Promise.resolve(run) },
+        );
+        const warnings = said.filter((line) => line.startsWith("WARNING"));
+        assert.equal(warnings.length, 2, JSON.stringify(status));
+        assert.match(warnings.join("\n"), what);
+        assert.ok(
+          said.findIndex((line) => line.startsWith("WARNING")) <
+            said.findIndex((line) => line.startsWith("file operations")),
+          "before the first run",
+        );
+        assert.match(
+          said.join("\n"),
+          /process and file-extension exclusions are not/,
+        );
+      }
+      const quiet: string[] = [];
+      await foldersCompared(
+        asked("--folder-excluded", left, "--folder-scanned", scanned),
+        (line) => quiet.push(line),
+        {
+          scanner: defender([left]).scanner,
+          once: () => Promise.resolve(run),
+        },
+      );
+      assert.equal(quiet.filter((line) => /WARNING/.test(line)).length, 0);
+      assert.equal(
+        scannerNotes({
+          realtime: true,
+          fileOpening: true,
+          behaviour: true,
+          scripts: true,
+          excludedFolders: [],
+          mode: "Normal",
+        }).length,
+        1,
+      );
+      await rm(base, { recursive: true });
+    });
+
+    it("never picks a system or program folder or a profile folder on its own, says which it skipped, and writes into one only when it is named", async () => {
+      const { base, left, scanned } = await places();
+      const programs = join(base, "Program Files");
+      await mkdir(join(programs, "Vendor"), { recursive: true });
+      const env = {
+        ProgramFiles: await realpath(programs),
+        USERPROFILE: join(base, "Users", "jay"),
+      };
+      const made: string[] = [];
+      const once = (folder: string) => {
+        made.push(folder);
+        return Promise.resolve(run);
+      };
+      await foldersCompared(asked(), () => undefined, {
+        scanner: defender([join(programs, "Vendor"), programs, left]).scanner,
+        tmp: scanned,
+        env,
+        once,
+      });
+      assert.ok(made.length > 0);
+      assert.ok(made.every((folder) => !folder.startsWith(programs)));
+      assert.ok(made.some((folder) => folder.startsWith(left)));
+      await assert.rejects(
+        foldersCompared(asked(), () => undefined, {
+          scanner: defender([programs]).scanner,
+          tmp: scanned,
+          env,
+          once: never,
+        }),
+        (error) =>
+          error instanceof Refusal &&
+          /only excluded folders that exist are system or program folders.*Program Files.*--folder-excluded <folder>/.test(
+            error.message,
+          ),
+      );
+      made.length = 0;
+      await foldersCompared(
+        asked("--folder-excluded", join(programs, "Vendor")),
+        () => undefined,
+        {
+          scanner: defender([programs]).scanner,
+          tmp: scanned,
+          env,
+          once,
+        },
+      );
+      assert.ok(
+        made.some((folder) => folder.startsWith(join(programs, "Vendor"))),
+      );
+      await rm(base, { recursive: true });
+    });
+
+    it("calls a drive's root, a program folder and what is inside one, the profile folders and the folder holding them system folders, and the person's own folders not", () => {
+      const env = {
+        ProgramFiles: "C:\\Program Files",
+        windir: "C:\\Windows",
+        ProgramData: "C:\\ProgramData",
+        USERPROFILE: "C:\\Users\\Jay",
+      };
+      for (const path of [
+        "C:\\",
+        "C:\\Program Files",
+        "c:\\program files\\Vendor\\app",
+        "C:\\Program Files (x86)\\Vendor",
+        "C:\\Windows\\Temp",
+        "C:\\ProgramData",
+        "C:\\Users",
+        "C:\\Users\\Jay",
+        "C:\\Users\\Other",
+      ])
+        assert.notEqual(systemFolder(path, env), undefined, path);
+      for (const path of [
+        "C:\\dev",
+        "C:\\Users\\Jay\\work",
+        "D:\\data\\scratch",
+        "C:\\Program Filesystem",
+      ])
+        assert.equal(systemFolder(path, env), undefined, path);
+    });
+
+    it("removes the folders it made, and the run's work folder, when the process is interrupted, and exits", async () => {
+      const { base, left, scanned } = await places();
+      const work = join(base, "work");
+      await mkdir(work);
+      const host = new EventEmitter() as EventEmitter & {
+        exit(code: number): void;
+      };
+      const exits: number[] = [];
+      host.exit = (code) => {
+        exits.push(code);
+      };
+      const made: string[] = [];
+      const running = foldersCompared(
+        asked("--folder-excluded", left, "--folder-scanned", scanned),
+        () => undefined,
+        {
+          scanner: defender([left]).scanner,
+          alsoRemove: [work],
+          signals: host,
+          once: async (folder) => {
+            made.push(folder);
+            await mkdir(folder);
+            host.emit("SIGINT");
+            const waited = Date.now();
+            while (exits.length === 0 && Date.now() - waited < 3000)
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            return run;
+          },
+        },
+      );
+      await running.catch(() => undefined);
+      assert.deepEqual(exits, [130]);
+      assert.deepEqual(await readdir(left), []);
+      assert.deepEqual(await readdir(scanned), []);
+      await assert.rejects(readdir(work));
+      assert.equal(host.listenerCount("SIGINT"), 0);
+      await rm(base, { recursive: true });
+    });
+
+    it("marks a range so wide that one run was far from the others", () => {
+      const row = (range: string, value: number): Row => ({
+        name: "x",
+        unit: "s",
+        value,
+        kind: "clock",
+        range,
+      });
+      assert.equal(wide(row("0.000010-0.000100", 0.00001)), true);
+      assert.equal(wide(row("0.000010-0.000020", 0.000015)), false);
+      assert.equal(wide(undefined), false);
     });
   });
 
