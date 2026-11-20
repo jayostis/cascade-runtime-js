@@ -76,7 +76,11 @@ const LAST_UPDATE_ON = `${PAV}lastUpdateOn`;
 const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const CURRENT_REVISIONS = `${QUERIES}derivations/current-revisions.rq`;
 const LADDER_LENS = "everyday";
-/** The waves of an import's files (W1): its content-addressed files, then its revisions, then the findings that name them, then its act. */
+/**
+ * The waves of an import's files (W1): its content-addressed files, then its revisions, then the findings that name them, then its act.
+ * Two revisions of one record in a step, the second naming the first, share a wave and are written in no order, so a crash may leave the second
+ * on disk without the first; harmless, because a step counts as finished only by its act's file, written after every wave.
+ */
 const CONTENT_WAVE = 1;
 const REVISION_WAVE = 2;
 const FINDING_WAVE = 3;

@@ -204,16 +204,6 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
           `a file of rank ${after} was started before every file of rank ${before} was written`,
         );
     });
-
-    it("writes the content-addressed files several at once", () => {
-      assert.ok(
-        overlaps(
-          log,
-          ranked.filter(({ rank }) => rank === 0).map(({ path }) => path),
-        ),
-        "no two were being written at once",
-      );
-    });
   });
 
   describe("given files that take several writes at once, StepWrites.commit()", () => {

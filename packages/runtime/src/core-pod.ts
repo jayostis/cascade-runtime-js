@@ -274,6 +274,8 @@ class HeldFiles implements Files {
   readonly #pod: Files;
   readonly #bytes = new Map<string, Uint8Array>();
   #paths: Promise<Set<string>> | undefined;
+  /** The paths a `read` found the pod without, until the next write: that write does not look for them again. */
+  readonly #absent = new Set<string>();
   /** The paths of the listing it was sorted from, in code unit order, until one is added. */
   #sorted: { readonly of: Set<string>; readonly paths: string[] } | undefined;
   /** Counts each write that changed a file as it begins and again once it has held or failed. */
@@ -314,7 +316,9 @@ class HeldFiles implements Files {
   }
 
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
-    const bytes = await this.#held(relative(this, pathOrIri));
+    const path = relative(this, pathOrIri);
+    const bytes = await this.#held(path);
+    if (bytes === undefined) this.#absent.add(path);
     return bytes === undefined ? undefined : new Uint8Array(bytes);
   }
 
@@ -348,10 +352,11 @@ class HeldFiles implements Files {
     const changed: [string, Uint8Array][] = [];
     for (const [pathOrIri, bytes] of files) {
       const path = relative(this, pathOrIri);
-      const held = await this.#held(path);
+      const held = this.#absent.has(path) ? undefined : await this.#held(path);
       if (held === undefined || !same(held, bytes))
         changed.push([path, new Uint8Array(bytes)]);
     }
+    this.#absent.clear();
     if (changed.length === 0) return;
     const listed = await this.#listed();
     this.#written += 1;

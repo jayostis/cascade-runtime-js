@@ -332,12 +332,13 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
     async function slow() {
       const { base } = await world();
       const folder = join(base, "slow");
-      const count = { waiting: 0, most: 0 };
+      const count = { waiting: 0, most: 0, started: [] as string[] };
       const files = new FolderFiles(folder, undefined, {
         ...REFUSING,
         fs: {
           lstat: async (path) => {
             if (!path.endsWith(".txt")) return lstat(path);
+            count.started.push(path);
             if (path.endsWith("bad.txt")) throw new Error("bad.txt is refused");
             count.waiting += 1;
             count.most = Math.max(count.most, count.waiting);
@@ -366,12 +367,18 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
     });
 
     it("throws the first failure with no file still being written, none half written and the failing one not there", async () => {
-      const { folder, files } = await slow();
+      const { folder, files, count } = await slow();
       const given = PATHS.map((path, n): [string, Uint8Array] => [
         n === 20 ? "many/bad.txt" : path,
         bytes(path),
       ]);
       await assert.rejects(files.writeMany(given), /bad\.txt is refused/);
+      assert.ok(count.started.some((path) => path.endsWith("bad.txt")));
+      for (const path of PATHS.slice(21))
+        assert.ok(
+          !count.started.some((started) => started.endsWith(path)),
+          `${path} was started after the failure`,
+        );
       const once = await readdir(folder, { recursive: true });
       await new Promise((resolve) => setTimeout(resolve, 100));
       assert.deepEqual(await readdir(folder, { recursive: true }), once);
@@ -384,6 +391,56 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
         once.some((name) => name.endsWith(".txt")),
         "none written",
       );
+    });
+
+    it("throws what the files given throw, once those begun have settled, and not as a success", async () => {
+      const { folder, files } = await slow();
+      function* given(): Generator<[string, Uint8Array]> {
+        yield ["many/first.txt", bytes("first")];
+        throw new Error("the files ran out badly");
+      }
+      await assert.rejects(files.writeMany(given()), /the files ran out badly/);
+      assert.deepEqual(
+        (await written(folder)).map((name) => name.replaceAll("\\", "/")),
+        ["many/first.txt"],
+      );
+    });
+
+    it("makes a folder another write looked at before it was made, and writes both files", async () => {
+      const { base } = await world();
+      const looks: string[] = [];
+      const files = new FolderFiles(join(base, "raced"), undefined, {
+        ...REFUSING,
+        fs: {
+          lstat: async (path) => {
+            if (!/[\\/]d$/.test(path)) return lstat(path);
+            looks.push(path);
+            const found = await lstat(path).then(
+              (stat) => ({ stat }),
+              (error: unknown) => ({ error }),
+            );
+            if (looks.length === 2)
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            if ("error" in found) throw found.error;
+            return found.stat;
+          },
+          mkdir: async (path) => {
+            if (/[\\/]d$/.test(path))
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            return mkdir(path);
+          },
+        },
+      });
+      await files.writeMany([
+        ["d/f1", bytes("1")],
+        ...Array.from({ length: 15 }, (_, n): [string, Uint8Array] => [
+          `z${n}`,
+          bytes("z"),
+        ]),
+        ["d/f2", bytes("2")],
+      ]);
+      assert.equal(text(await files.read("d/f1")), "1");
+      assert.equal(text(await files.read("d/f2")), "2");
     });
   });
 

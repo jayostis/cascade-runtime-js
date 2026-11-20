@@ -208,6 +208,9 @@ export class FolderFiles implements Files {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
+    if (await this.#isFolder(root, parts)) return;
+    // A writer's look that began before this mkdir finished may be the one joined, and it found no folder.
+    this.#checked.delete(parts.join("/"));
     if (!(await this.#isFolder(root, parts)))
       throw new Error(`${join(root, ...parts)} is no folder`);
   }
@@ -358,16 +361,15 @@ export class FolderFiles implements Files {
     const queue = files[Symbol.iterator]();
     let failure: { readonly error: unknown } | undefined;
     const writer = async (): Promise<void> => {
-      for (
-        let next = queue.next();
-        next.done !== true && failure === undefined;
-        next = queue.next()
-      ) {
-        try {
+      try {
+        for (
+          let next = queue.next();
+          next.done !== true && failure === undefined;
+          next = queue.next()
+        )
           await this.write(...next.value);
-        } catch (error) {
-          failure ??= { error };
-        }
+      } catch (error) {
+        failure ??= { error };
       }
     };
     await Promise.allSettled(
