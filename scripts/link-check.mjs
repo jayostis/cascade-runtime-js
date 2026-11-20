@@ -468,10 +468,11 @@ const EXPLORER_PAGE = /^adapters\/[^/]+\/(?:index\.html)?$/;
 
 /**
  * The performance history page, which github-action-benchmark generates on the `perf-data` branch with no link back to the
- * front page. check.yml's `build-pages` job copies it to `/perf/` after explorer-check and build:pages, so no check of a
- * pull request sees it; once the site links to it, the crawl of the deployed site does.
+ * front page. check.yml's `build-pages` job copies it to `/perf/detail/` after explorer-check and build:pages, so no check
+ * of a pull request sees it; once the site links to it, the crawl of the deployed site does. The pages of `/perf/` and
+ * `/perf/runs/` that this repository writes link back themselves.
  */
-const PERF_PAGE = /^perf\/(?:index\.html)?$/;
+const PERF_PAGE = /^perf\/detail\/(?:index\.html)?$/;
 
 /** The files an explorer's page reads when a reader opens a place (`nodes/<n>.html`): parts of the explorer, not pages of the hub. */
 const EXPLORER_PART = /^adapters\/[^/]+\/nodes\/[^/]+\.html$/;

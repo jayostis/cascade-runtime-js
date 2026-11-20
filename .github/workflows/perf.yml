@@ -11,7 +11,8 @@ name: perf
 #   which is what a pull request is compared with: a nightly or hand-started file may hold other sizes. The same job
 #   feeds the file's headline rows and slowest stages to github-action-benchmark, which keeps the history page's data and
 #   index.html under perf/ on that branch; the `build-pages` job of check.yml copies perf/ into the site, so the page is
-#   served at /perf/ by the next deploy (the nightly run is early enough for the 03:17 deploy to hold it).
+#   served at /perf/detail/ by the next deploy (the nightly run is early enough for the 03:17 deploy to hold it). The page at
+#   /perf/ is drawn by that job from the files themselves: a stacked chart of where the time goes for each scenario and size.
 # - Every run, a pull request's too, also makes flame graphs to drill into: a trace of each scenario's probed run (where the
 #   time went, step inside step) and a CPU profile of one more, unprobed run (which code took it), as the artifact
 #   `perf-flame`, with a short list of each scenario's longest steps in the job summary and the comment. A push, the
@@ -185,7 +186,7 @@ jobs:
             raw="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/perf-flame/runtime/${DAY}/${GITHUB_RUN_ID}-${GITHUB_SHA::7}-${EVENT}"
             node scripts/perf-flame.mjs summary "$RUNNER_TEMP/flame" --markdown --files "$raw" --viewer "$site" > "$RUNNER_TEMP/where.md"
             echo >> "$RUNNER_TEMP/where.md"
-            echo "This build's entry in [the flame graph index](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/runs/#${GITHUB_RUN_ID}-${GITHUB_SHA::7}) (it appears with the next deploy). The links above read the \`perf-flame\` branch and stop working when the build is no longer among the newest 30 kept there; the index lists what each kept build still has." >> "$RUNNER_TEMP/where.md"
+            echo "This build in [where the time goes, over time](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/), and its entry in [the flame graph index](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/runs/#${GITHUB_RUN_ID}-${GITHUB_SHA::7}) (both appear with the next deploy). The links above read the \`perf-flame\` branch and stop working when the build is no longer among the newest 30 kept there; the index lists what each kept build still has." >> "$RUNNER_TEMP/where.md"
           else
             node scripts/perf-flame.mjs summary "$RUNNER_TEMP/flame" --markdown --download "$DOWNLOAD" --viewer "$site" > "$RUNNER_TEMP/where.md"
           fi
@@ -258,7 +259,7 @@ jobs:
               cat pr/where.md
               echo
             fi
-            echo "What each row means: [the glossary](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/perf-glossary.md). Every main build over time: [performance history](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/)."
+            echo "What each row means: [the glossary](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/perf-glossary.md). Every main build over time: [where the time goes, over time](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/), and [every measurement as its own small chart](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf/detail/)."
             echo
             echo "[Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } > comment.md
@@ -335,7 +336,7 @@ jobs:
           echo "::error::the file could not be pushed to perf-data after six attempts"
           exit 1
 
-      # The history page: github-action-benchmark adds this run's rows to perf/data.js on `perf-data` and keeps perf/index.html,
+      # The detail page (/perf/detail/): github-action-benchmark adds this run's rows to perf/data.js on `perf-data` and keeps perf/index.html,
       # a chart for each measurement over the commits, whose hover shows each row's `extra` (its plain meaning, the data set
       # and the range). The checkout is the data branch alone, so no code of this repository runs here. Nothing alerts:
       # there is no threshold, no comment and nothing fails on a slowdown.

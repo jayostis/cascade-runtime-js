@@ -424,16 +424,16 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
     it("asks the performance history page, which github-action-benchmark generates, no link back either", async () => {
       const result = await check({
         "site.css": "",
-        "index.html": bare(`<a href="perf/">performance</a>`),
-        "perf/index.html": bare("a generated page, as it is"),
-        "perf/other.html": bare(""),
+        "index.html": bare(`<a href="perf/detail/">performance</a>`),
+        "perf/detail/index.html": bare("a generated page, as it is"),
+        "perf/detail/other.html": bare(""),
       });
       assert.equal(result.code, 1, result.said);
       const failed = result.said
         .split("\n")
         .filter((line) => line.startsWith("FAIL"));
       assert.deepEqual(failed, [
-        "FAIL perf/other.html: links no way back to the front page",
+        "FAIL perf/detail/other.html: links no way back to the front page",
       ]);
     });
   });

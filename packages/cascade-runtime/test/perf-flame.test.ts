@@ -624,8 +624,9 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       await writeFile(join(viewer, "index.html"), "<html></html>");
       await writeFile(join(viewer, "perf-vertx-stacks-01.txt"), "a sample");
       await writeFile(join(viewer, "LICENSE-given"), "MIT");
+      await mkdir(join(out, "detail"), { recursive: true });
       await writeFile(
-        join(out, "index.html"),
+        join(out, "detail", "index.html"),
         '<body><header id="header"></header></body>',
       );
       // The oldest build kept lost its CPU profile and the nightly run its large size's files to the window of the branch.
@@ -709,18 +710,24 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       );
       assert.match(
         index,
-        /Which code took it: not kept, outside the newest 5 builds/,
+        /Which code took it \(CPU profile\): not kept, outside the newest 5 builds/,
       );
       assert.doesNotMatch(index, /it is large/);
-      assert.match(index, /<section id="300-ccccccc">/);
+      assert.match(index, /<details class="build" id="300-ccccccc" open>/);
+      // Before any link to a graph, a plain table of the steps; the box says how to read a flame graph and not to open the files in an editor.
+      assert.match(index, /How to read a flame graph/);
+      assert.match(index, /Don't open the files in an editor/);
+      assert.match(index, /<em>Left Heavy<\/em>/);
+      assert.match(index, /<em>Sandwich<\/em> for a table/);
       assert.match(
         index,
-        /speedscope's <em>Sandwich<\/em> covers one track at a time/,
+        /<a href="\.\.\/">Where the time goes, over time<\/a>/,
       );
-      assert.doesNotMatch(index, /Sandwich<\/em> ranks steps/);
+      assert.match(index, /<a href="\.\.\/detail\/">/);
+      assert.match(index, /<a href="\.\.\/\.\.\/">Documentation home<\/a>/);
       assert.match(
-        await readFile(join(out, "index.html"), "utf8"),
-        /<a href="runs\/">/,
+        await readFile(join(out, "detail", "index.html"), "utf8"),
+        /<a href="\.\.\/runs\/">/,
       );
     });
   });

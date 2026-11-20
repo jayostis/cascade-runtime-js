@@ -543,13 +543,15 @@
     },
     {
       "startsWith": "question.page-",
-      "says": "One page of the answer to: {name}.",
-      "within": "scenario.first-screen"
+      "says": "One page of the answer to: {name}."
     },
     {
       "startsWith": "question-",
       "says": "The answer to: {name}.",
-      "within": "scenario.first-screen"
+      "within": {
+        "fresh-first-screen": "scenario.first-screen",
+        "reopen-first-answer": ["scenario.first-read", "scenario.second-read"]
+      }
     },
     {
       "startsWith": "core-pod.step.rebuild-",
