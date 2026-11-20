@@ -11,6 +11,7 @@ import { gunzipSync } from "node:zlib";
 import { pullFiles, openPod, tablesBeside } from "cascade-runtime";
 import { componentsOf, findRoot } from "@cascade-runtime/runtime/node";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
+import { explain } from "./perf-glossary.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
 import {
   answersBeside,
@@ -302,7 +303,7 @@ export interface Tabulated {
   readonly counts: Readonly<Record<string, number>>;
 }
 
-function tabulated(seen: Seen): Tabulated {
+export function tabulated(seen: Seen): Tabulated {
   return {
     spans: [...seen.spans]
       .map(([name, { calls, ms, wallMs }]) => ({ name, calls, ms, wallMs }))
@@ -967,6 +968,26 @@ function parsed(args: string[]): { plan: Plan; out: string | undefined } {
   };
 }
 
+/** Each row with its glossary sentence first in `extra`, so a reader of the file or the history page hovers to a plain meaning. */
+export function explained(rows: readonly Row[]): {
+  rows: Row[];
+  missing: string[];
+} {
+  const missing: string[] = [];
+  const out = rows.map((row) => {
+    const says = explain(row.name);
+    if (says === undefined) {
+      missing.push(row.name);
+      return row;
+    }
+    return {
+      ...row,
+      extra: row.extra === undefined ? says : `${says} | ${row.extra}`,
+    };
+  });
+  return { rows: out, missing };
+}
+
 /** The file for a plan: every scenario at every size, plain, and encrypted at the large size. */
 export async function perfFile(
   plan: Plan,
@@ -989,13 +1010,22 @@ export async function perfFile(
               : [false];
       for (const encrypted of modes) {
         results.push(...(await scenariosAt(plan, size, encrypted, work, log)));
-        await partial({ env: envOf(plan), commit: await commits(), results });
+        await partial({
+          env: envOf(plan),
+          commit: await commits(),
+          results: explained(results).rows,
+        });
       }
     }
     const bad = results.map(refused).find((reason) => reason !== undefined);
     if (bad !== undefined)
       throw new Error(`a row the result schema refuses: ${bad}`);
-    return { env: envOf(plan), commit: await commits(), results };
+    const { rows, missing } = explained(results);
+    if (missing.length > 0)
+      log(
+        `the glossary (perf-glossary.json) has no sentence for ${missing.length} rows, first ${missing.slice(0, 5).join(", ")}`,
+      );
+    return { env: envOf(plan), commit: await commits(), results: rows };
   } finally {
     await rm(work, { recursive: true, force: true });
   }

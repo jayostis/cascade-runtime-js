@@ -7,13 +7,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openPod } from "cascade-runtime";
 import { wholeBuildJob } from "@cascade-runtime/runtime/node";
-import { probing, recorded, timed } from "@cascade-runtime/runtime/probe";
+import {
+  probing,
+  recorded,
+  type Seen,
+  timed,
+} from "@cascade-runtime/runtime/probe";
+import { explain, glossaryMarkdown } from "./perf-glossary.js";
 import { profileOf, syntheticPull } from "./import-bench.js";
 import {
   clockRow,
   commits,
   countRow,
   envOf,
+  tabulated,
   FIRST_SCREEN,
   KIT,
   PAGES,
@@ -25,6 +32,19 @@ import {
   THEN,
   type Row,
 } from "./perf-report.js";
+
+const history = (await import(
+  pathToFileURL(
+    fileURLToPath(
+      new URL("../../../../scripts/perf-history.mjs", import.meta.url),
+    ),
+  ).href
+)) as {
+  forHistory(
+    file: object,
+    options?: object,
+  ): { name: string; value: number; extra?: string }[];
+};
 
 interface Compare {
   compare(before: object, after: object, options?: object): string;
@@ -195,6 +215,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
 
   describe("given a pod holding a small pull, imported and read with the probe on", () => {
     let spans: string[];
+    const seenRuns: Seen[] = [];
 
     before(async () => {
       const claimProfiles = await profileOf("first");
@@ -206,8 +227,9 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
           await pod.askPage(PAGES[0] as string, { size: 5 });
         });
         spans = [...seen.spans.keys()];
+        seenRuns.push(seen);
       } finally {
-        await pod.close();
+        seenRuns.push((await probing(() => pod.close())).seen);
       }
     });
 
@@ -221,6 +243,92 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
     it("records each named question and each page of one as a span", () => {
       assert.ok(spans.includes(`question:${FIRST_SCREEN[8]}`));
       assert.ok(spans.includes(`question.page:${PAGES[0]}`));
+    });
+
+    it("has a plain sentence for every stage and count the probe saw, in a row of the performance file", () => {
+      const rows = seenRuns.flatMap((seen) =>
+        probedRows("fresh-first-screen-synthea-10y", tabulated(seen), 100_000),
+      );
+      assert.ok(rows.length > 20);
+      assert.deepEqual(
+        rows
+          .filter(({ name }) => explain(name) === undefined)
+          .map(({ name }) => name),
+        [],
+      );
+    });
+  });
+
+  describe("given a performance file for the history page", () => {
+    const row = (
+      name: string,
+      value: number,
+      unit: Row["unit"] = "s",
+    ): Row => ({
+      name,
+      unit,
+      value,
+      kind: name.includes("/count/") ? "cost" : "clock",
+      extra: "meaning",
+    });
+    const kept = history.forHistory(
+      file([
+        row("close-synthea-10y/total", 2),
+        row("close-synthea-10y/rss", 5, "By"),
+        row("close-synthea-10y/peak-rss", 9, "By"),
+        row("close-synthea-10y/count/records", 647, "{count}"),
+        row("close-synthea-10y/stage/a", 1),
+        row("close-synthea-10y/stage/b", 3),
+        row("close-synthea-10y/stage/c", 2),
+        row("close-synthea-10y/stage/scenario.close", 9),
+      ]),
+      { stages: 2 },
+    );
+
+    it("takes the headline times, the peak memory and each run's slowest stages, with their meanings, and no count", () => {
+      assert.deepEqual(
+        kept.map(({ name }) => name),
+        [
+          "close-synthea-10y/total",
+          "close-synthea-10y/peak-rss",
+          "close-synthea-10y/stage/b",
+          "close-synthea-10y/stage/c",
+        ],
+      );
+      assert.ok(kept.every(({ extra }) => extra === "meaning"));
+    });
+  });
+
+  describe("given the glossary", () => {
+    it("explains every scenario, size, headline measurement and phase row of the file", () => {
+      for (const name of [
+        "fresh-first-screen-synthea-10y/total",
+        "fresh-first-screen-synthea-lifetime-encrypted/import",
+        "fresh-first-screen-synthea-10y/phase-converting",
+        "fresh-first-screen-synthea-10y/count/records",
+        "fresh-first-screen-synthea-10y/count/files-written",
+        "reopen-first-answer-synthea-10y/second-read",
+        "question-page-synthea-10y/total",
+        "question-page-synthea-10y/question-pod-my-lab-results",
+        "close-synthea-10y/total",
+        "close-synthea-10y/stage/core-pod.keepdatabase",
+        "close-synthea-10y/peak-rss",
+        "close-synthea-10y/probed-total",
+      ])
+        assert.ok(explain(name), name);
+    });
+
+    it("is the page docs/perf-glossary.md lists, word for word", async () => {
+      const { readFile } = await import("node:fs/promises");
+      const page = await readFile(
+        new URL("../../../../docs/perf-glossary.md", import.meta.url),
+        "utf8",
+      );
+      assert.equal(
+        page,
+        glossaryMarkdown(),
+        "regenerate: node packages/cascade-runtime/dist/test/perf-glossary.js > docs/perf-glossary.md",
+      );
     });
   });
 

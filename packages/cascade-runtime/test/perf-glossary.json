@@ -1,0 +1,609 @@
+{
+  "about": "Plain-language meanings for every name in the runtime's performance file. Read by perf-report.ts (each row's `extra`), checked by perf-report.test.ts, and listed in docs/perf-glossary.md. Span and count keys are the row-name form of the runtime's probe names (lower case, dashes for colons and spaces); a family matches by start and end of that form, with {name} the part between.",
+  "datasets": {
+    "synthea-10y": "Synthea's realistic synthetic patient, a 10-year record of 647 records. No real person's data.",
+    "synthea-lifetime": "A synthetic patient's whole life, 16,833 records: the large size, run nightly."
+  },
+  "variants": {
+    "plain": "The pod's files are stored readable.",
+    "encrypted": "The pod's files are stored scrambled with a secret, as a person's private pod would be."
+  },
+  "scenarios": {
+    "fresh-first-screen": {
+      "says": "A new, empty pod takes in a person's whole record and shows the first screen.",
+      "total": "Opening a new pod, importing the whole record and asking the first screen's questions: what a person waits for the first time."
+    },
+    "reopen-first-answer": {
+      "says": "A pod that already holds the record is opened again and answers its first question.",
+      "total": "Opening an existing pod and answering its first read: what a returning person waits for."
+    },
+    "question-page": {
+      "says": "Fetching one page of 20 answers to each of the app's questions, from the saved database.",
+      "total": "Fetching one page of answers for every question in turn."
+    },
+    "close": {
+      "says": "Closing a pod straight after it took in a record and drew the first screen.",
+      "total": "Closing a pod straight after its import and first screen, which saves its database."
+    }
+  },
+  "measures": {
+    "total": "The headline: the whole scenario from start to finish, the median of the runs.",
+    "open": "Opening the pod.",
+    "import": "Importing the whole record into the pod.",
+    "first-screen": "Asking the questions the first screen shows.",
+    "first-read": "The first question asked of the reopened pod ('My active conditions').",
+    "second-read": "A second question asked of the reopened pod ('My active medications').",
+    "close": "Closing the pod, saving its database.",
+    "rss": "Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the second read for a reopened one, after a first read and before the pages for the question pages.",
+    "peak-rss": "The most memory the process held at any moment, in bytes.",
+    "probed-total": "The scenario's time in one run with the probe on, which slows some work; its stages are from this run and are for finding where time goes, never for adding up to the headline.",
+    "phase-loading-the-adapter": "Import part: loading the adapter that knows this kind of record.",
+    "phase-converting": "Import part: converting the source record into the pod's own format.",
+    "phase-saving": "Import part: writing the converted records into the pod.",
+    "phase-judging": "Import part: claiming, as the pod's owner, the profiles the person confirmed are theirs."
+  },
+  "measureFamilies": [
+    {
+      "startsWith": "phase-",
+      "says": "Import part: {name}."
+    },
+    {
+      "startsWith": "question-",
+      "says": "One page of 20 answers to: {name}."
+    }
+  ],
+  "spans": {
+    "scenario.open": {
+      "says": "Opening the pod: finding its folder, its keys and its saved state."
+    },
+    "scenario.import": {
+      "says": "Bringing the whole record into the pod: converting it, checking it, saving it and judging which records are the same."
+    },
+    "scenario.first-screen": {
+      "says": "Asking the questions the app's first screen shows, so the first screen can be drawn."
+    },
+    "scenario.first-read": {
+      "says": "The first question asked of a reopened pod."
+    },
+    "scenario.second-read": {
+      "says": "A second, different question asked of the reopened pod."
+    },
+    "scenario.close": {
+      "says": "Closing the pod, saving its database for the next time it opens."
+    },
+    "core-pod.step.perform": {
+      "says": "Doing the work of one import step: taking in the new records.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.commit": {
+      "says": "Writing the step's results to the pod's files and recording that it happened.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.finished": {
+      "says": "Working out what an act's file holds beside its description: the runtime that did the work and a snapshot of the pod's files.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.keptafter": {
+      "says": "Bringing the saved answers up to date after a step.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.rebuild-import": {
+      "says": "Re-deriving what the imported records change.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.rebuild-match": {
+      "says": "Re-deriving what the 'same record' matching changes.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.rebuild-other": {
+      "says": "Re-deriving everything else a step changes.",
+      "within": "scenario.import"
+    },
+    "core-pod.import.adapters": {
+      "says": "Reading the adapter that knows how to convert this kind of record.",
+      "within": "scenario.import"
+    },
+    "core-pod.import.documents": {
+      "says": "Taking in the documents (notes, reports) that came with the record.",
+      "within": "scenario.import"
+    },
+    "core-pod.inputshash": {
+      "says": "Working out a fingerprint of everything a result depends on, to know when it can be reused."
+    },
+    "core-pod.matcherselect": {
+      "says": "A question the 'same record' matcher puts to the pod's facts, as the matcher reads them."
+    },
+    "core-pod.matcherview": {
+      "says": "Preparing the pod's facts for the 'same record' matcher."
+    },
+    "core-pod.databaseanswers": {
+      "says": "Checking whether the saved database holds the pod as it stands now, so it can answer in place of a rebuild."
+    },
+    "core-pod.rebuild.writeall": {
+      "says": "Writing every rebuilt file out to the pod."
+    },
+    "core-pod.rebuild.bytes": {
+      "says": "Turning rebuilt facts into the bytes that are written."
+    },
+    "core-pod.keepdatabase": {
+      "says": "Saving the pod's database so the next opening is fast.",
+      "within": "scenario.close"
+    },
+    "core-pod.keepdatabase.whole": {
+      "says": "Saving the database whole, from the pod's current facts.",
+      "within": "core-pod.keepdatabase"
+    },
+    "core-pod.keepbuild": {
+      "says": "Preparing the content of the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "core-pod.keepbuild.dump": {
+      "says": "Gathering the pod's facts to put in the saved database.",
+      "within": "core-pod.keepbuild"
+    },
+    "core-pod.keepbuild.write": {
+      "says": "Writing the gathered facts into the saved database.",
+      "within": "core-pod.keepbuild"
+    },
+    "core-pod.compact": {
+      "says": "Tidying the pod's files into fewer, larger ones."
+    },
+    "arrivals.fileexport": {
+      "says": "Taking in every document of the record: converting each, working out its records and writing them to the pod.",
+      "within": "core-pod.step.perform"
+    },
+    "arrivals.convert": {
+      "says": "Converting the source record into the pod's own format with the adapter.",
+      "within": "scenario.import"
+    },
+    "arrivals.accepting": {
+      "says": "Finding which adapter accepts this document.",
+      "within": "scenario.import"
+    },
+    "arrivals.parsegraph": {
+      "says": "Reading the converted records as facts.",
+      "within": "scenario.import"
+    },
+    "arrivals.refuseunaccounted": {
+      "says": "Checking that nothing in the converted records was left unexplained.",
+      "within": "scenario.import"
+    },
+    "arrivals.arrivals": {
+      "says": "Working out what each arriving record is and where it belongs.",
+      "within": "scenario.import"
+    },
+    "arrivals.revisions": {
+      "says": "Working out which records are new versions of ones the pod already holds.",
+      "within": "scenario.import"
+    },
+    "arrivals.revisions.prepare": {
+      "says": "Getting the existing records ready to compare with the arriving ones.",
+      "within": "arrivals.revisions"
+    },
+    "arrivals.revisions.write": {
+      "says": "Writing the new versions of records.",
+      "within": "arrivals.revisions"
+    },
+    "arrivals.revisionsof": {
+      "says": "Finding the earlier versions of one record."
+    },
+    "files.read.file": {
+      "says": "Reading one file from the pod's folder."
+    },
+    "files.write.file": {
+      "says": "Writing one file into the pod's folder."
+    },
+    "files.write.rename": {
+      "says": "Moving a finished file into place, so a half-written file is never seen."
+    },
+    "files.hash.sha256": {
+      "says": "Fingerprinting a file's content to tell whether it changed."
+    },
+    "files.encrypt": {
+      "says": "Scrambling a file with the pod's secret before it is written (encrypted pods only)."
+    },
+    "files.decrypt": {
+      "says": "Unscrambling a file with the pod's secret as it is read (encrypted pods only)."
+    },
+    "files.commit.index": {
+      "says": "Writing the pod's list of its encrypted files (encrypted pods only)."
+    },
+    "pod.match": {
+      "says": "Judging which records in the pod are the same thing recorded twice.",
+      "within": "scenario.import"
+    },
+    "pod.unclaimedprofiles": {
+      "says": "Finding the people named in an import's records whom the person has not yet said are, or are not, themselves."
+    },
+    "pod.judge": {
+      "says": "Claiming one confirmed profile as the pod's owner, by filing the judgment that says so."
+    },
+    "pod.profilestied": {
+      "says": "Looking up which profiles the person has already said are, or are not, themselves."
+    },
+    "store.query": {
+      "says": "Questions put to the pod's fact store, many of them: the time one or more of them was in progress."
+    },
+    "union.loadfiles": {
+      "says": "Loading the pod's files into memory as facts."
+    },
+    "union.loadturtle": {
+      "says": "Loading text-format facts into memory."
+    },
+    "union.add": {
+      "says": "Adding facts to the pod's in-memory facts."
+    },
+    "union.drop": {
+      "says": "Dropping facts from the pod's in-memory facts."
+    },
+    "union.removesubjects": {
+      "says": "Removing everything known about some records from the in-memory facts."
+    },
+    "union.select": {
+      "says": "Asking the in-memory facts a question that returns rows."
+    },
+    "union.construct": {
+      "says": "Asking the in-memory facts a question that returns new facts."
+    },
+    "union.holds": {
+      "says": "Checking whether the in-memory facts hold something."
+    },
+    "kept.step": {
+      "says": "Keeping the saved answers current after one step.",
+      "within": "core-pod.step.keptafter"
+    },
+    "kept.step.scoped": {
+      "says": "Finding the part of the pod a step touched.",
+      "within": "kept.step"
+    },
+    "kept.step.podfiles": {
+      "says": "Reading the pod files that part holds.",
+      "within": "kept.step"
+    },
+    "kept.step.namedbefore": {
+      "says": "Finding what the touched records were called before the step.",
+      "within": "kept.step"
+    },
+    "kept.step.reached": {
+      "says": "Finding every record the step's changes reach.",
+      "within": "kept.step"
+    },
+    "kept.step.closed": {
+      "says": "Widening the touched part until nothing else depends on it.",
+      "within": "kept.step"
+    },
+    "kept.step.rebuilt": {
+      "says": "Re-deriving the answers for the touched part.",
+      "within": "kept.step"
+    },
+    "kept.reached.judged": {
+      "says": "Finding what the judgment files a step wrote refer to."
+    },
+    "kept.rebuilt.filesof": {
+      "says": "Finding the files of the records being re-derived."
+    },
+    "kept.rebuilt.podfiles": {
+      "says": "Reading the pod files of the records being re-derived."
+    },
+    "kept.rebuilt.derive": {
+      "says": "Re-deriving the answers for the re-derived records."
+    },
+    "kept.rebuilt.held": {
+      "says": "Setting aside the answers that stay as they were."
+    },
+    "kept.whole": {
+      "says": "Keeping the saved answers current by re-deriving all of them."
+    },
+    "kept.whole.derive": {
+      "says": "Deriving every answer from every record.",
+      "within": "kept.whole"
+    },
+    "kept.whole.podfiles": {
+      "says": "Reading every pod file.",
+      "within": "kept.whole"
+    },
+    "kept.whole.recordsandtheirs": {
+      "says": "Gathering every record with what belongs to it.",
+      "within": "kept.whole"
+    },
+    "kept.scoped.podfiles": {
+      "says": "Reading the pod files of just the part being kept current."
+    },
+    "build.queried": {
+      "says": "Building the pod's answer files by running each of the pod's questions over its facts."
+    },
+    "build.queried.currentversions": {
+      "says": "Picking the current version of each record.",
+      "within": "build.queried"
+    },
+    "build.queried.viewsheld": {
+      "says": "Working out which answer files the pod's records call for.",
+      "within": "build.queried"
+    },
+    "build.queried.written": {
+      "says": "Writing the answer files that changed.",
+      "within": "build.queried"
+    },
+    "incremental.boundvalues": {
+      "says": "Narrowing a question to only the records that changed."
+    },
+    "matcher.of": {
+      "says": "Setting up the 'same record' matcher for one run: reading the records it compares and running its rules over them."
+    },
+    "matcher.of.read": {
+      "says": "Reading the records to be compared.",
+      "within": "matcher.of"
+    },
+    "matcher.of.podcodes": {
+      "says": "Looking up the medical codes of the records being compared.",
+      "within": "matcher.of"
+    },
+    "matcher.of.withcurrentversions": {
+      "says": "Adding each record's current version to the comparison.",
+      "within": "matcher.of"
+    },
+    "matcher.of.over": {
+      "says": "Running the matching rules over the records.",
+      "within": "matcher.of"
+    },
+    "matcher.of.withpartners": {
+      "says": "Adding the records that matched, so their partners are compared too.",
+      "within": "matcher.of"
+    },
+    "matcher.of.releaseview": {
+      "says": "Letting go of the matcher's working copy of the facts.",
+      "within": "matcher.of"
+    },
+    "matcher.recordreads": {
+      "says": "Reading the records the matcher compares."
+    },
+    "matcher.actstaken": {
+      "says": "Working out which acts (an import, an entry session, a connect or a sync) this run takes records from."
+    },
+    "matcher.take": {
+      "says": "Judging which records this import, entry, connect or sync brought are the same as records the pod holds, and recording each match."
+    },
+    "matcher.filefindings": {
+      "says": "Writing a finding for review for each pair of records one of the finding rules gives."
+    },
+    "matcher.view": {
+      "says": "Building the matcher's working copy of the facts."
+    },
+    "pod-database.build.worker": {
+      "says": "Starting the helper that builds the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.load": {
+      "says": "Loading the pod's facts into the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.screens-fill": {
+      "says": "Filling in the database's ready-made answer tables.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.screens-tables": {
+      "says": "Creating the database's ready-made answer tables.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.screens-finish": {
+      "says": "Finishing the database's ready-made answer tables.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.sync": {
+      "says": "Making the saved database safely written to disk.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.close": {
+      "says": "Closing the saved database.",
+      "within": "core-pod.keepdatabase"
+    },
+    "pod-database.build.rename": {
+      "says": "Moving the finished database into place.",
+      "within": "core-pod.keepdatabase"
+    },
+    "bridge.stage-records": {
+      "says": "The Bridge makes the pod's records, with their versions, from what its mappings produced.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-mapping": {
+      "says": "The Bridge runs the adapter's mappings over the source record's facts to produce the pod's facts.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-index": {
+      "says": "The Bridge builds a lookup index of the source facts for its compiled queries.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-lift": {
+      "says": "The Bridge lifts the source record into facts.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-documenttable": {
+      "says": "The Bridge builds the table of documents that the source record contains.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-serialising": {
+      "says": "The Bridge writes its result out as text.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-summary": {
+      "says": "The Bridge totals what it converted.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-dataset": {
+      "says": "The Bridge sets up the facts its queries will read.",
+      "within": "arrivals.convert"
+    },
+    "bridge.stage-detect": {
+      "says": "The Bridge recognises what kind of record this is.",
+      "within": "arrivals.convert"
+    },
+    "bridge.query-detect.rq": {
+      "says": "The query that recognises what kind of record this is.",
+      "within": "bridge.stage-detect"
+    },
+    "core-pod.selectstated.podfiles": {
+      "says": "Reading the pod files a question about stated facts needs."
+    },
+    "core-pod.filled.podfiles": {
+      "says": "Reading the pod files that fill in a half-built answer."
+    },
+    "core-pod.step.readback": {
+      "says": "Reading the pod's saved answers back in before a step, so the step can carry on from them.",
+      "within": "scenario.import"
+    },
+    "core-pod.step.database": {
+      "says": "Updating the saved database after a step.",
+      "within": "scenario.import"
+    },
+    "core-pod.builtdigests": {
+      "says": "Checking that each saved answer file is still the one the saved state was made with."
+    },
+    "core-pod.besidedigest": {
+      "says": "Fingerprinting the saved state kept beside the pod, to check it is intact when the pod opens."
+    },
+    "arrivals.records.podfiles": {
+      "says": "Reading the pod files that hold the records an import compares with.",
+      "within": "scenario.import"
+    },
+    "arrivals.shared.podfiles": {
+      "says": "Reading the pod files of facts shared between records.",
+      "within": "scenario.import"
+    },
+    "arrivals.current.podfiles": {
+      "says": "Reading the pod files of the current versions of records.",
+      "within": "scenario.import"
+    },
+    "kept.reached.recordsofjudged": {
+      "says": "Finding the records those judgments are about."
+    },
+    "kept.readback": {
+      "says": "Reading the saved answers back in when the pod opens."
+    },
+    "kept.readback.restore": {
+      "says": "Restoring the saved answers into memory.",
+      "within": "kept.readback"
+    },
+    "kept.readback.index": {
+      "says": "Rebuilding the lookup list of the saved answers.",
+      "within": "kept.readback"
+    },
+    "kept.reached.written": {
+      "says": "Finding the records whose files the step wrote."
+    },
+    "matcher.view.podfiles": {
+      "says": "Reading the pod files the matcher compares."
+    },
+    "matcher.recheck": {
+      "says": "Checking again each earlier 'same record' judgment made with a table or rule that has since changed."
+    },
+    "matcher.filenolongerreached": {
+      "says": "Writing a finding for review that names the earlier 'same record' judgments the newer rule list no longer reaches."
+    },
+    "pod-database.keyed.graphs": {
+      "says": "Updating the saved database's facts, one group of facts at a time."
+    },
+    "pod-database.keyed.screens": {
+      "says": "Updating the saved database's ready-made answer tables."
+    },
+    "pod-database.keyed.ledger": {
+      "says": "Recording what the saved database now holds."
+    }
+  },
+  "families": [
+    {
+      "startsWith": "bridge.query-",
+      "endsWith": ".rq",
+      "says": "The Bridge's query for {name}, which pulls those out of the converted source.",
+      "within": "arrivals.convert"
+    },
+    {
+      "startsWith": "build.query-",
+      "endsWith": ".ttl",
+      "says": "Building the {name} answer file by asking the pod's facts its question.",
+      "within": "build.queried"
+    },
+    {
+      "startsWith": "view.build-",
+      "endsWith": ".ttl",
+      "says": "Writing the {name} answer file from the question's rows.",
+      "within": "build.queried"
+    },
+    {
+      "startsWith": "derive.step-queries-",
+      "endsWith": ".rq",
+      "says": "Working out {name} from the pod's facts, one derivation step.",
+      "within": "kept.step.rebuilt"
+    },
+    {
+      "startsWith": "matcher.rule-",
+      "says": "One 'same record' rule, {name}: checking whether two records fit it.",
+      "within": "matcher.of.over"
+    },
+    {
+      "startsWith": "question.page-",
+      "says": "One page of the answer to: {name}.",
+      "within": "scenario.first-screen"
+    },
+    {
+      "startsWith": "question-",
+      "says": "The answer to: {name}.",
+      "within": "scenario.first-screen"
+    },
+    {
+      "startsWith": "core-pod.step.rebuild-",
+      "says": "Re-deriving the pod's answers after a step of this kind: {name}.",
+      "within": "scenario.import"
+    }
+  ],
+  "counts": {
+    "records": "How many records the person's source file holds.",
+    "files-written": "How many files the import wrote to the pod.",
+    "graph.scans": "How many times the in-memory facts were searched from end to end.",
+    "graph.quadsvisited": "How many individual facts those searches looked at.",
+    "store.queries": "How many questions were put to the pod's fact store.",
+    "bridge.query.rows": "How many rows the Bridge's queries returned in all.",
+    "bridge.workers": "How many helper processes the Bridge used.",
+    "bridge.package.found": "Whether the Bridge's package was found, 1 if so.",
+    "built.lines.total": "How many lines the answer files hold in all.",
+    "built.lines.written": "How many answer-file lines were written.",
+    "built.lines.sorted": "How many answer-file lines had to be sorted.",
+    "view.quadsmoved": "How many facts were set aside and put back while answer files were rebuilt.",
+    "podfiles.files": "How many pod files were read.",
+    "podfiles.calls": "How many times pod files were read.",
+    "adapter.files.read": "How many adapter files were read.",
+    "components.resolved": "How many of the runtime's parts were found on disk.",
+    "core-pod.compactions": "How many times the pod's files were tidied together.",
+    "incremental.boundvalues.iris": "How many record names a narrowed question was given.",
+    "incremental.boundvalues.batches": "How many batches those names were given in.",
+    "incremental.boundvalues.calls": "How many narrowed questions were asked.",
+    "matcher.valuesblocks": "How many groups of records the matcher compared at a time.",
+    "matcher.valuesblockrecords": "How many records those groups held in all.",
+    "matcher.valueslistssplit": "How many times a long list of records was split to fit.",
+    "matcher.queriesrun": "How many questions the matcher asked.",
+    "matcher.takenrecords": "How many records the matcher picked to compare.",
+    "matcher.boundrecords": "How many records the matcher's questions were limited to.",
+    "shapes.machine-basis-check": "How many times a judgment's stated basis was checked against its shape (a repeat check over the same statements is not counted)."
+  },
+  "countFamilies": [
+    {
+      "endsWith": ".graph.quadsvisited",
+      "says": "How many individual facts the searches inside '{name}' looked at."
+    },
+    {
+      "endsWith": ".graph.scans",
+      "says": "How many times the in-memory facts were searched end to end inside '{name}'."
+    },
+    {
+      "endsWith": ".store.queries",
+      "says": "How many fact-store questions '{name}' put."
+    },
+    {
+      "endsWith": ".rows",
+      "says": "How many rows '{name}' returned."
+    },
+    {
+      "startsWith": "core-pod.matcherselect.query-",
+      "says": "How many times the matcher put this question to the pod's facts."
+    }
+  ]
+}

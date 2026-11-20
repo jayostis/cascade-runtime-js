@@ -154,6 +154,10 @@ npm run evals:report -- --history                               # the published 
 [`packages/evals/README.md`](packages/evals/README.md) says what a run holds,
 the configs, and how it is scored.
 
+### How fast it is
+
+[Performance history](https://jayostis.github.io/cascade-runtime-js/perf/) draws a chart for each measurement over main's builds and the nightly runs: the headline times (a fresh pod's import and first screen, a reopened pod's first answer, a page of answers, closing) and the slowest stages inside each. Lower is better; hover a point for what it measures, its range over three runs and the commit. Nothing alerts or fails on a slowdown. [What the performance numbers mean](docs/perf-glossary.md) lists every scenario, data set and stage in plain words. `npm run perf` makes the same file locally; a pull request is shown its before and after against main in a comment.
+
 ### The developer story
 
 There are two, one per epic. `developer-story/allergies.mjs` is what an app would write against the package
