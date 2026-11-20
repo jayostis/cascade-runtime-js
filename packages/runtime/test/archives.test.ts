@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, readdir, readFile, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import { ArchivedFiles, archivedFiles } from "../src/archives.js";
+import {
+  ArchivedFiles,
+  archivedFiles,
+  MOST_DECLARED,
+} from "../src/archives.js";
 import {
   type DeriveKey,
   EncryptedFiles,
@@ -14,7 +19,7 @@ import {
 import { type Files, MemoryFiles } from "../src/files.js";
 import { Layout } from "../src/layout.js";
 import { catFile, unpack } from "../src/node/archive-commands.js";
-import { FolderFiles } from "../src/node/folder-files.js";
+import { FolderFiles, openSharedHandles } from "../src/node/folder-files.js";
 import { probing } from "../src/probe.js";
 import { Refusal } from "../src/step.js";
 import { layout as vocabularyLayout } from "./vocabulary.js";
@@ -26,11 +31,16 @@ const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (read: Uint8Array | undefined): string | undefined =>
   read && new TextDecoder().decode(read);
 
+/** The path of the file N9 names by a UUID whose first two letters are `prefix`, in a folder with that fan-out. */
+const filed = (folder: string, prefix: string, n: number): string =>
+  `${folder}${prefix}/${prefix}000000-0000-4000-8000-${String(n).padStart(12, "0")}.ttl`;
+
 const CARD = "profile/card.ttl";
-const LOOSE = "records/conditions/aa/aa01.ttl";
-const STORED = "records/conditions/bb/bb02.ttl";
-const DEFLATED = "provenance/imports/dd/dd04.ttl";
-const SUBJECT = "subject/cc/cc03.ttl";
+const LOOSE = "records/conditions/aa/aa000000-0000-4000-8000-000000000001.ttl";
+const STORED = "records/conditions/bb/bb000000-0000-4000-8000-000000000002.ttl";
+const DEFLATED =
+  "provenance/imports/dd/dd000000-0000-4000-8000-000000000004.ttl";
+const SUBJECT = "subject/cc/cc000000-0000-4000-8000-000000000003.ttl";
 const BODY = {
   [CARD]: "<#me> a <#Person> .\n",
   [LOOSE]: "<#a> a <#Condition> .\n",
@@ -68,6 +78,13 @@ class Counting implements Files {
   }
 }
 
+/** How many shared handles are open once the turns that close them have passed, as many as a quarter second gives. */
+async function handlesAfterTheTurn(): Promise<number> {
+  for (let turns = 0; turns < 50 && openSharedHandles() > 0; turns++)
+    await new Promise((done) => setTimeout(done, 5));
+  return openSharedHandles();
+}
+
 /** Files in memory holding the card and `LOOSE` at their paths and `IN_ARCHIVE` in one archive, and a stopped write beside it. */
 async function memoryPod(): Promise<{ host: MemoryFiles; archive: string }> {
   const host = new MemoryFiles(POD);
@@ -88,9 +105,11 @@ async function memoryPod(): Promise<{ host: MemoryFiles; archive: string }> {
  */
 describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()", () => {
   let folder: string;
+  let layout: Layout;
 
   before(async () => {
     folder = await mkdtemp(join(tmpdir(), "archives-"));
+    layout = await vocabularyLayout();
   });
 
   after(() => rm(folder, { recursive: true, force: true }));
@@ -104,8 +123,8 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
       for (const path of await host.list(""))
         await disk.write(path, (await host.read(path)) as Uint8Array);
       kinds = [
-        ["memory", new ArchivedFiles(host, ARCHIVES)],
-        ["folder", new ArchivedFiles(disk, ARCHIVES)],
+        ["memory", new ArchivedFiles(host, layout)],
+        ["folder", new ArchivedFiles(disk, layout)],
       ];
     });
 
@@ -143,7 +162,7 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
     const { host, archive } = await memoryPod();
     const counting = new Counting(host);
     const { result: read, seen } = await probing(async () => {
-      const files = new ArchivedFiles(counting, ARCHIVES);
+      const files = new ArchivedFiles(counting, layout);
       await files.list("");
       const opened = counting.ranges.length;
       await files.read(STORED);
@@ -168,7 +187,7 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
       host,
       zipOf([{ path: SUBJECT, bytes: bytes(BODY[SUBJECT]) }]),
     );
-    const files = new ArchivedFiles(host, ARCHIVES);
+    const files = new ArchivedFiles(host, layout);
     assert.deepEqual(await files.list(""), [
       CARD,
       DEFLATED,
@@ -196,7 +215,7 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
       const { host } = await memoryPod();
       await hold(host);
       await assert.rejects(
-        new ArchivedFiles(host, ARCHIVES).list(""),
+        new ArchivedFiles(host, layout).list(""),
         (error: unknown) =>
           error instanceof Refusal &&
           error.message.includes(STORED) &&
@@ -294,7 +313,7 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
       const host = new MemoryFiles(POD);
       await host.write(CARD, bytes(BODY[CARD]));
       const path = await archived(host, archive);
-      const files = new ArchivedFiles(host, ARCHIVES);
+      const files = new ArchivedFiles(host, layout);
       await assert.rejects(
         files.read(CARD),
         (error: unknown) =>
@@ -306,13 +325,134 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
     }
   });
 
+  it("refuses an archive that holds any entry that is no file N9 names to keep in one, naming the archive and the path", async () => {
+    const twin = filed("records/conditions/", "aa", 9);
+    const cases: [string, string[]][] = [
+      ["a view", ["clinical/conditions.ttl"]],
+      ["a stored document", [`attachments/sha-256/${"a".repeat(64)}`]],
+      ["a database", ["pod.db"]],
+      ["a file the layout gives by itself", [CARD]],
+      ["a reserved device name", ["records/conditions/aa/con"]],
+      [
+        "a reserved device name with an extension",
+        ["records/conditions/aa/aux.ttl"],
+      ],
+      ["a trailing dot", [`${STORED}.`]],
+      ["a trailing space", [`${STORED} `]],
+      ["a case twin", [twin, twin.replace("aa000000", "AA000000")]],
+      [
+        "an accent in two normalisations",
+        ["records/conditions/aa/é.ttl", "records/conditions/aa/é.ttl"],
+      ],
+      ["a sync's file", [filed("provenance/syncs/", "ee", 1)]],
+      ["a name in no folder of the layout", ["notes/x.ttl"]],
+    ];
+    for (const [what, paths] of cases) {
+      const host = new MemoryFiles(POD);
+      const archive = await archived(
+        host,
+        zipOf(paths.map((path) => ({ path, bytes: bytes("<#x> .\n") }))),
+      );
+      await assert.rejects(
+        new ArchivedFiles(host, layout).list(""),
+        (error: unknown) =>
+          error instanceof Refusal &&
+          error.message.includes(archive) &&
+          paths.some((path) => error.message.includes(path)) &&
+          /no file N9 names/.test(error.message),
+        what,
+      );
+    }
+    const host = new MemoryFiles(POD);
+    await archived(host, zipOf(IN_ARCHIVE));
+    assert.equal((await new ArchivedFiles(host, layout).list("")).length, 3);
+  });
+
+  it("refuses at the directory an entry declaring more than deflate gives for its bytes, or an archive declaring more than it may in all, before any allocation by what it declares", async () => {
+    const small = bytes("<#x> .\n");
+    const heldBefore = process.memoryUsage().arrayBuffers;
+    const bomb = new MemoryFiles(POD);
+    const archive = await archived(
+      bomb,
+      zipOf([{ path: STORED, bytes: small, deflate: true, size: 0xfffffffe }]),
+    );
+    const files = new ArchivedFiles(bomb, layout);
+    await assert.rejects(
+      files.list(""),
+      (error: unknown) =>
+        error instanceof Refusal &&
+        error.message.includes(archive) &&
+        error.message.includes(STORED) &&
+        /more than deflate gives/.test(error.message),
+    );
+    await assert.rejects(files.read(STORED), Refusal);
+    assert.ok(
+      process.memoryUsage().arrayBuffers - heldBefore < 64 * 1024 * 1024,
+      "nothing the size of what it declared was allocated",
+    );
+
+    const filler = randomBytes(420_000);
+    const wide = new MemoryFiles(POD);
+    const big = await archived(
+      wide,
+      zipOf(
+        [2, 3, 4].map((n) => ({
+          path: filed("records/conditions/", "aa", n),
+          bytes: filler,
+          deflate: true,
+          size: 400 * 1024 * 1024,
+        })),
+      ),
+    );
+    await assert.rejects(
+      new ArchivedFiles(wide, layout).list(""),
+      (error: unknown) =>
+        error instanceof Refusal &&
+        error.message.includes(big) &&
+        error.message.includes(String(MOST_DECLARED)),
+    );
+  });
+
+  it("reads an entry by one ranged read of its header, its data and no more, however much lies between it and the next", async () => {
+    const host = new MemoryFiles(POD);
+    const padding = 3 * 1024 * 1024;
+    await archived(
+      host,
+      zipOf([
+        { path: STORED, bytes: bytes(BODY[STORED]), padding },
+        { path: SUBJECT, bytes: bytes(BODY[SUBJECT]) },
+      ]),
+    );
+    const asked: number[] = [];
+    const counting: Files = {
+      iri: host.iri,
+      read: (path) => host.read(path),
+      readRange: (path, start, length) => {
+        asked.push(length);
+        return host.readRange(path, start, length);
+      },
+      write: (path, written) => host.write(path, written),
+      list: (path) => host.list(path),
+    };
+    const files = new ArchivedFiles(counting, layout);
+    await files.list("");
+    asked.length = 0;
+    assert.equal(text(await files.read(STORED)), BODY[STORED]);
+    assert.deepEqual(asked.length, 1);
+    assert.ok(
+      (asked[0] as number) <=
+        30 + STORED.length + 65535 + BODY[STORED].length + 24,
+      `${asked[0]} bytes asked of a ${padding}-byte gap`,
+    );
+  });
+
   it("refuses an entry whose bytes are not those its directory says, naming it and its archive", async () => {
     const host = new MemoryFiles(POD);
     const path = await archived(
       host,
       zipOf([{ path: STORED, bytes: bytes(BODY[STORED]), crc: 1 }]),
     );
-    const files = new ArchivedFiles(host, ARCHIVES);
+    const files = new ArchivedFiles(host, layout);
     assert.deepEqual(await files.list(""), [STORED]);
     await assert.rejects(
       files.read(STORED),
@@ -336,19 +476,17 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
         comment: "x".repeat(300),
       }),
     );
-    const files = new ArchivedFiles(host, ARCHIVES);
+    const files = new ArchivedFiles(host, layout);
     assert.deepEqual(await files.list(""), [SUBJECT]);
     assert.equal(text(await files.read(SUBJECT)), BODY[SUBJECT]);
   });
 
   it("writes a file no archive holds through to the host; refuses one an archive holds with other bytes, and removes none an archive holds", async () => {
     const { host } = await memoryPod();
-    const files = new ArchivedFiles(host, ARCHIVES);
-    await files.write(LOOSE.replace("aa01", "aa05"), bytes("<#e> .\n"));
-    assert.equal(
-      text(await host.read(LOOSE.replace("aa01", "aa05"))),
-      "<#e> .\n",
-    );
+    const files = new ArchivedFiles(host, layout);
+    const fresh = filed("records/conditions/", "aa", 5);
+    await files.write(fresh, bytes("<#e> .\n"));
+    assert.equal(text(await host.read(fresh)), "<#e> .\n");
     await files.write(STORED, bytes(BODY[STORED]));
     assert.equal(await host.read(STORED), undefined);
     await assert.rejects(
@@ -366,7 +504,6 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
   });
 
   it("with the vocabulary's layout, reads the archives in the folder it gives them; with none, is the host as it is", async () => {
-    const layout = await vocabularyLayout();
     const { host } = await memoryPod();
     assert.equal(layout.archivesFolder, ARCHIVES);
     assert.deepEqual(await archivedFiles(host, layout).list("subject"), [
@@ -382,10 +519,11 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
   });
 
   it("leaves no handle open on an archive in a folder once its reads, one or several at once, have ended, so it can be renamed", async () => {
+    await handlesAfterTheTurn();
     const at = join(folder, "handles");
     const disk = new FolderFiles(at, POD);
     const path = await archived(disk, zipOf(IN_ARCHIVE));
-    const files = new ArchivedFiles(disk, ARCHIVES);
+    const files = new ArchivedFiles(disk, layout);
     assert.equal(text(await files.read(STORED)), BODY[STORED]);
     assert.deepEqual(
       await Promise.all(
@@ -394,6 +532,11 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
         ),
       ),
       [BODY[STORED], BODY[DEFLATED], BODY[SUBJECT]],
+    );
+    assert.equal(
+      await handlesAfterTheTurn(),
+      0,
+      "the handle is closed after the turn",
     );
     await rename(join(at, ...path.split("/")), join(at, ARCHIVES, "moved.zip"));
     assert.deepEqual(await readdir(join(at, ARCHIVES)), ["moved.zip"]);
@@ -424,7 +567,7 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
       });
       await sealing.writeAll(FILES.map(([path, body]) => [path, bytes(body)]));
       const opened = async () => {
-        const files = new ArchivedFiles(host, ARCHIVES);
+        const files = new ArchivedFiles(host, layout);
         const index = await SealedIndex.open(files, made.key);
         const pod = new EncryptedFiles(files, index.key, { index });
         return Promise.all(
@@ -450,7 +593,6 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
 
   describe("cat and unpack, the commands that look inside", () => {
     it("cat prints a file held loose or in an archive; unpack writes a pod's or an archive's files to a folder", async () => {
-      const layout = await vocabularyLayout();
       const { host } = await memoryPod();
       const pod = join(folder, "cat-pod");
       const disk = new FolderFiles(pod);
@@ -488,6 +630,26 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
         SUBJECT,
       ]);
       await assert.rejects(unpack(pod, one, layout), /not empty/);
+    });
+
+    it("unpack refuses a folder inside the pod it reads, or inside the folder of the archive it reads, and writes nothing there", async () => {
+      const { host } = await memoryPod();
+      const pod = join(folder, "unpack-inside-pod");
+      const disk = new FolderFiles(pod);
+      for (const path of await host.list(""))
+        await disk.write(path, (await host.read(path)) as Uint8Array);
+      const before = await disk.list("");
+      const [archive] = before.filter((path) => path.endsWith(".zip"));
+      for (const [from, to] of [
+        [pod, join(pod, "out")],
+        [pod, join(pod, ARCHIVES, "out")],
+        [
+          join(pod, ...(archive as string).split("/")),
+          join(pod, ARCHIVES, "out"),
+        ],
+      ] as const)
+        await assert.rejects(unpack(from, to, layout), /inside/, to);
+      assert.deepEqual(await disk.list(""), before);
     });
   });
 });

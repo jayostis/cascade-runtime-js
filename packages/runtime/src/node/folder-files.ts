@@ -1,3 +1,4 @@
+import type { EventEmitter } from "node:events";
 import { constants, type Stats } from "node:fs";
 import {
   type FileHandle,
@@ -102,6 +103,15 @@ const sharedHandles = new Map<
     reads: number;
   }
 >();
+
+/** How many of those handles are open now, from the opening to the handle's own `close` event. */
+let sharedOpen = 0;
+
+/**
+ * How many handles on files this process's ranged reads hold open. On Windows a rename succeeds with a handle open, so
+ * only this count shows a handle left open once its turn has passed.
+ */
+export const openSharedHandles = (): number => sharedOpen;
 
 /** The replaces on each path in this process, one after another, so that no two look at a file at once. */
 const replacing = new Map<string, Promise<unknown>>();
@@ -327,7 +337,13 @@ export class FolderFiles implements Files {
       const key = `${opening.path}\0${String(opening.flag)}`;
       let shared = sharedHandles.get(key);
       if (shared === undefined) {
-        const handle = open(opening.path, opening.flag);
+        const handle = open(opening.path, opening.flag).then((opened) => {
+          sharedOpen += 1;
+          (opened as unknown as EventEmitter).once("close", () => {
+            sharedOpen -= 1;
+          });
+          return opened;
+        });
         shared = {
           handle,
           size: handle.then(async (opened) => (await opened.stat()).size),

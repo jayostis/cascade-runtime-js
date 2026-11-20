@@ -21,6 +21,10 @@ export interface ZipEntry {
   readonly extra?: Uint8Array;
   /** The CRC-32 written, in place of the bytes'. */
   readonly crc?: number;
+  /** The uncompressed size written, in place of the bytes' length. */
+  readonly size?: number;
+  /** Zero bytes written after this entry's data, which no directory entry names. */
+  readonly padding?: number;
 }
 
 export interface ZipOptions {
@@ -66,6 +70,8 @@ export function zipOf(
         ? deflateRawSync(entry.bytes)
         : Buffer.from(entry.bytes);
     const crc = entry.crc ?? crc32(entry.bytes);
+    const size = entry.size ?? entry.bytes.length;
+    const padding = Buffer.alloc(entry.padding ?? 0);
     const flags = entry.flags ?? 0x0800;
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
@@ -76,7 +82,7 @@ export function zipOf(
     local.writeUInt16LE(0x21, 12);
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(entry.bytes.length, 22);
+    local.writeUInt32LE(size, 22);
     local.writeUInt16LE(name.length, 26);
     local.writeUInt16LE(extra.length, 28);
     const header = Buffer.alloc(46);
@@ -89,13 +95,14 @@ export function zipOf(
     header.writeUInt16LE(0x21, 14);
     header.writeUInt32LE(crc, 16);
     header.writeUInt32LE(data.length, 20);
-    header.writeUInt32LE(entry.bytes.length, 24);
+    header.writeUInt32LE(size, 24);
     header.writeUInt16LE(name.length, 28);
     header.writeUInt16LE(extra.length, 30);
     header.writeUInt32LE(offset, 42);
-    parts.push(local, name, extra, data);
+    parts.push(local, name, extra, data, padding);
     central.push(header, name, extra);
-    offset += local.length + name.length + extra.length + data.length;
+    offset +=
+      local.length + name.length + extra.length + data.length + padding.length;
   }
   const directory = Buffer.concat(central);
   if (options.torn === true)

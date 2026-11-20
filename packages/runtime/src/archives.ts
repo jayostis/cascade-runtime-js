@@ -20,6 +20,19 @@ const STRONGLY_ENCRYPTED = 0x0040;
 const UTF8 = 0x0800;
 const STORED = 0;
 const DEFLATED = 8;
+/** The most a local header's extra field can be, and the most its data descriptor, which follows the data. */
+const MOST_EXTRA = 0xffff;
+const MOST_DESCRIPTOR = 24;
+/** What deflate can give for each byte it is given at most (1,032 to 1, measured 1,029 to 1), and what it gives of none. */
+const MOST_RATIO = 1032;
+const RATIO_SLACK = 64;
+/**
+ * The most an archive may declare of its files' sizes together. Memory follows the sizes an archive says, so the sum is
+ * bounded: 1 GiB is twenty times the 53 MB archive of a 16,833-record pod, and a writer that reaches it starts another.
+ */
+export const MOST_DECLARED = 1024 * 1024 * 1024;
+/** The path of a file held sealed: where a sealed pod's host keeps each file, under its keyed name (never the index's). */
+const SEALED_FILE = /^sealed\/[0-9a-f]{2}\/[0-9a-f]{62}$/;
 
 /** An archive's name in its folder (N9): the SHA-256 of its bytes in lowercase hex, adding `.zip`. */
 export const ARCHIVE_NAME = /^[0-9a-f]{64}\.zip$/;
@@ -107,13 +120,17 @@ function endIn(tail: Uint8Array): number | undefined {
  * Every file the archive holds, from its directory alone: two ranged reads, its end and its central directory. An
  * archive with no end record is torn and refused; one outside the ISO/IEC 21320-1 profile as X1 narrows it (entries
  * stored or deflated, UTF-8 paths, no ZIP encryption, no ZIP64, one disk, one entry a path) is refused, naming it.
- * An entry in `folder`, the archives' own, is refused; an entry for a folder holds no file and is passed over.
+ * An entry for a folder holds no file and is passed over; any other that is not a file the layout names as N9 names a
+ * file to keep in an archive (X1: a file of a snapshot's set, or a sealed one, never a view, a stored document, nor a
+ * name a host may read as another's) is refused, as is an entry in the archives' folder. So is one declaring more than
+ * deflate can give for the bytes it has, or an archive declaring more than `MOST_DECLARED` of them together.
  */
 export async function archiveDirectory(
   files: Files,
   archive: string,
-  folder?: string,
+  layout: Layout,
 ): Promise<ArchiveEntry[]> {
+  const folder = layout.archivesFolder;
   const ranged = async (start: number, length: number): Promise<Uint8Array> => {
     const read =
       files.readRange === undefined
@@ -166,6 +183,7 @@ export async function archiveDirectory(
   const entries: ArchiveEntry[] = [];
   const paths = new Set<string>();
   let next = 0;
+  let declared = 0;
   for (let n = 0; n < count; n++) {
     if (
       next + CENTRAL_LENGTH > size ||
@@ -227,8 +245,27 @@ export async function archiveDirectory(
     if (folder !== undefined && under(folder, path))
       throw notInProfile(archive, `it holds ${path}, in the archives' folder`);
     if (paths.has(path)) throw notInProfile(archive, `it holds ${path} twice`);
+    if (
+      !SEALED_FILE.test(path) &&
+      !(layout.inSnapshotSet(path) && !layout.inStoredBytes(path))
+    )
+      throw notInProfile(
+        archive,
+        `it holds ${path}, which is no file N9 names for an archive to hold (not a view, a stored document, nor a file the layout gives by itself)`,
+      );
     if (method === STORED && compressed !== length)
       throw notInProfile(archive, `${path} is stored, yet its sizes differ`);
+    if (length > compressed * MOST_RATIO + RATIO_SLACK)
+      throw notInProfile(
+        archive,
+        `${path} declares ${length} bytes of ${compressed}, more than deflate gives`,
+      );
+    declared += length;
+    if (declared > MOST_DECLARED)
+      throw notInProfile(
+        archive,
+        `it declares more than ${MOST_DECLARED} bytes of files`,
+      );
     paths.add(path);
     entries.push({
       archive,
@@ -270,7 +307,7 @@ async function inflated(
     .stream()
     .pipeThrough(new DecompressionStream("deflate-raw"))
     .getReader();
-  const out = new Uint8Array(size);
+  const chunks: Uint8Array[] = [];
   let at = 0;
   try {
     for (;;) {
@@ -280,13 +317,20 @@ async function inflated(
         await reader.cancel();
         return undefined;
       }
-      out.set(value, at);
+      chunks.push(value);
       at += value.length;
     }
   } catch {
     return undefined;
   }
-  return at === size ? out : undefined;
+  if (at !== size) return undefined;
+  const out = new Uint8Array(size);
+  let from = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, from);
+    from += chunk.length;
+  }
+  return out;
 }
 
 /**
@@ -298,10 +342,20 @@ export async function archiveEntryBytes(
   entry: ArchiveEntry,
 ): Promise<Uint8Array> {
   counted("archives.entries.read");
-  const span = entry.end - entry.offset;
+  const span = Math.min(
+    entry.end - entry.offset,
+    LOCAL_LENGTH +
+      entry.name.length +
+      MOST_EXTRA +
+      entry.compressed +
+      MOST_DESCRIPTOR,
+  );
   const read =
     files.readRange === undefined
-      ? (await files.read(entry.archive))?.slice(entry.offset, entry.end)
+      ? (await files.read(entry.archive))?.slice(
+          entry.offset,
+          entry.offset + span,
+        )
       : await files.readRange(entry.archive, entry.offset, span);
   if (read === undefined) throw new Error(`${entry.archive} is gone`);
   const wrong = new Refusal(
@@ -346,12 +400,17 @@ type Held = ReadonlyMap<string, ArchiveEntry>;
 export class ArchivedFiles implements Files {
   readonly #files: Files;
   readonly #folder: string;
+  readonly #layout: Layout;
   #held: Promise<Held> | undefined;
   /** The paths found at their own paths and in an archive, compared once. */
   readonly #compared = new Set<string>();
 
-  constructor(files: Files, folder: string) {
+  constructor(files: Files, layout: Layout) {
+    const folder = layout.archivesFolder;
+    if (folder === undefined)
+      throw new Error("the layout gives no folder for archives");
     this.#files = files;
+    this.#layout = layout;
     this.iri = files.iri;
     this.#folder = folder.endsWith("/") ? folder : `${folder}/`;
     const { writeAll, writeMany, writeNew, replace, remove } = files;
@@ -450,7 +509,7 @@ export class ArchivedFiles implements Files {
           .sort();
         const directories = await Promise.all(
           archives.map((archive) =>
-            archiveDirectory(this.#files, archive, this.#folder),
+            archiveDirectory(this.#files, archive, this.#layout),
           ),
         );
         const held = new Map<string, ArchiveEntry>();
@@ -551,5 +610,5 @@ export class ArchivedFiles implements Files {
 export function archivedFiles(files: Files, layout: Layout): Files {
   return layout.archivesFolder === undefined
     ? files
-    : new ArchivedFiles(files, layout.archivesFolder);
+    : new ArchivedFiles(files, layout);
 }

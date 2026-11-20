@@ -4210,6 +4210,42 @@ describe("Opening a pod whose files are held in archives · openPod()", () => {
     );
   });
 
+  it("opens a packed pod by the app's default path, its answers beside it, as the pod it was loose; a loose twin of an archived file with other bytes fails the first question, naming it", async () => {
+    const at = await copied((await alexPod()).folder, "packed-alex-default");
+    const asked = async () => {
+      const pod = await openPodWith(kept, at);
+      try {
+        return {
+          who: [pod.address, pod.subject],
+          rows: await pod.ask(QUESTION),
+          graphs: await pod.ask(GRAPHS),
+        };
+      } finally {
+        await pod.close();
+      }
+    };
+    const loose = await asked();
+    const files = new FolderFiles(at);
+    const held = (await files.list("")).filter(archivable);
+    await packedFolder(files, held);
+    assert.deepEqual(await asked(), loose);
+
+    const [twin] = held;
+    assert.ok(twin !== undefined);
+    await files.write(twin, new TextEncoder().encode("<#other> .\n"));
+    await assert.rejects(
+      async () => {
+        const pod = await openPodWith(kept, at);
+        try {
+          await pod.ask(GRAPHS);
+        } finally {
+          await pod.close();
+        }
+      },
+      (error: unknown) => String(error).includes(twin),
+    );
+  });
+
   it("opens a sealed pod whose sealed files of the set are held in an archive, through its sealed index, answering as before", async () => {
     const sealedAlex = await sealedAlexPod();
     const at = await copied(sealedAlex.folder, "packed-sealed-alex");

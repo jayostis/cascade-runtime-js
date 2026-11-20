@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { basename, dirname } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   archiveDirectory,
   archiveEntryBytes,
@@ -42,18 +42,24 @@ export async function unpack(
     throw new Error(
       `${to} is not empty: unpack writes only into an empty folder`,
     );
+  const fromFile = (await stat(from)).isFile();
+  const source = fromFile ? dirname(from) : from;
+  const inside = relative(resolve(source), resolve(to));
+  if (
+    inside === "" ||
+    (!/^\.\.(?:[\\/]|$)/.test(inside) && !isAbsolute(inside))
+  )
+    throw new Error(
+      `${to} is inside ${source}: unpack writes into a folder of its own, never into the pod it reads`,
+    );
   const out = new FolderFiles(to);
   let reading: {
     readonly paths: readonly string[];
     readonly read: (path: string) => Promise<Uint8Array>;
   };
-  if ((await stat(from)).isFile()) {
+  if (fromFile) {
     const host = new FolderFiles(dirname(from));
-    const entries = await archiveDirectory(
-      host,
-      basename(from),
-      layout.archivesFolder,
-    );
+    const entries = await archiveDirectory(host, basename(from), layout);
     const byPath = new Map(entries.map((entry) => [entry.path, entry]));
     reading = {
       paths: [...byPath.keys()].sort(),
