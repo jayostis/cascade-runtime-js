@@ -610,6 +610,8 @@ export async function loadSharedAdapters(
   components: Components,
 ): Promise<ConfiguredAdapter[]> {
   const build = await buildStamp(bridgeFolder);
+  // If one fails, the others keep loading into the shared cache, each by its own slot and memoized per promise, so a
+  // later call reuses them; the error is whichever failed first in time, not first in the order given.
   return Promise.all(
     adapters.map(async (followed): Promise<ConfiguredAdapter> => {
       const resolved = await components.resolve(followed);

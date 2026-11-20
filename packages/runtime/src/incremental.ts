@@ -74,11 +74,16 @@ export async function boundValues(
   counted("incremental.boundValues.calls");
   counted("incremental.boundValues.iris", bounded.length);
   await timed("incremental.boundValues", async () => {
-    // `?bound` only restricts which rows a pattern gives, so patterns that give none unbound give none for any batch;
-    // but a path that may be no step long (`*`) gives a bound term to itself, held by the union or not.
+    // Every pattern binds `?bound` in a triple or a GRAPH pattern, so `?bound` only restricts which rows it gives and
+    // patterns that give none unbound give none for any batch. A `?bound` met only in a FILTER restricts nothing
+    // unbound (the filter errors, the rows are lost), so a pattern with one is not asked. Nor is a path that may be no
+    // step long (`*`): the unbound ask over it is true whenever the union holds any node, so it skips nothing.
     if (
       bounded.length > AT_ONCE &&
-      !patterns.some((pattern) => pattern.includes("*")) &&
+      !patterns.some(
+        (pattern) =>
+          pattern.includes("*") || /\bFILTER\b[^]*\?bound\b/i.test(pattern),
+      ) &&
       !(await union.ask(
         `${PREFIXES}ASK { ${patterns.map((pattern) => `{ ${pattern} }`).join(" UNION ")} }`,
       ))
@@ -705,15 +710,20 @@ export class KeptBuild {
       );
   }
 
-  /** Puts the subjects' triples in the graph, of a file the build writes, in place of what it held of them. */
+  /**
+   * Puts the subjects' triples in the graph, of a file the build writes, in place of what it held of them: `held` is
+   * how many triples the build held of them, which is how many the union removes.
+   */
   async #replacedSubjects(
     graph: string,
     gone: readonly string[],
     fresh: readonly Triple[],
+    held: number,
   ): Promise<void> {
     this.recording?.push({ graph, gone, fresh });
     if (this.#builtOut) return;
-    this.#moved += await this.#union.removeSubjects(graph, gone);
+    await this.#union.removeSubjects(graph, gone);
+    this.#moved += held;
     await this.#union.add(fresh, graph);
   }
 
@@ -1274,7 +1284,9 @@ export class KeptBuild {
       ...oldEntries,
       ...this.#globalDerived,
     ];
-    this.#moved += await union.removeSubjects(derivedGraph, derivedGone);
+    this.#moved += await union.removeSubjects(derivedGraph, derivedGone, {
+      count: true,
+    });
     const derivedAdded = added.filter(
       ([subject]) =>
         inScope.has(subject.value) || candidates.has(subject.value),
@@ -1309,6 +1321,7 @@ export class KeptBuild {
             view,
             before.map(([subject]) => subject.value),
             made,
+            before.length,
           );
           this.#always.set(path, made);
           changed.set(path, made);
@@ -1316,11 +1329,13 @@ export class KeptBuild {
         }
         let groups = this.#views.get(path);
         const gone: string[] = [];
+        let held = 0;
         for (const hash of oldHashes) {
           const entry = `${view}#${hash}`;
           entryNames.add(entry);
           const triples = groups?.get(entry);
           if (triples === undefined) continue;
+          held += triples.length;
           gone.push(...new Set(triples.map(([subject]) => subject.value)));
           groups?.delete(entry);
         }
@@ -1335,6 +1350,7 @@ export class KeptBuild {
           const before = groups.get("") ?? [];
           if (!sameTriples(before, own)) {
             gone.push(view);
+            held += before.length;
             groups.set("", own);
             fresh.push(...own);
           }
@@ -1346,7 +1362,7 @@ export class KeptBuild {
           }
         }
         if (gone.length === 0 && fresh.length === 0) return;
-        await this.#replacedSubjects(view, gone, fresh);
+        await this.#replacedSubjects(view, gone, fresh, held);
         if (groups !== undefined) changed.set(path, flat(groups));
       });
     }
@@ -1376,11 +1392,15 @@ export class KeptBuild {
       const madeBySubject = bySubject(made);
       const gone: string[] = [];
       const fresh: Triple[] = [];
-      for (const subject of replaced)
-        if (subjects.has(subject) && !madeBySubject.has(subject)) {
+      let held = 0;
+      for (const subject of replaced) {
+        const before = subjects.get(subject);
+        if (before !== undefined && !madeBySubject.has(subject)) {
+          held += before.length;
           subjects.delete(subject);
           gone.push(subject);
         }
+      }
       for (const [subject, triples] of madeBySubject) {
         if (
           !replaced.has(subject) &&
@@ -1396,12 +1416,15 @@ export class KeptBuild {
             ? triples
             : least(before, triples);
         if (before !== undefined && sameTriples(before, after)) continue;
-        if (before !== undefined) gone.push(subject);
+        if (before !== undefined) {
+          gone.push(subject);
+          held += before.length;
+        }
         subjects.set(subject, after);
         fresh.push(...after);
       }
       if (gone.length === 0 && fresh.length === 0) continue;
-      await this.#replacedSubjects(graph, gone, fresh);
+      await this.#replacedSubjects(graph, gone, fresh, held);
       changed.set(path, flat(subjects));
     }
 

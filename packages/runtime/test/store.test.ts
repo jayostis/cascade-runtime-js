@@ -495,12 +495,36 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
         "urn:graph",
       );
       await held.add([[iri("urn:a"), iri("urn:p"), literal("5")]], "urn:other");
+      const counting = { count: true };
       assert.equal(
-        await held.removeSubjects("urn:graph", ["urn:a", "urn:none"]),
+        await held.removeSubjects("urn:graph", ["urn:a", "urn:none"], counting),
         2,
       );
+      assert.equal(
+        await held.removeSubjects("urn:graph", ["urn:a"], counting),
+        0,
+      );
+      assert.equal(
+        await held.removeSubjects("urn:absent", ["urn:b"], counting),
+        0,
+      );
+    });
+
+    it("removes the same quads without counting them, and gives 0", async () => {
+      const held = new Union(new OxigraphStore());
+      await held.add(
+        [
+          [iri("urn:a"), iri("urn:p"), literal("1")],
+          [iri("urn:b"), iri("urn:p"), literal("3")],
+        ],
+        "urn:graph",
+      );
       assert.equal(await held.removeSubjects("urn:graph", ["urn:a"]), 0);
-      assert.equal(await held.removeSubjects("urn:absent", ["urn:b"]), 0);
+      assert.equal(
+        await held.removeSubjects("urn:graph", ["urn:b"], { count: true }),
+        1,
+      );
+      assert.equal(await held.ask("ASK { ?s ?p ?o }"), false);
     });
 
     it("counts each quad once when a subject is given twice, and when there are more subjects than one removal binds", async () => {
@@ -514,7 +538,9 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
         "urn:graph",
       );
       assert.equal(
-        await held.removeSubjects("urn:graph", [...subjects, ...subjects]),
+        await held.removeSubjects("urn:graph", [...subjects, ...subjects], {
+          count: true,
+        }),
         1200,
       );
     });
@@ -556,7 +582,10 @@ describe("Holding graphs and querying them · OxigraphStore, Union, RestorableUn
         graph: "urn:three",
       });
       const held = new RestorableUnion(store, ["urn:three"]);
-      assert.equal(await held.removeSubjects("urn:three", ["urn:u"]), 2);
+      assert.equal(
+        await held.removeSubjects("urn:three", ["urn:u"], { count: true }),
+        2,
+      );
       await held.restore();
     });
 

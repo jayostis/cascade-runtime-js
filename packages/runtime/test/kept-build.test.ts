@@ -1006,11 +1006,28 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.deepEqual([none.asks, none.selects], [0, 1]);
     });
 
-    it("runs the batches, with no ask, for a path that may be no step long, which no ask over the union's nodes can answer for the bound IRIs", async () => {
+    it("runs the batches, with no ask, for a path that may be no step long, and finds the bound IRI the union holds and none it lacks", async () => {
       const done = await over(
         iris(300),
         ["urn:test:r3"],
         "?bound (<urn:test:next>)* ?found",
+      );
+      assert.deepEqual([...done.found], ["urn:test:r3"]);
+      assert.deepEqual([done.asks, done.selects], [0, 2]);
+      const empty = await over(
+        iris(300),
+        [],
+        "?bound (<urn:test:next>)* ?found",
+      );
+      assert.deepEqual([...empty.found], []);
+      assert.deepEqual([empty.asks, empty.selects], [0, 2]);
+    });
+
+    it("runs the batches, with no ask, for a pattern that meets ?bound only in a FILTER, which is true for the bound IRI and not unbound", async () => {
+      const done = await over(
+        iris(300),
+        ["urn:test:r3"],
+        `?found a ${TYPED} FILTER (STRSTARTS(STR(?found), STR(?bound)))`,
       );
       assert.deepEqual([...done.found], ["urn:test:r3"]);
       assert.deepEqual([done.asks, done.selects], [0, 2]);

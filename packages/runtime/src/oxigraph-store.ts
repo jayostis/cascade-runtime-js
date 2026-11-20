@@ -693,9 +693,11 @@ export class OxigraphStore implements Store {
   /** How many quads the graph holds of the subjects in `values`, a `VALUES` block. */
   #held(named: string, values: string): number {
     const answer = parseResults(
-      this.#store.query(
-        `SELECT (COUNT(*) AS ?n) WHERE { GRAPH ${named} { ${values} ?s ?p ?o } }`,
-        { results_format: RESULTS_JSON },
+      queried(() =>
+        this.#store.query(
+          `SELECT (COUNT(*) AS ?n) WHERE { GRAPH ${named} { ${values} ?s ?p ?o } }`,
+          { results_format: RESULTS_JSON },
+        ),
       ) as string,
     );
     if (typeof answer === "boolean")
@@ -712,6 +714,7 @@ export class OxigraphStore implements Store {
   async removeSubjects(
     graph: string,
     subjects: Iterable<string>,
+    options: { count?: boolean } = {},
   ): Promise<number> {
     if (this.#oxigraph === undefined) return 0;
     const all = [...new Set(subjects)];
@@ -722,8 +725,8 @@ export class OxigraphStore implements Store {
         .slice(start, start + SUBJECTS_AT_ONCE)
         .map((subject) => written(iri(subject)))
         .join(" ")} }`;
-      const held = this.#held(named, values);
-      if (held === 0) continue;
+      const held = options.count === true ? this.#held(named, values) : 0;
+      if (options.count === true && held === 0) continue;
       this.#oxigraph.update(
         `DELETE { GRAPH ${named} { ?s ?p ?o } } WHERE { GRAPH ${named} { ${values} ?s ?p ?o } }`,
       );

@@ -53,8 +53,15 @@ export interface Store {
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
   /** Removes a graph and its triples. */
   drop(graph: string): Promise<void>;
-  /** Removes from the graph every triple whose subject is one of the IRIs, and gives how many it removed. */
-  removeSubjects(graph: string, subjects: Iterable<string>): Promise<number>;
+  /**
+   * Removes from the graph every triple whose subject is one of the IRIs. Counting what it removes costs a query on
+   * each batch, so it gives how many only for `count`, else 0.
+   */
+  removeSubjects(
+    graph: string,
+    subjects: Iterable<string>,
+    options?: { count?: boolean },
+  ): Promise<number>;
   select(query: string, union: ReadonlySet<string>): Promise<Rows>;
   ask(query: string, union: ReadonlySet<string>): Promise<boolean>;
   construct(query: string, union: ReadonlySet<string>): Promise<Triple[]>;
@@ -147,10 +154,14 @@ export class Union implements Dataset {
     this.#graphs.delete(graph);
   }
 
-  /** Removes from the graph every triple whose subject is one of the IRIs; gives how many it removed. */
-  removeSubjects(graph: string, subjects: Iterable<string>): Promise<number> {
+  /** Removes from the graph every triple whose subject is one of the IRIs; gives how many it removed for `count`, else 0. */
+  removeSubjects(
+    graph: string,
+    subjects: Iterable<string>,
+    options?: { count?: boolean },
+  ): Promise<number> {
     return timedAside("union.removeSubjects", () =>
-      this.store.removeSubjects(graph, subjects),
+      this.store.removeSubjects(graph, subjects, options),
     );
   }
 
@@ -245,9 +256,10 @@ export class RestorableUnion extends Union {
   override async removeSubjects(
     graph: string,
     subjects: Iterable<string>,
+    options?: { count?: boolean },
   ): Promise<number> {
     await this.#keep(graph);
-    return super.removeSubjects(graph, subjects);
+    return super.removeSubjects(graph, subjects, options);
   }
 
   override async select(query: string): Promise<Rows> {
