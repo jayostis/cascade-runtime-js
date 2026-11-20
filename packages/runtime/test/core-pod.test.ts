@@ -93,6 +93,12 @@ class Overlapping extends MemoryFiles {
 /** Files that take several writes at once and log the path of each read, with whether it found a file. */
 class Reading extends Overlapping {
   readonly reads: { path: string; found: boolean }[] = [];
+  lists = 0;
+
+  override list(folder: string): Promise<string[]> {
+    this.lists += 1;
+    return super.list(folder);
+  }
 
   override async read(path: string): Promise<Uint8Array | undefined> {
     const bytes = await super.read(path);
@@ -326,12 +332,14 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
 
     const waved = (): StepWrites => {
       const writes = new StepWrites();
-      FRESH.forEach((path, n) => writes.add(path, body(path), n < 2 ? 1 : 2));
+      FRESH.forEach((path, n) =>
+        writes.add(path, body(path), n < 2 ? 1 : 2, "version"),
+      );
       writes.act({ name: "urn:act", path: "acts/a", triples: [] });
       return writes;
     };
 
-    it("reads no file the listing lacks, in the first wave or the second, and still writes the second wave after the first", async () => {
+    it("reads no file whose name fixes its bytes and the listing lacks, in the first wave or the second, and still writes the second wave after the first", async () => {
       const { files, pod } = await listed();
       await waved().commit(pod.files);
       assert.deepEqual(
@@ -414,16 +422,57 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
         assert.ok(await files.read(path), `${path} was not written`);
     });
 
-    it("writes over a file that reached the pod after the listing with the bytes it holds, the name being the bytes' hash", async () => {
+    it("writes over a file whose name fixes its bytes that reached the pod after the listing, with the bytes it holds", async () => {
       const { files, pod } = await listed();
       await files.write("files/0", body("files/0"));
       const writes = new StepWrites();
-      writes.add("files/0", body("files/0"));
+      writes.add("files/0", body("files/0"), undefined, "version");
       await writes.commit(pod.files);
       assert.equal(
         new TextDecoder().decode(await files.read("files/0")),
         "files/0",
       );
+    });
+
+    it("refuses a file whose name does not fix its bytes that another session wrote after the listing with other bytes, as a read of it does", async () => {
+      const files = new Reading(ADDRESS);
+      const shared = options(files, await layout(), {
+        now: "2026-02-01T08:00:00Z",
+      });
+      const mine = new CorePod(shared);
+      await mine.create();
+      const other = new CorePod(shared);
+      await other.files.write("judgments/x.ttl", body("the other session's"));
+      const writes = new StepWrites();
+      writes.add("judgments/x.ttl", body("this session's"));
+      await assert.rejects(
+        writes.commit(mine.files),
+        /judgments\/x\.ttl is in the pod already, holding other bytes/,
+      );
+      assert.equal(
+        new TextDecoder().decode(await files.read("judgments/x.ttl")),
+        "the other session's",
+      );
+    });
+
+    it("lists nothing for a commit of no file and no act, on a pod whose listing is not loaded", async () => {
+      const files = new Reading(ADDRESS);
+      await files.write("records/0.ttl", body("0"));
+      const pod = new CorePod(
+        options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+      );
+      files.lists = 0;
+      await new StepWrites().commit(pod.files);
+      assert.equal(files.lists, 0);
+    });
+
+    it("refuses an act whose file is in the pod already, and writes none of the step's files", async () => {
+      const { files, pod } = await listed();
+      await files.write("acts/a", body("an earlier act"));
+      await assert.rejects(waved().commit(pod.files), {
+        message: "acts/a is in the pod already",
+      });
+      assert.equal(await files.read(FRESH[0] as string), undefined);
     });
   });
 

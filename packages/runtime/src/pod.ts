@@ -6,7 +6,7 @@ import { ntriples, type Triple } from "./rdf.js";
 export interface ListedFiles extends Files {
   /**
    * The paths of those given that the pod's listing lacks and that are not held: a file that reached the pod after
-   * the listing is not found, the pod being written only through these files.
+   * the listing is not found, so it is asked only of files whose name fixes their bytes (`FixedByName`).
    */
   lacking(paths: readonly string[]): Promise<ReadonlySet<string>>;
 }
@@ -18,6 +18,34 @@ function lists(pod: Files): pod is ListedFiles {
 export function same(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, index) => byte === b[index]);
 }
+
+/**
+ * The families of files a step writes whose name fixes their bytes, so a file of one that reached the pod after the pod's
+ * listing was taken holds the bytes the step would write, and a commit that finds the listing without one writes it with
+ * no read. Every family not named here is read as before, because another session may have written other bytes to the
+ * same name since the listing, which a read refuses and a write over would not:
+ * - `version`: a version of a record or of a reference series, named by its content (a content-addressed `ni:` stem).
+ * - `revision`: a revision, named by its content.
+ * - `finding`, `findingForReview`: a finding, named by its triples (cascade:FindingNamingRule).
+ * - `storedDocument`: a document's stored bytes, named by their hash.
+ * - `serverRecord`: a server's or an organization's record, named by the one address it describes, with the triples
+ *   that address gives it.
+ * - `matcherJudgment`, `matcherJudgmentAssertion`: named by the rule, the members and the rule list they come from.
+ * - `releaseRetraction`: named by the release it retracts.
+ * Not named, so read: the pod's creation files (the subject, the card, the preferences, the type index), an import's
+ * description, a record's own file (named by source identifiers, not by its content), a reference series' and a
+ * matcher's description, a person's judgment, and every file that arrives from another writer.
+ */
+export type FixedByName =
+  | "version"
+  | "revision"
+  | "finding"
+  | "findingForReview"
+  | "storedDocument"
+  | "serverRecord"
+  | "matcherJudgment"
+  | "matcherJudgmentAssertion"
+  | "releaseRetraction";
 
 /** An act's description, which its step writes last, with what `finish` adds to it. */
 export interface Act {
@@ -47,6 +75,7 @@ export class StepWrites {
   readonly #files = new Map<string, Uint8Array>();
   readonly #arrived = new Set<string>();
   readonly #waves = new Map<string, number>();
+  readonly #fixed = new Set<string>();
   #act: Act | undefined;
   #committed: readonly string[] = [];
 
@@ -59,14 +88,21 @@ export class StepWrites {
    * Holds the file. Where the pod writes several files at once, the files given the same `wave` in a row are written
    * together, each such row only once every file added before it is written (W1); a file with no wave is written in
    * its place, in one `writeAll` with the files with none beside it. A path added again keeps the place and the wave it first had.
+   * A file of a family whose name fixes its bytes names it, so the commit does not read it when the pod's listing lacks it.
    */
-  add(path: string, bytes: Uint8Array, wave?: number): void {
+  add(
+    path: string,
+    bytes: Uint8Array,
+    wave?: number,
+    fixedByName?: FixedByName,
+  ): void {
     if (path === this.#act?.path)
       throw new Error(`${path} is the act's file, written last`);
     const held = this.#files.get(path);
     if (held !== undefined && !same(held, bytes))
       throw new Error(`${path} would be written twice with different bytes`);
     if (held === undefined && wave !== undefined) this.#waves.set(path, wave);
+    if (fixedByName !== undefined) this.#fixed.add(path);
     this.#files.set(path, bytes);
   }
 
@@ -94,17 +130,19 @@ export class StepWrites {
 
   /**
    * Writes each file the pod lacks, the act's last, in one `writeAll`, and returns the paths of those that did not
-   * arrive from another writer; a file the pod holds with other bytes is refused.
+   * arrive from another writer; a file the pod holds with other bytes is refused. A file the pod's listing lacks is
+   * read too, unless its name fixes its bytes (`FixedByName`).
    */
   async commit(pod: Files, finish?: FinishAct): Promise<string[]> {
     const fresh: [string, Uint8Array][] = [];
     await timedAside("files.absent.check", async () => {
-      const lacking = lists(pod)
-        ? await pod.lacking([...this.#files.keys()])
-        : undefined;
+      const lacking =
+        lists(pod) && this.#fixed.size > 0
+          ? await pod.lacking([...this.#fixed])
+          : undefined;
       counted("files.absent.check", this.#files.size);
       for (const [path, bytes] of this.#files) {
-        if (lacking?.has(path) === true) {
+        if (this.#fixed.has(path) && lacking?.has(path) === true) {
           fresh.push([path, bytes]);
           continue;
         }

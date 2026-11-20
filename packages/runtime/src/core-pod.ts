@@ -268,8 +268,9 @@ export class BuildFailure extends Error {
  * The pod's files as listed once, each read from the pod once and then held, which holds while the pod is written
  * only through them: a write goes through to the pod, but not one giving a file the bytes it already holds. A file
  * not held is looked for in the pod, so a step never writes over one that reached the pod another way; it is held,
- * but not listed. A step's file the listing lacks is not looked for (`lacking`): one that reached the pod after the
- * listing was taken is written over, which a name that is the hash of the bytes makes harmless.
+ * but not listed. A step's file whose name fixes its bytes (`FixedByName`) that the listing lacks is not looked for
+ * (`lacking`): one that reached the pod after the listing was taken is written over, which its name makes harmless.
+ * Every other file is looked for, because another session may have written other bytes to its name since the listing.
  */
 class HeldFiles implements ListedFiles {
   readonly #pod: Files;

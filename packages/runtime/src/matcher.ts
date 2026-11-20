@@ -1002,6 +1002,8 @@ ${query}`;
           [matcher, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
           [matcher, iri(`${RDFS}label`), literal("Cascade matcher")],
         ]),
+        undefined,
+        "matcherJudgment",
       );
     const assertion = await matcherJudgmentAssertionName(
       this.rulesVersion,
@@ -1018,6 +1020,8 @@ ${query}`;
           iri(this.rulesVersion),
         ],
       ]),
+      undefined,
+      "matcherJudgmentAssertion",
     );
   }
 
@@ -1231,6 +1235,8 @@ ${query}`;
     writes.add(
       layout.place(`${CASCADE}FindingForReview`).path(name),
       ntriples(content(name)),
+      undefined,
+      "findingForReview",
     );
   }
 
@@ -1270,6 +1276,8 @@ ${query}`;
         writes.add(
           layout.place(`${CASCADE}FindingForReview`).path(name),
           ntriples(content(name)),
+          undefined,
+          "findingForReview",
         );
       }
   }
@@ -2062,6 +2070,8 @@ export function migrateRuleListVersions(
         )
         .path(name),
       ntriples([...triples]),
+      undefined,
+      "releaseRetraction",
     );
   const name = time.newId();
   const act = iri(name);
