@@ -1772,7 +1772,11 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       );
       assert.deepEqual(
         [...new Set(seen)],
-        ["live opening []", "no-live opening []", "live opening [work]"],
+        [
+          "live opening []",
+          "no-live opening []",
+          `live opening [${join("work", "left-alone")}]`,
+        ],
       );
       assert.deepEqual(s.state(), checking);
       const states = new Set(rows.map(({ name }) => name.split("/")[0]));
@@ -1815,7 +1819,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         [
           "no-live no-opening [D:\\,C:\\]",
           "live opening []",
-          "live opening [work]",
+          `live opening [${join("work", "left-alone")}]`,
         ],
       );
       assert.deepEqual(s.state(), hosted);

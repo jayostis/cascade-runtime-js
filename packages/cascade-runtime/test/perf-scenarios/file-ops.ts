@@ -389,17 +389,27 @@ export async function fileOpsAt(
         throw new Error("the file micro-bench measured nothing");
       return fileOps;
     });
+  // The scanner is told to leave this folder alone, not the whole of `work`, which holds the runs' own results too.
+  const excludedHome = join(work, "left-alone");
   const batch = async (state: ScannerState): Promise<Row[]> => {
     const runs: FileOpsRun[] = [];
     for (let at = 0; at < plan.repeats; at++) {
       log(`file operations, ${state}: run ${at + 1}/${plan.repeats}`);
-      runs.push(await once(join(work, `file-ops-${state}-${at}`)));
+      runs.push(
+        await once(
+          join(
+            state === "excluded" ? excludedHome : work,
+            `file-ops-${state}-${at}`,
+          ),
+        ),
+      );
     }
     return fileOpsRows(state, runs);
   };
   const rows = await batch("as-is");
   // The folder the files were made in, as the system names it, and the drive it is on: where a person's pod would be is another.
   const real = await realpath(work).catch(() => work);
+  const left = join(real, "left-alone");
   rows.push(
     countRow(
       `${NAME}/count/work-folder`,
@@ -493,11 +503,11 @@ export async function fileOpsAt(
         countRow(
           `${NAME}-scanner-excluded/count/scanner-folder-excluded`,
           (during?.excludedFolders ?? []).some(
-            (folder) => folderKey(folder) === folderKey(real),
+            (folder) => folderKey(folder) === folderKey(left),
           )
             ? 1
             : 0,
-          `${real}, read back after the run`,
+          `${left}, read back after the run`,
         ),
       );
     return true;
@@ -509,7 +519,7 @@ export async function fileOpsAt(
     const onWorked = everythingOn ? true : await attempt("on", scanning);
     await attempt("excluded", {
       ...(onWorked ? scanning : start),
-      excludedFolders: [...(onWorked ? scanning : start).excludedFolders, real],
+      excludedFolders: [...(onWorked ? scanning : start).excludedFolders, left],
     });
     await restore();
     rows.push(
