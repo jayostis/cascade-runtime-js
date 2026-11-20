@@ -14,7 +14,7 @@ name: perf
 #   served at /perf/detail/ by the next deploy (the nightly run is early enough for the 03:17 deploy to hold it). The page at
 #   /perf/ is drawn by that job from the files themselves: a stacked chart of where the time goes for each scenario and size.
 # - Every run, a pull request's too, also makes flame graphs to drill into: a trace of each scenario's probed run (where the
-#   time went, step inside step) and a CPU profile of one more, unprobed run (which code took it), as the artifact
+#   time went, step inside step) and a CPU profile of one more, unprobed run (which code took it, the Bridge's Rust functions by name), as the artifact
 #   `perf-flame`, with a short list of each scenario's longest steps in the job summary and the comment. A push, the
 #   nightly run and a hand-started run also keep them on their own orphan branch, `perf-flame` (not on `perf-data`, whose
 #   history would otherwise grow by megabytes a day for good), in the folder runtime/YYYY/MM/DD/<run>-<sha7>-<event>/:
@@ -125,6 +125,39 @@ jobs:
       - run: npm run --silent bridge
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # The CPU profiles name the Bridge's Rust functions only if its wasm keeps its names, which the package does not
+      # (it would weigh more for every reader): the release the build was read from holds a second module, the same code with
+      # its names, and it is laid over the package's in the cache. The step runs before the headline timings, so they load the named module too (10.0 MB beside the package's, about 0.7 ms more to read and a compile of 18.4 ms against 18.5, noise against a 3.26 s total). The asset is checked against the digest GitHub computed when it was uploaded, which a transport error or a mix-up of assets fails; the step never fails the job, as a profile's names are an extra. A release made before the Bridge
+      # published one has none, and its profiles show wasm-function[N].
+      - name: The Bridge's function names
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bridge=jayostis/cascade-bridge-rs
+          cache=build/cache/cascade-bridge-rs
+          read -r from commit < <(node -p "const r = JSON.parse(require('fs').readFileSync('$cache/expected.json', 'utf8')); r.source + ' ' + r.commit")
+          tag="build-$commit"
+          if [ "$from" != release ]; then
+            echo "::warning::the Bridge read is a $from build, which has no function names: the profiles show wasm-function[N]"
+            exit 0
+          fi
+          none() {
+            echo "::warning::$1, so the profiles show wasm-function[N]"
+            exit 0
+          }
+          if ! want=$(gh release view "$tag" -R "$bridge" --json assets -q '.assets[] | select(.name == "cascade_bridge_bg.names.wasm") | .digest'); then
+            none "the assets of $tag could not be listed"
+          fi
+          [ -n "$want" ] || none "$tag holds no cascade_bridge_bg.names.wasm with a digest"
+          if ! gh release download "$tag" -R "$bridge" --pattern cascade_bridge_bg.names.wasm --dir "$RUNNER_TEMP/names"; then
+            none "cascade_bridge_bg.names.wasm of $tag could not be downloaded"
+          fi
+          got=sha256:$(sha256sum "$RUNNER_TEMP/names/cascade_bridge_bg.names.wasm" | cut -d' ' -f1)
+          [ "$got" = "$want" ] || none "cascade_bridge_bg.names.wasm of $tag is $got, where GitHub's digest of the asset is $want"
+          cp "$RUNNER_TEMP/names/cascade_bridge_bg.names.wasm" "$cache/$tag/cascade_bridge_bg.wasm"
+          echo "The Bridge's wasm is $tag's with its function names ($(du -h "$cache/$tag/cascade_bridge_bg.wasm" | cut -f1))." >> "$GITHUB_STEP_SUMMARY"
       - id: what
         shell: bash
         env:
