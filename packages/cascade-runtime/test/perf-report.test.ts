@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { after, before, describe, it } from "node:test";
@@ -21,13 +29,18 @@ import {
   timed,
 } from "@cascade-runtime/runtime/probe";
 import { explain, glossaryMarkdown, readGlossary } from "./perf-glossary.js";
+import { type Database } from "@cascade-runtime/runtime";
+import { resolved } from "../src/node/resolved.js";
 import { flatten, loadPlainly } from "./perf-floor.js";
+import { held, rowsOfHeld } from "./perf-held.js";
 import { profileOf, syntheticPull } from "./import-bench.js";
 import {
   clockRow,
   commits,
+  databaseFigures,
   folderFingerprint,
   openedAt,
+  parsed,
   PINNED,
   pinClock,
   pinnedAt,
@@ -45,8 +58,12 @@ import {
   refused,
   RUNTIME_ROOT,
   SCENARIOS,
+  storedIn,
+  STORED_KINDS,
   THEN,
   type Row,
+  type Stored,
+  type StoredKind,
 } from "./perf-report.js";
 
 const history = (await import(
@@ -115,6 +132,41 @@ const compare = (await import(
     ),
   ).href
 )) as Compare;
+
+interface StoredPage {
+  entries: number;
+  podRecords: number;
+  versionLinks: number;
+  kinds: {
+    id: string;
+    files: number;
+    statements: number;
+    bytes: number;
+    class: string;
+  }[];
+  classes: {
+    class: string;
+    files: number;
+    statements: number;
+    bytes: number;
+  }[];
+}
+
+const stored$ = (await import(
+  pathToFileURL(
+    fileURLToPath(
+      new URL("../../../../scripts/perf-stored.mjs", import.meta.url),
+    ),
+  ).href
+)) as {
+  storedKeys(file: object): string[];
+  storedOf(
+    file: object,
+    key: string,
+    glossary?: object,
+  ): StoredPage | undefined;
+  storedLine(page: StoredPage): string;
+};
 
 const file = (rows: Row[]) => ({
   env: { os: "linux", runner: "ci; cpu", cpus: 4, node: "24.0.0" },
@@ -846,7 +898,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       );
       assert.match(
         text,
-        /\| Records \| Answer-file lines \| Files written \| Questions put to the fact store \| Individual facts looked at \| Saving: answer-file lines\/s \| Saving: files\/s \|/,
+        /\| Source entries \| Answer-file lines \| Files written \| Questions put to the fact store \| Individual facts looked at \| Saving: answer-file lines\/s \| Saving: files\/s \|/,
       );
       assert.match(
         text,
@@ -1578,6 +1630,541 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         wholeBuildJob("a-build", whole),
       );
       assert.equal(result.profile, true);
+    });
+  });
+
+  describe("given the files of a pod, counted by what the pod's layout says they are", () => {
+    const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+    const PROV = "http://www.w3.org/ns/prov#";
+    const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+    const uuid = (n: number) =>
+      `urn:uuid:00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+    const ni = (n: number) =>
+      `ni:///sha-256;${Buffer.alloc(32, n).toString("base64url")}`;
+    const triple = (subject: string, predicate: string, object: string) =>
+      `<${subject}> <${predicate}> ${object} .\n`;
+
+    it("puts each file in the kind its place gives it, tells a record, a version and a revision apart by the statements that name them, and sums each count over the kinds", async () => {
+      const { layout } = await resolved();
+      const folder = await mkdtemp(join(tmpdir(), "stored-kinds-"));
+      scratch.push(folder);
+      const wrote = new Map<StoredKind, { files: number; text: string[] }>();
+      const put = async (kind: StoredKind, path: string, text: string) => {
+        await mkdir(dirname(join(folder, path)), { recursive: true });
+        await writeFile(join(folder, path), text);
+        const written = wrote.get(kind) ?? { files: 0, text: [] };
+        written.files += 1;
+        written.text.push(text);
+        wrote.set(kind, written);
+      };
+      const procedures = layout.place(`${CASCADE}MedicalProcedure`);
+      await put(
+        "records",
+        procedures.path(uuid(1)),
+        triple(uuid(1), RDF_TYPE, `<${CASCADE}MedicalProcedure>`) +
+          triple(uuid(1), `${CASCADE}sourceRecordId`, '"a"'),
+      );
+      await put(
+        "versions",
+        layout.version(procedures, ni(1)),
+        triple(ni(1), `${PROV}specializationOf`, `<${uuid(1)}>`) +
+          triple(ni(1), `${CASCADE}procedureName`, '"x"') +
+          triple(ni(1), "http://purl.org/pav/version", '"1"'),
+      );
+      await put(
+        "revisions",
+        layout.revision(procedures, ni(2)),
+        triple(ni(2), `${CASCADE}revisionOf`, `<${uuid(1)}>`) +
+          triple(ni(2), `${PROV}wasDerivedFrom`, `<${ni(9)}>`) +
+          triple(ni(2), "http://purl.org/dc/terms/created", '"2026"') +
+          triple(ni(2), RDF_TYPE, `<${CASCADE}Revision>`),
+      );
+      await put(
+        "servers",
+        layout.place(`${CASCADE}Server`).path(uuid(2)),
+        triple(uuid(2), RDF_TYPE, `<${CASCADE}Server>`),
+      );
+      await put(
+        "acts",
+        layout.place(`${PROV}Activity`, [`${PROV}used`]).path(uuid(3)),
+        triple(uuid(3), `${PROV}used`, `<${ni(3)}>`) +
+          triple(uuid(3), RDF_TYPE, `<${PROV}Activity>`),
+      );
+      await put(
+        "acts",
+        layout.place(`${PROV}Activity`).path(uuid(4)),
+        triple(uuid(4), RDF_TYPE, `<${PROV}Activity>`),
+      );
+      await put(
+        "findings",
+        layout.place(`${CASCADE}FindingForReview`).path(uuid(5)),
+        triple(uuid(5), RDF_TYPE, `<${CASCADE}FindingForReview>`),
+      );
+      await put(
+        "judgments",
+        layout.place(`${CASCADE}Judgment`).path(uuid(6)),
+        triple(uuid(6), RDF_TYPE, `<${CASCADE}Judgment>`),
+      );
+      await put(
+        "judgments",
+        layout.place(`${PROV}Activity`, [`${PROV}invalidated`]).path(uuid(7)),
+        triple(uuid(7), `${PROV}invalidated`, `<${uuid(6)}>`),
+      );
+      await put(
+        "matcher-output",
+        layout.place(`${CASCADE}MatcherJudgmentAssertion`).path(uuid(8)),
+        triple(uuid(8), RDF_TYPE, `<${CASCADE}MatcherJudgmentAssertion>`),
+      );
+      await put(
+        "references",
+        layout.place(`${CASCADE}ReferenceSeries`).path(uuid(9)),
+        triple(uuid(9), RDF_TYPE, `<${CASCADE}ReferenceSeries>`),
+      );
+      await put(
+        "documents",
+        layout.place(`${PROV}Entity`).path(ni(3)),
+        triple(ni(3), RDF_TYPE, `<${PROV}Entity>`),
+      );
+      await put(
+        "stored-documents",
+        layout.storedBytes.path(ni(3)),
+        "x".repeat(1000),
+      );
+      const [view] = layout.built;
+      await put(
+        "views",
+        view?.file as string,
+        triple(uuid(1), `${CASCADE}procedureName`, '"x"') +
+          triple(uuid(1), RDF_TYPE, `<${CASCADE}MedicalProcedure>`),
+      );
+      for (const path of [
+        layout.manifest,
+        layout.card,
+        layout.preferences,
+        layout.typeIndex,
+        layout.place(`${CASCADE}Subject`).path(uuid(10)),
+      ])
+        await put(
+          "creation-settings",
+          path,
+          triple("urn:x", RDF_TYPE, "<urn:y>"),
+        );
+      await put("other", "settings/encryption.json", '{"version":"1.4"}\n');
+
+      const stored = await storedIn(folder, false);
+      for (const kind of STORED_KINDS) {
+        const given = wrote.get(kind) ?? { files: 0, text: [] };
+        const text = given.text.join("");
+        const lines =
+          kind === "stored-documents" || kind === "other"
+            ? 0
+            : text.split("\n").filter(Boolean).length;
+        assert.deepEqual(
+          stored.kinds[kind],
+          {
+            files: given.files,
+            statements: lines,
+            bytes: Buffer.byteLength(text),
+          },
+          kind,
+        );
+      }
+      assert.equal(stored.podRecords, 2, "the record and the server's");
+      assert.equal(
+        stored.versionLinks,
+        1,
+        "the one version's link to its record",
+      );
+      assert.deepEqual(stored.predicates, {
+        cascade: 4,
+        prov: 4,
+        pav: 1,
+        dct: 1,
+        rdf: 16,
+        other: 0,
+      });
+      const all = (pick: (each: StoredKind) => number) =>
+        STORED_KINDS.reduce((sum, each) => sum + pick(each), 0);
+      assert.equal(
+        stored.onDisk.files,
+        all((each) => stored.kinds[each].files),
+      );
+      assert.equal(
+        stored.onDisk.bytes,
+        all((each) => stored.kinds[each].bytes),
+      );
+      assert.ok(stored.onDisk.blocks >= stored.onDisk.files * 4096);
+      assert.equal(stored.onDisk.blocks % 4096, 0);
+    });
+
+    it("counts a real pod's files, statements and bytes as the folder holds them, whichever kinds they are in", async () => {
+      const claimProfiles = await profileOf("first");
+      const folder = await mkdtemp(join(tmpdir(), "stored-plain-"));
+      scratch.push(folder);
+      const pod = await openedAt(join(folder, "pod"), false);
+      await pod.import(syntheticPull(20), { claimProfiles });
+      await pod.close();
+      const stored = await storedIn(join(folder, "pod"), false);
+      // The oracle: the folder walked, with no notion of kinds.
+      const found: { path: string; bytes: Buffer }[] = [];
+      const walk = async (at: string): Promise<void> => {
+        for (const entry of await readdir(at, { withFileTypes: true }))
+          if (entry.isDirectory()) await walk(join(at, entry.name));
+          else
+            found.push({
+              path: join(at, entry.name)
+                .slice(join(folder, "pod").length + 1)
+                .replaceAll("\\", "/"),
+              bytes: await readFile(join(at, entry.name)),
+            });
+      };
+      await walk(join(folder, "pod"));
+      const sum = (pick: (each: Stored["kinds"][StoredKind]) => number) =>
+        STORED_KINDS.reduce(
+          (total, kind) => total + pick(stored.kinds[kind]),
+          0,
+        );
+      assert.equal(
+        sum((each) => each.files),
+        found.length,
+      );
+      assert.equal(
+        sum((each) => each.bytes),
+        found.reduce((total, { bytes }) => total + bytes.length, 0),
+      );
+      assert.equal(
+        sum((each) => each.statements),
+        found
+          .filter(({ path }) => !path.startsWith("attachments/"))
+          .reduce(
+            (total, { bytes }) =>
+              total + bytes.toString("utf8").split("\n").filter(Boolean).length,
+            0,
+          ),
+      );
+      assert.deepEqual(stored.onDisk.files, found.length);
+      assert.equal(
+        stored.kinds.other.files,
+        0,
+        "every file of a plain pod is placed",
+      );
+      for (const kind of [
+        "records",
+        "versions",
+        "revisions",
+        "acts",
+        "views",
+        "creation-settings",
+      ] as const)
+        assert.ok(stored.kinds[kind].files > 0, kind);
+      assert.equal(stored.kinds["stored-documents"].files, 1);
+      assert.equal(stored.kinds["stored-documents"].statements, 0);
+      assert.equal(
+        stored.versionLinks,
+        stored.kinds.versions.files,
+        "a version file states one link to its record",
+      );
+      assert.ok(stored.podRecords >= stored.kinds.records.files);
+      assert.ok(
+        stored.podRecords <=
+          stored.kinds.records.files + stored.kinds.servers.files,
+        "a pod record is a record's file, a server's included",
+      );
+      assert.equal(
+        Object.values(stored.predicates).reduce((a, b) => a + b, 0),
+        sum((each) => each.statements),
+      );
+      assert.ok((stored.database?.file ?? 0) > 0);
+      assert.equal(
+        (await stat(join(folder, ".answers", "pod", "pod.db"))).size,
+        stored.database?.file,
+      );
+      assert.ok(stored.beside.bytes >= (stored.database?.file ?? 0));
+      assert.ok((stored.database?.statements ?? 0) > 0);
+      const { tables = 0, indexes = 0 } = stored.database ?? {};
+      assert.ok(tables > 0 && indexes > 0);
+      assert.ok(tables + indexes <= (stored.database?.file ?? 0));
+      const [first, second] = stored.database?.largest ?? [];
+      assert.ok(
+        first !== undefined &&
+          second !== undefined &&
+          first.bytes >= second.bytes,
+      );
+    });
+
+    it("counts an encrypted pod's files by what they are once opened, as many files of each kind as the same pull makes in a plain pod, and reads no database it cannot open", async () => {
+      const claimProfiles = await profileOf("first");
+      const folder = await mkdtemp(join(tmpdir(), "stored-sealed-"));
+      scratch.push(folder);
+      for (const [name, encrypted] of [
+        ["plain", false],
+        ["sealed", true],
+      ] as const) {
+        const pod = await openedAt(join(folder, name, "pod"), encrypted);
+        await pod.import(syntheticPull(20), { claimProfiles });
+        await pod.close();
+      }
+      const plain = await storedIn(join(folder, "plain", "pod"), false);
+      const sealed = await storedIn(join(folder, "sealed", "pod"), true);
+      for (const kind of STORED_KINDS) {
+        assert.equal(sealed.kinds[kind].files, plain.kinds[kind].files, kind);
+        assert.equal(
+          sealed.kinds[kind].statements,
+          plain.kinds[kind].statements,
+          kind,
+        );
+      }
+      assert.equal(sealed.podRecords, plain.podRecords);
+      assert.equal(sealed.versionLinks, plain.versionLinks);
+      assert.ok(
+        sealed.onDisk.bytes >
+          Object.values(sealed.kinds).reduce((a, each) => a + each.bytes, 0),
+        "sealing adds to every file, and the pod's sealed index is a file the kinds do not hold",
+      );
+      assert.equal(sealed.database, undefined);
+      assert.ok(sealed.beside.files > 0);
+    });
+  });
+
+  describe("given a database whose build has no dbstat table", () => {
+    it("gives the file's size and what it holds, and no split by table and index", () => {
+      const db = {
+        prepare: (sql: string) => {
+          if (sql.includes("dbstat")) throw new Error("no such table: dbstat");
+          const n = sql.includes("quad") ? 5 : 3;
+          return { get: () => ({ n }), all: () => [] };
+        },
+      } as unknown as Database;
+      assert.deepEqual(databaseFigures(db, 4096), {
+        file: 4096,
+        statements: 5,
+        terms: 3,
+      });
+    });
+  });
+
+  describe("given the counts of a pod written as rows", () => {
+    it("names every row as the result schema takes it, once, with a sentence of the glossary, and leaves no kind out", () => {
+      const rows = rowsOfHeld();
+      assert.ok(rows.length > 40);
+      assert.deepEqual(
+        rows.filter((row) => refused(row) !== undefined),
+        [],
+      );
+      assert.equal(new Set(rows.map(({ name }) => name)).size, rows.length);
+      assert.deepEqual(
+        rows
+          .filter(({ name }) => explain(name) === undefined)
+          .map(({ name }) => name),
+        [],
+      );
+      assert.ok(rows.every(({ kind }) => kind === "output"));
+      const value = (name: string) =>
+        rows.find((row) => row.name === `stored-synthea-10y/${name}`)?.value;
+      for (const kind of STORED_KINDS) {
+        assert.notEqual(value(`files/${kind}`), undefined, kind);
+        assert.notEqual(value(`statements/${kind}`), undefined, kind);
+        assert.notEqual(value(`bytes/${kind}`), undefined, kind);
+      }
+      assert.equal(value("files/all"), 41);
+      assert.equal(value("statements/all"), 1000);
+      assert.equal(value("bytes/all"), 10485760);
+      assert.equal(value("count/entries"), 647);
+      assert.equal(value("count/pod-records"), 10);
+      assert.equal(value("count/version-links"), 10);
+      assert.equal(value("statements/versions"), 600);
+      assert.equal(value("predicates/cascade"), 700);
+      assert.equal(value("database/file"), 2097152);
+      assert.equal(value("bytes/in-4k-blocks"), 12582912);
+      assert.equal(
+        rows.find((row) => row.name.endsWith("bytes/versions"))?.unit,
+        "By",
+      );
+    });
+
+    it("leaves out the database's rows for a pod whose database was not read, and its split for a build with no dbstat", () => {
+      const sealed = { ...held(), database: undefined };
+      assert.equal(
+        rowsOfHeld(sealed).some(({ name }) => name.includes("/database/")),
+        false,
+      );
+      const bare = { ...held(), database: { file: 4096 } };
+      const names = rowsOfHeld(bare).map(({ name }) => name);
+      assert.ok(names.includes("stored-synthea-10y/database/file"));
+      assert.ok(
+        !names.some((name) => /database\/(tables|indexes|terms)/.test(name)),
+      );
+    });
+  });
+
+  describe("given the plan's scenarios", () => {
+    it("lists the counts of a pod as a scenario of its own, which a run may name alone", () => {
+      assert.ok((SCENARIOS as readonly string[]).includes("stored"));
+      const { plan } = parsed([
+        "--scenario",
+        "stored",
+        "--size",
+        "synthea-10y",
+      ]);
+      assert.deepEqual([...plan.scenarios], ["stored"]);
+    });
+  });
+
+  const heldFile = (stored = held()) => file(rowsOfHeld(stored));
+
+  describe("given a performance file that holds the rows of a pod's counts", () => {
+    it("reads back the kinds, the pod records and the source entries, and groups the kinds into what the source said, history, bookkeeping and what is derived", () => {
+      assert.deepEqual(stored$.storedKeys(heldFile()), ["stored-synthea-10y"]);
+      const page = stored$.storedOf(
+        heldFile(),
+        "stored-synthea-10y",
+      ) as StoredPage;
+      assert.equal(page.entries, 647);
+      assert.equal(page.podRecords, 10);
+      assert.deepEqual(
+        page.kinds.map(({ id }) => id),
+        [
+          "records",
+          "versions",
+          "revisions",
+          "acts",
+          "stored-documents",
+          "views",
+          "creation-settings",
+        ],
+        "the kinds the pod holds, in the glossary's order",
+      );
+      const by = (name: string) =>
+        page.classes.find((each) => each.class === name);
+      assert.deepEqual(by("data"), {
+        class: "data",
+        files: 11,
+        statements: 590,
+        bytes: 3145728 + 5242880,
+      });
+      assert.equal(by("history")?.statements, 310);
+      assert.equal(by("bookkeeping")?.statements, 20);
+      assert.equal(by("derived")?.statements, 80);
+    });
+
+    it("keeps the version-to-record links in history and every class adding up to the total, whichever class the versions are given", async () => {
+      const { readGlossary } = (await import(
+        pathToFileURL(
+          fileURLToPath(
+            new URL("../../../../scripts/perf-glossary.mjs", import.meta.url),
+          ),
+        ).href
+      )) as {
+        readGlossary(): { storedKinds: { versions: { class: string } } };
+      };
+      const links = held().versionLinks;
+      assert.ok(links > 0);
+      const asBuilt = stored$.storedOf(
+        heldFile(),
+        "stored-synthea-10y",
+      ) as StoredPage;
+      for (const reclassed of ["data", "history", "bookkeeping", "derived"]) {
+        const glossary = readGlossary();
+        glossary.storedKinds.versions.class = reclassed;
+        const page = stored$.storedOf(
+          heldFile(),
+          "stored-synthea-10y",
+          glossary,
+        ) as StoredPage;
+        assert.equal(
+          page.classes.reduce((all, each) => all + each.statements, 0),
+          1000,
+          `versions as ${reclassed}: the classes add up to the total`,
+        );
+        const history = page.classes.find((each) => each.class === "history");
+        const versions = page.kinds.find((each) => each.id === "versions");
+        const others = page.kinds
+          .filter((each) => each.class === "history" && each.id !== "versions")
+          .reduce((all, each) => all + each.statements, 0);
+        assert.equal(
+          history?.statements,
+          others +
+            links +
+            (reclassed === "history" ? (versions?.statements ?? 0) - links : 0),
+          `versions as ${reclassed}: the links are history`,
+        );
+      }
+      assert.equal(asBuilt.versionLinks, links);
+    });
+
+    it("says in one line what a fresh import left, per pod record and per source entry, and how much of it is the source's own data", () => {
+      const page = stored$.storedOf(
+        heldFile(),
+        "stored-synthea-10y",
+      ) as StoredPage;
+      const line = stored$.storedLine(page);
+      assert.match(
+        line,
+        /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MiB\) and 1,000 statements/,
+      );
+      assert.match(
+        line,
+        /59% of the statements are the source's own data, 31% history/,
+      );
+      assert.match(line, /4\.1 files and 100 statements for each pod record/);
+      assert.match(line, /1\.5 statements for each source entry/);
+    });
+
+    it("is read by the summary and the comparison, which list the counts apart from the headline times and say what is new against a file with none", () => {
+      const lines = compare.summary(heldFile(), { markdown: true });
+      assert.match(lines, /What a pod holds/);
+      assert.match(
+        lines,
+        /\| [^|\n]*[Vv]ersion[^|\n]* \| data \| 10 \| 600 \| [\d.,]+ \| 60%/,
+      );
+      assert.doesNotMatch(
+        lines,
+        /\| stored-synthea-10y\/files/,
+        "not among the headline rows",
+      );
+      const against = compare.compare(file([]), heldFile(), {
+        markdown: true,
+        sameJob: true,
+      });
+      assert.match(against, /What a pod holds/);
+      assert.match(against, /main's file holds no counts of what a pod holds/);
+      const changed = {
+        ...held(),
+        kinds: {
+          ...held().kinds,
+          versions: { files: 10, statements: 650, bytes: 3145728 },
+        },
+      };
+      const moved = compare.compare(heldFile(), heldFile(changed), {
+        markdown: true,
+        sameJob: true,
+      });
+      assert.match(
+        moved,
+        /647 source entries: statements, Versions: what the source said \| 600 \| 650 \| \+8\.3% \(1\.1x\)/,
+      );
+      assert.doesNotMatch(moved, /stored-synthea-10y\//, "plain names only");
+      const grown = compare.compare(
+        heldFile(),
+        heldFile({
+          ...held(),
+          kinds: {
+            ...held().kinds,
+            versions: { files: 10, statements: 600, bytes: 4194304 },
+          },
+        }),
+        { markdown: true, sameJob: true },
+      );
+      assert.match(
+        grown,
+        /647 source entries: size, Versions: what the source said \| 3\.00 MiB \| 4\.00 MiB \|/,
+      );
+      assert.doesNotMatch(grown, /\d By\b/, "sizes are not raw bytes");
+      assert.doesNotMatch(
+        moved,
+        /stored-synthea-10y\/files\/versions/,
+        "only what changed",
+      );
     });
   });
 });

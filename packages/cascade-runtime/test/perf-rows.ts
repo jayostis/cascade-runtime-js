@@ -136,6 +136,20 @@ export const countRow = (
   ...(extra !== undefined && { extra }),
 });
 
+/** An exact count of what came out, of things (`{count}`) unless its unit is given (`By` for bytes). */
+export const outputRow = (
+  name: string,
+  value: number,
+  extra?: string,
+  unit: "By" | "{count}" = "{count}",
+): Row => ({
+  name,
+  unit,
+  value,
+  kind: "output",
+  ...(extra !== undefined && { extra }),
+});
+
 /** Gives each name once: a name taken already is told apart by a number. */
 export function unique(taken: Set<string>, name: string): string {
   let candidate = name;

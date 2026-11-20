@@ -42,6 +42,12 @@ import {
   readGlossary,
   sentenceOf,
 } from "./perf-stacked.mjs";
+import {
+  storedHtml,
+  storedKeys,
+  storedOf,
+  storedTitle,
+} from "./perf-stored.mjs";
 
 /** The size whose files only the newest few builds keep: a trace and a CPU profile of it run to tens of megabytes. */
 export const LARGE = "synthea-lifetime";
@@ -251,6 +257,24 @@ ${speeds
 </div>`;
 }
 
+/**
+ * What the pods a build's performance file counted held, for each size it counted: the line, the classes and, folded away, the
+ * kinds. Nothing for a build with no such file or none of whose rows count a pod.
+ */
+function storedBlock(run, glossary) {
+  const pods = run.stored ?? [];
+  if (pods.length === 0) return "";
+  return `<div class="box stored">
+<h2>What a pod holds</h2>
+${pods
+  .map((page) =>
+    storedHtml(page, { heading: `<h3>${esc(storedTitle(page))}</h3>` }),
+  )
+  .join("\n")}
+<p class="caption">${esc(glossary.storedRule ?? "")}</p>
+</div>`;
+}
+
 /** The page of builds: for each, a plain table of where each scenario's time went, and the links that open its graphs. */
 export function runsPage(
   runs,
@@ -259,6 +283,7 @@ export function runsPage(
   const sections = runs.map((run, at) => {
     const scenarios = [
       speedBlock(run, glossary),
+      storedBlock(run, glossary),
       ...run.flame.builds.map((build) =>
         buildSection(run, build, { viewer, pages, glossary }),
       ),
@@ -292,6 +317,11 @@ code { font-size: .8em; color: #6b7280; }
 .box p { margin: .4rem 0; }
 .box.speed h2 { font-size: .95rem; }
 .box.speed h3 { font-size: .9rem; margin: .8rem 0 .3rem; }
+.box.stored h3 { font-size: .9rem; margin: .8rem 0 .3rem; }
+.box.stored .speedline { margin: .3rem 0; }
+.note { color: #555b66; font-size: .85rem; margin: .3rem 0; }
+table.held { font-size: .82rem; }
+table.held th, table.held td { padding: .25rem .5rem; }
 .scroll { overflow-x: auto; }
 table.speed { font-size: .82rem; }
 table.speed th, table.speed td { padding: .25rem .5rem; }
@@ -366,6 +396,17 @@ export function pages({
       return [];
     }
   };
+  /** The pods a build's performance file counted; none when the file is not kept or cannot be read (speedsOf has said so). */
+  const storedPods = (id) => {
+    const path = performanceFiles.get(id);
+    if (path === undefined) return [];
+    try {
+      const file = JSON.parse(readFileSync(path, "utf8"));
+      return storedKeys(file).flatMap((key) => storedOf(file, key) ?? []);
+    } catch {
+      return [];
+    }
+  };
   const viewerUrl = `${pagesAt}/speedscope/`;
   mkdirSync(join(out, "speedscope"), { recursive: true });
   for (const entry of readdirSync(viewerFolder))
@@ -392,7 +433,13 @@ export function pages({
         files.add(file);
       }
     }
-    kept.push({ ...run, flame, kept: files, speeds: speedsOf(run.id) });
+    kept.push({
+      ...run,
+      flame,
+      kept: files,
+      speeds: speedsOf(run.id),
+      stored: storedPods(run.id),
+    });
   }
   writeFileSync(
     join(out, "runs", "index.html"),
