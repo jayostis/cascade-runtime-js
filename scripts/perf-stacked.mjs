@@ -611,7 +611,7 @@ table.speed td:first-child { white-space: nowrap; }
 export const SPEED_BUILDS = 10;
 
 /**
- * Under a fresh import's chart: the line of the newest build that has a plain SQL load to read the import against, and a
+ * Under a fresh import's chart: the line of the newest build that has a plain load into SQLite to read the import against, and a
  * table of what the newest builds' imports handled and how fast each phase went. Nothing for a chart whose builds did not
  * measure the import's parts.
  */
@@ -722,7 +722,7 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <details class="how"><summary>How the bands are worked out</summary>
 <p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
 <p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
-<p>Under the charts of a new pod, a line sets the import's time against the plain SQL load of the same input, and a table lists what the import handled (records, statements, files, store queries, facts visited) and how fast its saving, converting and judging phases went through them. Those numbers are the measured ones, with no limit set on any of them.</p></details>
+<p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (records, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p></details>
 <p class="toc">${titled.map((chart) => `<a href="#${esc(chart.key)}">${esc(chart.title)}</a><br>`).join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
 <p class="links"><a href="../">Documentation home</a> · <a href="runs/">Each build's flame graphs</a> · <a href="detail/">Every measurement, one small chart each</a> · <a href="stacked.json">The data of these charts</a></p>

@@ -820,6 +820,11 @@ export function floorRows(
   dataset: DatasetId,
   about: string,
   runs: readonly Loaded[],
+  /** The memory each run held when it finished, and the most it held, in bytes; the rows are left out without it. */
+  memory?: {
+    readonly rss: readonly number[];
+    readonly peak: readonly number[];
+  },
 ): Row[] {
   const name = `floor-${dataset}`;
   const how = `unprobed, median of ${runs.length} runs, each in a process of its own; ${about}`;
@@ -850,6 +855,12 @@ export function floorRows(
       how,
     ),
     countRow(`${name}/count/rows`, runs[0]?.rows ?? 0, about),
+    ...(memory === undefined
+      ? []
+      : [
+          clockRow(`${name}/rss`, "By", [...memory.rss], how),
+          clockRow(`${name}/peak-rss`, "By", [...memory.peak], how),
+        ]),
   ];
 }
 
@@ -862,10 +873,11 @@ async function floorAt(
 ): Promise<Row[]> {
   const { sha256 } = await inputOf(dataset);
   const runs: Loaded[] = [];
+  const memory = { rss: [] as number[], peak: [] as number[] };
   for (let at = 0; at < plan.repeats; at++) {
     log(`${dataset}: floor run ${at + 1}/${plan.repeats}`);
     const folder = join(work, `floor-${dataset}-${at}`);
-    const { floor } = await child(
+    const { floor, rssBytes, peakRssBytes } = await child(
       {
         scenario: "floor",
         dataset,
@@ -883,11 +895,14 @@ async function floorAt(
         `the floor read ${floor.sha256} for ${dataset}, the manifest says ${sha256}`,
       );
     runs.push(floor);
+    memory.rss.push(rssBytes);
+    memory.peak.push(peakRssBytes);
   }
   return floorRows(
     dataset,
     `dataset=${dataset} sha256=${sha256} records=${runs[0]?.records ?? 0}`,
     runs,
+    memory,
   );
 }
 

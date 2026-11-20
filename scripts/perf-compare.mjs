@@ -133,10 +133,10 @@ export function says(row) {
 
 /**
  * The rows beyond the headline times and own times that a page needs to read an import against the plain load of the same
- * input and to say what the import handled: the import's parts and exact counts, and the floor's stages.
+ * input and to say what the import handled: the import's parts and exact counts, and the loading stages.
  */
 export const SPEED_ROW =
-  /^(?:fresh-first-screen-.+\/(?:import|phase-saving|phase-converting|phase-judging|count\/(?:records|built\.lines\.written|files-written|store\.queries|graph\.quadsvisited))|floor-[^/]+\/(?:total|parse|flatten|insert|count\/rows))$/;
+  /^(?:fresh-first-screen-.+\/(?:import|phase-saving|phase-converting|phase-judging|count\/(?:records|built\.lines\.total|files-written|store\.queries|graph\.quadsvisited))|floor-[^/]+\/(?:total|parse|flatten|insert|count\/rows))$/;
 
 /** The key of a fresh import's rows (`fresh-first-screen-<size>[-encrypted]`). */
 const FRESH = /^(fresh-first-screen-.+?)\/import$/;
@@ -152,8 +152,8 @@ export function freshKeys(file) {
 
 /**
  * What a file says of one fresh import (`key`): its time, the plain load of the same input beside it, what it handled, and
- * the rate of each phase. A rate is the run's whole count over the phase's time, so it says how fast the phase went through
- * the size of the run. Undefined for a file with no such import.
+ * the rate of the phase that writes what is counted. A rate is the run's whole count over the phase's time. Undefined for a
+ * file with no such import.
  */
 export function speedOf(file, key) {
   const values = new Map(
@@ -180,7 +180,7 @@ export function speedOf(file, key) {
     count === undefined || seconds === undefined || seconds <= 0
       ? undefined
       : count / seconds;
-  const statements = counted("built.lines.written");
+  const lines = counted("built.lines.total");
   const files = counted("files-written");
   return {
     key,
@@ -188,51 +188,43 @@ export function speedOf(file, key) {
     floor,
     times: total === undefined || total <= 0 ? undefined : imported / total,
     records: counted("records"),
-    statements,
+    lines,
     files,
     queries: counted("store.queries"),
-    quads: counted("graph.quadsvisited"),
-    phases: {
-      saving: phase("saving"),
-      converting: phase("converting"),
-      judging: phase("judging"),
-    },
+    facts: counted("graph.quadsvisited"),
+    phases: { saving: phase("saving") },
     rates: {
       saving: {
-        statements: rate(statements, phase("saving")),
+        lines: rate(lines, phase("saving")),
         files: rate(files, phase("saving")),
       },
-      converting: { statements: rate(statements, phase("converting")) },
-      judging: { statements: rate(statements, phase("judging")) },
     },
   };
 }
 
-/** "Import takes 42.3 s; the plain SQL load of the same input takes 2.10 s (20x).", or undefined where the file has no floor. */
+/** "Import takes 42.3 s; a plain load of the same input into SQLite takes 2.10 s (20x).", or undefined where the file has no floor. */
 export function floorLine(speed) {
   if (speed?.floor === undefined || speed.times === undefined) return undefined;
   const times = speed.times;
-  return `Import takes ${shown(speed.imported, "s")}; the plain SQL load of the same input takes ${shown(speed.floor.total, "s")} (${times.toFixed(times >= 10 ? 0 : 1)}x).`;
+  return `Import takes ${shown(speed.imported, "s")}; a plain load of the same input into SQLite takes ${shown(speed.floor.total, "s")} (${times.toFixed(times >= 10 ? 0 : 1)}x).`;
 }
 
-/** What the floor does and does not do, in the words every page puts under the line. */
+/** What the plain load does and does not do, in the words every page puts under the line. */
 export const FLOOR_NOTE =
-  "The plain load reads and parses the same input, flattens each resource to one row of a table of its type and inserts the rows into SQLite in one transaction. It does no mapping to the Cascade vocabulary, keeps no provenance, does no matching, builds no derived views and writes no files. What the import does beyond that is not split here further than the stages the flame graphs measure.";
+  "The plain load reads and parses the same input, flattens each resource to one row of a table of its type (anything nested kept as JSON text, no further tables) and inserts the rows into SQLite in one transaction, with SQLite's default settings. Only the insert is SQL; the parsing and flattening are JavaScript. It maps nothing to the Cascade vocabulary, keeps no provenance, does no matching, builds no derived views and writes no files. It is not a lower bound: a faster load could exist. The encrypted import is compared with the same unencrypted load. What the import does beyond loading is not split here further than the stages the flame graphs measure.";
 
 /** How to read the table of what an import handled. */
 export const THROUGHPUT_NOTE =
-  "Counts are exact and come from the probed run of the same import; statements are the lines the run wrote to the pod's answer files. A rate is the run's whole count divided by that phase's time in the unprobed runs, so it says how fast the phase went through the size of the run, not what the phase itself made. Files per second is shown only for saving, the phase that writes them.";
+  "Counts are exact and come from the probed run of the same import; answer-file lines are the lines the import built for the pod's answer files. A rate is the run's whole count divided by the time of the phase that writes it, from the unprobed runs. It is shown only for saving, the phase that writes the files and their lines.";
 
 export const THROUGHPUT_HEAD = [
   "Records",
-  "Statements",
+  "Answer-file lines",
   "Files written",
-  "Store queries",
-  "Quads visited",
-  "Saving: statements/s",
+  "Questions put to the fact store",
+  "Individual facts looked at",
+  "Saving: answer-file lines/s",
   "Saving: files/s",
-  "Converting: statements/s",
-  "Judging: statements/s",
 ];
 
 /** The cells under `THROUGHPUT_HEAD` for one import: whole numbers with thousands separators, `-` where the file has none. */
@@ -241,14 +233,12 @@ export function throughputCells(speed) {
     value === undefined ? "-" : Math.round(value).toLocaleString("en-US");
   return [
     speed.records,
-    speed.statements,
+    speed.lines,
     speed.files,
     speed.queries,
-    speed.quads,
-    speed.rates.saving.statements,
+    speed.facts,
+    speed.rates.saving.lines,
     speed.rates.saving.files,
-    speed.rates.converting.statements,
-    speed.rates.judging.statements,
   ].map(count);
 }
 
@@ -282,8 +272,8 @@ export function speedSection(file, { markdown = false } = {}) {
   const quote = (text) => (markdown ? `> ${text}` : text);
   const out = [
     markdown
-      ? "**The import beside the plain SQL load of the same input**"
-      : "THE IMPORT BESIDE THE PLAIN SQL LOAD OF THE SAME INPUT",
+      ? "**The import beside a plain load of the same input into SQLite**"
+      : "THE IMPORT BESIDE A PLAIN LOAD OF THE SAME INPUT INTO SQLITE",
     "",
   ];
   const lines = speeds.flatMap((speed) => {

@@ -54,7 +54,7 @@ const history = (await import(
 };
 
 interface Rates {
-  statements?: number;
+  lines?: number;
   files?: number;
 }
 interface Speed {
@@ -62,11 +62,11 @@ interface Speed {
   floor?: { total: number };
   times?: number;
   records?: number;
-  statements?: number;
+  lines?: number;
   files?: number;
   queries?: number;
-  quads?: number;
-  rates: { saving: Rates; converting: Rates; judging: Rates };
+  facts?: number;
+  rates: { saving: Rates };
 }
 interface Compare {
   compare(before: object, after: object, options?: object): string;
@@ -396,6 +396,31 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       ]);
     });
 
+    it("puts two fields of one type that differ only in case in separate columns, which SQLite would refuse as one name twice", async () => {
+      const tables = flatten([
+        entry({ resourceType: "Patient", id: "p1", Value: 1, value: 2 }),
+        entry({ resourceType: "Patient", id: "p2", VALUE: 3 }),
+      ]);
+      assert.deepEqual(tables.get("Patient")?.columns, [
+        "id",
+        "Value",
+        "value_2",
+        "VALUE_3",
+      ]);
+      assert.deepEqual(tables.get("Patient")?.rows, [
+        ["p1", 1, 2, null],
+        ["p2", null, null, 3],
+      ]);
+      const path = await gz({
+        resourceType: "Bundle",
+        entry: [
+          entry({ resourceType: "Patient", id: "p1", Value: 1, value: 2 }),
+        ],
+      });
+      const database = join(dirname(path), "floor.db");
+      assert.equal((await loadPlainly(path, database)).rows, 1);
+    });
+
     it("reads, parses, flattens and inserts a gzipped Bundle in one transaction, and says what each stage took and how many rows went in", async () => {
       const bundle = {
         resourceType: "Bundle",
@@ -467,6 +492,21 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.equal(by("insert")?.value, 0.4);
       assert.equal(by("total")?.value, 0.9);
       assert.equal(by("total")?.samples, 3);
+      assert.equal(by("rss"), undefined);
+      const held = floorRows(
+        "synthea-10y",
+        "dataset=synthea-10y",
+        [run(0.1, 0.2, 0.3), run(0.2, 0.2, 0.5), run(0.3, 0.3, 0.4)],
+        { rss: [3, 1, 2], peak: [9, 7, 8] },
+      );
+      const heldBy = (name: string) =>
+        held.find((each) => each.name === `floor-synthea-10y/${name}`);
+      assert.equal(heldBy("rss")?.value, 2);
+      assert.equal(heldBy("peak-rss")?.value, 8);
+      assert.deepEqual(
+        held.filter(({ name }) => explain(name) === undefined),
+        [],
+      );
       assert.equal(by("count/rows")?.value, 647);
       assert.equal(by("count/rows")?.kind, "cost");
       assert.deepEqual(
@@ -513,7 +553,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       row(`${KEY}/phase-saving`, 6.7),
       row(`${KEY}/phase-judging`, 10),
       row(`${KEY}/count/records`, 16833, "{count}"),
-      row(`${KEY}/count/built.lines.written`, 294000, "{count}"),
+      row(`${KEY}/count/built.lines.total`, 294000, "{count}"),
       row(`${KEY}/count/files-written`, 27223, "{count}"),
       row(`${KEY}/count/store.queries`, 365, "{count}"),
       row(`${KEY}/count/graph.quadsvisited`, 1300000, "{count}"),
@@ -534,25 +574,23 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.deepEqual(
         [
           speed?.records,
-          speed?.statements,
+          speed?.lines,
           speed?.files,
           speed?.queries,
-          speed?.quads,
+          speed?.facts,
         ],
         [16833, 294000, 27223, 365, 1300000],
       );
-      near(speed?.rates.saving.statements, 294000 / 6.7);
+      near(speed?.rates.saving.lines, 294000 / 6.7);
       near(speed?.rates.saving.files, 27223 / 6.7);
-      near(speed?.rates.converting.statements, 294000 / 15.7);
-      near(speed?.rates.judging.statements, 294000 / 10);
-      assert.equal(speed?.rates.converting.files, undefined);
+      assert.deepEqual(Object.keys(speed?.rates ?? {}), ["saving"]);
       assert.equal(compare.speedOf(file(rows), "close-synthea-10y"), undefined);
     });
 
     it("says it in one line, and has no line for a file with no floor", () => {
       assert.equal(
         compare.floorLine(compare.speedOf(file(rows), KEY)),
-        "Import takes 42.3 s; the plain SQL load of the same input takes 2.10 s (20x).",
+        "Import takes 42.3 s; a plain load of the same input into SQLite takes 2.10 s (20x).",
       );
       const without = file(
         rows.filter(({ name }) => !name.startsWith("floor-")),
@@ -563,17 +601,26 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
 
     it("shows the line, a throughput table and a plain caption in a summary and in a comparison, and nothing for a file with no import", () => {
       const text = compare.summary(file(rows), { markdown: true });
-      assert.match(text, /Import takes 42\.3 s; the plain SQL load .* \(20x\)/);
       assert.match(
         text,
-        /\| Records \| Statements \| Files written \| Store queries \| Quads visited \|/,
+        /Import takes 42\.3 s; a plain load of the same input into SQLite takes 2\.10 s \(20x\)/,
+      );
+      assert.match(
+        text,
+        /\| Records \| Answer-file lines \| Files written \| Questions put to the fact store \| Individual facts looked at \| Saving: answer-file lines\/s \| Saving: files\/s \|/,
       );
       assert.match(
         text,
         /\| 16,833 \| 294,000 \| 27,223 \| 365 \| 1,300,000 \|/,
       );
       assert.match(text, /43,881/);
-      assert.match(text, /no mapping to the Cascade vocabulary/);
+      assert.match(text, /maps nothing to the Cascade vocabulary/);
+      assert.match(text, /not a lower bound/);
+      assert.match(
+        text,
+        /encrypted import is compared with the same unencrypted/,
+      );
+      assert.doesNotMatch(text, /Converting: |Judging: |Quads|Statements/);
       const compared = compare.compare(file(rows), file(rows), {
         markdown: true,
       });
@@ -589,6 +636,16 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         .forHistory(file(rows))
         .map(({ name }) => name)
         .filter((name) => name.startsWith("floor-"));
+      const other = history
+        .forHistory(
+          file([
+            row("scenario-x/parse", 1),
+            row("scenario-x/insert", 1),
+            ...rows,
+          ]),
+        )
+        .map(({ name }) => name);
+      assert.ok(!other.some((name) => name.startsWith("scenario-x/")));
       assert.deepEqual(kept, [
         "floor-synthea-lifetime/total",
         "floor-synthea-lifetime/parse",

@@ -757,7 +757,7 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
             row(`${key}/phase-converting`, 4),
             row(`${key}/phase-judging`, 2),
             row(`${key}/count/records`, 647, "{count}"),
-            row(`${key}/count/built.lines.written`, 10000, "{count}"),
+            row(`${key}/count/built.lines.total`, 10000, "{count}"),
             row(`${key}/count/files-written`, 800, "{count}"),
             row(`${key}/count/store.queries`, 90, "{count}"),
             row(`${key}/count/graph.quadsvisited`, 5000, "{count}"),
@@ -780,10 +780,10 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         ).exec(index)?.[0] ?? "";
       assert.match(
         build("300-ccccccc"),
-        /Import takes 8\.00 s; the plain SQL load of the same input takes 500 ms \(16x\)\./,
+        /Import takes 8\.00 s; a plain load of the same input into SQLite takes 500 ms \(16x\)\./,
       );
       assert.match(build("300-ccccccc"), /<td[^>]*>10,000<\/td>/);
-      assert.match(build("300-ccccccc"), /<td[^>]*>2,500<\/td>/);
+      assert.match(build("300-ccccccc"), /<td[^>]*>5,000<\/td>/);
       assert.doesNotMatch(build("100-aaaaaaa"), /Import takes/);
       assert.match(build("100-aaaaaaa"), /Where the time went/);
     });

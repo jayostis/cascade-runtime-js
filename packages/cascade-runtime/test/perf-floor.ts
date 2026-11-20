@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { gunzipSync } from "node:zlib";
 
 /**
- * The floor of a fresh import: the same input loaded as plainly as SQL can. Read the gzipped Bundle and parse it, flatten
+ * A plain load of a fresh import's input into SQLite, to read the import against (not a lower bound: the parse and flatten are JavaScript, only the insert is SQL). Read the gzipped Bundle and parse it, flatten
  * each resource to one row of a table of its resource type (a scalar is a column, anything nested is its JSON text), and
  * insert the rows into a SQLite file in one transaction. It does no mapping to the Cascade vocabulary, keeps no
  * provenance, matches nothing, derives no views and writes no pod files, so what an import takes beyond it is
@@ -24,7 +24,9 @@ interface Entry {
 
 /** A table's rows while they are read: a cell for each column the row has. */
 interface Reading {
-  readonly columns: Map<string, number>;
+  /** Each field name seen, and the column it goes in: SQLite compares column names without regard to case. */
+  readonly columns: Map<string, string>;
+  readonly taken: Set<string>;
   readonly cells: Map<string, SqlValue>[];
 }
 
@@ -37,7 +39,10 @@ const cellOf = (value: unknown): SqlValue =>
         ? value
         : JSON.stringify(value);
 
-/** One table for each resource type the entries hold, its columns in the order they were first seen. */
+/**
+ * One table for each resource type the entries hold, its columns in the order they were first seen. Two fields whose names
+ * differ only in case (which SQLite will not take as two columns) go in separate columns, the later one's name suffixed.
+ */
 export function flatten(
   entries: readonly Entry[],
 ): ReadonlyMap<string, FlatTable> {
@@ -51,19 +56,26 @@ export function flatten(
     if (typeof type !== "string") continue;
     let table = reading.get(type);
     if (table === undefined) {
-      table = { columns: new Map(), cells: [] };
+      table = { columns: new Map(), taken: new Set(), cells: [] };
       reading.set(type, table);
     }
     const cells = new Map<string, SqlValue>();
     for (const [name, value] of Object.entries(fields)) {
-      if (!table.columns.has(name)) table.columns.set(name, table.columns.size);
-      cells.set(name, cellOf(value));
+      let column = table.columns.get(name);
+      if (column === undefined) {
+        column = name;
+        for (let again = 2; table.taken.has(column.toLowerCase()); again++)
+          column = `${name}_${again}`;
+        table.taken.add(column.toLowerCase());
+        table.columns.set(name, column);
+      }
+      cells.set(column, cellOf(value));
     }
     table.cells.push(cells);
   }
   return new Map(
     [...reading].map(([type, { columns, cells }]) => {
-      const names = [...columns.keys()];
+      const names = [...columns.values()];
       return [
         type,
         {

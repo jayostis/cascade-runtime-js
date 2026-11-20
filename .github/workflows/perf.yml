@@ -22,10 +22,10 @@ name: perf
 #   ran it. The `keep-flame` job writes that branch as ONE commit, the whole window, and force-pushes it each time, so the
 #   branch never has more history than its files; it is the only job that force-pushes, and only that branch. The
 #   `build-pages` job of check.yml serves them with the speedscope viewer at /perf/runs/.
-# - Every run also loads the same input as plainly as SQL can (the `floor` scenario: parse, flatten to one table per resource type,
+# - Every run also loads the same input as plainly as it can into SQLite (the `floor` scenario: parse, flatten to one table per resource type,
 #   one SQLite transaction), so that a fresh import's time is read against what loading that input costs: the job summary, the
-#   comment, /perf/ and /perf/runs/ say "Import takes X; the plain SQL load of the same input takes Y (Zx)", with what each
-#   import handled and how fast its phases went.
+#   comment, /perf/ and /perf/runs/ say "Import takes X; a plain load of the same input into SQLite takes Y (Zx)", with what each
+#   import handled and how fast saving went.
 # - A hand-started run can name one scenario (`fresh-first-screen,floor` is the import and its floor) and one size.
 
 on:
@@ -38,7 +38,7 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: "One scenario, or all"
+        description: "One scenario, or all (`floor` alone writes the load's rows, which no page shows without the import of the same size; use fresh-first-screen,floor)"
         type: choice
         options:
           [

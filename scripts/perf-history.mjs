@@ -13,10 +13,13 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const HEADLINE =
-  /\/(total|open|import|first-screen|first-read|second-read|close|peak-rss|parse|flatten|insert)$/;
+  /\/(total|open|import|first-screen|first-read|second-read|close|peak-rss)$/;
+const FLOOR_STAGE = /^floor-[^/]+\/(parse|flatten|insert)$/;
 
 export function forHistory(file, { stages = 6 } = {}) {
-  const keep = file.results.filter((row) => HEADLINE.test(row.name));
+  const keep = file.results.filter(
+    (row) => HEADLINE.test(row.name) || FLOOR_STAGE.test(row.name),
+  );
   const slowest = new Map();
   for (const kind of ["stage", "self"])
     for (const row of file.results) {

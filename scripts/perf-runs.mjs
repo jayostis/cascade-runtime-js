@@ -8,7 +8,7 @@
 //   perf-runs.mjs pages --data <perf-flame checkout> --out <the site's perf folder> --viewer <speedscope release folder>
 //     --repo <owner/name> --pages <the site's perf address> [--perf-data <perf-data checkout>]
 //
-// With --perf-data, each build's entry also shows its import beside the plain SQL load of the same input and what it
+// With --perf-data, each build's entry also shows its import beside a plain load of the same input into SQLite and what it
 // handled, from that build's performance file there.
 //
 // check.yml's `build-pages` job runs it after copying perf-data's `perf/` (the history page) to <out>/detail/, which it links to the index.
@@ -210,7 +210,7 @@ ${bridge}
 }
 
 /**
- * What a build's import took beside the plain SQL load of the same input, and what it handled: for each fresh import the
+ * What a build's import took beside a plain load of the same input into SQLite, and what it handled: for each fresh import the
  * build's performance file measured, its line and a one-row table. Nothing for a build with no such file.
  */
 function speedBlock(run, glossary) {
@@ -237,7 +237,7 @@ function speedBlock(run, glossary) {
         ];
   });
   return `<div class="box speed">
-<h2>The import beside the plain SQL load of the same input</h2>
+<h2>The import beside a plain load of the same input into SQLite</h2>
 ${lines.join("\n")}
 ${lines.length === 0 ? "" : `<p class="caption">${esc(FLOOR_NOTE)}</p>`}
 ${speeds
@@ -361,7 +361,7 @@ export function pages({
       return freshKeys(file).flatMap((key) => speedOf(file, key) ?? []);
     } catch (error) {
       process.stderr.write(
-        `warning: ${id} shows no import beside the plain SQL load, its file cannot be read: ${error instanceof Error ? error.message : error}\n`,
+        `warning: ${id} shows no import beside a plain load into SQLite, its file cannot be read: ${error instanceof Error ? error.message : error}\n`,
       );
       return [];
     }

@@ -441,7 +441,7 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
       { name: `${KEY}/phase-judging`, unit: "s", value: 8 },
       { name: `${KEY}/count/records`, unit: "{count}", value: 647 },
       {
-        name: `${KEY}/count/built.lines.written`,
+        name: `${KEY}/count/built.lines.total`,
         unit: "{count}",
         value: 5000,
       },
@@ -507,16 +507,16 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
       const page = stackedPage(charts, { repo: "owner/repo" });
       assert.match(
         page,
-        /Import takes 30\.0 s; the plain SQL load of the same input takes 3\.00 s \(10x\)\./,
+        /Import takes 30\.0 s; a plain load of the same input into SQLite takes 3\.00 s \(10x\)\./,
       );
       assert.doesNotMatch(page, /Import takes 40/);
       const table =
         /<table class="speed">[\s\S]*?<\/table>/.exec(page)?.[0] ?? "";
       assert.equal((table.match(/<tr>/g) ?? []).length, 1 + 3);
-      assert.match(table, /<th[^>]*>Statements<\/th>/);
+      assert.match(table, /<th[^>]*>Answer-file lines<\/th>/);
       assert.match(table, /<td[^>]*>5,000<\/td>/);
       assert.match(table, /<td[^>]*>1,000<\/td>/);
-      assert.match(page, /no mapping to the Cascade vocabulary/);
+      assert.match(page, /maps nothing to the Cascade vocabulary/);
       assert.doesNotMatch(page, /floor-synthea-10y/);
     });
 
