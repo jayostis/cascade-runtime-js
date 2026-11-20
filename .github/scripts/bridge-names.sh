@@ -32,7 +32,7 @@ if ! want=$(gh release view "$tag" -R "$bridge" --json assets -q '.assets[] | se
 fi
 [ -n "$want" ] || none "$tag holds no cascade_bridge_bg.names.wasm with a digest"
 names="$RUNNER_TEMP/names-$commit"
-if ! gh release download "$tag" -R "$bridge" --pattern cascade_bridge_bg.names.wasm --dir "$names"; then
+if ! gh release download "$tag" -R "$bridge" --pattern cascade_bridge_bg.names.wasm --dir "$names" --clobber; then
   none "cascade_bridge_bg.names.wasm of $tag could not be downloaded"
 fi
 got=sha256:$(sha256sum "$names/cascade_bridge_bg.names.wasm" | cut -d' ' -f1)

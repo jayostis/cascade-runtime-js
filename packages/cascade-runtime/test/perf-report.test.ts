@@ -1241,7 +1241,11 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         vocabulary: sha("f"),
       });
       const text = compare.comparison(other, { sameJob: base });
-      assert.match(text, /vocabulary: main fffffff, this pull request eeeeeee/);
+      assert.match(
+        text,
+        /They differ in: vocabulary: main fffffff, this pull request eeeeeee/,
+      );
+      assert.match(text, /as a push to main does/);
     });
 
     it("says in plain words that totals are not comparable when the two runs landed on different CPUs, and still gives the table", () => {

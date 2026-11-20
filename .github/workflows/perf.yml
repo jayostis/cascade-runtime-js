@@ -4,7 +4,12 @@ name: perf
 # patient's record, rows in the Bridge spec's result format. Nothing here fails on a slowdown: the files are kept, and a
 # pull request is shown its before -> after against the latest push to main.
 #
-# - A pull request runs the per-build size and comments the comparison against main (one comment, updated).
+# - A pull request runs the per-build size and comments the comparison against main (one comment, updated). Main is measured
+#   in the same job, beside the pull request and on the same runner (the checkout of main, with each repository it reads at its
+#   default branch and its Bridge as a push to main resolves it, is under main/), because the same commits took 23% longer
+#   on a runner with another processor model: a comparison with a file from another job cannot be read to a few percent. If
+#   that run gives no file the job goes on, warns, and the comment compares with the latest push's file as before, saying so.
+#   A hand-started run on a branch other than main does the same and puts the comparison in its summary.
 # - A push to main and the nightly run write their file to the orphan branch `perf-data`, at
 #   runtime/YYYY/MM/DD/<run>-<sha7>-<event>.json, and put the table in the job summary. The nightly run and a
 #   hand-started run add the large size, plain and encrypted. A push also names its file in runtime/latest-push.txt,
@@ -211,13 +216,18 @@ jobs:
           MAIN_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          rm -f "$RUNNER_TEMP"/perf-main*.json
+          rm -f "$RUNNER_TEMP/perf-main.json"
           npm ci
           unset GITHUB_EVENT_PATH
           export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
           npm run --silent bridge
           bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$PWD" "main's run"
-      - name: Main's performance file, before
+      # Main is measured first, directly before this build, with the same arguments and no flame graphs. In three jobs that ran
+      # main, this build (the same commit) and main again, in this order, the fresh import's total of the second run was
+      # +0.4%, -0.2% and +1.1% of the first's and of the third +0.5%, +0.7% and +2.3%: a later run is slower by about a
+      # percent, never faster. Main first puts that on the build's side, so a build is never shown faster than it is by the
+      # order. A second run of main would add 39 s to every pull request's job for under a percent.
+      - name: Main's performance file
         if: ${{ env.SAME_JOB == 'true' }}
         continue-on-error: true
         working-directory: main/cascade-runtime-js
@@ -230,32 +240,10 @@ jobs:
           unset GITHUB_EVENT_PATH
           export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
           # shellcheck disable=SC2086
-          npm run --silent perf -- $ARGS --out "$RUNNER_TEMP/perf-main-before.json"
+          npm run --silent perf -- $ARGS --out "$RUNNER_TEMP/perf-main.json"
       # The traces and CPU profiles are made by the same run: a trace from its probed run, a CPU profile from one more run.
       - name: The performance file
         run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json" --profiles "$RUNNER_TEMP/flame"
-      - name: Main's performance file, after
-        if: ${{ env.SAME_JOB == 'true' }}
-        continue-on-error: true
-        working-directory: main/cascade-runtime-js
-        shell: bash
-        env:
-          MAIN_BRANCH: ${{ github.event.repository.default_branch }}
-          ARGS: ${{ steps.what.outputs.args }}
-        run: |
-          set -euo pipefail
-          unset GITHUB_EVENT_PATH
-          export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
-          # shellcheck disable=SC2086
-          npm run --silent perf -- $ARGS --out "$RUNNER_TEMP/perf-main-after.json"
-      - name: Where this run's files landed
-        if: ${{ env.SAME_JOB == 'true' && !cancelled() }}
-        shell: bash
-        run: |
-          ls -la "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/main" "$RUNNER_TEMP"/perf*.json || true
-          for f in perf-main-before perf-main-after perf; do
-            [ -f "$RUNNER_TEMP/$f.json" ] && node -e "const f=require('fs');const j=JSON.parse(f.readFileSync(process.argv[1]));console.log(process.argv[1], j.env.runner, JSON.stringify(j.commit))" "$RUNNER_TEMP/$f.json"
-          done
       - name: The summary
         if: ${{ !cancelled() }}
         shell: bash
@@ -266,6 +254,23 @@ jobs:
           [ -f "$RUNNER_TEMP/flame/flame.json" ] && own="--without-own-time"
           if [ -f "$RUNNER_TEMP/perf.json" ]; then
             node scripts/perf-compare.mjs summary "$RUNNER_TEMP/perf.json" --markdown $own >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # A pull request's comment holds this comparison; a hand-started run on a branch has no comment, so it is in the summary.
+      - name: Main beside this build
+        if: ${{ env.SAME_JOB == 'true' && github.event_name != 'pull_request' && !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/perf.json" ]; then
+            node scripts/perf-compare.mjs against "$RUNNER_TEMP/perf.json" --same-job "$RUNNER_TEMP/perf-main.json" --markdown --without-own-time >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # A build of main that gave no file is a warning, never a failure: the pull request's own file is the job's result.
+      - name: Main's file, or why there is none
+        if: ${{ env.SAME_JOB == 'true' && !cancelled() }}
+        shell: bash
+        run: |
+          if [ ! -f "$RUNNER_TEMP/perf-main.json" ]; then
+            echo "::warning::main's own run in this job gave no file (see the steps 'Main's build' and 'Main's performance file'), so the comparison falls back to the latest push to main's file"
           fi
       - name: The rows for the history page
         shell: bash
@@ -321,12 +326,13 @@ jobs:
           name: perf
           path: |
             ${{ runner.temp }}/perf.json
-            ${{ runner.temp }}/perf-main*.json
+            ${{ runner.temp }}/perf-main.json
             ${{ runner.temp }}/history.json
             ${{ runner.temp }}/where.md
           if-no-files-found: error
 
-  # A pull request: the file against the latest push to main on `perf-data`, in one comment that each push updates. A
+  # A pull request: the file against main as the performance job measured it beside the build (the latest push to main on
+  # `perf-data` only when that run gave no file), in one comment that each push updates. A
   # comment that cannot be posted (a pull request from a fork has a read-only token) is a warning, never a failure.
   compare:
     name: against main
@@ -352,33 +358,27 @@ jobs:
         run: |
           set -euo pipefail
           marker='<!-- perf-compare -->'
-          # Only the pointer and the file it names are fetched, never every file of the branch.
-          base=""
+          # Main as this job measured it, beside the pull request, is what the pull request is compared with. The latest push's file,
+          # taken on another run and perhaps another machine, is read only when that file is missing or unreadable (main's run in the
+          # job failed): then the comment says so and compares with it. Only the pointer and the file it names are fetched, never
+          # every file of the branch.
+          latest=""
           raw='Accept: application/vnd.github.raw'
           if named=$(gh api -H "$raw" "repos/${GITHUB_REPOSITORY}/contents/runtime/latest-push.txt?ref=perf-data" 2>/dev/null) \
             && [ -n "$named" ] \
             && mkdir -p "base/$(dirname "$named")" \
             && gh api -H "$raw" "repos/${GITHUB_REPOSITORY}/contents/${named}?ref=perf-data" > "base/$named"; then
-            base="base/$named"
+            latest="base/$named"
           fi
+          args=(--markdown --same-job pr/perf-main.json)
+          [ -z "$latest" ] || args+=(--latest "$latest" --latest-name "${latest#base/}")
+          # The steps with the longest own time are in the flame graph list below, with their links: not twice.
+          if [ -f pr/where.md ] && [ -s pr/where.md ]; then args+=(--without-own-time); fi
           {
             echo "$marker"
             echo "### Performance against main"
             echo
-            if [ -z "$base" ]; then
-              echo "main has no performance file yet, so there is nothing to compare with. This pull request's:"
-              echo
-              # The steps with the longest own time are in the flame graph list below, with their links: not twice.
-              if [ -f pr/where.md ] && [ -s pr/where.md ]; then
-                node scripts/perf-compare.mjs summary pr/perf.json --markdown --without-own-time
-              else
-                node scripts/perf-compare.mjs summary pr/perf.json --markdown
-              fi
-            else
-              echo "Against \`${base#base/}\`. Unprobed medians; no threshold, nothing here fails the run."
-              echo
-              node scripts/perf-compare.mjs compare "$base" pr/perf.json --markdown
-            fi
+            node scripts/perf-compare.mjs against pr/perf.json "${args[@]}"
             echo
             if [ -f pr/where.md ]; then
               cat pr/where.md

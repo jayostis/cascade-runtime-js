@@ -688,13 +688,12 @@ export function comparison(
       "",
     );
     const others = otherComponents(sameJob, pull);
-    if (others.length > 0)
-      out.push(
-        quote(
-          `Other components read at different commits: ${others.join("; ")}.`,
-        ),
-        "",
-      );
+    out.push(
+      quote(
+        `Main's run read each repository it needs (the vocabulary, the adapters, the reference tables, the starter kit, the Bridge) as a push to main does, at its default branch; this pull request's read the ones its own run picks, which a Depends-On line can change.${others.length > 0 ? ` They differ in: ${others.join("; ")}.` : " They are the same commits."}`,
+      ),
+      "",
+    );
     out.push(
       "Unprobed medians; no threshold, nothing here fails the run.",
       "",
