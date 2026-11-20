@@ -977,7 +977,8 @@ jobs:
             # and the builds' traces and CPU profiles at /perf/runs/<run>-<sha7>/ with an index of them at /perf/runs/, from the
             # orphan branch `perf-flame` (one commit, which perf.yml writes with the window of builds it keeps). The viewer
             # reads a file by its address, so the files are served from the same site. A branch that does not exist yet, or
-            # cannot be cloned, is an index with no builds.
+            # cannot be cloned, is an index with no builds. Each build's entry also shows its import beside a plain load of
+            # the same input into SQLite, from that build's file on perf-data (`--perf-data`).
             mkdir -p "$RUNNER_TEMP/perf-flame"
             if git ls-remote --exit-code --heads "$remote" perf-flame >/dev/null 2>&1; then
               rm -rf "$RUNNER_TEMP/perf-flame"
@@ -986,7 +987,7 @@ jobs:
             fi
             if ! node scripts/perf-runs.mjs pages --data "$RUNNER_TEMP/perf-flame" --out build/pages/perf \
               --viewer node_modules/speedscope/dist/release --viewer-license node_modules/speedscope/LICENSE \
-              --repo "$GITHUB_REPOSITORY" --pages "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf"; then
+              --repo "$GITHUB_REPOSITORY" --pages "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf" \n              --perf-data "$RUNNER_TEMP/perf-data"; then
               echo "::warning::/perf/runs/ is skipped: the builds' flame graphs could not be put in the site"
             fi
             # The main page, after the index of builds, so that a column opens a build's entry only where the index has one.

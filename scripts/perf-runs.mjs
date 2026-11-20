@@ -6,7 +6,10 @@
 // holds: the window of builds and files kept (`KEEP`) is applied when the branch is written, by perf.yml's publish job.
 //
 //   perf-runs.mjs pages --data <perf-flame checkout> --out <the site's perf folder> --viewer <speedscope release folder>
-//     --repo <owner/name> --pages <the site's perf address>
+//     --repo <owner/name> --pages <the site's perf address> [--perf-data <perf-data checkout>]
+//
+// With --perf-data, each build's entry also shows its import beside a plain load of the same input into SQLite and what it
+// handled, from that build's performance file there.
 //
 // check.yml's `build-pages` job runs it after copying perf-data's `perf/` (the history page) to <out>/detail/, which it links to the index.
 
@@ -24,8 +27,21 @@ import { join, relative } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { openIn, titleOf } from "./perf-flame.mjs";
-import { shown } from "./perf-compare.mjs";
-import { chartTitle, readGlossary, sentenceOf } from "./perf-stacked.mjs";
+import {
+  FLOOR_NOTE,
+  THROUGHPUT_NOTE,
+  floorLine,
+  freshKeys,
+  shown,
+  speedOf,
+  throughputTable,
+} from "./perf-compare.mjs";
+import {
+  buildsIn,
+  chartTitle,
+  readGlossary,
+  sentenceOf,
+} from "./perf-stacked.mjs";
 
 /** The size whose files only the newest few builds keep: a trace and a CPU profile of it run to tens of megabytes. */
 export const LARGE = "synthea-lifetime";
@@ -193,15 +209,60 @@ ${bridge}
 </div>`;
 }
 
+/**
+ * What a build's import took beside a plain load of the same input into SQLite, and what it handled: for each fresh import the
+ * build's performance file measured, its line and a one-row table. Nothing for a build with no such file.
+ */
+function speedBlock(run, glossary) {
+  const speeds = run.speeds ?? [];
+  if (speeds.length === 0) return "";
+  const title = (key) => {
+    const [, dataset = "", encrypted] =
+      /^fresh-first-screen-(.+?)(-encrypted)?$/.exec(key) ?? [];
+    return chartTitle(
+      {
+        scenario: "fresh-first-screen",
+        dataset,
+        encrypted: encrypted !== undefined,
+      },
+      glossary,
+    );
+  };
+  const lines = speeds.flatMap((speed) => {
+    const line = floorLine(speed);
+    return line === undefined
+      ? []
+      : [
+          `<p><strong>${esc(line)}</strong> <span class="size">${esc(title(speed.key))}</span></p>`,
+        ];
+  });
+  return `<div class="box speed">
+<h2>The import beside a plain load of the same input into SQLite</h2>
+${lines.join("\n")}
+${lines.length === 0 ? "" : `<p class="caption">${esc(FLOOR_NOTE)}</p>`}
+${speeds
+  .map(
+    (speed) =>
+      `<h3>${esc(title(speed.key))}: what the import handled</h3>
+<div class="scroll">${throughputTable([{ label: esc(run.sha), speed }], "Build")}</div>`,
+  )
+  .join("\n")}
+<p class="caption">${esc(THROUGHPUT_NOTE)}</p>
+</div>`;
+}
+
 /** The page of builds: for each, a plain table of where each scenario's time went, and the links that open its graphs. */
 export function runsPage(
   runs,
   { repo, pages, viewer, glossary = readGlossary() },
 ) {
   const sections = runs.map((run, at) => {
-    const scenarios = run.flame.builds.map((build) =>
-      buildSection(run, build, { viewer, pages, glossary }),
-    );
+    const scenarios = [
+      speedBlock(run, glossary),
+      ...run.flame.builds.map((build) =>
+        buildSection(run, build, { viewer, pages, glossary }),
+      ),
+    ].filter((each) => each !== "");
     return `<details class="build" id="${esc(run.id)}"${at === 0 ? " open" : ""}>
 <summary><strong>${esc(run.date)}</strong> · ${esc(EVENTS[run.event] ?? run.event)} · build <a href="https://github.com/${repo}/commit/${run.sha}">${run.sha}</a> · <a href="https://github.com/${repo}/actions/runs/${run.run}">run ${run.run}</a> <span class="size">${run.flame.builds.length} measurements</span></summary>
 ${scenarios.join("\n")}
@@ -229,6 +290,11 @@ code { font-size: .8em; color: #6b7280; }
 .box h2 { font-size: 1rem; margin: 0 0 .3rem; }
 .box ul { margin: .3rem 0; padding-left: 1.2rem; }
 .box p { margin: .4rem 0; }
+.box.speed h2 { font-size: .95rem; }
+.box.speed h3 { font-size: .9rem; margin: .8rem 0 .3rem; }
+.scroll { overflow-x: auto; }
+table.speed { font-size: .82rem; }
+table.speed th, table.speed td { padding: .25rem .5rem; }
 details.build { border-top: 1px solid #cfd5de; margin-top: 1rem; padding-top: .3rem; }
 details.build > summary { cursor: pointer; padding: .4rem 0; }
 a { color: #2f64b8; text-decoration: none; }
@@ -278,7 +344,28 @@ export function pages({
   viewerLicense,
   repo,
   pagesAt,
+  perfData,
 }) {
+  const performanceFiles = new Map(
+    (perfData === undefined ? [] : buildsIn(perfData)).map(({ id, path }) => [
+      id,
+      path,
+    ]),
+  );
+  /** The imports a build's performance file measured, read apart from its flame graphs; none when the file is not kept or cannot be read. */
+  const speedsOf = (id) => {
+    const path = performanceFiles.get(id);
+    if (path === undefined) return [];
+    try {
+      const file = JSON.parse(readFileSync(path, "utf8"));
+      return freshKeys(file).flatMap((key) => speedOf(file, key) ?? []);
+    } catch (error) {
+      process.stderr.write(
+        `warning: ${id} shows no import beside a plain load into SQLite, its file cannot be read: ${error instanceof Error ? error.message : error}\n`,
+      );
+      return [];
+    }
+  };
   const viewerUrl = `${pagesAt}/speedscope/`;
   mkdirSync(join(out, "speedscope"), { recursive: true });
   for (const entry of readdirSync(viewerFolder))
@@ -305,7 +392,7 @@ export function pages({
         files.add(file);
       }
     }
-    kept.push({ ...run, flame, kept: files });
+    kept.push({ ...run, flame, kept: files, speeds: speedsOf(run.id) });
   }
   writeFileSync(
     join(out, "runs", "index.html"),
@@ -335,7 +422,7 @@ function main(args) {
   const need = ["--data", "--out", "--viewer", "--repo", "--pages"];
   if (command !== "pages" || need.some((name) => flag(name) === undefined)) {
     process.stderr.write(
-      `usage: perf-runs.mjs pages ${need.map((name) => `${name} <x>`).join(" ")} [--viewer-license <file>]\n`,
+      `usage: perf-runs.mjs pages ${need.map((name) => `${name} <x>`).join(" ")} [--viewer-license <file>] [--perf-data <perf-data checkout>]\n`,
     );
     process.exitCode = 2;
     return;
@@ -347,6 +434,7 @@ function main(args) {
     viewerLicense: flag("--viewer-license"),
     repo: flag("--repo"),
     pagesAt: flag("--pages").replace(/\/$/, ""),
+    perfData: flag("--perf-data"),
   });
   process.stdout.write(
     `${kept.length} builds kept under ${flag("--out")}/runs/\n`,

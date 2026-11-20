@@ -433,6 +433,103 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
     });
   });
 
+  describe("given builds whose files hold the plain load of the same input and what the import handled", () => {
+    const rowsOf = (run: number, imported: number, floor?: number) => [
+      { name: `${KEY}/import`, unit: "s", value: imported },
+      { name: `${KEY}/phase-saving`, unit: "s", value: 5 },
+      { name: `${KEY}/phase-converting`, unit: "s", value: 10 },
+      { name: `${KEY}/phase-judging`, unit: "s", value: 8 },
+      { name: `${KEY}/count/records`, unit: "{count}", value: 647 },
+      {
+        name: `${KEY}/count/built.lines.total`,
+        unit: "{count}",
+        value: 5000,
+      },
+      { name: `${KEY}/count/files-written`, unit: "{count}", value: 900 },
+      { name: `${KEY}/count/store.queries`, unit: "{count}", value: 120 },
+      { name: `${KEY}/count/graph.quadsvisited`, unit: "{count}", value: 7000 },
+      { name: `${KEY}/count/probe.calls`, unit: "{count}", value: run },
+      ...(floor === undefined
+        ? []
+        : [
+            { name: "floor-synthea-10y/total", unit: "s", value: floor },
+            { name: "floor-synthea-10y/parse", unit: "s", value: floor / 4 },
+            {
+              name: "floor-synthea-10y/count/rows",
+              unit: "{count}",
+              value: 647,
+            },
+          ]),
+    ];
+    const built = (run: number, imported: number, floor?: number): File => {
+      const base = file(run, imported + 2, { a: 1 });
+      return {
+        build: base.build,
+        file: {
+          results: [...base.file.results, ...rowsOf(run, imported, floor)],
+        },
+      };
+    };
+
+    it("keeps the rows of the import and the floor on the build's column, draws no chart of the floor, and keeps no other count", async () => {
+      const { shape, readBuilds, readGlossary } =
+        await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      scratch.push(data);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      await writeFile(
+        join(day, "1-aaaaaa1-push.json"),
+        JSON.stringify(built(1, 20, 1).file),
+      );
+      const [read] = readBuilds(data, readGlossary()) as [File];
+      const names = (read.file.results as { name: string }[]).map(
+        ({ name }) => name,
+      );
+      assert.ok(names.includes(`${KEY}/count/graph.quadsvisited`));
+      assert.ok(names.includes("floor-synthea-10y/parse"));
+      assert.ok(!names.includes(`${KEY}/count/probe.calls`));
+      const charts = shape([read]);
+      assert.deepEqual(
+        charts.map(({ key }) => key),
+        [KEY],
+      );
+      const column = (charts[0] as Chart).columns[0] as Column & {
+        speed?: { imported: number; floor?: { total: number } };
+      };
+      assert.equal(column.speed?.imported, 20);
+      assert.equal(column.speed?.floor?.total, 1);
+    });
+
+    it("writes, under the chart of the fresh import, the line of the latest build that has a floor and a table of the newest builds' counts and rates", async () => {
+      const { shape, stackedPage } = await script<Stacked>("perf-stacked.mjs");
+      const charts = shape([built(1, 20, 2), built(2, 30, 3), built(3, 40)]);
+      const page = stackedPage(charts, { repo: "owner/repo" });
+      assert.match(
+        page,
+        /Import takes 30\.0 s; a plain load of the same input into SQLite takes 3\.00 s \(10x\)\./,
+      );
+      assert.doesNotMatch(page, /Import takes 40/);
+      const table =
+        /<table class="speed">[\s\S]*?<\/table>/.exec(page)?.[0] ?? "";
+      assert.equal((table.match(/<tr>/g) ?? []).length, 1 + 3);
+      assert.match(table, /<th[^>]*>Answer-file lines<\/th>/);
+      assert.match(table, /<td[^>]*>5,000<\/td>/);
+      assert.match(table, /<td[^>]*>1,000<\/td>/);
+      assert.match(page, /maps nothing to the Cascade vocabulary/);
+      assert.doesNotMatch(page, /floor-synthea-10y/);
+    });
+
+    it("writes no line and no table for a chart none of whose builds measured the import's parts", async () => {
+      const { shape, stackedPage } = await script<Stacked>("perf-stacked.mjs");
+      const page = stackedPage(shape([file(1, 3, { a: 1 })]), {
+        repo: "owner/repo",
+      });
+      assert.doesNotMatch(page, /Import takes/);
+      assert.doesNotMatch(page, /class="speed"/);
+    });
+  });
+
   describe("given the perf-data checkout and the index of builds", () => {
     it("writes a page with a column for each build that opens the build's entry only where the index has one, and the data it draws", async () => {
       const { pages } = await script<Stacked>("perf-stacked.mjs");

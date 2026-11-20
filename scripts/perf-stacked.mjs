@@ -21,7 +21,15 @@ import {
 import { join, relative } from "node:path";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
-import { shown } from "./perf-compare.mjs";
+import {
+  FLOOR_NOTE,
+  SPEED_ROW,
+  THROUGHPUT_NOTE,
+  floorLine,
+  shown,
+  speedOf,
+  throughputTable,
+} from "./perf-compare.mjs";
 
 /** How many steps get a band of their own in a chart; the rest of the time is one band, "everything else". */
 export const BANDS = 7;
@@ -194,7 +202,7 @@ function rowsOf(file, key) {
       own.set(name, { seconds: row.value, says: sentenceOf(row.extra) });
     }
   }
-  return { total, runs, probed, own };
+  return { total, runs, probed, own, speed: speedOf(file, key) };
 }
 
 /** The scenario and size a row name starts with, from the glossary's names: `fresh-first-screen-synthea-10y-encrypted/total`. */
@@ -216,6 +224,8 @@ export function reduced(file, glossary = readGlossary()) {
       const rest = row.name.slice(found[0].length);
       if (rest === "total" || rest === "probed-total")
         return [{ name: row.name, value: row.value, samples: row.samples }];
+      if (SPEED_ROW.test(row.name))
+        return [{ name: row.name, value: row.value }];
       if (!rest.startsWith("self/")) return [];
       return [
         { name: row.name, value: row.value, extra: sentenceOf(row.extra) },
@@ -232,7 +242,11 @@ function chartKeys(files, glossary) {
   for (const { file } of files)
     for (const row of file.results ?? []) {
       const found_ = pattern.exec(row.name);
-      if (found_ !== null && row.name === `${found_[1]}/total`)
+      if (
+        found_ !== null &&
+        row.name === `${found_[1]}/total` &&
+        glossary.scenarios[found_[2]]?.chart !== false
+      )
         found.add(
           JSON.stringify([
             found_[1],
@@ -319,6 +333,7 @@ export function shapeChart(measured, { bands = BANDS, window = WINDOW } = {}) {
       run: build.run,
       total: build.total,
       runs: build.runs,
+      speed: build.speed,
       measured: build.own.size > 0,
       bands: values,
       other: Math.max(0, build.total - sum),
@@ -580,9 +595,48 @@ ul.legend .latest { margin-left: auto; color: #555b66; white-space: nowrap; font
 #tip .row b { margin-left: auto; padding-left: 1rem; font-weight: 500; white-space: nowrap; }
 #tip .says { color: #aab; font-size: .75rem; margin: 0 0 .25rem 1.25rem; }
 #tip .hint { margin-top: .4rem; color: #aab; font-size: .75rem; }
+.speedbox { margin: .6rem 0; }
+.speedbox p { margin: .3rem 0; }
+.speedline { font-size: 1rem; }
+.scroll { overflow-x: auto; }
+table.speed { border-collapse: collapse; width: 100%; font-size: .82rem; }
+table.speed th, table.speed td { padding: .25rem .5rem; border-bottom: 1px solid #e3e6ea; vertical-align: bottom; text-align: left; }
+table.speed th.n, table.speed td.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.speed td:first-child { white-space: nowrap; }
 .toc { columns: 2; font-size: .9rem; }
 .note { color: #555b66; font-size: .85rem; }
 `;
+
+/** How many of the newest builds the table of what an import handled lists. */
+export const SPEED_BUILDS = 10;
+
+/**
+ * Under a fresh import's chart: the line of the newest build that has a plain load into SQLite to read the import against, and a
+ * table of what the newest builds' imports handled and how fast each phase went. Nothing for a chart whose builds did not
+ * measure the import's parts.
+ */
+function speedBlock(chart, repo) {
+  const measured = chart.columns.filter(({ speed }) => speed !== undefined);
+  if (measured.length === 0) return "";
+  const at = [...measured].reverse().find(({ speed }) => floorLine(speed));
+  const label = (column) =>
+    `<a href="https://github.com/${esc(repo)}/commit/${esc(column.sha)}">${esc(column.sha)}</a> <span class="note">${esc(column.date)}</span>`;
+  const line =
+    at === undefined
+      ? ""
+      : `<p class="speedline"><strong>${esc(floorLine(at.speed))}</strong> <span class="note">Build ${label(at)}.</span></p>
+<p class="note">${esc(FLOOR_NOTE)}</p>`;
+  return `<div class="speedbox">
+${line}
+<div class="scroll">${throughputTable(
+    measured
+      .slice(-SPEED_BUILDS)
+      .reverse()
+      .map((column) => ({ label: label(column), speed: column.speed })),
+  )}</div>
+<p class="note">${esc(THROUGHPUT_NOTE)}</p>
+</div>`;
+}
 
 /** The page: the charts, how to read them, and the data they draw. */
 export function stackedPage(charts, { repo, glossary = readGlossary() } = {}) {
@@ -612,7 +666,10 @@ export function stackedPage(charts, { repo, glossary = readGlossary() } = {}) {
         span,
         colour,
       })),
-      columns: chart.columns,
+      columns: chart.columns.map((column) => ({
+        ...column,
+        speed: undefined,
+      })),
     })),
   };
   const sections = titled.map((chart, at) => {
@@ -638,6 +695,7 @@ export function stackedPage(charts, { repo, glossary = readGlossary() } = {}) {
 <h2>${esc(chart.title)}</h2>
 <p class="about">${esc(glossary.scenarios[chart.scenario]?.says ?? "")} Latest build <a href="https://github.com/${repo}/commit/${latest.sha}">${esc(latest.sha)}</a> (${esc(latest.date)}): <strong>${exact(latest.total)}</strong>; across the ${chart.columns.length} builds shown, ${exact(Math.min(...totals))} to ${exact(Math.max(...totals))}.</p>
 ${chartSvg(chart, at)}
+${speedBlock(chart, repo)}
 <ul class="legend">
 ${legend
   .map(
@@ -663,7 +721,8 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <p>Each chart follows one thing a person waits for. Every column is one build of the runtime, oldest on the left, so the chart shows whether it got faster or slower. A column's height is how long it took, in seconds; its coloured bands are the steps inside that took the time, so a band that grows is the step that slowed things down. Move over a column to see its numbers; click it to open that build's flame graphs.</p>
 <details class="how"><summary>How the bands are worked out</summary>
 <p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
-<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p></details>
+<p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
+<p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (records, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p></details>
 <p class="toc">${titled.map((chart) => `<a href="#${esc(chart.key)}">${esc(chart.title)}</a><br>`).join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
 <p class="links"><a href="../">Documentation home</a> · <a href="runs/">Each build's flame graphs</a> · <a href="detail/">Every measurement, one small chart each</a> · <a href="stacked.json">The data of these charts</a></p>

@@ -11,6 +11,7 @@ Generated from `packages/cascade-runtime/test/perf-glossary.json`; edit that fil
 | `reopen-first-answer` | A pod that already holds the record is opened again and answers its first question. |
 | `question-page` | Fetching one page of 20 answers to each of the app's questions, from the saved database. |
 | `close` | Closing a pod straight after it took in a record and drew the first screen. |
+| `floor` | The same input as a fresh import, loaded plainly into one SQLite file, to read a fresh import against. It is not a lower bound. |
 
 ## Datasets
 
@@ -36,6 +37,7 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `reopen-first-answer/total` | Opening an existing pod and answering its first read: what a returning person waits for. |
 | `question-page/total` | Fetching one page of answers for every question in turn. |
 | `close/total` | Closing a pod straight after its import and first screen, which saves its database. |
+| `floor/total` | The same input a fresh import takes in, loaded plainly into SQLite: read and decompress the Bundle, parse it, flatten each resource to one row of a table named for its resource type (a plain value is a column, anything nested is kept as its JSON text) and insert every row into a SQLite file in one transaction, with the SQLite the runtime uses and none of its settings changed. Only the insert is SQL; reading, parsing and flattening are JavaScript. Nested values are kept as JSON text with no further tables, and SQLite's default journal and synchronous settings are kept. It does no mapping to the Cascade vocabulary, keeps no provenance, does no matching of records that are the same, builds no derived views and writes no files, and a faster load of the same input could exist, so it is not a lower bound. The encrypted import is compared with this same unencrypted load. It says what loading costs, not what the import's other work adds up to; the pages do not split the difference beyond the stages the flame graphs measure. |
 | `total` | The headline: the whole scenario from start to finish, the median of the runs. |
 | `open` | Opening the pod. |
 | `import` | Importing the whole record into the pod. |
@@ -43,6 +45,9 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `first-read` | The first question asked of the reopened pod ('My active conditions'). |
 | `second-read` | A second question asked of the reopened pod ('My active medications'). |
 | `close` | Closing the pod, saving its database. |
+| `parse` | Floor stage: reading the compressed Bundle, decompressing it and parsing the JSON. A fresh import parses the Bundle too: the harness reads, decompresses and parses it once before the import's clock starts, but the import is handed the Bundle's bytes and, from reading its code, parses them again inside its own time (not traced). So this stage and the import's own parsing are about the same work, with this stage also counting reading and decompressing, which the import's clock does not. |
+| `flatten` | Floor stage: turning each parsed resource into one row of the table for its resource type, plain values as columns and anything nested as its JSON text. |
+| `insert` | Floor stage: creating a table for each resource type and inserting every row in one transaction into a SQLite file on disk, then closing the file. |
 | `rss` | Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the second read for a reopened one, after a first read and before the pages for the question pages. |
 | `peak-rss` | The most memory the process held at any moment, in bytes. |
 | `probed-total` | The scenario's time in one run with the probe on, which slows some work; its stages are from this run and are for finding where time goes, never for adding up to the headline. |
@@ -213,6 +218,7 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 |---|---|
 | `records` | How many records the person's source file holds. |
 | `files-written` | How many files the import wrote to the pod. |
+| `rows` | How many rows the floor inserted, one for each resource that has a type: a fresh import's records count is every entry of the Bundle. |
 | `graph.scans` | How many times the in-memory facts were searched from end to end. |
 | `graph.quadsvisited` | How many individual facts those searches looked at. |
 | `store.queries` | How many questions were put to the pod's fact store. |

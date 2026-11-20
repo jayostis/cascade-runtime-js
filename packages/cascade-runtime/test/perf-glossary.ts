@@ -14,7 +14,9 @@ type Within = string | Readonly<Record<string, string | readonly string[]>>;
 interface Glossary {
   readonly datasets: Readonly<Record<string, string>>;
   readonly variants: Readonly<Record<string, string>>;
-  readonly scenarios: Readonly<Record<string, { says: string; total: string }>>;
+  readonly scenarios: Readonly<
+    Record<string, { says: string; total: string; chart?: false }>
+  >;
   readonly measures: Readonly<Record<string, string>>;
   readonly measureFamilies: readonly Family[];
   readonly selfRows: string;
