@@ -339,8 +339,8 @@ type Held = ReadonlyMap<string, ArchiveEntry>;
 /**
  * A pod's files over a host that may keep some of them in ZIP archives, in `folder` (X1): every file at its own path and
  * every entry of every archive named as N9 names one, the archives' folder itself no part of the pod. Each archive's
- * directory is read once, at the first call, and held for the life of this opening; an entry is one ranged read, and
- * no handle on an archive is kept between reads. A path held in two places with other bytes is refused, naming it,
+ * directory is read once, at the first call, and held for the life of this opening; an entry is one ranged read
+ * through the host, which keeps no handle on an archive once its reads have ended. A path held in two places with other bytes is refused, naming it,
  * when a listing finds both. A file an archive holds is never written over nor removed.
  */
 export class ArchivedFiles implements Files {
@@ -352,6 +352,7 @@ export class ArchivedFiles implements Files {
 
   constructor(files: Files, folder: string) {
     this.#files = files;
+    this.iri = files.iri;
     this.#folder = folder.endsWith("/") ? folder : `${folder}/`;
     const { writeAll, writeMany, writeNew, replace, remove } = files;
     if (writeAll !== undefined)
@@ -407,9 +408,8 @@ export class ArchivedFiles implements Files {
   ) => Promise<boolean>;
   readonly remove?: (pathsOrIris: readonly string[]) => Promise<void>;
 
-  get iri(): string {
-    return this.#files.iri;
-  }
+  /** The pod's IRI, a value and no getter, so that a proxy over these files reads it as it reads the host's. */
+  readonly iri: string;
 
   /** The path, refused when it is in the archives' folder, which only a host's own writer of archives writes. */
   #path(pathOrIri: string): string {
