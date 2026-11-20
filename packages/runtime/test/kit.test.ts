@@ -8,8 +8,10 @@ import {
 import { iri, relativeTurtle, type Triple } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { Shapes } from "../src/shapes.js";
+import { archivedFiles } from "../src/archives.js";
 import { cleosReplay, copied } from "./cleo.js";
 import { vocabulary } from "./vocabulary.js";
+import { packed } from "./zip.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const RDF_TYPE = iri("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
@@ -79,9 +81,25 @@ describe("Checking a replayed kit · kitChecks(), shapeFaults(), snapshotFaults(
       changes?: Record<string, Uint8Array | undefined>,
     ) => Promise<string[]>;
     let record: string;
+    let packedFaults: () => Promise<string[]>;
 
     before(async () => {
       const { local, replayed } = await cleosReplay();
+      packedFaults = async () => {
+        const { layout } = local;
+        const host = await copied(replayed.pod);
+        await packed(
+          host,
+          (await host.list("")).filter(
+            (path) => layout.inSnapshotSet(path) && !layout.inStoredBytes(path),
+          ),
+        );
+        return snapshotFaults(
+          { ...replayed, pod: archivedFiles(host, layout) },
+          layout,
+          newStore,
+        );
+      };
       faults = async (changes) =>
         snapshotFaults(
           changes === undefined
@@ -99,6 +117,10 @@ describe("Checking a replayed kit · kitChecks(), shapeFaults(), snapshotFaults(
 
     it("returns no fault for a replay of an import, an entry session and a matcher run", async () => {
       assert.deepEqual(await faults(), []);
+    });
+
+    it("returns no fault for the same pod with every file of its set but the stored documents held in one archive", async () => {
+      assert.deepEqual(await packedFaults(), []);
     });
 
     it("returns no fault for a `.DS_Store` and an `._` file beside the pod's files, which are no part of the set", async () => {

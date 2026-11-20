@@ -17,6 +17,7 @@ import {
   withTables,
 } from "@cascade-runtime/runtime";
 import {
+  archivedFiles,
   argon2id,
   CONFIG_FILE,
   compiledBridge,
@@ -316,7 +317,10 @@ export async function partsOf(
     folder: (path, iri) => {
       const folder = absolute(path);
       return {
-        files: new FolderFiles(folder, iri, { refuseLinks: true }),
+        files: archivedFiles(
+          new FolderFiles(folder, iri, { refuseLinks: true }),
+          layout,
+        ),
         name: basename(folder),
       };
     },

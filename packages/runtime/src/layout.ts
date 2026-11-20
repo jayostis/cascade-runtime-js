@@ -14,6 +14,7 @@ const PIM = "http://www.w3.org/ns/pim/space#";
 /** Of two cascade:forSubjectsOf placements a thing states the properties of, the one that files it (cascade:Placement). */
 const PRECEDENCE = [`${PROV}invalidated`, `${PROV}used`];
 export const SYNC = `${CASCADE}SyncFromAnotherWriter`;
+const ZIP = "https://www.iana.org/assignments/media-types/application/zip";
 /** A file stem N9 gives: a UUID, or a SHA-256 in lower-case hex. */
 export const FILE_STEM =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$/;
@@ -34,6 +35,8 @@ export class Placement {
     readonly writtenAlways: boolean = false,
     /** Whether this folder holds the records of its class, with their versions and revisions. */
     readonly holdsRecords: boolean = false,
+    /** The media type of the archives of the pod's files this folder holds (cascade:holdsFilesInArchivesOfMediaType), by its IANA IRI. */
+    readonly archivesOfMediaType?: string,
   ) {}
 
   /** The path of the file holding the thing named `name`: this placement's file, or one in `folder` or its own. */
@@ -60,6 +63,8 @@ export class Layout {
   readonly syncsFolder: string | undefined;
   /** The folders of act files, the syncs' among them; a retraction (prov:invalidated) is an activity and no act. */
   readonly actFolders: readonly string[];
+  /** The folder of the archives that hold the pod's files (X1), always ZIP; undefined when the layout gives none. */
+  readonly archivesFolder: string | undefined;
 
   private constructor(turtle: string, placements: readonly Placement[]) {
     this.turtle = turtle;
@@ -82,6 +87,19 @@ export class Layout {
     );
     if (!placements.some(({ holdsRecords }) => holdsRecords))
       throw new Error(`${LAYOUT_FILE} gives no folder that holds records`);
+    const archives = placements.filter(
+      ({ archivesOfMediaType }) => archivesOfMediaType !== undefined,
+    );
+    const [held] = archives;
+    if (
+      archives.length > 1 ||
+      (held !== undefined &&
+        (held.folder === undefined || held.archivesOfMediaType !== ZIP))
+    )
+      throw new Error(
+        `${LAYOUT_FILE} gives archives this runtime cannot read: one folder of ${ZIP} is all it reads`,
+      );
+    this.archivesFolder = held?.folder;
   }
 
   /** The layout of the Turtle placed as `read` placed it, such as its placements read back from JSON: no store is needed. */
@@ -102,6 +120,7 @@ export class Layout {
             placed.storesBytes,
             placed.writtenAlways,
             placed.holdsRecords,
+            placed.archivesOfMediaType,
           ),
       ),
     );
@@ -118,7 +137,7 @@ export class Layout {
       PREFIX cascade: <${CASCADE}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>
-      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways ?holdsRecords WHERE {
+      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways ?holdsRecords ?archives WHERE {
         ?placement a cascade:Placement .
         OPTIONAL { ?placement solid:forClass ?kind } OPTIONAL { ?placement solid:instance ?file }
         OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement cascade:filedWith ?filedWith }
@@ -126,6 +145,7 @@ export class Layout {
         OPTIONAL { ?placement cascade:writtenByQueryPath ?writtenBy } OPTIONAL { ?placement dct:title ?title }
         OPTIONAL { ?placement cascade:storesBytes ?storesBytes } OPTIONAL { ?placement cascade:writtenAlways ?writtenAlways }
         OPTIONAL { ?placement cascade:holdsRecords ?holdsRecords }
+        OPTIONAL { ?placement cascade:holdsFilesInArchivesOfMediaType ?archives }
       }`);
     const seen = new Set<string>();
     const placements = rows.map((row) => {
@@ -156,6 +176,7 @@ export class Layout {
         value("storesBytes") === "true",
         value("writtenAlways") === "true",
         value("holdsRecords") === "true",
+        value("archives"),
       );
     });
     return new Layout(turtle, placements);
