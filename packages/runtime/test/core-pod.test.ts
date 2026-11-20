@@ -7,6 +7,7 @@ import { parseGraph } from "../src/graph.js";
 import { randomId } from "../src/ids.js";
 import type { Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { probing } from "../src/probe.js";
 import { StepWrites } from "../src/pod.js";
 import { iri, literal, type Triple, XSD } from "../src/rdf.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
@@ -86,6 +87,23 @@ class Overlapping extends MemoryFiles {
     await Promise.all(
       [...files].map(([path, bytes]) => this.#put(path, bytes)),
     );
+  }
+}
+
+/** Files that take several writes at once and log the path of each read, with whether it found a file. */
+class Reading extends Overlapping {
+  readonly reads: { path: string; found: boolean }[] = [];
+  lists = 0;
+
+  override list(folder: string): Promise<string[]> {
+    this.lists += 1;
+    return super.list(folder);
+  }
+
+  override async read(path: string): Promise<Uint8Array | undefined> {
+    const bytes = await super.read(path);
+    this.reads.push({ path, found: bytes !== undefined });
+    return bytes;
   }
 }
 
@@ -293,6 +311,168 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
         /the first wave fails/,
       );
       assert.deepEqual(started, ["files/0", "files/1"]);
+    });
+  });
+
+  describe("given a pod whose listing `CorePod.files` holds, StepWrites.commit()", () => {
+    const body = (text: string): Uint8Array => new TextEncoder().encode(text);
+    const FRESH = ["files/0", "files/1", "files/2", "files/3"];
+
+    /** A pod made over files that log their reads, and the files, once the listing is taken and the log is empty. */
+    async function listed(): Promise<{ files: Reading; pod: CorePod }> {
+      const files = new Reading(ADDRESS);
+      const pod = new CorePod(
+        options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+      );
+      await pod.create();
+      files.reads.length = 0;
+      files.log.length = 0;
+      return { files, pod };
+    }
+
+    const waved = (): StepWrites => {
+      const writes = new StepWrites();
+      FRESH.forEach((path, n) =>
+        writes.add(path, body(path), n < 2 ? 1 : 2, "version"),
+      );
+      writes.act({ name: "urn:act", path: "acts/a", triples: [] });
+      return writes;
+    };
+
+    it("reads no file whose name fixes its bytes and the listing lacks, in the first wave or the second, and still writes the second wave after the first", async () => {
+      const { files, pod } = await listed();
+      await waved().commit(pod.files);
+      assert.deepEqual(
+        files.reads.filter(({ path }) => path !== "acts/a"),
+        [],
+      );
+      assert.deepEqual(
+        files.reads.filter(({ path }) => path === "acts/a"),
+        [{ path: "acts/a", found: false }],
+      );
+      assert.ok(
+        within(files.log, FRESH.slice(0, 2)).last <
+          within(files.log, FRESH.slice(2)).first,
+        "the second wave started before the first was written",
+      );
+      for (const path of [...FRESH, "acts/a"])
+        assert.ok(await files.read(path), `${path} was not written`);
+    });
+
+    it("shows its absence checks in the trace: a span, a count of the paths and a count of those read from the pod, for the check before it writes and the look again before each batch", async () => {
+      const { pod } = await listed();
+      const { seen } = await probing(() => waved().commit(pod.files));
+      for (const span of ["files.absent.check", "files.absent.recheck"])
+        assert.ok((seen.spans.get(span)?.calls ?? 0) >= 1, span);
+      const counts = Object.fromEntries(
+        [...seen.counts].filter(([name]) => name.startsWith("files.absent.")),
+      );
+      assert.deepEqual(counts, {
+        "files.absent.check": FRESH.length + 1,
+        "files.absent.check.read": 1,
+        "files.absent.recheck": FRESH.length + 1,
+      });
+    });
+
+    it("reads a file the listing has and compares it, refusing other bytes and not writing the same ones again", async () => {
+      const { files, pod } = await listed();
+      await pod.files.write("files/0", body("files/0"));
+      files.reads.length = 0;
+      files.log.length = 0;
+      const same = new StepWrites();
+      same.add("files/0", body("files/0"));
+      same.add("files/1", body("files/1"));
+      await same.commit(pod.files);
+      assert.deepEqual(
+        files.reads.filter(({ found }) => found),
+        [],
+      );
+      assert.deepEqual(
+        files.log.filter(({ at }) => at === "start").map(({ path }) => path),
+        ["files/1"],
+      );
+      const other = new StepWrites();
+      other.add("files/0", body("other bytes"));
+      await assert.rejects(
+        other.commit(pod.files),
+        /files\/0 is in the pod already, holding other bytes/,
+      );
+    });
+
+    it("looks for the files again after a wave fails, so a retry writes only what the failed wave left unwritten", async () => {
+      const files = new Reading(ADDRESS);
+      let failing = true;
+      files.writeMany = async (written) => {
+        const [first] = [...written];
+        if (!failing)
+          return Overlapping.prototype.writeMany.call(files, written);
+        if (first !== undefined) await files.write(first[0], first[1]);
+        throw new Error("the first wave fails");
+      };
+      const pod = new CorePod(
+        options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+      );
+      await pod.create();
+      await assert.rejects(waved().commit(pod.files), /the first wave fails/);
+      failing = false;
+      files.log.length = 0;
+      const committed = await waved().commit(pod.files);
+      assert.deepEqual(committed, [...FRESH.slice(1), "acts/a"]);
+      for (const path of [...FRESH, "acts/a"])
+        assert.ok(await files.read(path), `${path} was not written`);
+    });
+
+    it("writes over a file whose name fixes its bytes that reached the pod after the listing, with the bytes it holds", async () => {
+      const { files, pod } = await listed();
+      await files.write("files/0", body("files/0"));
+      const writes = new StepWrites();
+      writes.add("files/0", body("files/0"), undefined, "version");
+      await writes.commit(pod.files);
+      assert.equal(
+        new TextDecoder().decode(await files.read("files/0")),
+        "files/0",
+      );
+    });
+
+    it("refuses a file whose name does not fix its bytes that another session wrote after the listing with other bytes, as a read of it does", async () => {
+      const files = new Reading(ADDRESS);
+      const shared = options(files, await layout(), {
+        now: "2026-02-01T08:00:00Z",
+      });
+      const mine = new CorePod(shared);
+      await mine.create();
+      const other = new CorePod(shared);
+      await other.files.write("judgments/x.ttl", body("the other session's"));
+      const writes = new StepWrites();
+      writes.add("judgments/x.ttl", body("this session's"));
+      await assert.rejects(
+        writes.commit(mine.files),
+        /judgments\/x\.ttl is in the pod already, holding other bytes/,
+      );
+      assert.equal(
+        new TextDecoder().decode(await files.read("judgments/x.ttl")),
+        "the other session's",
+      );
+    });
+
+    it("lists nothing for a commit of no file and no act, on a pod whose listing is not loaded", async () => {
+      const files = new Reading(ADDRESS);
+      await files.write("records/0.ttl", body("0"));
+      const pod = new CorePod(
+        options(files, await layout(), { now: "2026-02-01T08:00:00Z" }),
+      );
+      files.lists = 0;
+      await new StepWrites().commit(pod.files);
+      assert.equal(files.lists, 0);
+    });
+
+    it("refuses an act whose file is in the pod already, and writes none of the step's files", async () => {
+      const { files, pod } = await listed();
+      await files.write("acts/a", body("an earlier act"));
+      await assert.rejects(waved().commit(pod.files), {
+        message: "acts/a is in the pod already",
+      });
+      assert.equal(await files.read(FRESH[0] as string), undefined);
     });
   });
 

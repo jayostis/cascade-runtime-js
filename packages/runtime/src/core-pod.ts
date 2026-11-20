@@ -64,7 +64,7 @@ import {
   type PageAsked,
   PodDatabase,
 } from "./pod-database.js";
-import { type Act, same, StepWrites } from "./pod.js";
+import { type Act, type ListedFiles, same, StepWrites } from "./pod.js";
 import {
   iri,
   KeptFiles,
@@ -268,13 +268,18 @@ export class BuildFailure extends Error {
  * The pod's files as listed once, each read from the pod once and then held, which holds while the pod is written
  * only through them: a write goes through to the pod, but not one giving a file the bytes it already holds. A file
  * not held is looked for in the pod, so a step never writes over one that reached the pod another way; it is held,
- * but not listed.
+ * but not listed. A step's file whose name fixes its bytes (`FixedByName`) that the listing lacks is not looked for
+ * (`lacking`): one that reached the pod after the listing was taken is written over, which its name makes harmless.
+ * Every other file is looked for, because another session may have written other bytes to its name since the listing.
  */
-class HeldFiles implements Files {
+class HeldFiles implements ListedFiles {
   readonly #pod: Files;
   readonly #bytes = new Map<string, Uint8Array>();
   #paths: Promise<Set<string>> | undefined;
-  /** The paths a `read` found the pod without, until the next write: that write does not look for them again. */
+  /**
+   * The paths a `read` found the pod without, and those `lacking` found the listing without, each until it is written,
+   * a write fails or the next `lacking` is asked: no write looks for them again, whichever wave of a step it is in.
+   */
   readonly #absent = new Set<string>();
   /** The paths of the listing it was sorted from, in code unit order, until one is added. */
   #sorted: { readonly of: Set<string>; readonly paths: string[] } | undefined;
@@ -315,6 +320,19 @@ class HeldFiles implements Files {
     return bytes;
   }
 
+  async lacking(paths: readonly string[]): Promise<ReadonlySet<string>> {
+    const listed = await this.#listed();
+    this.#absent.clear();
+    const lacking = new Set<string>();
+    for (const given of paths) {
+      const path = relative(this, given);
+      if (listed.has(path) || this.#bytes.has(path)) continue;
+      lacking.add(given);
+      this.#absent.add(path);
+    }
+    return lacking;
+  }
+
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
     const path = relative(this, pathOrIri);
     const bytes = await this.#held(path);
@@ -350,13 +368,18 @@ class HeldFiles implements Files {
     ) => Promise<void>,
   ): Promise<void> {
     const changed: [string, Uint8Array][] = [];
-    for (const [pathOrIri, bytes] of files) {
-      const path = relative(this, pathOrIri);
-      const held = this.#absent.has(path) ? undefined : await this.#held(path);
-      if (held === undefined || !same(held, bytes))
-        changed.push([path, new Uint8Array(bytes)]);
-    }
-    this.#absent.clear();
+    await timedAside("files.absent.recheck", async () => {
+      for (const [pathOrIri, bytes] of files) {
+        const path = relative(this, pathOrIri);
+        counted("files.absent.recheck");
+        const absent = this.#absent.has(path);
+        if (!absent && !this.#bytes.has(path))
+          counted("files.absent.recheck.read");
+        const held = absent ? undefined : await this.#held(path);
+        if (held === undefined || !same(held, bytes))
+          changed.push([path, new Uint8Array(bytes)]);
+      }
+    });
     if (changed.length === 0) return;
     const listed = await this.#listed();
     this.#written += 1;
@@ -365,11 +388,13 @@ class HeldFiles implements Files {
     } catch (error) {
       this.#paths = undefined;
       this.#bytes.clear();
+      this.#absent.clear();
       this.#written += 1;
       throw error;
     }
     for (const [path, bytes] of changed) {
       this.#bytes.set(path, bytes);
+      this.#absent.delete(path);
       if (!listed.has(path)) this.#sorted = undefined;
       listed.add(path);
     }
