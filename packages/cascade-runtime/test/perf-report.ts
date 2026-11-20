@@ -597,7 +597,7 @@ export async function keptCpu(
     .sort((a, b) => thread(a) - thread(b));
   for (const each of threads) {
     const text = await readFile(join(from, each), "utf8");
-    const role = /\/([a-z-]+-worker)\.js/.exec(text)?.[1] ?? "worker";
+    const role = /\/([a-z0-9-]+-worker)\.js/.exec(text)?.[1] ?? "worker";
     const seen = (roles.get(role) ?? 0) + 1;
     roles.set(role, seen);
     const named = `${name}.${role}${seen > 1 ? `-${seen}` : ""}.cpuprofile`;

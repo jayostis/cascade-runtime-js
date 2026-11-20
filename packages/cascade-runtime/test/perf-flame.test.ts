@@ -305,6 +305,10 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         join(from, "CPU.20261120.4.77.10.004.cpuprofile"),
         profile("src/node/pod-database-worker.js"),
       );
+      await writeFile(
+        join(from, "CPU.20261120.5.77.11.005.cpuprofile"),
+        profile("src/node/argon2-worker.js"),
+      );
       const note = await keptCpu(from, into, "fresh-first-screen-synthea-10y");
       assert.equal(note.file, "fresh-first-screen-synthea-10y.cpuprofile");
       assert.deepEqual(
@@ -313,6 +317,7 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
           "fresh-first-screen-synthea-10y.wasm-worker.cpuprofile",
           "fresh-first-screen-synthea-10y.wasm-worker-2.cpuprofile",
           "fresh-first-screen-synthea-10y.pod-database-worker.cpuprofile",
+          "fresh-first-screen-synthea-10y.argon2-worker.cpuprofile",
         ],
       );
       assert.ok(existsSync(join(into, note.workers[2]?.file as string)));
