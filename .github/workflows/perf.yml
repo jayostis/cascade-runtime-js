@@ -4,7 +4,12 @@ name: perf
 # patient's record, rows in the Bridge spec's result format. Nothing here fails on a slowdown: the files are kept, and a
 # pull request is shown its before -> after against the latest push to main.
 #
-# - A pull request runs the per-build size and comments the comparison against main (one comment, updated).
+# - A pull request runs the per-build size and comments the comparison against main (one comment, updated). Main is measured
+#   in the same job, beside the pull request and on the same runner (the checkout of main, with each repository it reads at its
+#   default branch and its Bridge as a push to main resolves it, is under main/), because the same commits took 23% longer
+#   on a runner with another processor model: a comparison with a file from another job cannot be read to a few percent. If
+#   that run gives no file the job goes on, warns, and the comment compares with the latest push's file as before, saying so.
+#   A hand-started run on a branch other than main does the same and puts the comparison in its summary.
 # - A push to main and the nightly run write their file to the orphan branch `perf-data`, at
 #   runtime/YYYY/MM/DD/<run>-<sha7>-<event>.json, and put the table in the job summary. The nightly run and a
 #   hand-started run add the large size, plain and encrypted. A push also names its file in runtime/latest-push.txt,
@@ -81,6 +86,9 @@ jobs:
       CASCADE_TEST_OFFLINE: "1"
       # Read by the file's environment: the runner is a hosted one, which other jobs share the machine of.
       PERF_OTHER_LOAD: "a shared hosted runner"
+      # Whether main is measured here too, beside this build: a pull request, and a hand-started run on a branch other than main
+      # (which has no pull request but is read the same way). A push to main and the nightly run measure only themselves.
+      SAME_JOB: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main') }}
     defaults:
       run:
         working-directory: cascade-runtime-js
@@ -111,6 +119,52 @@ jobs:
           ref: ${{ steps.kit-at.outputs.ref }}
           path: cascade-starter-kit
           persist-credentials: false
+      # Main beside this build, for a run that measures both (SAME_JOB): the runtime at the default branch and each repository it
+      # reads, in a folder of their own, so that main reads main's vocabulary, adapters, reference tables and starter kit as a
+      # push to main does, and this build reads the ones its Depends-On lines name. Every step may fail: a build of main that
+      # cannot be made leaves no file, and the comparison falls back to the latest push's. No credential stays on disk.
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: main/cascade-runtime-js
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-vocabulary
+          path: main/cascade-vocabulary
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-bridge-adapter-fhir-r4
+          path: main/cascade-bridge-adapter-fhir-r4
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-bridge-adapter-ccda
+          path: main/cascade-bridge-adapter-ccda
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-reference-tables
+          path: main/cascade-reference-tables
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        with:
+          repository: jayostis/cascade-starter-kit
+          path: main/cascade-starter-kit
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
@@ -125,39 +179,36 @@ jobs:
       - run: npm run --silent bridge
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      # The CPU profiles name the Bridge's Rust functions only if its wasm keeps its names, which the package does not
-      # (it would weigh more for every reader): the release the build was read from holds a second module, the same code with
-      # its names, and it is laid over the package's in the cache. The step runs before the headline timings, so they load the named module too (10.0 MB beside the package's, about 0.7 ms more to read and a compile of 18.4 ms against 18.5, noise against a 3.26 s total). The asset is checked against the digest GitHub computed when it was uploaded, which a transport error or a mix-up of assets fails; the step never fails the job, as a profile's names are an extra. A release made before the Bridge
-      # published one has none, and its profiles show wasm-function[N].
+      # The CPU profiles name the Bridge's Rust functions only if its wasm keeps its names; the script lays the release's named module
+      # over the package's (what it checks and why are in its header). It never fails the job.
       - name: The Bridge's function names
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+        run: bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$GITHUB_WORKSPACE/cascade-runtime-js"
+      # Which Bridge main reads. When this build's own run picked the newest build of the Bridge's default branch (no Depends-On line
+      # and no branch of its name names another), main is pinned to that same commit: left to pick for itself some seconds later,
+      # a publish in between would make the two sides read different Bridges with nothing naming one. When something does name
+      # another, main reads the newest build as a push to main does, and how the build picked its own is kept for the comment.
+      - name: Which Bridge main reads
+        id: main-bridge
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        shell: bash
         run: |
           set -euo pipefail
-          bridge=jayostis/cascade-bridge-rs
-          cache=build/cache/cascade-bridge-rs
-          read -r from commit < <(node -p "const r = JSON.parse(require('fs').readFileSync('$cache/expected.json', 'utf8')); r.source + ' ' + r.commit")
-          tag="build-$commit"
-          if [ "$from" != release ]; then
-            echo "::warning::the Bridge read is a $from build, which has no function names: the profiles show wasm-function[N]"
-            exit 0
-          fi
-          none() {
-            echo "::warning::$1, so the profiles show wasm-function[N]"
-            exit 0
-          }
-          if ! want=$(gh release view "$tag" -R "$bridge" --json assets -q '.assets[] | select(.name == "cascade_bridge_bg.names.wasm") | .digest'); then
-            none "the assets of $tag could not be listed"
-          fi
-          [ -n "$want" ] || none "$tag holds no cascade_bridge_bg.names.wasm with a digest"
-          if ! gh release download "$tag" -R "$bridge" --pattern cascade_bridge_bg.names.wasm --dir "$RUNNER_TEMP/names"; then
-            none "cascade_bridge_bg.names.wasm of $tag could not be downloaded"
-          fi
-          got=sha256:$(sha256sum "$RUNNER_TEMP/names/cascade_bridge_bg.names.wasm" | cut -d' ' -f1)
-          [ "$got" = "$want" ] || none "cascade_bridge_bg.names.wasm of $tag is $got, where GitHub's digest of the asset is $want"
-          cp "$RUNNER_TEMP/names/cascade_bridge_bg.names.wasm" "$cache/$tag/cascade_bridge_bg.wasm"
-          echo "The Bridge's wasm is $tag's with its function names ($(du -h "$cache/$tag/cascade_bridge_bg.wasm" | cut -f1))." >> "$GITHUB_STEP_SUMMARY"
+          cache="$GITHUB_WORKSPACE/cascade-runtime-js/build/cache/cascade-bridge-rs"
+          read -r source commit < <(node -p "const r = JSON.parse(require('fs').readFileSync('$cache/expected.json', 'utf8')); r.source + ' ' + r.commit")
+          how=$(node -p "try { JSON.parse(require('fs').readFileSync('$cache/picked.json', 'utf8')).how } catch { '' }")
+          printf '%s' "$how" > "$RUNNER_TEMP/bridge-how.txt"
+          case "$how" in
+            "the newest build of its default branch"*)
+              if [ "$source" = release ]; then
+                echo "pin=https://github.com/jayostis/cascade-bridge-rs@$commit" >> "$GITHUB_OUTPUT"
+                echo "Main reads the Bridge build $commit, the one this build's run picked (the newest of the default branch)."
+              fi ;;
+            *) echo "This build's Bridge was picked as: ${how:-not recorded}. Main reads the newest build of the default branch." ;;
+          esac
       - id: what
         shell: bash
         env:
@@ -174,6 +225,48 @@ jobs:
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
           echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
+      # Main's build: its dependencies, and the Bridge as main resolves it, which is as a push to main does (the newest build of the
+      # Bridge's default branch), never the build this pull request's Depends-On lines pick: the event's file is left out of the
+      # environment and the branch is the default one. The run keeps that pick for its attempt, in main's own cache.
+      - name: Main's build
+        id: main-build
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        working-directory: main/cascade-runtime-js
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+          MAIN_BRANCH: ${{ github.event.repository.default_branch }}
+          CASCADE_BRIDGE_PIN: ${{ steps.main-bridge.outputs.pin }}
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/perf-main.json"
+          npm ci
+          unset GITHUB_EVENT_PATH
+          export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
+          GITHUB_TOKEN="$TOKEN" GH_TOKEN="$TOKEN" npm run --silent bridge
+          GH_TOKEN="$TOKEN" bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$PWD" "main's run"
+      # Main is measured first, directly before this build, with the same arguments and no flame graphs. In three jobs that ran
+      # main, this build (the same commit) and main again, in this order, the fresh import's total of the second run was
+      # +0.4%, -0.2% and +1.1% of the first's and of the third +0.5%, +0.7% and +2.3%: a later run is slower by about a
+      # percent, never faster. Main first puts that on the build's side, so a build is never shown faster than it is by the
+      # order. A second run of main would add 39 s to every pull request's job for under a percent.
+      # A step that fails under continue-on-error reports success, so the build's outcome is read, not its status.
+      - name: Main's performance file
+        if: ${{ env.SAME_JOB == 'true' && steps.main-build.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main/cascade-runtime-js
+        shell: bash
+        env:
+          MAIN_BRANCH: ${{ github.event.repository.default_branch }}
+          ARGS: ${{ steps.what.outputs.args }}
+          CASCADE_BRIDGE_PIN: ${{ steps.main-bridge.outputs.pin }}
+        run: |
+          set -euo pipefail
+          unset GITHUB_EVENT_PATH
+          export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
+          # shellcheck disable=SC2086
+          npm run --silent perf -- $ARGS --out "$RUNNER_TEMP/perf-main.json"
       # The traces and CPU profiles are made by the same run: a trace from its probed run, a CPU profile from one more run.
       - name: The performance file
         run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json" --profiles "$RUNNER_TEMP/flame"
@@ -187,6 +280,24 @@ jobs:
           [ -f "$RUNNER_TEMP/flame/flame.json" ] && own="--without-own-time"
           if [ -f "$RUNNER_TEMP/perf.json" ]; then
             node scripts/perf-compare.mjs summary "$RUNNER_TEMP/perf.json" --markdown $own >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # A pull request's comment holds this comparison; a hand-started run on a branch has no comment, so it is in the summary.
+      - name: Main beside this build
+        if: ${{ env.SAME_JOB == 'true' && github.event_name != 'pull_request' && !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/perf.json" ]; then
+            how=$(cat "$RUNNER_TEMP/bridge-how.txt" 2>/dev/null || true)
+            node scripts/perf-compare.mjs against "$RUNNER_TEMP/perf.json" --same-job "$RUNNER_TEMP/perf-main.json" --subject "this build" --bridge-how "$how" --summary-shown --markdown --without-own-time >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # A build of main that gave no file is a warning, never a failure: the pull request's own file is the job's result.
+      - name: Main's file, or why there is none
+        if: ${{ env.SAME_JOB == 'true' && !cancelled() }}
+        shell: bash
+        run: |
+          if [ ! -f "$RUNNER_TEMP/perf-main.json" ]; then
+            echo "::warning::main's own run in this job gave no file (see the steps 'Main's build' and 'Main's performance file'), so the comparison falls back to the latest push to main's file"
           fi
       - name: The rows for the history page
         shell: bash
@@ -242,11 +353,14 @@ jobs:
           name: perf
           path: |
             ${{ runner.temp }}/perf.json
+            ${{ runner.temp }}/perf-main.json
+            ${{ runner.temp }}/bridge-how.txt
             ${{ runner.temp }}/history.json
             ${{ runner.temp }}/where.md
           if-no-files-found: error
 
-  # A pull request: the file against the latest push to main on `perf-data`, in one comment that each push updates. A
+  # A pull request: the file against main as the performance job measured it beside the build (the latest push to main on
+  # `perf-data` only when that run gave no file), in one comment that each push updates. A
   # comment that cannot be posted (a pull request from a fork has a read-only token) is a warning, never a failure.
   compare:
     name: against main
@@ -272,33 +386,27 @@ jobs:
         run: |
           set -euo pipefail
           marker='<!-- perf-compare -->'
-          # Only the pointer and the file it names are fetched, never every file of the branch.
-          base=""
+          # Main as this job measured it, beside the pull request, is what the pull request is compared with. The latest push's file,
+          # taken on another run and perhaps another machine, is read only when that file is missing or unreadable (main's run in the
+          # job failed): then the comment says so and compares with it. Only the pointer and the file it names are fetched, never
+          # every file of the branch.
+          latest=""
           raw='Accept: application/vnd.github.raw'
           if named=$(gh api -H "$raw" "repos/${GITHUB_REPOSITORY}/contents/runtime/latest-push.txt?ref=perf-data" 2>/dev/null) \
             && [ -n "$named" ] \
             && mkdir -p "base/$(dirname "$named")" \
             && gh api -H "$raw" "repos/${GITHUB_REPOSITORY}/contents/${named}?ref=perf-data" > "base/$named"; then
-            base="base/$named"
+            latest="base/$named"
           fi
+          args=(--markdown --same-job pr/perf-main.json --bridge-how "$(cat pr/bridge-how.txt 2>/dev/null || true)")
+          [ -z "$latest" ] || args+=(--latest "$latest" --latest-name "${latest#base/}")
+          # The steps with the longest own time are in the flame graph list below, with their links: not twice.
+          if [ -f pr/where.md ] && [ -s pr/where.md ]; then args+=(--without-own-time); fi
           {
             echo "$marker"
             echo "### Performance against main"
             echo
-            if [ -z "$base" ]; then
-              echo "main has no performance file yet, so there is nothing to compare with. This pull request's:"
-              echo
-              # The steps with the longest own time are in the flame graph list below, with their links: not twice.
-              if [ -f pr/where.md ] && [ -s pr/where.md ]; then
-                node scripts/perf-compare.mjs summary pr/perf.json --markdown --without-own-time
-              else
-                node scripts/perf-compare.mjs summary pr/perf.json --markdown
-              fi
-            else
-              echo "Against \`${base#base/}\`. Unprobed medians; no threshold, nothing here fails the run."
-              echo
-              node scripts/perf-compare.mjs compare "$base" pr/perf.json --markdown
-            fi
+            node scripts/perf-compare.mjs against pr/perf.json "${args[@]}"
             echo
             if [ -f pr/where.md ]; then
               cat pr/where.md
