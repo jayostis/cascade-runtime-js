@@ -326,6 +326,8 @@ export interface TraceNote {
   /** Calls drawn together because too many ran at the same time, and the merged events that stand for them. */
   readonly merged: number;
   readonly mergedEvents: number;
+  /** How long the probed run took, from its first call to its last, in milliseconds: what each step's share of the run is of. */
+  readonly runMs?: number;
   readonly top: readonly {
     name: string;
     selfMs: number;
@@ -416,6 +418,18 @@ async function traced(
     title: `${scenario} on ${job.dataset}${job.encrypted ? ", encrypted" : ""}: the probed run`,
     says: (span) => explainSpan(part(span)),
   });
+  const spans = seen.events ?? [];
+  const runMs =
+    spans.length === 0
+      ? undefined
+      : fixed(
+          spans.reduce((last, { end }) => Math.max(last, end), -Infinity) -
+            spans.reduce(
+              (first, { start }) => Math.min(first, start),
+              Infinity,
+            ),
+          3,
+        );
   const text = JSON.stringify(file);
   const path = `${name}.trace.json`;
   await mkdir(dir, { recursive: true });
@@ -444,6 +458,7 @@ async function traced(
     shortestMs: fixed(shortestMs, 3),
     merged,
     mergedEvents,
+    ...(runMs !== undefined && { runMs }),
     top,
     bridgeQueries: table.spans
       .filter(({ name: span }) => span.startsWith(BRIDGE_QUERY))

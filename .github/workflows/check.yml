@@ -952,9 +952,12 @@ jobs:
         with:
           path: .rows-cache
           key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
-      # The performance history page that perf.yml keeps on the perf-data branch, served at /perf/. It is an optional page:
+      # The performance pages. /perf/ is "Where the time goes, over time", stacked charts drawn by scripts/perf-stacked.mjs from the
+      # performance files on the perf-data branch; the history page that perf.yml's github-action-benchmark step keeps there (a
+      # small chart per measurement) is served at /perf/detail/. They are optional pages:
       # a branch that does not exist yet, or a fetch that fails, skips it with a warning and never fails the deploy. It is
-      # copied after explorer-check and build:pages, so no check of a pull request sees it (the link check exempts it).
+      # copied after explorer-check and build:pages, so no check of a pull request sees them (the link check exempts the
+      # generated page at /perf/detail/; the others link back to the front page themselves).
       - name: The performance history page
         shell: bash
         run: |
@@ -969,8 +972,8 @@ jobs:
           elif [ ! -f "$RUNNER_TEMP/perf-data/perf/index.html" ]; then
             echo "::warning::/perf/ is skipped: perf-data holds no perf/index.html yet"
           else
-            mkdir -p build/pages/perf
-            cp -r "$RUNNER_TEMP/perf-data/perf/." build/pages/perf/
+            mkdir -p build/pages/perf/detail
+            cp -r "$RUNNER_TEMP/perf-data/perf/." build/pages/perf/detail/
             # The flame graphs: the speedscope viewer (the pinned package's own release, with its licence) at /perf/speedscope/,
             # and the builds' traces and CPU profiles at /perf/runs/<run>-<sha7>/ with an index of them at /perf/runs/, from the
             # orphan branch `perf-flame` (one commit, which perf.yml writes with the window of builds it keeps). The viewer
@@ -986,6 +989,11 @@ jobs:
               --viewer node_modules/speedscope/dist/release --viewer-license node_modules/speedscope/LICENSE \
               --repo "$GITHUB_REPOSITORY" --pages "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/perf"; then
               echo "::warning::/perf/runs/ is skipped: the builds' flame graphs could not be put in the site"
+            fi
+            # The main page, after the index of builds, so that a column opens a build's entry only where the index has one.
+            if ! node scripts/perf-stacked.mjs pages --data "$RUNNER_TEMP/perf-data" --out build/pages/perf \
+              --repo "$GITHUB_REPOSITORY" --runs build/pages/perf/runs; then
+              echo "::warning::/perf/ is skipped: the stacked charts could not be drawn"
             fi
           fi
       - uses: actions/upload-pages-artifact@v5

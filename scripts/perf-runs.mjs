@@ -8,7 +8,7 @@
 //   perf-runs.mjs pages --data <perf-flame checkout> --out <the site's perf folder> --viewer <speedscope release folder>
 //     --repo <owner/name> --pages <the site's perf address>
 //
-// check.yml's `build-pages` job runs it after copying perf-data's `perf/` (the history page) to <out>.
+// check.yml's `build-pages` job runs it after copying perf-data's `perf/` (the history page) to <out>/detail/, which it links to the index.
 
 import {
   cpSync,
@@ -25,6 +25,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { openIn, titleOf } from "./perf-flame.mjs";
 import { shown } from "./perf-compare.mjs";
+import { chartTitle, readGlossary, sentenceOf } from "./perf-stacked.mjs";
 
 /** The size whose files only the newest few builds keep: a trace and a CPU profile of it run to tens of megabytes. */
 export const LARGE = "synthea-lifetime";
@@ -81,6 +82,12 @@ export function filesOf(build) {
   ];
 }
 
+const EVENTS = {
+  push: "main",
+  schedule: "nightly",
+  workflow_dispatch: "started by hand",
+};
+
 const esc = (text) =>
   String(text).replace(
     /[&<>"]/g,
@@ -100,82 +107,105 @@ function whyGone(build, kind) {
   return "not produced";
 }
 
-/** The page of builds: each one's scenarios with the two links that open them in the hosted viewer. */
-export function runsPage(runs, { repo, pages, viewer }) {
-  const sections = runs.map((run) => {
-    const rows = run.flame.builds.map((build) => {
-      const kept = (file) => run.kept.has(file);
-      const where = `${pages}/runs/${run.id}`;
-      const link = (label, file, bytes, kind) =>
-        kept(file)
-          ? `<a href="${esc(openIn(viewer, `${where}/${file}`, `${label}: ${titleOf(build)} (${run.date}, ${run.sha})`))}">${label}</a> <span class="size">${megabytes(bytes)}</span>`
-          : `<span class="gone">${label}: not kept, ${whyGone(build, kind)}</span>`;
-      /** A worker thread's profile, named by what follows the build's own name in its file's. */
-      const workerLink = ({ file }) => {
-        const role = file.slice(
-          build.cpu.file.length - ".cpuprofile".length + 1,
-          -".cpuprofile".length,
-        );
-        return kept(file)
-          ? `<a href="${esc(openIn(viewer, `${where}/${file}`, `${role}: ${titleOf(build)} (${run.date}, ${run.sha})`))}">${esc(role)}</a>`
-          : esc(role);
-      };
-      const own = build.trace.top[0];
-      const queries = build.trace.bridgeQueries ?? [];
-      const merged = build.trace.merged ?? 0;
-      const left = build.trace.calls - build.trace.drawn - merged;
-      const drawn = [
-        ...(merged > 0
-          ? [
-              `${merged.toLocaleString("en-US")} calls that ran at once merged into ${(build.trace.mergedEvents ?? 0).toLocaleString("en-US")} bars`,
-            ]
-          : []),
-        ...(left > 0
-          ? [`${left.toLocaleString("en-US")} of the shortest calls not drawn`]
-          : []),
-      ];
-      return `<tr><td>${esc(build.scenario)}</td><td>${esc(build.dataset)}${build.encrypted ? " encrypted" : ""}</td>
-<td>${link("Where the time went", build.trace.file, build.trace.bytes, "trace")}${drawn.length === 0 ? "" : ` <span class="size">${drawn.join("; ")}</span>`}</td>
-<td>${
-        build.cpu === undefined
-          ? `<span class="gone">not produced for this scenario</span>`
-          : link("Which code took it", build.cpu.file, build.cpu.bytes, "cpu") +
-            (build.cpu.processOf === undefined
-              ? ""
-              : ` <span class="size">(the whole fresh run; the close is its last step)</span>`) +
-            (build.cpu.workers.length === 0
-              ? ""
-              : ` <span class="size">+ ${build.cpu.workers.length} worker threads: ${build.cpu.workers.map(workerLink).join(", ")}</span>`)
-      }</td>
-<td>${
-        own === undefined
+/** The steps a build's table names, longest own time first. */
+export const TABLE_STEPS = 8;
+
+/** One scenario of one build: a plain table of the steps that took the time, then the two links that open its graphs. */
+function buildSection(run, build, { viewer, pages, glossary }) {
+  const kept = (file) => run.kept.has(file);
+  const where = `${pages}/runs/${run.id}`;
+  const at = `${titleOf(build)} (${run.date}, ${run.sha})`;
+  const link = (text, title, file, bytes, kind) =>
+    kept(file)
+      ? `<a href="${esc(openIn(viewer, `${where}/${file}`, `${title}: ${at}`))}">${text}</a> <span class="size">${megabytes(bytes)}</span>`
+      : `<span class="gone">${text}: not kept, ${whyGone(build, kind)}</span>`;
+  /** A worker thread's profile, named by what follows the build's own name in its file's. */
+  const workerLink = ({ file }) => {
+    const role = file.slice(
+      build.cpu.file.length - ".cpuprofile".length + 1,
+      -".cpuprofile".length,
+    );
+    return kept(file)
+      ? `<a href="${esc(openIn(viewer, `${where}/${file}`, `${role}: ${at}`))}">${esc(role)}</a>`
+      : esc(role);
+  };
+  const steps = build.trace.top.slice(0, TABLE_STEPS);
+  const runMs = build.trace.runMs;
+  const queries = build.trace.bridgeQueries ?? [];
+  const merged = build.trace.merged ?? 0;
+  const left = build.trace.calls - build.trace.drawn - merged;
+  const drawn = [
+    ...(merged > 0
+      ? [
+          `${merged.toLocaleString("en-US")} calls that ran at once are drawn merged into ${(build.trace.mergedEvents ?? 0).toLocaleString("en-US")} bars`,
+        ]
+      : []),
+    ...(left > 0
+      ? [`${left.toLocaleString("en-US")} of the shortest calls are not drawn`]
+      : []),
+  ];
+  const rows = steps.map((step) => {
+    const sentence = sentenceOf(step.says);
+    const share =
+      runMs === undefined || runMs === 0
+        ? ""
+        : `${Math.round((100 * step.selfMs) / runMs)}%`;
+    return `<tr><td>${sentence === undefined ? "" : `${esc(sentence)} `}<code>${esc(step.name)}</code></td><td class="n">${shown(step.selfMs / 1000, "s")}</td><td class="n">${share}</td></tr>`;
+  });
+  const bridge =
+    queries.length === 0
+      ? ""
+      : `<details><summary>Time per Bridge query</summary><table>${queries
+          .map(
+            (query) =>
+              `<tr><td><code>${esc(query.name)}</code></td><td class="n">${shown(query.ms / 1000, "s")}</td><td class="n">${query.calls.toLocaleString("en-US")} runs</td></tr>`,
+          )
+          .join(
+            "",
+          )}</table><span class="size">The Bridge says how long each query took in all, not when, so a trace does not draw them and a Bridge step's own time includes them.</span></details>`;
+  const cpu =
+    build.cpu === undefined
+      ? `<span class="gone">Which code took it (CPU profile): not produced for this scenario</span>`
+      : link(
+          "Which code took it (CPU profile)",
+          "Which code took it",
+          build.cpu.file,
+          build.cpu.bytes,
+          "cpu",
+        ) +
+        (build.cpu.processOf === undefined
           ? ""
-          : `<code>${esc(own.name)}</code> ${shown(own.selfMs / 1000, "s")}<details><summary>the ${build.trace.top.length} longest own times</summary><table>${build.trace.top
-              .map(
-                (step) =>
-                  `<tr><td><code>${esc(step.name)}</code></td><td>${shown(step.selfMs / 1000, "s")}</td><td>${esc(step.says ?? "")}</td></tr>`,
-              )
-              .join("")}</table></details>`
-      }${
-        queries.length === 0
+          : ` <span class="size">(the whole fresh run; the close is its last step)</span>`) +
+        (build.cpu.workers.length === 0
           ? ""
-          : `<details><summary>time per Bridge query, positions unknown</summary><table>${queries
-              .map(
-                (query) =>
-                  `<tr><td><code>${esc(query.name)}</code></td><td>${shown(query.ms / 1000, "s")}</td><td>${query.calls.toLocaleString("en-US")} runs</td></tr>`,
-              )
-              .join("")}</table></details>`
-      }</td></tr>`;
-    });
-    return `<section id="${esc(run.id)}">
-<h2>${esc(run.date)} · ${esc(run.event)} · <a href="https://github.com/${repo}/commit/${run.sha}">${run.sha}</a> · <a href="https://github.com/${repo}/actions/runs/${run.run}">run ${run.run}</a></h2>
-<table>
-<thead><tr><th>Scenario</th><th>Size</th><th>Where the time went (trace)</th><th>Which code took it (CPU profile)</th><th>Longest own time</th></tr></thead>
+          : ` <span class="size">+ ${build.cpu.workers.length} worker threads: ${build.cpu.workers.map(workerLink).join(", ")}</span>`);
+  return `<div class="scenario">
+<h3>${esc(chartTitle(build, glossary))}</h3>
+<table class="steps">
+<thead><tr><th>Step</th><th class="n">Time</th><th class="n">Share of the run</th></tr></thead>
 <tbody>
 ${rows.join("\n")}
 </tbody>
 </table>
-</section>`;
+<p class="caption">The ${steps.length} steps that spent the longest running on their own, not counting the steps they called${runMs === undefined ? "" : `, of the ${shown(runMs / 1000, "s")} the probed run took`}.</p>
+${bridge}
+<p class="links">${link("Where the time went (flame graph)", "Where the time went", build.trace.file, build.trace.bytes, "trace")}${drawn.length === 0 ? "" : ` <span class="size">${drawn.join("; ")}</span>`}<br>${cpu}</p>
+</div>`;
+}
+
+/** The page of builds: for each, a plain table of where each scenario's time went, and the links that open its graphs. */
+export function runsPage(
+  runs,
+  { repo, pages, viewer, glossary = readGlossary() },
+) {
+  const sections = runs.map((run, at) => {
+    const scenarios = run.flame.builds.map((build) =>
+      buildSection(run, build, { viewer, pages, glossary }),
+    );
+    return `<details class="build" id="${esc(run.id)}"${at === 0 ? " open" : ""}>
+<summary><strong>${esc(run.date)}</strong> · ${esc(EVENTS[run.event] ?? run.event)} · build <a href="https://github.com/${repo}/commit/${run.sha}">${run.sha}</a> · <a href="https://github.com/${repo}/actions/runs/${run.run}">run ${run.run}</a> <span class="size">${run.flame.builds.length} measurements</span></summary>
+${scenarios.join("\n")}
+</details>`;
   });
   return `<!DOCTYPE html>
 <html lang="en">
@@ -184,26 +214,51 @@ ${rows.join("\n")}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Where the time of each build went</title>
 <style>
-body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 2rem auto; max-width: 70rem; padding: 0 1rem; color: #333; line-height: 1.5; }
-h1 { font-size: 1.6rem; }
-h2 { font-size: 1.05rem; margin: 2rem 0 .4rem; }
+body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 2rem auto; max-width: 62rem; padding: 0 1rem; color: #2b2f36; line-height: 1.5; }
+h1 { font-size: 1.6rem; margin-bottom: .3rem; }
+h3 { font-size: 1rem; margin: 1.6rem 0 .3rem; }
+nav { font-size: .9rem; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { text-align: left; padding: .3rem .6rem; border-bottom: 1px solid #ddd; vertical-align: top; }
-code { font-size: .85em; }
+th, td { text-align: left; padding: .3rem .6rem; border-bottom: 1px solid #e3e6ea; vertical-align: top; }
+th.n, td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+code { font-size: .8em; color: #6b7280; }
 .size, .gone { color: #777; font-size: .8em; }
-a { color: #3273dc; text-decoration: none; }
+.size { margin-left: .4rem; }
+.caption { color: #555b66; font-size: .85rem; margin: .3rem 0; }
+.box { background: #f4f6f9; border: 1px solid #dde2ea; border-radius: 6px; padding: .6rem 1rem; margin: 1rem 0; font-size: .93rem; }
+.box h2 { font-size: 1rem; margin: 0 0 .3rem; }
+.box ul { margin: .3rem 0; padding-left: 1.2rem; }
+.box p { margin: .4rem 0; }
+details.build { border-top: 1px solid #cfd5de; margin-top: 1rem; padding-top: .3rem; }
+details.build > summary { cursor: pointer; padding: .4rem 0; }
+a { color: #2f64b8; text-decoration: none; }
 a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
+<nav><a href="../../">Documentation home</a> · <a href="../">Where the time goes, over time</a> · <a href="../detail/">Every measurement, one small chart each</a> · <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">What each step means</a></nav>
 <h1>Where the time of each build went</h1>
-<p>Each build, newest first, with a flame graph of one probed run of each scenario and a CPU profile of one more, opened in <a href="${esc(viewer)}">speedscope</a>.
-<strong>Where the time went</strong> is a trace of every step of the runtime, nested inside the step that called it: a step's own time is what it took with none of the steps inside it running. <strong>Which code took it</strong> is a CPU profile of an unprobed run: every function the processor was sampled in, so it shows the real code at the real speed, but only where the time went in code.
-In speedscope, <em>Time Order</em> draws the run as it happened and <em>Left Heavy</em> merges the same calls; the own-time list under each row's <em>Longest own time</em> ranks every step, whereas speedscope's <em>Sandwich</em> covers one track at a time.
-What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>. The numbers over time: <a href="../">performance history</a>.
-${runs.length} builds are kept here: traces for the newest ${KEEP.builds}, CPU profiles for the newest ${KEEP.cpu}, and the large size's files for the newest ${KEEP.large} builds that ran it; each row says which of its files are gone. The Bridge says how long each of its queries took and not when, so a trace does not draw them and a Bridge stage's own time includes them: each row lists them apart.</p>
-${sections.length === 0 ? "<p>No build has kept its flame graphs yet.</p>" : sections.join("")}
-<p><a href="../">Performance history</a></p>
+<p>Each build, newest first. For each thing measured, the table says which steps took the time, in plain words; under it, two links open the same run as a picture. ${runs.length === 1 ? "One build is" : `${runs.length} builds are`} kept here. Pictures are kept for the newest ${KEEP.builds} builds, CPU profiles for the newest ${KEEP.cpu}, and the large size's pictures for the newest ${KEEP.large} builds that ran it; a row says which of its files are gone.</p>
+<div class="box">
+<h2>How to read a flame graph</h2>
+<ul>
+<li>Each box is a step of the runtime. Its width is the time it took: a wide box is where the time went.</li>
+<li>A box sits under the step that called it, so the boxes stack as the calls did; a step's own time is the part of its box with nothing under it.</li>
+<li>Click a box to zoom into it. Use <em>Left Heavy</em> (top left) to put the biggest pieces together, and <em>Sandwich</em> for a table of the steps by time.</li>
+<li><strong>Where the time went</strong> draws every step of one run, as it happened. <strong>Which code took it</strong> is a CPU profile of another run: the functions the processor was in, so it shows the real code at the real speed, but only where the time went in code.</li>
+</ul>
+<p><strong>Don't open the files in an editor</strong>: they are data, not a document. The links below open them in the viewer.</p>
+</div>
+${sections.length === 0 ? "<p>No build has kept its flame graphs yet.</p>" : sections.join("\n")}
+<p><a href="../../">Documentation home</a> · <a href="../">Where the time goes, over time</a></p>
+<script>
+function openTarget() {
+  const target = document.getElementById(location.hash.slice(1));
+  if (target && target.tagName === "DETAILS") { target.open = true; target.scrollIntoView(); }
+}
+addEventListener("hashchange", openTarget);
+openTarget();
+</script>
 </body>
 </html>
 `;
@@ -214,7 +269,7 @@ const HEADER = '<header id="header">';
 
 /**
  * Copies the viewer and the builds' files the data checkout holds into `out`, writes the index of them, and links it from
- * the history page there. Returns what it kept.
+ * the history page there, which check.yml put at `<out>/detail/`. Returns what it kept.
  */
 export function pages({
   data,
@@ -256,15 +311,15 @@ export function pages({
     join(out, "runs", "index.html"),
     runsPage(kept, { repo, pages: pagesAt, viewer: viewerUrl }),
   );
-  const history = join(out, "index.html");
+  const history = join(out, "detail", "index.html");
   if (existsSync(history)) {
     const page = readFileSync(history, "utf8");
-    if (page.includes(HEADER) && !page.includes('href="runs/"'))
+    if (page.includes(HEADER) && !page.includes('href="../runs/"'))
       writeFileSync(
         history,
         page.replace(
           HEADER,
-          `${HEADER}<p style="margin:0 0 8px"><a href="runs/">Where the time of each build went: flame graphs and CPU profiles</a></p>`,
+          `${HEADER}<p style="margin:0 0 8px"><a href="../">Where the time goes, over time</a> · <a href="../runs/">Each build's flame graphs and CPU profiles</a> · <a href="../../">Documentation home</a></p>`,
         ),
       );
   }
