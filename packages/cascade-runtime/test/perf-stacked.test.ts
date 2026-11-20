@@ -6,6 +6,7 @@ import { after, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { explain } from "./perf-glossary.js";
 import { held, rowsOfHeld } from "./perf-held.js";
+import { rowsOfJobs } from "./perf-jobs-held.js";
 
 const script = async <T>(name: string): Promise<T> =>
   (await import(
@@ -606,6 +607,69 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
         repo: "owner/repo",
       });
       assert.doesNotMatch(page, /What a pod holds/);
+    });
+  });
+
+  describe("given a perf-data checkout whose newest build measured the jobs of every day", () => {
+    it("writes a section What people do after the first import with one plain line for each job, read against the first import and the reopen of the same build, and no limit set on any", async () => {
+      const { pages } = await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      const out = await mkdtemp(join(tmpdir(), "perf-stacked-out-"));
+      scratch.push(data, out);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      await writeFile(
+        join(day, "100-aaaaaaa-push.json"),
+        JSON.stringify({ results: rowsOfJobs() }),
+      );
+      pages({ data, out, repo: "owner/repo" });
+      const page = await readFile(join(out, "index.html"), "utf8");
+      assert.match(page, /<h2>What people do after the first import<\/h2>/);
+      const block =
+        /<section class="jobs"[\s\S]*?<\/section>/.exec(page)?.[0] ?? "";
+      const text = block.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+      for (const line of [
+        "Importing the same file again took 800 ms (0.3 x the first import) and wrote 0 files; the document was not converted again.",
+        "Importing the same file with 10 source entries changed took 2.40 s (0.8 x the first import) and wrote 24 files holding 160 statements (10 new versions, 10 new revisions); the document was converted once.",
+        "Importing the same file with one source entry added took 1.60 s (0.5 x the first import) and wrote 4 files holding 31 statements (1 new version, 1 new revision, 1 new pod record); the document was converted once.",
+        "Opening a pod whose process stopped before it closed, and asking its first question, took 2.00 s (4.0 x the same after a proper close) and read 1,712 files holding 19,636 statements; it held no database, so it was built whole.",
+        "Opening a pod after an update, and asking its first question, took 600 ms (1.2 x the same right after the first import).",
+      ])
+        assert.ok(text.includes(line), line);
+      assert.doesNotMatch(block, /threshold|alarm|limit|too slow/i);
+      assert.match(text, /647 source entries/);
+      assert.doesNotMatch(text, /\b\d[\d,]* records\b/, "never a bare count");
+    });
+
+    it("shows a job's line only when the build measured it and the first import it is read against, and a build that measured none has no section", async () => {
+      const { stackedPage, shape } = await script<Stacked>("perf-stacked.mjs");
+      const { jobsOf } = await script<{
+        jobsOf(file: object, key: string): { lines: { text: string }[] };
+      }>("perf-jobs.mjs");
+      const rows = rowsOfJobs().filter(
+        ({ name }) =>
+          !name.startsWith("fresh-first-screen-") &&
+          !name.startsWith("reopen-first-answer-"),
+      );
+      const bare = jobsOf({ results: rows }, "synthea-10y");
+      assert.deepEqual(
+        bare.lines.map(({ text }) => text.split(" took ")[0]),
+        [
+          "Importing the same file again",
+          "Importing the same file with 10 source entries changed",
+          "Importing the same file with one source entry added",
+          "Opening a pod whose process stopped before it closed, and asking its first question,",
+          "Opening a pod after an update, and asking its first question,",
+        ],
+      );
+      assert.ok(
+        bare.lines.every(({ text }) => !/\d x the /.test(text)),
+        "no comparison with a first import the file has not got",
+      );
+      const none = stackedPage(shape([file(1, 3, { a: 1 })]), {
+        repo: "owner/repo",
+      });
+      assert.doesNotMatch(none, /What people do after the first import/);
     });
   });
 

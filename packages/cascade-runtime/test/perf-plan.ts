@@ -12,6 +12,11 @@ export const SCENARIOS = [
   "close",
   "floor",
   "stored",
+  "reimport-identical",
+  "reimport-changed",
+  "add-one-record",
+  "reopen-after-kill",
+  "question-after-update",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
