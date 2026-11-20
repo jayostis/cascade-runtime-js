@@ -389,7 +389,7 @@ jobs:
   # commits them. They make no flame graphs and measure no main beside the build: the comparison with main is the Linux job's.
   # Nothing here fails on a slowdown, and a leg that fails does not stop the others or the Linux job.
   perf-systems:
-    name: performance file (${{ matrix.system || 'Windows and macOS' }})
+    # No `name`: a matrix job is then called `perf-systems (windows)`, and a skipped one by its id, not by an expression nothing resolved.
     if: ${{ github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.systems == 'linux') }}
     strategy:
       fail-fast: false
@@ -578,7 +578,6 @@ jobs:
   # Windows and macOS legs to end (`needs` names the whole job, not one leg of it), so it comes about 10 minutes after Linux's
   # own measurement; only a delay.
   publish:
-    name: keep the file${{ matrix.system && matrix.system != 'linux' && format(' ({0})', matrix.system) || '' }}
     if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     needs: [perf, perf-systems]
     strategy:
