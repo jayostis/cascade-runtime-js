@@ -764,6 +764,7 @@ export class Revisions {
       this.layout.version(arrival.place, arrival.version.value),
       ntriples(arrival.versionTriples),
       CONTENT_WAVE,
+      "version",
     );
     const placeholder = iri(THIS_REVISION);
     const previous = (this.#heads.get(record) ?? [])
@@ -926,6 +927,7 @@ export class Revisions {
       this.layout.place(FINDING).path(name),
       ntriples(content(iri(name))),
       FINDING_WAVE,
+      "finding",
     );
   }
 
@@ -1001,7 +1003,7 @@ export class Revisions {
     wentBack: readonly WentBack[] = [],
   ): Promise<void> {
     for (const [path, bytes] of this.#files)
-      writes.add(path, bytes, REVISION_WAVE);
+      writes.add(path, bytes, REVISION_WAVE, "revision");
     await this.#fileFindings(writes, wentBack);
     const shared = this.#shared;
     this.#shared = undefined;
@@ -1319,7 +1321,12 @@ export async function fileExport(
         if (contradicted.length > 0) wentBack.push({ older, contradicted });
       }
     });
-    writes.add(layout.storedBytes.path(documentIri), found.bytes, CONTENT_WAVE);
+    writes.add(
+      layout.storedBytes.path(documentIri),
+      found.bytes,
+      CONTENT_WAVE,
+      "storedDocument",
+    );
     writes.add(
       layout.place(`${PROV}Entity`).path(documentIri),
       ntriples(graph.closure(subject)),
@@ -1333,6 +1340,7 @@ export async function fileExport(
           server.place.path(server.record.value),
           ntriples(server.triples),
           CONTENT_WAVE,
+          "serverRecord",
         );
     }
   }

@@ -1,0 +1,16 @@
+{
+  "spans": {
+    "files.absent.check": {
+      "says": "Checking that none of the files a step is about to write is in the pod already: a file whose name fixes its bytes that the pod's listing lacks is new, and any other file, and one the listing has, is read and compared."
+    },
+    "files.absent.recheck": {
+      "says": "Looking again, before each batch of files is written (a step's files, and those it rebuilds), for any file that is not known to be new."
+    }
+  },
+  "counts": {
+    "files.absent.check": "How many files were checked, before a step wrote them, for being in the pod already.",
+    "files.absent.check.read": "How many of those checks had to read the file from the pod, the rest being files whose name fixes their bytes, answered by the pod's listing.",
+    "files.absent.recheck": "How many files were looked at again before a batch was written.",
+    "files.absent.recheck.read": "How many of those looks had to read the file from the pod."
+  }
+}

@@ -193,6 +193,8 @@ Rows named `<scenario>-<dataset>/stage/<stage>`: where time goes inside one run 
 | `pod-database.keyed.graphs` | Updating the saved database's facts, one group of facts at a time. |
 | `pod-database.keyed.screens` | Updating the saved database's ready-made answer tables. |
 | `pod-database.keyed.ledger` | Recording what the saved database now holds. |
+| `files.absent.check` | Checking that none of the files a step is about to write is in the pod already: a file whose name fixes its bytes that the pod's listing lacks is new, and any other file, and one the listing has, is read and compared. |
+| `files.absent.recheck` | Looking again, before each batch of files is written (a step's files, and those it rebuilds), for any file that is not known to be new. |
 | `bridge.query-*.rq` | The Bridge's query for `<name>`, which pulls those out of the converted source. Sits inside `arrivals.convert`. |
 | `build.query-*.ttl` | Building the `<name>` answer file by asking the pod's facts its question. Sits inside `build.queried`. |
 | `view.build-*.ttl` | Writing the `<name>` answer file from the question's rows. Sits inside `build.queried`. |
@@ -244,6 +246,10 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `matcher.takenrecords` | How many records the matcher picked to compare. |
 | `matcher.boundrecords` | How many records the matcher's questions were limited to. |
 | `shapes.machine-basis-check` | How many times a judgment's stated basis was checked against its shape (a repeat check over the same statements is not counted). |
+| `files.absent.check` | How many files were checked, before a step wrote them, for being in the pod already. |
+| `files.absent.check.read` | How many of those checks had to read the file from the pod, the rest being files whose name fixes their bytes, answered by the pod's listing. |
+| `files.absent.recheck` | How many files were looked at again before a batch was written. |
+| `files.absent.recheck.read` | How many of those looks had to read the file from the pod. |
 | `*.graph.quadsvisited` | How many individual facts the searches inside '`<name>`' looked at. |
 | `*.graph.scans` | How many times the in-memory facts were searched end to end inside '`<name>`'. |
 | `*.store.queries` | How many fact-store questions '`<name>`' put. |
