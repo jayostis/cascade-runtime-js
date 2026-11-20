@@ -21,6 +21,12 @@ if (chosen.length > 1) {
 const compiled = compiledTests(chosen[0]?.slice(2));
 const forwarded = given.filter((argument) => !GROUPS.includes(argument));
 
+// With no file named, `node --test` runs every test file it finds, not none.
+if (compiled.length === 0) {
+  process.stdout.write("No test file to run.\n");
+  process.exit(0);
+}
+
 const missing = compiled.filter((path) => !existsSync(path));
 if (missing.length > 0) {
   process.stderr.write(

@@ -148,19 +148,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -f "$RUNNER_TEMP/junit-listed.xml" ] || [ ! -f "$RUNNER_TEMP/junit-unlisted.xml" ]; then
-            echo "::warning::the runtime's tests wrote no JUnit report of one of the two parts, so there is nothing to check"
+          reports=()
+          for part in listed unlisted; do
+            if [ -f "$RUNNER_TEMP/junit-$part.xml" ]; then reports+=("$RUNNER_TEMP/junit-$part.xml"); fi
+          done
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "::warning::the runtime's tests wrote no JUnit report, so there is nothing to check"
             exit 0
           fi
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/cascade-runtime/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/apple-health/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/fhir-pull/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/ccda-download/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/graphdb/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/mcp/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/runtime/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/site/test/spec.json
-          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit-listed.xml" "$RUNNER_TEMP/junit-unlisted.xml" packages/evals/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/cascade-runtime/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/apple-health/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/fhir-pull/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/ccda-download/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/graphdb/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/mcp/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/runtime/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/site/test/spec.json
+          node scripts/spec-shape.mjs "${reports[@]}" packages/evals/test/spec.json
 
   # The runtime on Oxigraph's native build, built here from native/oxigraph as the oxigraph-native workflow builds it
   # for Linux: the conformance command runs on each build and every test must have the same outcome on both, and the
