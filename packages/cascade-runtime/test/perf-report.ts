@@ -21,6 +21,7 @@ import { gunzipSync } from "node:zlib";
 import { pullFiles, openPod, tablesBeside } from "cascade-runtime";
 import { componentsOf, findRoot } from "@cascade-runtime/runtime/node";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
+import { loadPlainly, type Loaded } from "./perf-floor.js";
 import { explain, explainSpan } from "./perf-glossary.js";
 import { chromeTrace, selfTimes } from "./perf-trace.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
@@ -35,7 +36,7 @@ import {
  * adapter commits under bench/), written as rows in the Bridge spec's result format (cascade-bridge-spec
  * bench/result.schema.json), so one reader and one comparison serve every repository.
  *
- * Run it as `npm run perf -- [--scenario fresh-first-screen,...] [--size synthea-10y,...] [--encryption plain|encrypted|both]
+ * Run it as `npm run perf -- [--scenario fresh-first-screen,floor,...] [--size synthea-10y,...] [--encryption plain|encrypted|both]
  * [--repeats 3] [--no-probe] [--out file] [--profiles folder [--no-cpu-profile]]`.
  *
  * Two kinds of run, never mixed: the headline rows (`<scenario>/total` and the rest that are not under `stage/` or
@@ -48,12 +49,16 @@ import {
  * writes), and `flame.json` that lists them with the steps whose own time was longest. speedscope opens both.
  */
 
-/** Each scenario's fixed id: the first part of every row's name. */
+/**
+ * Each scenario's fixed id: the first part of every row's name. `floor` is the same input loaded as plainly as SQL can
+ * (perf-floor.ts), which a fresh import is read against; it is run once for a size, beside the others.
+ */
 export const SCENARIOS = [
   "fresh-first-screen",
   "reopen-first-answer",
   "question-page",
   "close",
+  "floor",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
@@ -198,8 +203,10 @@ async function adapterFolder(): Promise<string> {
   return (await components.resolve(adapter)).folder;
 }
 
-/** One Synthea patient's record, read from the adapter's committed input and checked against the digest its manifest holds. */
-export async function loadDataset(id: DatasetId): Promise<Dataset> {
+/** Where the adapter commits a record's gzipped Bundle, and the digest its bench/manifest.json states for the uncompressed one. */
+export async function inputOf(
+  id: DatasetId,
+): Promise<{ path: string; sha256: string }> {
   const folder = await adapterFolder();
   const manifest = JSON.parse(
     await readFile(join(folder, "bench", "manifest.json"), "utf8"),
@@ -209,7 +216,13 @@ export async function loadDataset(id: DatasetId): Promise<Dataset> {
     throw new Error(
       `the adapter's bench/manifest.json holds no ${DATASETS[id]}`,
     );
-  const bytes = gunzipSync(await readFile(join(folder, input.path)));
+  return { path: join(folder, input.path), sha256: input.sha256 };
+}
+
+/** One Synthea patient's record, read from the adapter's committed input and checked against the digest its manifest holds. */
+export async function loadDataset(id: DatasetId): Promise<Dataset> {
+  const input = await inputOf(id);
+  const bytes = gunzipSync(await readFile(input.path));
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   if (sha256 !== input.sha256)
     throw new Error(
@@ -284,7 +297,7 @@ export async function profileOfPatient(
 // --------------------------------------------------------- one child process
 
 interface Job {
-  readonly scenario: "fresh" | "reopen" | "question-page";
+  readonly scenario: "fresh" | "reopen" | "question-page" | "floor";
   readonly dataset: DatasetId;
   readonly encrypted: boolean;
   readonly probed: boolean;
@@ -304,6 +317,8 @@ export interface Measured {
   readonly rssBytes: number;
   readonly peakRssBytes: number;
   readonly wrote?: number;
+  /** What the floor loaded and how long each stage took, for the floor scenario. */
+  readonly floor?: Loaded;
   readonly seen?: Tabulated;
   /** The close alone, for a fresh run: its own probe. */
   readonly closeSeen?: Tabulated;
@@ -491,8 +506,25 @@ async function maybeProbed<T>(
   return { result, seen: table };
 }
 
+/** The floor in this process: the record's input read, parsed, flattened and inserted into a SQLite file in the job's folder. */
+async function measureFloor(job: Job): Promise<Measured> {
+  await mkdir(job.folder, { recursive: true });
+  const floor = await loadPlainly(
+    (await inputOf(job.dataset)).path,
+    join(job.folder, "floor.db"),
+  );
+  return {
+    seconds: {},
+    parts: {},
+    rssBytes: process.memoryUsage.rss(),
+    peakRssBytes: process.resourceUsage().maxRSS * 1024,
+    floor,
+  };
+}
+
 /** One scenario in this process, which is as fresh as a process is: nothing is warm that a run of the app would not have warm. */
 async function measure(job: Job): Promise<Measured> {
+  if (job.scenario === "floor") return measureFloor(job);
   const seconds: Record<string, number> = {};
   const parts: Record<string, number> = {};
   /** Runs the step as the named span, timing it with a plain clock either way. */
@@ -778,6 +810,85 @@ export function probedRows(
       ),
     );
   return rows;
+}
+
+/**
+ * The floor's rows for one size: the median of each stage (parse, flatten, insert) and of their total over the runs, and the
+ * rows inserted, under `floor-<size>`.
+ */
+export function floorRows(
+  dataset: DatasetId,
+  about: string,
+  runs: readonly Loaded[],
+): Row[] {
+  const name = `floor-${dataset}`;
+  const how = `unprobed, median of ${runs.length} runs, each in a process of its own; ${about}`;
+  const stage = (pick: (each: Loaded) => number) => runs.map(pick);
+  return [
+    clockRow(
+      `${name}/total`,
+      "s",
+      stage((each) => each.parse + each.flatten + each.insert),
+      `read + parse + flatten + insert into SQLite; ${how}`,
+    ),
+    clockRow(
+      `${name}/parse`,
+      "s",
+      stage((each) => each.parse),
+      how,
+    ),
+    clockRow(
+      `${name}/flatten`,
+      "s",
+      stage((each) => each.flatten),
+      how,
+    ),
+    clockRow(
+      `${name}/insert`,
+      "s",
+      stage((each) => each.insert),
+      how,
+    ),
+    countRow(`${name}/count/rows`, runs[0]?.rows ?? 0, about),
+  ];
+}
+
+/** The floor at one size: the plain load of the record the fresh scenario imports, `plan.repeats` times, each in a process of its own. */
+async function floorAt(
+  plan: Plan,
+  dataset: DatasetId,
+  work: string,
+  log: (line: string) => void,
+): Promise<Row[]> {
+  const { sha256 } = await inputOf(dataset);
+  const runs: Loaded[] = [];
+  for (let at = 0; at < plan.repeats; at++) {
+    log(`${dataset}: floor run ${at + 1}/${plan.repeats}`);
+    const folder = join(work, `floor-${dataset}-${at}`);
+    const { floor } = await child(
+      {
+        scenario: "floor",
+        dataset,
+        encrypted: false,
+        probed: false,
+        folder,
+        claim: [],
+      },
+      work,
+    );
+    await rm(folder, { recursive: true, force: true });
+    if (floor === undefined) throw new Error("the floor measured nothing");
+    if (floor.sha256 !== sha256)
+      throw new Error(
+        `the floor read ${floor.sha256} for ${dataset}, the manifest says ${sha256}`,
+      );
+    runs.push(floor);
+  }
+  return floorRows(
+    dataset,
+    `dataset=${dataset} sha256=${sha256} records=${runs[0]?.records ?? 0}`,
+    runs,
+  );
 }
 
 export interface Plan {
@@ -1336,7 +1447,7 @@ export function explained(rows: readonly Row[]): {
   return { rows: out, missing };
 }
 
-/** The file for a plan: every scenario at every size, plain, and encrypted at the large size. */
+/** The file for a plan: every scenario at every size, plain, and encrypted at the large size; the floor once for a size. */
 export async function perfFile(
   plan: Plan,
   log: (line: string) => void = () => undefined,
@@ -1356,6 +1467,8 @@ export async function perfFile(
   };
   try {
     const results: Row[] = [];
+    // A plan of the floor alone has no pod to open, so no scenario runs, and no record is loaded for the pod's scenarios.
+    const only = [...plan.scenarios].every((scenario) => scenario === "floor");
     for (const size of plan.sizes) {
       const modes: boolean[] =
         plan.encryption === "plain"
@@ -1366,11 +1479,19 @@ export async function perfFile(
                 (plan.encryption === "auto" && size === LARGE)
               ? [false, true]
               : [false];
-      for (const encrypted of modes) {
+      for (const encrypted of only ? [] : modes) {
         results.push(
           ...(await scenariosAt(plan, size, encrypted, work, log, flame)),
         );
         await flamed();
+        await partial({
+          env: envOf(plan),
+          commit: await commits(),
+          results: explained(results).rows,
+        });
+      }
+      if (plan.scenarios.has("floor")) {
+        results.push(...(await floorAt(plan, size, work, log)));
         await partial({
           env: envOf(plan),
           commit: await commits(),

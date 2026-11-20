@@ -131,6 +131,181 @@ export function says(row) {
   return (row?.extra ?? "").split(" | ")[0].replaceAll("|", "/");
 }
 
+/**
+ * The rows beyond the headline times and own times that a page needs to read an import against the plain load of the same
+ * input and to say what the import handled: the import's parts and exact counts, and the floor's stages.
+ */
+export const SPEED_ROW =
+  /^(?:fresh-first-screen-.+\/(?:import|phase-saving|phase-converting|phase-judging|count\/(?:records|built\.lines\.written|files-written|store\.queries|graph\.quadsvisited))|floor-[^/]+\/(?:total|parse|flatten|insert|count\/rows))$/;
+
+/** The key of a fresh import's rows (`fresh-first-screen-<size>[-encrypted]`). */
+const FRESH = /^(fresh-first-screen-.+?)\/import$/;
+
+/** The key of every fresh import a file measured, in the order its rows come. */
+export function freshKeys(file) {
+  return [
+    ...new Set(
+      (file.results ?? []).flatMap(({ name }) => FRESH.exec(name)?.[1] ?? []),
+    ),
+  ];
+}
+
+/**
+ * What a file says of one fresh import (`key`): its time, the plain load of the same input beside it, what it handled, and
+ * the rate of each phase. A rate is the run's whole count over the phase's time, so it says how fast the phase went through
+ * the size of the run. Undefined for a file with no such import.
+ */
+export function speedOf(file, key) {
+  const values = new Map(
+    (file.results ?? []).map(({ name, value }) => [name, value]),
+  );
+  const imported = values.get(`${key}/import`);
+  if (imported === undefined) return undefined;
+  const size = /^fresh-first-screen-(.+?)(?:-encrypted)?$/.exec(key)?.[1];
+  const floorKey = `floor-${size}`;
+  const total = values.get(`${floorKey}/total`);
+  const floor =
+    total === undefined
+      ? undefined
+      : {
+          total,
+          parse: values.get(`${floorKey}/parse`),
+          flatten: values.get(`${floorKey}/flatten`),
+          insert: values.get(`${floorKey}/insert`),
+          rows: values.get(`${floorKey}/count/rows`),
+        };
+  const counted = (name) => values.get(`${key}/count/${name}`);
+  const phase = (name) => values.get(`${key}/phase-${name}`);
+  const rate = (count, seconds) =>
+    count === undefined || seconds === undefined || seconds <= 0
+      ? undefined
+      : count / seconds;
+  const statements = counted("built.lines.written");
+  const files = counted("files-written");
+  return {
+    key,
+    imported,
+    floor,
+    times: total === undefined || total <= 0 ? undefined : imported / total,
+    records: counted("records"),
+    statements,
+    files,
+    queries: counted("store.queries"),
+    quads: counted("graph.quadsvisited"),
+    phases: {
+      saving: phase("saving"),
+      converting: phase("converting"),
+      judging: phase("judging"),
+    },
+    rates: {
+      saving: {
+        statements: rate(statements, phase("saving")),
+        files: rate(files, phase("saving")),
+      },
+      converting: { statements: rate(statements, phase("converting")) },
+      judging: { statements: rate(statements, phase("judging")) },
+    },
+  };
+}
+
+/** "Import takes 42.3 s; the plain SQL load of the same input takes 2.10 s (20x).", or undefined where the file has no floor. */
+export function floorLine(speed) {
+  if (speed?.floor === undefined || speed.times === undefined) return undefined;
+  const times = speed.times;
+  return `Import takes ${shown(speed.imported, "s")}; the plain SQL load of the same input takes ${shown(speed.floor.total, "s")} (${times.toFixed(times >= 10 ? 0 : 1)}x).`;
+}
+
+/** What the floor does and does not do, in the words every page puts under the line. */
+export const FLOOR_NOTE =
+  "The plain load reads and parses the same input, flattens each resource to one row of a table of its type and inserts the rows into SQLite in one transaction. It does no mapping to the Cascade vocabulary, keeps no provenance, does no matching, builds no derived views and writes no files. What the import does beyond that is not split here further than the stages the flame graphs measure.";
+
+/** How to read the table of what an import handled. */
+export const THROUGHPUT_NOTE =
+  "Counts are exact and come from the probed run of the same import; statements are the lines the run wrote to the pod's answer files. A rate is the run's whole count divided by that phase's time in the unprobed runs, so it says how fast the phase went through the size of the run, not what the phase itself made. Files per second is shown only for saving, the phase that writes them.";
+
+export const THROUGHPUT_HEAD = [
+  "Records",
+  "Statements",
+  "Files written",
+  "Store queries",
+  "Quads visited",
+  "Saving: statements/s",
+  "Saving: files/s",
+  "Converting: statements/s",
+  "Judging: statements/s",
+];
+
+/** The cells under `THROUGHPUT_HEAD` for one import: whole numbers with thousands separators, `-` where the file has none. */
+export function throughputCells(speed) {
+  const count = (value) =>
+    value === undefined ? "-" : Math.round(value).toLocaleString("en-US");
+  return [
+    speed.records,
+    speed.statements,
+    speed.files,
+    speed.queries,
+    speed.quads,
+    speed.rates.saving.statements,
+    speed.rates.saving.files,
+    speed.rates.converting.statements,
+    speed.rates.judging.statements,
+  ].map(count);
+}
+
+const escaped = (text) =>
+  String(text).replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+  );
+
+/** A table of imports for a page: a row for each of `rows`, whose `label` is HTML the caller has made safe. */
+export function throughputTable(rows, first = "Build") {
+  const cells = (speed) =>
+    throughputCells(speed)
+      .map((cell) => `<td class="n">${cell}</td>`)
+      .join("");
+  return `<table class="speed">
+<thead><tr><th>${escaped(first)}</th>${THROUGHPUT_HEAD.map((cell) => `<th class="n">${escaped(cell)}</th>`).join("")}</tr></thead>
+<tbody>
+${rows.map(({ label, speed }) => `<tr><td>${label}</td>${cells(speed)}</tr>`).join("\n")}
+</tbody>
+</table>`;
+}
+
+/**
+ * The lines of a report that read each fresh import of a file against the plain load of its input, and say what it
+ * handled and how fast each phase went; none for a file with no import.
+ */
+export function speedSection(file, { markdown = false } = {}) {
+  const speeds = freshKeys(file).flatMap((key) => speedOf(file, key) ?? []);
+  if (speeds.length === 0) return [];
+  const quote = (text) => (markdown ? `> ${text}` : text);
+  const out = [
+    markdown
+      ? "**The import beside the plain SQL load of the same input**"
+      : "THE IMPORT BESIDE THE PLAIN SQL LOAD OF THE SAME INPUT",
+    "",
+  ];
+  const lines = speeds.flatMap((speed) => {
+    const line = floorLine(speed);
+    return line === undefined
+      ? []
+      : [`${markdown ? "- " : ""}${speed.key}: ${line}`];
+  });
+  if (lines.length > 0) out.push(...lines, "", quote(FLOOR_NOTE), "");
+  out.push(
+    table(
+      ["", ...THROUGHPUT_HEAD],
+      speeds.map((speed) => [speed.key, ...throughputCells(speed)]),
+      markdown,
+    ),
+    "",
+    quote(THROUGHPUT_NOTE),
+    "",
+  );
+  return out;
+}
+
 /** The report of two files: headline rows, then the counts that changed, then the stages that changed most. */
 export function compare(before, after, { markdown = false, stages = 15 } = {}) {
   // A scenario and size the after file did not run (the nightly's large one, against a pull request's) is not a row gone.
@@ -152,6 +327,7 @@ export function compare(before, after, { markdown = false, stages = 15 } = {}) {
       "",
     );
   }
+  out.push(...speedSection(after, { markdown }));
   const head = (title) =>
     out.push(markdown ? `**${title}**` : title.toUpperCase(), "");
   const rowsOf = (kind) => {
@@ -338,6 +514,7 @@ export function summary(
     ),
     "",
   );
+  out.push(...speedSection(file, { markdown }));
   for (const [group, rows] of grouped(
     file.results.filter((row) => kindOf(row.name) === "stage"),
   )) {

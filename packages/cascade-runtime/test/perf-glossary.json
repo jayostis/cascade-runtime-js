@@ -24,6 +24,11 @@
     "close": {
       "says": "Closing a pod straight after it took in a record and drew the first screen.",
       "total": "Closing a pod straight after its import and first screen, which saves its database."
+    },
+    "floor": {
+      "chart": false,
+      "says": "The same input as a fresh import, loaded as plainly as SQL can into one SQLite file: the floor a fresh import is read against.",
+      "total": "The same input a fresh import takes in, loaded as plainly as SQL can: read and decompress the Bundle, parse it, flatten each resource to one row of a table named for its resource type (a plain value is a column, anything nested is kept as its JSON text) and insert every row into a SQLite file in one transaction, with the SQLite the runtime uses and none of its settings changed. It does no mapping to the Cascade vocabulary, keeps no provenance, does no matching of records that are the same, builds no derived views and writes no files: it is the time to put this input in a database and nothing else. It says what loading costs, not what the import's other work adds up to; the pages do not split the difference beyond the stages the flame graphs measure."
     }
   },
   "measures": {
@@ -34,6 +39,9 @@
     "first-read": "The first question asked of the reopened pod ('My active conditions').",
     "second-read": "A second question asked of the reopened pod ('My active medications').",
     "close": "Closing the pod, saving its database.",
+    "parse": "Floor stage: reading the compressed Bundle, decompressing it and parsing the JSON. A fresh import's own clock starts after the harness has read and parsed the Bundle once, so this is time the import's number does not include.",
+    "flatten": "Floor stage: turning each parsed resource into one row of the table for its resource type, plain values as columns and anything nested as its JSON text.",
+    "insert": "Floor stage: creating a table for each resource type and inserting every row in one transaction into a SQLite file on disk, then closing the file.",
     "rss": "Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the second read for a reopened one, after a first read and before the pages for the question pages.",
     "peak-rss": "The most memory the process held at any moment, in bytes.",
     "probed-total": "The scenario's time in one run with the probe on, which slows some work; its stages are from this run and are for finding where time goes, never for adding up to the headline.",
@@ -562,6 +570,7 @@
   "counts": {
     "records": "How many records the person's source file holds.",
     "files-written": "How many files the import wrote to the pod.",
+    "rows": "How many rows the floor inserted, one for each resource that has a type: a fresh import's records count is every entry of the Bundle.",
     "graph.scans": "How many times the in-memory facts were searched from end to end.",
     "graph.quadsvisited": "How many individual facts those searches looked at.",
     "store.queries": "How many questions were put to the pod's fact store.",

@@ -13,7 +13,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const HEADLINE =
-  /\/(total|open|import|first-screen|first-read|second-read|close|peak-rss)$/;
+  /\/(total|open|import|first-screen|first-read|second-read|close|peak-rss|parse|flatten|insert)$/;
 
 export function forHistory(file, { stages = 6 } = {}) {
   const keep = file.results.filter((row) => HEADLINE.test(row.name));
