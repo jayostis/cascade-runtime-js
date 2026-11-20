@@ -273,6 +273,9 @@ jobs:
         with:
           ref: perf-data
           persist-credentials: false
+      # The action fetches `perf-data` into a branch of that name, which git refuses while it is the branch checked out.
+      - name: Leave the data branch for the action to fetch
+        run: git checkout -q --detach
       # `ref` names the commit the run measured: a schedule or hand-started run has no head commit, and the action would
       # otherwise record whatever main is when this job publishes.
       - uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
