@@ -2,7 +2,7 @@ import "./offline.js";
 import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { CHILD } from "./perf-child.js";
-import { pinClock } from "./perf-clock.js";
+import { pinClock, pinOf } from "./perf-clock.js";
 import { type Job } from "./perf-job.js";
 import { measure } from "./perf-measure.js";
 import { parsed } from "./perf-plan.js";
@@ -52,8 +52,9 @@ async function main(args: string[]): Promise<void> {
   const at = args.indexOf(CHILD);
   if (at !== -1) {
     const job = JSON.parse(args[at + 1] as string) as Job;
-    // What the job writes with the time or a new id is then the same on every run, as a fingerprint of it needs.
-    pinClock();
+    // What the job writes with the time or a new id is then the same on every run of it, as a fingerprint of it needs,
+    // and differs from what another job writes (a later job into the same pod has its own ids and a later time).
+    pinClock(pinOf(job));
     await writeFile(job.out, JSON.stringify(await measure(job)));
     return;
   }

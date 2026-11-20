@@ -28,6 +28,10 @@ export interface Job {
   readonly folder: string;
   readonly claim: readonly string[];
   readonly out: string;
+  /** What the job is called, which seeds its ids (see `pinClock`); a later job that imports into an earlier one's pod needs one of its own. */
+  readonly label?: string;
+  /** Which job of its scenario this is, from 0, which sets its clock (see `pinClock`). */
+  readonly n?: number;
 }
 
 /** What a child measured; times in seconds. */

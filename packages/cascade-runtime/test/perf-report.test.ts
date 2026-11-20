@@ -28,7 +28,10 @@ import {
   openedAt,
   PINNED,
   pinClock,
+  pinnedAt,
+  pinOf,
   countRow,
+  unitOfCounter,
   envOf,
   floorRows,
   tabulated,
@@ -271,15 +274,44 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       },
     ];
 
-    it("is a row in bytes where the name ends in .bytes, and a count of things otherwise", () => {
-      const count = countRow("x-y/count/handoff.2-answer.bytes", 19_600_000);
+    it("is a row in bytes where its counter's name ends in .bytes, and a count of things otherwise", () => {
+      const count = countRow(
+        "x-y/count/handoff.2-answer.bytes",
+        19_600_000,
+        undefined,
+        unitOfCounter("handoff:2-answer.bytes"),
+      );
       assert.deepEqual([count.unit, count.kind], ["By", "cost"]);
       assert.equal(refused(count), undefined);
       assert.equal(
         countRow("x-y/count/handoff.2-answer.items", 4).unit,
         "{count}",
       );
-      assert.equal(countRow("x-y/count/bytesome", 4).unit, "{count}");
+      assert.equal(unitOfCounter("bytesome"), "{count}");
+    });
+
+    it("is in bytes when its row's name was cut at the length a part allows, or numbered because another had it", () => {
+      const long = `${"a".repeat(120)}.bytes`;
+      assert.equal(part(long).endsWith(".bytes"), false, "the cut lost it");
+      const rows = probedRows("x-y", {
+        spans: [],
+        counts: {
+          [long]: 5,
+          [`${"a".repeat(110)}.bytes`]: 6,
+          [`${"a".repeat(110)}.items`]: 7,
+        },
+      });
+      assert.equal(rows.length, 3);
+      assert.deepEqual(rows.map(({ unit }) => unit).sort(), [
+        "By",
+        "By",
+        "{count}",
+      ]);
+      assert.ok(
+        rows.some(({ name }) => /-\d+$/.test(name)),
+        "one was numbered",
+      );
+      for (const row of rows) assert.equal(refused(row), undefined);
     });
 
     it("is written as bytes by the probed run's count rows too", () => {
@@ -340,6 +372,33 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       } finally {
         unpin();
       }
+    });
+
+    it("gives two jobs ids that differ and a later job a later time, and the same job the same ids and time again", () => {
+      const drawn = (pin: Parameters<typeof pinClock>[0]) => {
+        const unpin = pinClock(pin);
+        try {
+          return {
+            ids: [crypto.randomUUID(), crypto.randomUUID()],
+            at: Date.now(),
+          };
+        } finally {
+          unpin();
+        }
+      };
+      const job = { scenario: "fresh", dataset: "x", encrypted: false };
+      const first = drawn(pinOf({ ...job, label: "import", n: 0 }));
+      const later = drawn(pinOf({ ...job, label: "a later pull", n: 1 }));
+      const alike = drawn(pinOf({ ...job, label: "import", n: 0 }));
+      assert.deepEqual(alike, first, "the same job repeats");
+      for (const id of later.ids) assert.ok(!first.ids.includes(id));
+      assert.ok(later.at > first.at, "the later job is later");
+      assert.equal(first.at, pinnedAt(0));
+      assert.equal(first.at, Date.parse(PINNED));
+      const elsewhere = drawn(
+        pinOf({ ...job, label: "import", scenario: "reopen" }),
+      );
+      for (const id of elsewhere.ids) assert.ok(!first.ids.includes(id));
     });
 
     it("puts the real clock and the real ids back", async () => {
@@ -934,6 +993,27 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
           /20-c\.json gives measures\.x/,
         );
         await rm(join(folder, "20-c.json"));
+        await given("20-e.json", { families: [{ says: "first" }] });
+        const listedTwice = /20-e\.json lists .*"first".* in families/;
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          listedTwice,
+        );
+        assert.throws(
+          () => stacked.readGlossary(`${folder}/`),
+          listedTwice,
+          "the page script too",
+        );
+        await rm(join(folder, "20-e.json"));
+        await given("20-f.json", {
+          families: [{ says: "within" }, { says: "within" }],
+        });
+        assert.throws(
+          () => readGlossary(pathToFileURL(`${folder}/`)),
+          /20-f\.json lists .*"within".* in families/,
+          "twice in one file",
+        );
+        await rm(join(folder, "20-f.json"));
         await given("20-d.json", { about: "twice" });
         assert.throws(
           () => readGlossary(pathToFileURL(`${folder}/`)),

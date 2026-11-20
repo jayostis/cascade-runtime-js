@@ -33,6 +33,12 @@ function masked(text: string): string {
  * same fingerprint only when they hold the same files with the same statements, save that the labels of blank nodes
  * (which the judgments' provenance has) are masked (see `masked`). An encrypted pod's files are sealed with a random
  * key and nonces, so no two runs of it have the same bytes: take the fingerprint of a plain pod of the same record.
+ *
+ * Its limit: masking the labels loses which blank node carries which statements and how blank nodes link, so a
+ * difference that only swaps those between two blank nodes of one file is not seen. It is an export for tests only
+ * today; the `sha256` of the dataset spec's `statements` row (what is stored) is what will use it, and that row must
+ * not be read as proof of identical blank-node structure. A canonical labelling (a hash of each node's neighbourhood)
+ * would close the gap and is left until a row needs it.
  */
 export async function folderFingerprint(
   folder: string,

@@ -33,7 +33,7 @@ const FOLDER = new URL("../../test/perf-glossary/", import.meta.url);
 /**
  * The glossary of a folder of fragments, merged in file-name order: a list by joining, an object by adding keys, a text
  * by taking it. A key two files both give, or a text one gives twice, is an error, so two scenarios cannot silently
- * overwrite each other. scripts/perf-stacked.mjs reads the folder the same way.
+ * overwrite each other, and so is an entry a list has twice, in one file or two. scripts/perf-stacked.mjs reads the folder the same way.
  */
 export function readGlossary(folder: URL = FOLDER): Glossary {
   const merged: Record<string, unknown> = {};
@@ -46,7 +46,19 @@ export function readGlossary(folder: URL = FOLDER): Glossary {
     for (const [section, value] of Object.entries(fragment)) {
       const had = merged[section];
       if (Array.isArray(value)) {
-        merged[section] = [...((had as unknown[] | undefined) ?? []), ...value];
+        const list = [...((had as unknown[] | undefined) ?? [])];
+        for (const entry of value) {
+          if (
+            list.some(
+              (other) => JSON.stringify(other) === JSON.stringify(entry),
+            )
+          )
+            throw new Error(
+              `${file} lists ${JSON.stringify(entry)} in ${section}, which is listed already`,
+            );
+          list.push(entry);
+        }
+        merged[section] = list;
       } else if (typeof value === "object" && value !== null) {
         const into = (had ?? (merged[section] = {})) as Record<string, unknown>;
         for (const [key, entry] of Object.entries(value)) {

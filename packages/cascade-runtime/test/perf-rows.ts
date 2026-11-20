@@ -115,10 +115,22 @@ export function clockRow(
   };
 }
 
-/** A count of work done: of bytes (`By`) where the name ends in `.bytes`, otherwise of things (`{count}`). */
-export const countRow = (name: string, value: number, extra?: string): Row => ({
+/**
+ * The unit of a probe counter, from the counter's own name as the runtime gives it: bytes (`By`) where it ends in
+ * `.bytes`, otherwise things (`{count}`). Read before the name becomes a row's (`part` cuts it, `unique` numbers it).
+ */
+export const unitOfCounter = (counter: string): "By" | "{count}" =>
+  counter.endsWith(".bytes") ? "By" : "{count}";
+
+/** A count of work done, of things (`{count}`) unless its unit is given (`By` for bytes). */
+export const countRow = (
+  name: string,
+  value: number,
+  extra?: string,
+  unit: "By" | "{count}" = "{count}",
+): Row => ({
   name,
-  unit: name.endsWith(".bytes") ? "By" : "{count}",
+  unit,
   value,
   kind: "cost",
   ...(extra !== undefined && { extra }),
@@ -178,6 +190,7 @@ export function probedRows(
         `${prefix}/count/${unique(counted, part(name))}`,
         value,
         `probed run; ${name.slice(0, 160)}`,
+        unitOfCounter(name),
       ),
     );
   return rows;

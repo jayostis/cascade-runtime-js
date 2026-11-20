@@ -118,9 +118,21 @@ export function readGlossary(folder = GLOSSARY) {
     .sort()) {
     const fragment = JSON.parse(readFileSync(join(folder, file), "utf8"));
     for (const [section, value] of Object.entries(fragment)) {
-      if (Array.isArray(value))
-        merged[section] = [...(merged[section] ?? []), ...value];
-      else if (typeof value === "object" && value !== null) {
+      if (Array.isArray(value)) {
+        const list = [...(merged[section] ?? [])];
+        for (const entry of value) {
+          if (
+            list.some(
+              (other) => JSON.stringify(other) === JSON.stringify(entry),
+            )
+          )
+            throw new Error(
+              `${file} lists ${JSON.stringify(entry)} in ${section}, which is listed already`,
+            );
+          list.push(entry);
+        }
+        merged[section] = list;
+      } else if (typeof value === "object" && value !== null) {
         merged[section] ??= {};
         for (const [key, entry] of Object.entries(value)) {
           if (key in merged[section])
