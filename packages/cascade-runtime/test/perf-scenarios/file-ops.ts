@@ -296,9 +296,6 @@ export function windowsScanner(
     async set(settings) {
       const now = await read();
       const off = (on: boolean) => `$${on ? "false" : "true"}`;
-      await powershell(
-        `Set-MpPreference -DisableRealtimeMonitoring ${off(settings.realtime)} -DisableIOAVProtection ${off(settings.fileOpening)} -DisableBehaviorMonitoring ${off(settings.behaviour)} -DisableScriptScanning ${off(settings.scripts)}`,
-      );
       const wanted = new Set(settings.excludedFolders.map(folderKey));
       const had = new Set((now?.excludedFolders ?? []).map(folderKey));
       for (const folder of now?.excludedFolders ?? [])
@@ -309,6 +306,18 @@ export function windowsScanner(
       for (const folder of settings.excludedFolders)
         if (!had.has(folderKey(folder)))
           await powershell(`Add-MpPreference -ExclusionPath ${quoted(folder)}`);
+      // Last, and only when a kind of checking is to change: with checking on, Defender refuses a command that switches it off
+      // (Trojan:Win32/PowExcEnv.B!MTB, and the process cannot be started), so the folders are put back before this is tried.
+      if (
+        now === undefined ||
+        now.realtime !== settings.realtime ||
+        now.fileOpening !== settings.fileOpening ||
+        now.behaviour !== settings.behaviour ||
+        now.scripts !== settings.scripts
+      )
+        await powershell(
+          `Set-MpPreference -DisableRealtimeMonitoring ${off(settings.realtime)} -DisableIOAVProtection ${off(settings.fileOpening)} -DisableBehaviorMonitoring ${off(settings.behaviour)} -DisableScriptScanning ${off(settings.scripts)}`,
+        );
       // The status follows the settings after a moment.
       for (let waited = 0; waited < 20; waited++) {
         const after = await read();
@@ -444,16 +453,19 @@ export async function fileOpsAt(
   let restored: { ok: boolean; says: string } | undefined;
   const restore = async (): Promise<void> => {
     if (!changed || restored?.ok === true) return;
+    let refusal = "";
     await scanner.set(start).catch((error: unknown) => {
-      log(`the scanner's settings could not be put back: ${message(error)}`);
+      refusal = message(error);
+      log(`the scanner's settings could not be put back: ${refusal}`);
     });
     const after = await scanner.read().catch(() => undefined);
     restored = {
       ok: after !== undefined && sameSettings(after, start),
-      says:
+      says: `${
         after === undefined
           ? "the settings could not be read back"
-          : describeSettings(after),
+          : describeSettings(after)
+      }${refusal === "" ? "" : `; putting them back failed: ${refusal}`}`,
     };
     if (!restored.ok)
       log(
