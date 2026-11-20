@@ -326,12 +326,9 @@ async function scenariosAt(
         (c, name, runs) => againRows(c, scenario, runs),
         (probed) => secs(probed, "open", "import", "first-answer"),
         {
-          repeats:
-            wants(scenario) && !(light && again !== "identical")
-              ? plan.repeats
-              : 1,
+          repeats: wants(scenario) && !light ? plan.repeats : 1,
           keep: forUpdate,
-          cpu: !(light && again !== "identical"),
+          cpu: !light,
         },
       );
       if (forUpdate) updated = made.kept;
@@ -345,6 +342,7 @@ async function scenariosAt(
         { as: "question-after-update" },
         reopenRows,
         reopenProbedTotal,
+        { repeats: light ? 1 : plan.repeats, cpu: !light },
       );
       await rm(updated, { recursive: true, force: true });
     }

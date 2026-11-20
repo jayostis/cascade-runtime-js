@@ -31,7 +31,7 @@ export const EDIT_ROW =
 
 /** What the section is about, for the pages: what a job is, what it starts from and how its figures are made. */
 export const JOBS_ABOUT =
-  "After the first import a pod is used again and again: the same file pulled again, a file with some results changed or one more, a pod opened again after its app was stopped without closing it, and the first question after an update. Each job starts from a copy of the pod a fresh import left and runs in a process of its own, as the app would. Times are the median of the runs and counts are exact; they are measurements, nothing more.";
+  "After the first import a pod is used again and again: the same file pulled again, a file with some results changed or one more, a pod opened again after its app was stopped without closing it, and the first question after an update. Each job starts from a copy of the pod a fresh import left and runs in a process of its own, as the app would. Times are the median of the runs and counts are exact; they are measurements, nothing more. To keep every build's measurement short, a build runs each job once and the nightly run runs each of them three times.";
 
 /** The suffix of each size a file measured the jobs at (`synthea-10y`, `synthea-lifetime-encrypted`), in the order its rows come. */
 export function jobsKeys(file) {

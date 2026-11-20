@@ -51,9 +51,9 @@ export interface Plan {
   /** Whether each scenario also gets a CPU profile, when there is a folder: one more run of it, unprobed. */
   readonly cpuProfile?: boolean;
   /**
-   * Whether the jobs that convert a document again or rebuild a pod from its files (the changed file, the added result and the
-   * reopen after a kill, each seconds long at the per-build size) are run once, with the probed run and no CPU profile, so that
-   * every build's job stays short; the others are run as often as any scenario. The nightly and hand-started runs leave it off.
+   * Whether each job of the day-to-day scenarios is run once, with the probed run and no CPU profile, so that each build's job
+   * stays short (they are seconds long even at the per-build size). The nightly and hand-started runs leave it off and run
+   * every job as often as any scenario.
    */
   readonly lightJobs?: boolean;
 }
