@@ -186,6 +186,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$GITHUB_WORKSPACE/cascade-runtime-js"
+      # Which Bridge main reads. When this build's own run picked the newest build of the Bridge's default branch (no Depends-On line
+      # and no branch of its name names another), main is pinned to that same commit: left to pick for itself some seconds later,
+      # a publish in between would make the two sides read different Bridges with nothing naming one. When something does name
+      # another, main reads the newest build as a push to main does, and how the build picked its own is kept for the comment.
+      - name: Which Bridge main reads
+        id: main-bridge
+        if: ${{ env.SAME_JOB == 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache="$GITHUB_WORKSPACE/cascade-runtime-js/build/cache/cascade-bridge-rs"
+          read -r source commit < <(node -p "const r = JSON.parse(require('fs').readFileSync('$cache/expected.json', 'utf8')); r.source + ' ' + r.commit")
+          how=$(node -p "try { JSON.parse(require('fs').readFileSync('$cache/picked.json', 'utf8')).how } catch { '' }")
+          printf '%s' "$how" > "$RUNNER_TEMP/bridge-how.txt"
+          case "$how" in
+            "the newest build of its default branch"*)
+              if [ "$source" = release ]; then
+                echo "pin=https://github.com/jayostis/cascade-bridge-rs@$commit" >> "$GITHUB_OUTPUT"
+                echo "Main reads the Bridge build $commit, the one this build's run picked (the newest of the default branch)."
+              fi ;;
+            *) echo "This build's Bridge was picked as: ${how:-not recorded}. Main reads the newest build of the default branch." ;;
+          esac
       - id: what
         shell: bash
         env:
@@ -206,35 +229,38 @@ jobs:
       # Bridge's default branch), never the build this pull request's Depends-On lines pick: the event's file is left out of the
       # environment and the branch is the default one. The run keeps that pick for its attempt, in main's own cache.
       - name: Main's build
+        id: main-build
         if: ${{ env.SAME_JOB == 'true' }}
         continue-on-error: true
         working-directory: main/cascade-runtime-js
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
+          TOKEN: ${{ github.token }}
           MAIN_BRANCH: ${{ github.event.repository.default_branch }}
+          CASCADE_BRIDGE_PIN: ${{ steps.main-bridge.outputs.pin }}
         run: |
           set -euo pipefail
           rm -f "$RUNNER_TEMP/perf-main.json"
           npm ci
           unset GITHUB_EVENT_PATH
           export GITHUB_REF_NAME="$MAIN_BRANCH" GITHUB_REF="refs/heads/$MAIN_BRANCH"
-          npm run --silent bridge
-          bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$PWD" "main's run"
+          GITHUB_TOKEN="$TOKEN" GH_TOKEN="$TOKEN" npm run --silent bridge
+          GH_TOKEN="$TOKEN" bash "$GITHUB_WORKSPACE/cascade-runtime-js/.github/scripts/bridge-names.sh" "$PWD" "main's run"
       # Main is measured first, directly before this build, with the same arguments and no flame graphs. In three jobs that ran
       # main, this build (the same commit) and main again, in this order, the fresh import's total of the second run was
       # +0.4%, -0.2% and +1.1% of the first's and of the third +0.5%, +0.7% and +2.3%: a later run is slower by about a
       # percent, never faster. Main first puts that on the build's side, so a build is never shown faster than it is by the
       # order. A second run of main would add 39 s to every pull request's job for under a percent.
+      # A step that fails under continue-on-error reports success, so the build's outcome is read, not its status.
       - name: Main's performance file
-        if: ${{ env.SAME_JOB == 'true' }}
+        if: ${{ env.SAME_JOB == 'true' && steps.main-build.outcome == 'success' }}
         continue-on-error: true
         working-directory: main/cascade-runtime-js
         shell: bash
         env:
           MAIN_BRANCH: ${{ github.event.repository.default_branch }}
           ARGS: ${{ steps.what.outputs.args }}
+          CASCADE_BRIDGE_PIN: ${{ steps.main-bridge.outputs.pin }}
         run: |
           set -euo pipefail
           unset GITHUB_EVENT_PATH
@@ -262,7 +288,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f "$RUNNER_TEMP/perf.json" ]; then
-            node scripts/perf-compare.mjs against "$RUNNER_TEMP/perf.json" --same-job "$RUNNER_TEMP/perf-main.json" --markdown --without-own-time >> "$GITHUB_STEP_SUMMARY"
+            how=$(cat "$RUNNER_TEMP/bridge-how.txt" 2>/dev/null || true)
+            node scripts/perf-compare.mjs against "$RUNNER_TEMP/perf.json" --same-job "$RUNNER_TEMP/perf-main.json" --subject "this build" --bridge-how "$how" --summary-shown --markdown --without-own-time >> "$GITHUB_STEP_SUMMARY"
           fi
       # A build of main that gave no file is a warning, never a failure: the pull request's own file is the job's result.
       - name: Main's file, or why there is none
@@ -327,6 +354,7 @@ jobs:
           path: |
             ${{ runner.temp }}/perf.json
             ${{ runner.temp }}/perf-main.json
+            ${{ runner.temp }}/bridge-how.txt
             ${{ runner.temp }}/history.json
             ${{ runner.temp }}/where.md
           if-no-files-found: error
@@ -370,7 +398,7 @@ jobs:
             && gh api -H "$raw" "repos/${GITHUB_REPOSITORY}/contents/${named}?ref=perf-data" > "base/$named"; then
             latest="base/$named"
           fi
-          args=(--markdown --same-job pr/perf-main.json)
+          args=(--markdown --same-job pr/perf-main.json --bridge-how "$(cat pr/bridge-how.txt 2>/dev/null || true)")
           [ -z "$latest" ] || args+=(--latest "$latest" --latest-name "${latest#base/}")
           # The steps with the longest own time are in the flame graph list below, with their links: not twice.
           if [ -f pr/where.md ] && [ -s pr/where.md ]; then args+=(--without-own-time); fi

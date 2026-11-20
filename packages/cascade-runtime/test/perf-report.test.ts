@@ -1198,7 +1198,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         text,
         /fresh-first-screen-x\/total\s+10\.0 s\s+16\.0 s\s+\+60% \(1\.6x slower\)/,
       );
-      assert.doesNotMatch(text, /befores+afters+change/);
+      assert.doesNotMatch(text, /before\s+after\s+change/);
     });
 
     it("says in a sentence for each scenario what main took and what this pull request took", () => {
@@ -1221,12 +1221,45 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.match(text, /Both runs read the Bridge build bbbbbbb/);
     });
 
-    it("says that each side read its own Bridge when the builds differ, and how each side picked it", () => {
+    it("says that the two read different Bridge builds when they differ, how the build picked its own, and that the headline change includes the Bridge's", () => {
+      const own = taken(EPYC, 16, { runtime: sha("c"), bridge: sha("d") });
+      const text = compare.comparison(own, {
+        sameJob: main,
+        bridgeHow: "the head of o/r/pull/5, named on a Depends-On: line",
+      });
+      assert.match(text, /main's run read bbbbbbb/);
+      assert.match(text, /this pull request's read ddddddd/);
+      assert.match(
+        text,
+        /picked its Bridge as the head of o\/r\/pull\/5, named on a Depends-On: line/,
+      );
+      const headline = text.split(/headline/i)[1] ?? "";
+      assert.match(
+        headline,
+        /The two sides read different Bridge builds, so the change below includes the Bridge's/,
+      );
+    });
+
+    it("blames no Depends-On when the file does not say how the Bridge was picked", () => {
       const own = taken(EPYC, 16, { runtime: sha("c"), bridge: sha("d") });
       const text = compare.comparison(own, { sameJob: main });
-      assert.match(text, /main's run read the Bridge build bbbbbbb/);
-      assert.match(text, /this pull request's read ddddddd/);
-      assert.match(text, /Depends-On/);
+      assert.match(text, /the file does not record why/);
+      assert.doesNotMatch(text, /Depends-On: line\)/);
+    });
+
+    it("says nothing of the Bridge in the headline when both read the same one", () => {
+      const text = compare.comparison(pull, { sameJob: main });
+      assert.doesNotMatch(text, /includes the Bridge's/);
+    });
+
+    it("calls the file this build, not this pull request, in a run that has no pull request", () => {
+      const text = compare.comparison(pull, {
+        sameJob: main,
+        subject: "this build",
+      });
+      assert.doesNotMatch(text, /pull request/);
+      assert.match(text, /main\s+this build\s+change/);
+      assert.match(text, /main 10\.0 s, this build 16\.0 s/);
     });
 
     it("names the other components whose commits differ between the two", () => {
@@ -1338,10 +1371,29 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.doesNotMatch(text, /this pull request \|/);
     });
 
-    it("gives this pull request's own file alone when there is no file of main's at all", () => {
+    it("gives this pull request's own file alone when there is no file of main's at all, saying once that there is none", () => {
       const text = compare.comparison(pull, { sameJob: null });
-      assert.match(text, /nothing to compare with/);
+      assert.match(
+        text,
+        /Main's own run in this job gave no file .*and there is no other file of main's to compare with/,
+      );
+      assert.doesNotMatch(text, /did not give a file|main has no performance/);
       assert.match(text, /fresh-first-screen-x\/total/);
+    });
+
+    it("does not print the pull request's summary again when the caller has put it on the page already", async () => {
+      const text = compare.comparison(pull, {
+        sameJob: null,
+        summaryShown: true,
+      });
+      assert.doesNotMatch(text, /fresh-first-screen-x\/total/);
+      const run = await against(
+        "--same-job",
+        join(folder, "missing.json"),
+        "--summary-shown",
+      );
+      assert.match(run, /there is no other file of main's/);
+      assert.doesNotMatch(run, /fresh-first-screen-x\/total/);
     });
 
     it("exits 0 and falls back when the file of main's run is missing", async () => {

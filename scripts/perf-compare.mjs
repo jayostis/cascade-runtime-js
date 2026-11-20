@@ -6,9 +6,11 @@
 //   perf-compare.mjs compare <before.json> <after.json> [--markdown] [--stages 15]
 //   perf-compare.mjs summary <file.json> [--markdown] [--stages 10] [--without-own-time]
 //   perf-compare.mjs against <pull.json> [--same-job <main.json>] [--latest <file.json> --latest-name <name>] [--markdown]
-//                    [--without-own-time]
+//                    [--without-own-time] [--subject <what the file is called>] [--bridge-how <how its Bridge was picked>]
+//                    [--summary-shown]
 //     What a pull request's comment says: its file against main's taken in the same job, else against the latest push to
-//     main's; a main file that is missing or unreadable is said and falls back, and the exit status stays 0.
+//     main's; a main file that is missing or unreadable is said and falls back, and the exit status stays 0. With no file of
+//     main's at all, the pull request's own summary follows, unless --summary-shown says it is on the page already.
 //   perf-compare.mjs history --name <glob> [--since 7d] [--dir <folder of files>]
 //
 // A name's glob uses `*` for any run of characters, `/` included. History reads every `*.json` under the folder (the
@@ -110,40 +112,51 @@ export function cpuModelOf(file) {
 /**
  * What is said of the machines of two files taken one after the other in one job. Both runs are on one hosted runner and so
  * on one processor model; that is checked from what each file records and said in words, and never fails the job: a
- * different model, or none recorded, is a sentence that the totals are not comparable.
+ * different model, or none recorded, is a sentence that the totals are not comparable. Within one job the different-models
+ * sentence cannot fire (one VM); it is a guard for the two files of a hand-made comparison, which may come from two jobs.
  */
-export function machinesLine(main, pull) {
+export function machinesLine(main, pull, subject = "this pull request") {
   const one = cpuModelOf(main);
   const other = cpuModelOf(pull);
-  const measured =
-    "Main and this pull request were measured one after the other in the same job";
+  const measured = `Main and ${subject} were measured one after the other in the same job`;
   if (one === undefined || other === undefined)
     return `${measured}. A file records no CPU model, so whether the two runs landed on the same CPU is not known; totals may not be comparable.`;
   if (one !== other)
-    return `${measured}. The two runs landed on different CPUs; totals are not comparable. Main ran on ${one}; this pull request on ${other}.`;
+    return `${measured}. The two runs landed on different CPUs; totals are not comparable. Main ran on ${one}; ${subject} on ${other}.`;
   const others = environmentNote(main, pull);
   return `${measured}, on the same runner, both on ${one}.${others === "" ? "" : ` ${others}`}`;
 }
 
 const short = (sha) => (sha ?? "").slice(0, 7);
 
+/** Whether the two files read different Bridge builds; false where either records none. */
+export function bridgesDiffer(main, pull) {
+  const one = main.commit?.bridge;
+  const other = pull.commit?.bridge;
+  return one !== undefined && other !== undefined && one !== other;
+}
+
 /**
- * Which Bridge each side read. A pull request resolves its Bridge as its own run does (the head of the pull request a
- * `Depends-On:` line names, else a branch of its name, else the newest build of the default branch); main's run resolves it as a
- * push to main does, the newest build of the default branch, so a pair of pull requests is measured against the Bridge that
- * pairs with the other, and main against the one that main reads.
+ * Which Bridge each side read. Main's run reads the build of the Bridge that this build's own run picked, when that pick was
+ * the newest build of the default branch (so a publish between the two reads cannot make them differ); when something
+ * names another (the head of the pull request a `Depends-On:` line names, or a branch of the run's name), main reads the
+ * newest build of the default branch, and `how` is how the build's own run says it picked.
  */
-export function bridgeLine(main, pull) {
+export function bridgeLine(main, pull, subject = "this pull request", how) {
   const one = main.commit?.bridge;
   const other = pull.commit?.bridge;
   if (one === undefined || other === undefined)
     return "The Bridge build is not recorded in one of the files.";
   if (one === other) return `Both runs read the Bridge build ${short(one)}.`;
-  return `Each side read its own Bridge: main's run read the Bridge build ${short(one)} (picked as a push to main picks it, the newest build of its default branch); this pull request's read ${short(other)} (picked as its own run picks it: the head of the pull request a Depends-On line names, else the branch of its name, else the newest build of the default branch).`;
+  const reason =
+    how === undefined || how === ""
+      ? "the file does not record why"
+      : `${subject} picked its Bridge as ${how}`;
+  return `The two runs read different Bridge builds: main's run read ${short(one)} (the newest build of its default branch, as a push to main reads it); ${subject}'s read ${short(other)} (${reason}). The change below includes the Bridge's.`;
 }
 
 /** The components other than the runtime and the Bridge that the two files read at different commits, one line each. */
-export function otherComponents(main, pull) {
+export function otherComponents(main, pull, subject = "this pull request") {
   const names = new Set([
     ...Object.keys(main.commit ?? {}),
     ...Object.keys(pull.commit ?? {}),
@@ -153,7 +166,7 @@ export function otherComponents(main, pull) {
     .filter((name) => main.commit?.[name] !== pull.commit?.[name])
     .map(
       (name) =>
-        `${name}: main ${short(main.commit?.[name]) || "none"}, this pull request ${short(pull.commit?.[name]) || "none"}`,
+        `${name}: main ${short(main.commit?.[name]) || "none"}, ${subject} ${short(pull.commit?.[name]) || "none"}`,
     );
 }
 
@@ -370,14 +383,14 @@ export function speedSection(file, { markdown = false } = {}) {
  * In words, for each scenario and size, what main took and what this pull request took: the total of each, with the change.
  * `was` and `now` are the rows of the two files by name.
  */
-function sameJobSentences(was, now, { markdown }) {
+function sameJobSentences(was, now, { markdown, subject }) {
   return [...now.keys()]
     .filter((name) => /\/total$/.test(name) && was.has(name))
     .map((name) => {
       const [group] = name.split("/");
       const from = was.get(name);
       const to = now.get(name);
-      return `${markdown ? "- " : ""}${group}: main ${shown(from.value, from.unit)}, this pull request ${shown(to.value, to.unit)}: ${change(from.value, to.value)}`;
+      return `${markdown ? "- " : ""}${group}: main ${shown(from.value, from.unit)}, ${subject} ${shown(to.value, to.unit)}: ${change(from.value, to.value)}`;
     });
 }
 
@@ -388,11 +401,15 @@ function sameJobSentences(was, now, { markdown }) {
 export function compare(
   before,
   after,
-  { markdown = false, stages = 15, sameJob = false } = {},
+  {
+    markdown = false,
+    stages = 15,
+    sameJob = false,
+    subject = "this pull request",
+    bridgeDiffers = false,
+  } = {},
 ) {
-  const [was$, now$] = sameJob
-    ? ["main", "this pull request"]
-    : ["before", "after"];
+  const [was$, now$] = sameJob ? ["main", subject] : ["before", "after"];
   // A scenario and size the after file did not run (the nightly's large one, against a pull request's) is not a row gone.
   const ran = new Set(after.results.map(({ name }) => name.split("/")[0]));
   const left = before.results.filter(
@@ -470,7 +487,12 @@ export function compare(
     `Headline: unprobed runs, median of the samples, ${was$} -> ${now$}${sameJob ? ", measured in the same job" : ""}`,
   );
   if (sameJob) {
-    const said = sameJobSentences(was, now, { markdown });
+    if (bridgeDiffers)
+      out.push(
+        `${markdown ? "> " : ""}The two sides read different Bridge builds, so the change below includes the Bridge's.`,
+        "",
+      );
+    const said = sameJobSentences(was, now, { markdown, subject });
     if (said.length > 0) out.push(...said, "");
   }
   out.push(
@@ -672,48 +694,71 @@ export function summary(
  * What a pull request's performance comment says about the comparison, as the files allow. `sameJob` is main's file taken in
  * the same job as `pull` (the comparison that is made when there is one); `null` is the job having tried and having none, which
  * is said, and the comparison is then with `latest`, the latest push to main's file (named `latestName`), taken on another run;
- * `undefined` is a run that does not measure main in its own job. With neither file there is only `pull`'s own report.
+ * `undefined` is a run that does not measure main in its own job. With neither file there is only `pull`'s own report, unless
+ * `summaryShown` says the caller has put it elsewhere already. `subject` is what `pull` is called (`this pull request`, or
+ * `this build` in a run that has no pull request); `bridgeHow` is how the build's own run says it picked its Bridge.
  */
 export function comparison(
   pull,
-  { sameJob, latest, latestName = "", markdown = false, own = true } = {},
+  {
+    sameJob,
+    latest,
+    latestName = "",
+    markdown = false,
+    own = true,
+    subject = "this pull request",
+    bridgeHow,
+    summaryShown = false,
+  } = {},
 ) {
   const quote = (text) => (markdown ? `> ${text}` : text);
   const out = [];
   if (sameJob) {
     out.push(
-      quote(machinesLine(sameJob, pull)),
+      quote(machinesLine(sameJob, pull, subject)),
       "",
-      quote(bridgeLine(sameJob, pull)),
+      quote(bridgeLine(sameJob, pull, subject, bridgeHow)),
       "",
     );
-    const others = otherComponents(sameJob, pull);
+    const others = otherComponents(sameJob, pull, subject);
     out.push(
       quote(
-        `Main's run read each repository it needs (the vocabulary, the adapters, the reference tables, the starter kit, the Bridge) as a push to main does, at its default branch; this pull request's read the ones its own run picks, which a Depends-On line can change.${others.length > 0 ? ` They differ in: ${others.join("; ")}.` : " They are the same commits."}`,
+        `Main's run read each repository it needs (the vocabulary, the adapters, the reference tables, the starter kit, the Bridge) as a push to main does, at its default branch; ${subject}'s read the ones its own run picks, which a Depends-On line can change.${others.length > 0 ? ` They differ in: ${others.join("; ")}.` : " They are the same commits."}`,
       ),
       "",
     );
     out.push(
       "Unprobed medians; no threshold, nothing here fails the run.",
       "",
-      compare(sameJob, pull, { markdown, sameJob: true }),
+      compare(sameJob, pull, {
+        markdown,
+        sameJob: true,
+        subject,
+        bridgeDiffers: bridgesDiffer(sameJob, pull),
+      }),
     );
+    return out.join("\n");
+  }
+  if (latest === undefined) {
+    out.push(
+      sameJob === null
+        ? "Main's own run in this job gave no file (its step in the job's log says why), and there is no other file of main's to compare with."
+        : "main has no performance file yet, so there is nothing to compare with.",
+    );
+    if (!summaryShown)
+      out.push(
+        "",
+        `${subject[0].toUpperCase()}${subject.slice(1)}'s:`,
+        "",
+        summary(pull, { markdown, own }),
+      );
     return out.join("\n");
   }
   if (sameJob === null)
     out.push(
-      "Main's own run in this job did not give a file (its step in the job's log says why), so main is not measured beside this pull request.",
+      `Main's own run in this job did not give a file (its step in the job's log says why), so main is not measured beside ${subject}.`,
       "",
     );
-  if (latest === undefined) {
-    out.push(
-      "main has no performance file yet, so there is nothing to compare with. This pull request's:",
-      "",
-      summary(pull, { markdown, own }),
-    );
-    return out.join("\n");
-  }
   const elsewhere =
     sameJob === null
       ? ", which was taken on another run, perhaps on another machine; the same commits took 23% longer on one run than on another when the runners had different processors"
@@ -721,7 +766,7 @@ export function comparison(
   out.push(
     `Against \`${latestName}\`, the latest push to main's file${elsewhere}. Unprobed medians; no threshold, nothing here fails the run.`,
     "",
-    compare(latest, pull, { markdown }),
+    compare(latest, pull, { markdown, subject }),
   );
   return out.join("\n");
 }
@@ -807,6 +852,8 @@ function main(args) {
     "--same-job",
     "--latest",
     "--latest-name",
+    "--subject",
+    "--bridge-how",
   ]);
   const positional = rest.filter(
     (arg, at) => !arg.startsWith("--") && !valued.has(rest[at - 1]),
@@ -837,6 +884,11 @@ function main(args) {
         ...(sameJob !== undefined && { sameJob }),
         ...(latest !== undefined && { latest }),
         latestName: flag("--latest-name") ?? "",
+        ...(flag("--subject") !== undefined && { subject: flag("--subject") }),
+        ...(flag("--bridge-how") !== undefined && {
+          bridgeHow: flag("--bridge-how"),
+        }),
+        ...(rest.includes("--summary-shown") && { summaryShown: true }),
       }),
     );
   }
