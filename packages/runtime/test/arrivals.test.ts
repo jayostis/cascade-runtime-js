@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { before, describe, it } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
@@ -14,6 +15,7 @@ import { StoryTime } from "../src/ids.js";
 import { Graph, parseGraph } from "../src/graph.js";
 import { iri, written } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { probing } from "../src/probe.js";
 import { type Replayed, replay } from "../src/replay.js";
 import type { Step, Story } from "../src/story.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
@@ -327,10 +329,10 @@ const ADA_EXPORTS = [
   "no-source-version-again",
 ] as const;
 
-/** Ada's exports imported in the order given, a day apart, and the paths of the documents' bytes the pod keeps. */
-async function adaStoredBytes(
+/** Ada's exports imported in the order given, a day apart. */
+async function adaImported(
   order: readonly (typeof ADA_EXPORTS)[number][],
-): Promise<string[]> {
+): Promise<Replayed> {
   const files = await vocabulary();
   const pod = await layout();
   const story: Story = {
@@ -366,7 +368,65 @@ async function adaStoredBytes(
     importers: [appleHealthExport],
   });
   assert.equal(done.stopped, undefined);
-  return (await done.pod.list("")).filter((path) => pod.inStoredBytes(path));
+  return done;
+}
+
+/** Ada's exports imported in the order given, and the paths of the documents' bytes the pod keeps. */
+async function adaStoredBytes(
+  order: readonly (typeof ADA_EXPORTS)[number][],
+): Promise<string[]> {
+  const pod = await layout();
+  return (await (await adaImported(order)).pod.list("")).filter((path) =>
+    pod.inStoredBytes(path),
+  );
+}
+
+/**
+ * What a replay left in the pod: the sha256 of every file's path and bytes in name order, and the lines the pod's RDF
+ * files hold, which is how many lines a build that makes each file once builds.
+ */
+async function leftInPod(
+  done: Replayed,
+): Promise<{ sha256: string; files: number; lines: number }> {
+  const pod = await layout();
+  const hash = createHash("sha256");
+  let lines = 0;
+  const paths = (await done.pod.list("")).sort();
+  for (const path of paths) {
+    const bytes = (await done.pod.read(path)) ?? new Uint8Array();
+    hash
+      .update(`${path}\n`)
+      .update(createHash("sha256").update(bytes).digest());
+    if (pod.isRdf(path))
+      lines += new TextDecoder().decode(bytes).split("\n").length - 1;
+  }
+  return { sha256: hash.digest("hex"), files: paths.length, lines };
+}
+
+/** What `leftInPod` says of the pod a run left, and how many lines the line builder built over the run. */
+type Imported = Awaited<ReturnType<typeof leftInPod>> & { built: number };
+
+/** The lines the line builder built over `run`, and the files it left, the ids it mints the same on every run. */
+async function importedOnce(run: () => Promise<Replayed>): Promise<Imported> {
+  const real = Object.getOwnPropertyDescriptor(globalThis.crypto, "randomUUID");
+  let drawn = 0;
+  Object.defineProperty(globalThis.crypto, "randomUUID", {
+    configurable: true,
+    writable: true,
+    value: () => `00000000-0000-4000-8000-${String(++drawn).padStart(12, "0")}`,
+  });
+  try {
+    const { result, seen } = await probing(run);
+    return {
+      ...(await leftInPod(result)),
+      built: seen.counts.get("built.lines.total") ?? 0,
+    };
+  } finally {
+    if (real === undefined)
+      delete (globalThis.crypto as object as Record<string, unknown>)
+        .randomUUID;
+    else Object.defineProperty(globalThis.crypto, "randomUUID", real);
+  }
 }
 
 /**
@@ -526,6 +586,53 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
 
     it("keeps nothing of the same export imported again, its documents being kept already (A1)", () => {
       assert.deepEqual(again, []);
+    });
+  });
+
+  describe("given Ada's exports imported with the ids they mint pinned, and the lines the line builder builds counted", () => {
+    let one: Imported;
+    let four: Imported;
+    let states: Imported;
+    let statesAgain: Imported;
+
+    before(async () => {
+      one = await importedOnce(() => adaImported(["new-content"]));
+      four = await importedOnce(() => adaImported(["first-export"]));
+      states = await importedOnce(() => threeStatesOfOneRecord());
+      statesAgain = await importedOnce(() => threeStatesOfOneRecord());
+    });
+
+    it("builds the lines of the files of an import of one record once: as many as the pod's files hold", () => {
+      assert.equal(one.built, one.lines);
+    });
+
+    it("builds the lines of the files of an import of four records of one server once, the server's file as the records' files", () => {
+      assert.equal(four.built, four.lines);
+    });
+
+    it("builds a file once for each arrival that writes it, though the pod holds it already, and for nothing else", () => {
+      // The second step's two arrivals of the record each build its file (3 lines), and its server's file (2 lines) is
+      // built once for its three documents; one of the two names a version the first step stored (4 lines).
+      assert.equal(states.built, states.lines + 2 * 3 + 2 + 4);
+    });
+
+    it("leaves the files it left before each file's lines were built once", () => {
+      assert.deepEqual(
+        { four: four.sha256, files: four.files },
+        {
+          four: "8f1dcbb8201d60e24c3bf954f29d1f51ba7c4f6dfe1853a469a401173b5b6de3",
+          files: 25,
+        },
+      );
+      assert.deepEqual(
+        { states: states.sha256, files: states.files },
+        {
+          states:
+            "1232714e0708a514d9450698be701abef95df9ca92fb107e84700f4d6776b08a",
+          files: 20,
+        },
+      );
+      assert.equal(statesAgain.sha256, states.sha256);
     });
   });
 
