@@ -32,12 +32,20 @@ interface Step {
 }
 interface Chart {
   key: string;
+  os?: string;
   steps: Step[];
   columns: Column[];
 }
 interface File {
-  build: { id: string; date: string; sha: string; event: string; run: string };
-  file: { results: object[] };
+  build: {
+    id: string;
+    date: string;
+    sha: string;
+    event: string;
+    run: string;
+    os?: string;
+  };
+  file: { results: object[]; env?: object };
 }
 interface Stacked {
   BANDS: number;
@@ -49,6 +57,9 @@ interface Stacked {
   sentenceOf(extra: string | undefined): string | undefined;
   shortOf(sentence: string): string;
   readBuilds(data: string, glossary: object, window?: number): File[];
+  buildsIn(
+    data: string,
+  ): { id: string; os: string; event: string; run: string }[];
   readGlossary(): object;
   chartSvg(chart: object, index: number): string;
 }
@@ -98,6 +109,54 @@ const file = (
     ],
   },
 });
+
+/** What a hosted Windows or macOS runner's file says of itself: the system and the chip. */
+const SYSTEMS = {
+  windows: {
+    os: "win32 10.0.26100",
+    runner:
+      "github-actions Windows X64; Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz; other load: a shared hosted runner",
+    cpus: 4,
+  },
+  macos: {
+    os: "darwin 24.6.0",
+    runner:
+      "github-actions macOS ARM64; Apple M1 (Virtual); other load: a shared hosted runner",
+    cpus: 3,
+  },
+} as const;
+
+/** The file of a build run on another system: its name and its environment both say which. */
+const onSystem = (
+  system: keyof typeof SYSTEMS,
+  built: File,
+  extra: object[] = [],
+): File => ({
+  build: {
+    ...built.build,
+    id: `${built.build.id}-${system}`,
+    os: system,
+  },
+  file: {
+    env: SYSTEMS[system],
+    results: [...built.file.results, ...extra],
+  },
+});
+
+/** The micro-bench's rows for one state of the scanner. */
+const fileOpsRows = (
+  state: string,
+  seconds: Record<string, number>,
+  spread = 0,
+): object[] =>
+  Object.entries(seconds).map(([name, value]) => ({
+    name: `file-ops-3000-files${state}/${name}`,
+    unit: "s",
+    value,
+    samples: 3,
+    range: `${(value * (1 - spread)).toFixed(9)}-${(value * (1 + spread)).toFixed(9)}`,
+    extra: `What one file operation costs. | ${name}`,
+  }));
 
 const scratch: string[] = [];
 
@@ -528,6 +587,222 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
       });
       assert.doesNotMatch(page, /Import takes/);
       assert.doesNotMatch(page, /class="speed"/);
+    });
+  });
+
+  describe("given builds measured on Windows and macOS as well as Linux", () => {
+    const linux = (run: number) => file(run, 10, { "scenario.open": 4 });
+    const windows = (run: number) =>
+      onSystem("windows", file(run, 30, { "scenario.open": 12 }));
+
+    it("reads a name that ends in the system as that system's file, and one without as Linux's, each with an id of its own", async () => {
+      const { buildsIn } = await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      scratch.push(data);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      for (const name of [
+        "7-abcdef0-push.json",
+        "7-abcdef0-push-windows.json",
+        "7-abcdef0-schedule-macos.json",
+      ])
+        await writeFile(join(day, name), "{}");
+      assert.deepEqual(
+        buildsIn(data)
+          .map(({ id, os, event }) => [id, os, event])
+          .sort(),
+        [
+          ["7-abcdef0", "linux", "push"],
+          ["7-abcdef0-macos", "macos", "schedule"],
+          ["7-abcdef0-windows", "windows", "push"],
+        ],
+      );
+    });
+
+    it("draws a chart for each system from that system's builds alone, never one series of two systems", async () => {
+      const { shape, readGlossary } = await script<Stacked>("perf-stacked.mjs");
+      const charts = shape([linux(1), windows(2), linux(3), windows(4)], {
+        glossary: readGlossary(),
+      });
+      assert.deepEqual(
+        charts.map(({ key, os }) => [key, os]),
+        [
+          [KEY, "linux"],
+          [KEY, "windows"],
+        ],
+      );
+      assert.deepEqual(
+        charts.map(({ columns }) => columns.map(({ id }) => id)),
+        [
+          ["1-aaaaaa1", "3-aaaaaa3"],
+          ["2-aaaaaa2-windows", "4-aaaaaa4-windows"],
+        ],
+      );
+      assert.deepEqual(
+        charts.map(({ columns }) => columns.map(({ total }) => total)),
+        [
+          [10, 10],
+          [30, 30],
+        ],
+      );
+    });
+
+    it("leaves out a file whose name says one system and whose environment says another, with a warning", async () => {
+      const { readBuilds, readGlossary } =
+        await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      scratch.push(data);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      const real = windows(5);
+      await writeFile(
+        join(day, "5-aaaaaa5-push-windows.json"),
+        JSON.stringify(real.file),
+      );
+      await writeFile(
+        join(day, "6-aaaaaa6-push-macos.json"),
+        JSON.stringify(real.file),
+      );
+      const warned: string[] = [];
+      const write = process.stderr.write.bind(process.stderr);
+      process.stderr.write = ((text: string) => {
+        warned.push(text);
+        return true;
+      }) as typeof process.stderr.write;
+      let kept: File[];
+      try {
+        kept = readBuilds(data, readGlossary());
+      } finally {
+        process.stderr.write = write;
+      }
+      assert.deepEqual(
+        kept.map(({ build }) => build.id),
+        ["5-aaaaaa5-windows"],
+      );
+      assert.match(warned.join(""), /6-aaaaaa6-macos is left out.*Windows/);
+    });
+
+    it("says what one file costs on each system, in microseconds, from each system's newest build, with what the scanner was set to and the range of each time, and draws no verdict from them", async () => {
+      const { pages } = await script<Stacked>("perf-stacked.mjs");
+      const data = await mkdtemp(join(tmpdir(), "perf-stacked-data-"));
+      const out = await mkdtemp(join(tmpdir(), "perf-stacked-out-"));
+      scratch.push(data, out);
+      const day = join(data, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      const ops = (create: number) => ({
+        "create/in-flight-1": create * 2,
+        "create/in-flight-16": create,
+        "create/in-flight-64": create,
+        "one-file/whole": 0.002,
+      });
+      const count = (name: string, value: number, extra: string) => ({
+        name: `file-ops-3000-files${name}`,
+        unit: "{count}",
+        value,
+        extra,
+      });
+      const ofLinux = linux(10);
+      await writeFile(
+        join(day, "10-aaaaaa0-push.json"),
+        JSON.stringify({
+          ...ofLinux.file,
+          results: [
+            ...ofLinux.file.results,
+            ...fileOpsRows("", ops(0.00004)),
+            count("/count/files", 3000, "3000 files"),
+          ],
+        }),
+      );
+      await writeFile(
+        join(day, "11-aaaaaa1-push-windows.json"),
+        JSON.stringify(
+          onSystem("windows", file(11, 30, { "scenario.open": 12 }), [
+            ...fileOpsRows("", ops(0.0004), 0.25),
+            ...fileOpsRows("-scanner-on", ops(0.0003), 0.25),
+            ...fileOpsRows("-scanner-excluded", ops(0.0002), 0.25),
+            // One run far from the others.
+            ...fileOpsRows(
+              "-scanner-excluded",
+              { "full-path/in-flight-16": 0.001 },
+              0.9,
+            ),
+            count(
+              "/count/scanner-realtime-on",
+              0,
+              "live checking off, excluded folders [D:\\, C:\\]",
+            ),
+            count(
+              "/count/work-folder",
+              1,
+              "the files were made under C:\\Users\\RUNNER~1\\Temp\\perf, on the drive C:\\",
+            ),
+            count("/count/scanner-restored", 1, "read back"),
+          ]).file,
+        ),
+      );
+      await writeFile(
+        join(day, "12-aaaaaa2-push-macos.json"),
+        JSON.stringify(
+          onSystem("macos", file(12, 30, { "scenario.open": 12 }), [
+            ...fileOpsRows("", ops(0.00007)),
+          ]).file,
+        ),
+      );
+      const charts = pages({ data, out, repo: "owner/repo" });
+      assert.equal(charts.length, 3);
+      const page = await readFile(join(out, "index.html"), "utf8");
+      assert.match(page, /What one file costs on each operating system/);
+      assert.match(page, /Intel\(R\) Xeon/);
+      assert.match(page, /<td class="n">40 µs<\/td>/);
+      assert.match(page, /<td class="n">400 µs<\/td>/);
+      // Each time of the scanner table has its range under it.
+      assert.match(
+        page,
+        /<td class="n">300 µs<br><span class="note">range 225-375 µs<\/span><\/td>/,
+      );
+      assert.match(
+        page,
+        /<td class="n">200 µs<br><span class="note">range 150-250 µs<\/span><\/td>/,
+      );
+      // What the runner allowed, as it recorded it, and where the files were made.
+      assert.match(page, /live checking off, excluded folders \[D:\\, C:\\\]/);
+      assert.match(
+        page,
+        /made under C:\\Users\\RUNNER~1\\Temp\\perf, on the drive C:\\/,
+      );
+      // The ratio to Linux, each number of files in flight, not one of them.
+      assert.match(
+        page,
+        /creating a file took 10× as long as on Linux one at a time, 10× at 16 at once and 10× at 64 at once/,
+      );
+      // A range that wide is marked, and a narrow one is not.
+      assert.match(page, /range 100-1900 µs, one slow run<\/span>/);
+      assert.doesNotMatch(page, /range 150-250 µs, one slow run/);
+      // The ratio moves with the Linux chip, and says by how much it has.
+      assert.match(
+        page,
+        /move with the chip GitHub gave the Linux build.*15 µs.*Xeon 6975P.*45 µs.*EPYC 7763.*between 5 and 45 times/,
+      );
+      // No sentence is picked by a cut-off.
+      assert.doesNotMatch(page, /is not what makes a file dear/);
+      assert.doesNotMatch(page, /part of what makes a file dear/);
+      assert.doesNotMatch(page, /faster than with it off/);
+      assert.doesNotMatch(page, /is the virus scanner the cause/);
+      assert.doesNotMatch(page, /first column is a runner with no scanning/);
+      // A virtual Apple machine is said to be one; an Intel Mac is not measured; the files are all one file's bytes.
+      assert.match(page, /Apple M1, Apple silicon, a virtual machine/);
+      assert.match(page, /Intel Macs are not measured/);
+      assert.match(page, /every file has the same bytes/);
+      assert.match(page, /id="fresh-first-screen-synthea-10y-windows"/);
+      assert.match(page, /id="fresh-first-screen-synthea-10y"/);
+      assert.doesNotMatch(page, /threshold|alarm/i);
+      const json = JSON.parse(
+        await readFile(join(out, "stacked.json"), "utf8"),
+      ) as { charts: Chart[] };
+      assert.deepEqual(
+        json.charts.map(({ os }) => os),
+        ["linux", "windows", "macos"],
+      );
     });
   });
 

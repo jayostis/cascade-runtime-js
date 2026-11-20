@@ -70,8 +70,38 @@ export const PALETTE = [
 /** The band that stands for the time of every step without one of its own, and for a build with no breakdown. */
 export const OTHER = "#c9ccd1";
 
+/**
+ * A performance file's path. The Linux job's file ends in the event; a Windows or macOS job's ends in the event and the
+ * system (`-push-windows`), because the three jobs of one run name their files by the same run and commit.
+ */
 const FILE =
-  /(?:^|\/)runtime\/(\d{4})\/(\d{2})\/(\d{2})\/(\d+)-([0-9a-f]{7})-([a-z_]+)\.json$/;
+  /(?:^|\/)runtime\/(\d{4})\/(\d{2})\/(\d{2})\/(\d+)-([0-9a-f]{7})-([a-z_]+)(?:-(windows|macos))?\.json$/;
+
+/** The systems a build can be measured on, in the order the page lists them, and how a person names each. */
+export const SYSTEMS = ["linux", "windows", "macos"];
+export const SYSTEM_NAME = {
+  linux: "Linux",
+  windows: "Windows",
+  macos: "macOS",
+};
+
+/** The system a file's own environment names (`env.os` is node's platform and kernel release), undefined where it names none. */
+export function systemOf(env) {
+  const platform = String(env?.os ?? "").split(" ")[0];
+  return { linux: "linux", win32: "windows", darwin: "macos" }[platform];
+}
+
+/** The processor a file's runner names, with what a person wants to know of an Apple one. */
+export function chipOf(env) {
+  const model = String(env?.runner ?? "")
+    .split(";")[1]
+    ?.trim();
+  if (model === undefined || model === "" || model.startsWith("other load:"))
+    return undefined;
+  if (!/^Apple /.test(model)) return model;
+  const virtual = /\(Virtual\)/.test(model);
+  return `${model.replace(/\s*\(Virtual\)/, "")}, Apple silicon${virtual ? ", a virtual machine" : ""}`;
+}
 
 function filesUnder(folder) {
   const found = [];
@@ -91,7 +121,7 @@ export function buildsIn(data) {
     .flatMap(({ path, name }) => {
       const found = FILE.exec(name);
       if (found === null) return [];
-      const [, year, month, day, run, sha, event] = found;
+      const [, year, month, day, run, sha, event, system = "linux"] = found;
       return [
         {
           path,
@@ -99,7 +129,9 @@ export function buildsIn(data) {
           run,
           sha,
           event,
-          id: `${run}-${sha}`,
+          os: system,
+          // The three jobs of one run share its id and commit: a build of another system has its system in its id.
+          id: system === "linux" ? `${run}-${sha}` : `${run}-${sha}-${system}`,
         },
       ];
     })
@@ -217,10 +249,23 @@ const keyPattern = (glossary) =>
 export function reduced(file, glossary = readGlossary()) {
   const pattern = keyPattern(glossary);
   return {
+    ...(file.env !== undefined && {
+      env: { os: file.env.os, runner: file.env.runner, cpus: file.env.cpus },
+    }),
     results: (file.results ?? []).flatMap((row) => {
       const found = pattern.exec(row.name ?? "");
       if (found === null || typeof row.value !== "number") return [];
       const rest = row.name.slice(found[0].length);
+      // What one file costs: every row, with the note of a count (why the runner refused, say).
+      if (found[2] === "file-ops")
+        return [
+          {
+            name: row.name,
+            value: row.value,
+            ...(typeof row.range === "string" && { range: row.range }),
+            ...(typeof row.extra === "string" && { extra: row.extra }),
+          },
+        ];
       if (rest === "total" || rest === "probed-total")
         return [{ name: row.name, value: row.value, samples: row.samples }];
       if (SPEED_ROW.test(row.name) || STORED_ROW.test(row.name))
@@ -341,21 +386,42 @@ export function shapeChart(measured, { bands = BANDS, window = WINDOW } = {}) {
   return { steps, columns };
 }
 
-/** Every chart of the data: its title's parts, its steps with their colours, and its columns. */
+/** What the newest of these builds that measured the chart says of its machine: the chip and the processors. */
+function systemOfCharts(files, key) {
+  const newest = [...files]
+    .reverse()
+    .find(({ file }) =>
+      (file.results ?? []).some((row) => row.name === `${key}/total`),
+    );
+  return newest?.file.env === undefined
+    ? undefined
+    : { chip: chipOf(newest.file.env), cpus: newest.file.env.cpus };
+}
+
+/**
+ * Every chart of the data: its title's parts, its steps with their colours, and its columns. A system's chart is drawn from
+ * that system's builds alone, so a series is never one of two systems: the times of one cannot be read against the other's.
+ */
 export function shape(
   files,
   { glossary = readGlossary(), bands = BANDS, window = WINDOW } = {},
 ) {
-  const charts = chartKeys(files, glossary).map((chart) => ({
-    ...chart,
-    ...shapeChart(
-      files.map(({ build, file }) => ({
-        ...build,
-        ...rowsOf(file, chart.key),
-      })),
-      { bands, window },
-    ),
-  }));
+  const charts = SYSTEMS.flatMap((os) => {
+    const own = files.filter(({ build }) => (build.os ?? "linux") === os);
+    return chartKeys(own, glossary).map((chart) => ({
+      ...chart,
+      os,
+      id: os === "linux" ? chart.key : `${chart.key}-${os}`,
+      ...shapeChart(
+        own.map(({ build, file }) => ({
+          ...build,
+          ...rowsOf(file, chart.key),
+        })),
+        { bands, window },
+      ),
+      system: systemOfCharts(own, chart.key),
+    }));
+  });
   const steps = new Map();
   for (const chart of charts)
     for (const step of chart.steps) {
@@ -403,7 +469,7 @@ function sizeOf(chart, glossary) {
 
 /** The title of a chart, or of a build's scenario in the index of builds: what it measures and the size it ran on. */
 export const chartTitle = (chart, glossary) =>
-  `${TITLES[chart.scenario] ?? chart.scenario}: ${sizeOf(chart, glossary)}`;
+  `${TITLES[chart.scenario] ?? chart.scenario}: ${sizeOf(chart, glossary)}${chart.os === undefined || chart.os === "linux" ? "" : `, on ${SYSTEM_NAME[chart.os]}`}`;
 
 /** The gap between the lines of a chart whose tallest column is `max`: one of 1, 1.5, 2, 2.5, 3, 4, 5, 7.5 tens of something. */
 const niceStep = (max) => {
@@ -642,6 +708,235 @@ ${line}
 </div>`;
 }
 
+const OPS_ROWS = [
+  ["absent-check", "Ask whether a file is there, when it is not"],
+  ["create", "Create a file"],
+  ["create-rename", "Create a file under a temporary name, then rename it"],
+  [
+    "full-path",
+    "What the pod's folder does for a file: look at the path, resolve the folder, create, rename",
+  ],
+];
+const AT_ONCE = [1, 16, 64];
+const ROW_OF_FILES =
+  /^file-ops-3000-files(?:-scanner-(off|on|excluded))?\/(.+)$/;
+
+/**
+ * What one small file costs on each system, from each system's newest build that measured it: its times by the state of the
+ * virus scanner (as the machine is, switched off, folder excluded), and what the scanner allowed.
+ */
+export function fileOpsOf(files) {
+  return SYSTEMS.flatMap((os) => {
+    const newest = [...files]
+      .reverse()
+      .find(
+        ({ build, file }) =>
+          (build.os ?? "linux") === os &&
+          (file.results ?? []).some((row) => ROW_OF_FILES.test(row.name)),
+      );
+    if (newest === undefined) return [];
+    const states = {};
+    const ranges = {};
+    const notes = {};
+    for (const row of newest.file.results ?? []) {
+      const found = ROW_OF_FILES.exec(row.name);
+      if (found === null) continue;
+      const [, state = "as-is", rest] = found;
+      (states[state] ??= {})[rest] = row.value;
+      if (typeof row.range === "string")
+        (ranges[state] ??= {})[rest] = row.range;
+      if (rest.startsWith("count/") && typeof row.extra === "string")
+        (notes[state] ??= {})[rest] = row.extra.split(" | ").at(-1);
+    }
+    return [
+      {
+        os,
+        label: SYSTEM_NAME[os],
+        chip: chipOf(newest.file.env),
+        cpus: newest.file.env?.cpus,
+        sha: newest.build.sha,
+        date: newest.build.date,
+        states,
+        ranges,
+        notes,
+      },
+    ];
+  });
+}
+
+/** Whether a range, `0.000010-0.000100` in seconds, is so wide that one run was far from the others, so its median is not a figure to quote. */
+export function wideRange(range) {
+  const [low, high] = String(range).split("-").map(Number);
+  return (
+    Number.isFinite(low) &&
+    Number.isFinite(high) &&
+    high > Math.max(low, 1e-12) * 3
+  );
+}
+
+/** A time per file as a person reads it: `830 µs`, `45 µs`, `7.2 µs`. */
+export function micro(seconds) {
+  const us = seconds * 1e6;
+  return `${us >= 100 ? Math.round(us) : us >= 10 ? +us.toFixed(1) : +us.toFixed(2)} µs`;
+}
+
+const timesOf = (change) => `${change.toFixed(change >= 10 ? 0 : 1)}×`;
+
+/** The range of a row, `0.000225-0.000375` in seconds, as `225-375 µs`. */
+function microRange(range) {
+  const [low, high] = String(range).split("-").map(Number);
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return undefined;
+  const plain = (seconds) => micro(seconds).replace(" µs", "");
+  return `${plain(low)}-${plain(high)} µs`;
+}
+
+/**
+ * What a system's scanner was set to and what each state measured, as the run recorded it, and no verdict: the page gives the
+ * recorded settings and the numbers, and a reader decides what a difference between two times means.
+ */
+function scannerFacts(system) {
+  const own = system.notes["as-is"] ?? {};
+  const said = [];
+  if (own["count/scanner-realtime-on"] !== undefined)
+    said.push(
+      `What the runner allowed, as Windows Defender reported it before anything was changed: ${own["count/scanner-realtime-on"]}.`,
+    );
+  if (own["count/work-folder"] !== undefined)
+    said.push(
+      `${own["count/work-folder"][0].toUpperCase()}${own["count/work-folder"].slice(1)}.`,
+    );
+  for (const [key, text] of [
+    ["count/scanner-switch-off-allowed", "switch its live checking off"],
+    [
+      "count/scanner-switch-on-allowed",
+      "switch its live, file and script checking on",
+    ],
+    ["count/scanner-exclusion-allowed", "exclude the folder"],
+  ])
+    if (system.states["as-is"]?.[key] === 0)
+      said.push(
+        `The runner did not let the run ${text} (${own[key] ?? "no reason recorded"}), so that column is missing.`,
+      );
+  if (own["count/scanner-restored"] !== undefined)
+    said.push(
+      `Afterwards the settings were ${system.states["as-is"]["count/scanner-restored"] === 1 ? "read back as they were" : "NOT read back as they were"}: ${own["count/scanner-restored"]}.`,
+    );
+  return said;
+}
+
+/** Why a ratio to Linux moves with the build, said wherever one is given. */
+const LINUX_CHIP_NOTE =
+  "These ratios move with the chip GitHub gave the Linux build, which is named in each column's header: creating a file at 16 at once took 15 µs on one Linux machine (an Intel Xeon 6975P) and 45 µs on another (an AMD EPYC 7763), three times as long, so the same Windows time has been between 5 and 45 times Linux's depending on the draw. Compare a ratio with another only where the Linux chip is the same.";
+
+/** How many times as long a system took to create a file as Linux, for each number of files at once. */
+function againstLinux(system, linux) {
+  const parts = AT_ONCE.flatMap((at) => {
+    const own = system.states["as-is"]?.[`create/in-flight-${at}`];
+    const base = linux.states["as-is"]?.[`create/in-flight-${at}`];
+    return own === undefined || base === undefined
+      ? []
+      : [
+          `${timesOf(own / base)} ${at === 1 ? "one at a time" : `at ${at} at once`}`,
+        ];
+  });
+  if (parts.length === 0) return undefined;
+  const [first, ...rest] = parts;
+  const tail =
+    rest.length === 0
+      ? ""
+      : `, ${rest.length === 1 ? rest[0] : `${rest.slice(0, -1).join(", ")} and ${rest.at(-1)}`}`;
+  return `On ${system.label}, creating a file took ${first.replace(" ", " as long as on Linux ")}${tail}.`;
+}
+
+/** The table of what one file costs, one column for each system, and the scanner table of each system that was asked. */
+function fileOpsSection(systems) {
+  if (systems.length === 0) return "";
+  const linux = systems.find(({ os }) => os === "linux");
+  const files = (system) => system.states["as-is"]?.["count/files"] ?? 3000;
+  const head = systems
+    .map(
+      (system) =>
+        `<th class="n">${esc(system.label)}<br><span class="note">${esc(system.chip ?? "chip not recorded")}${system.cpus === undefined ? "" : `, ${esc(system.cpus)} processors`}<br>build ${esc(system.sha)}, ${esc(system.date)}</span></th>`,
+    )
+    .join("");
+  const cell = (system, key, scale = 1) => {
+    const value = system.states["as-is"]?.[key];
+    return `<td class="n">${value === undefined ? "-" : micro(value * scale)}</td>`;
+  };
+  const rows = OPS_ROWS.flatMap(([op, text]) =>
+    AT_ONCE.map(
+      (at) =>
+        `<tr><td>${esc(text)}, ${at === 1 ? "one at a time" : `${at} at once`}</td>${systems.map((system) => cell(system, `${op}/in-flight-${at}`)).join("")}</tr>`,
+    ),
+  );
+  const asOne = (key, text) =>
+    `<tr><td>${esc(text)}</td>${systems
+      .map((system) => {
+        const value = system.states["as-is"]?.[key];
+        return `<td class="n">${value === undefined ? "-" : micro(value / files(system))}</td>`;
+      })
+      .join("")}</tr>`;
+  const ratios = systems
+    .filter((system) => system !== linux && linux !== undefined)
+    .flatMap((system) => againstLinux(system, linux) ?? []);
+  const scanned = systems.filter(
+    ({ states, notes }) =>
+      states.off !== undefined ||
+      states.on !== undefined ||
+      states.excluded !== undefined ||
+      Object.keys(notes["as-is"] ?? {}).some((key) => key.includes("scanner")),
+  );
+  const scanner = scanned
+    .map((system) => {
+      const states = [
+        ["as-is", "As the runner has it"],
+        ["off", "Live checking switched off"],
+        ["on", "Live, file and script checking on, no folder left out"],
+        ["excluded", "Live, file and script checking on, the folder excluded"],
+      ].filter(([state]) => system.states[state] !== undefined);
+      const timeOf = (state, key) => {
+        const value = system.states[state][key];
+        if (value === undefined) return '<td class="n">-</td>';
+        const range = microRange(system.ranges?.[state]?.[key]);
+        const slow = wideRange(system.ranges?.[state]?.[key])
+          ? ", one slow run"
+          : "";
+        return `<td class="n">${micro(value)}${range === undefined ? "" : `<br><span class="note">range ${range}${slow}</span>`}</td>`;
+      };
+      const lines = OPS_ROWS.map(
+        ([op, text]) =>
+          `<tr><td>${esc(text)}, 16 at once</td>${states
+            .map(([state]) => timeOf(state, `${op}/in-flight-16`))
+            .join("")}</tr>`,
+      );
+      return `<h3>${esc(system.label)}: what the virus scanner was doing</h3>
+<p>${scannerFacts(system).map(esc).join(" ")}</p>
+<div class="scroll"><table class="speed">
+<thead><tr><th></th>${states.map(([, text]) => `<th class="n">${esc(text)}</th>`).join("")}</tr></thead>
+<tbody>
+${lines.join("\n")}
+</tbody>
+</table></div>
+<p class="note">Each time is the median of the runs for one file, with the range over the runs under it. Two columns differ only where their ranges do not overlap; this page picks no cause from them. A range marked "one slow run" is so wide that one run was far from the others, so that median is not a figure to quote. The scanner was changed only for these runs and put back after them.</p>`;
+    })
+    .join("\n");
+  return `<section class="chart" id="file-ops">
+<h2>What one file costs on each operating system</h2>
+<p class="about">An import writes tens of thousands of small files, so what a system charges for one small file matters. Each system below made the same 3,000 small files (280 bytes each) with the same code, and each column is that system's newest measured build. A time is the average cost of one file in microseconds, so a bigger number is slower. "At once" is how many files were being made at the same moment. These numbers are about the system and its disk, not about the runtime's own code. They are measured on the machines GitHub lends the builds, which are not a person's computer: read them as how much dearer a file is on one system than on another. In this measurement every file has the same bytes, where the files of a pod differ in size. The macOS machine is a virtual machine on Apple silicon; Intel Macs are not measured.</p>
+<div class="scroll"><table class="speed">
+<thead><tr><th>One small file</th>${head}</tr></thead>
+<tbody>
+${rows.join("\n")}
+${asOne("one-file/whole", "All the files' bytes written as ONE file, per file")}
+${asOne("one-file/whole-flushed", "The same one file, flushed to the drive first, per file")}
+</tbody>
+</table></div>
+<p class="note">"As one file" is what a pod would pay if it kept its new files together in one file instead of one file each; its time for the whole file is divided by the 3,000 files it holds.</p>
+${ratios.length === 0 ? "" : `<p>${ratios.map(esc).join(" ")} ${esc(LINUX_CHIP_NOTE)}</p>`}
+${scanner}
+</section>`;
+}
+
 /**
  * What each size's pod held in the newest build whose file counted it, for the section "What a pod holds": the build and what
  * its rows say, by size, plain before encrypted. Nothing for builds none of whose files count a pod.
@@ -680,7 +975,7 @@ ${blocks.join("\n")}
 /** The page: the charts, how to read them, and the data they draw. */
 export function stackedPage(
   charts,
-  { repo, glossary = readGlossary(), stored = [] } = {},
+  { repo, glossary = readGlossary(), fileOps = [], stored = [] } = {},
 ) {
   const repeats = [
     ...new Set(charts.map((chart) => chart.columns.at(-1)?.runs)),
@@ -700,6 +995,7 @@ export function stackedPage(
     bands: BANDS,
     charts: titled.map((chart) => ({
       key: chart.key,
+      os: chart.os,
       title: chart.title,
       steps: chart.steps.map(({ key, label, says, span, colour }) => ({
         key,
@@ -733,9 +1029,13 @@ export function stackedPage(
         value: latest.other,
       },
     ];
-    return `<section class="chart" id="${esc(chart.key)}">
+    const machine =
+      chart.os === "linux" || chart.system === undefined
+        ? ""
+        : ` Measured on a GitHub-hosted ${SYSTEM_NAME[chart.os]} runner (${esc(chart.system.chip ?? "chip not recorded")}${chart.system.cpus === undefined ? "" : `, ${esc(chart.system.cpus)} processors`}).`;
+    return `<section class="chart" id="${esc(chart.id ?? chart.key)}">
 <h2>${esc(chart.title)}</h2>
-<p class="about">${esc(glossary.scenarios[chart.scenario]?.says ?? "")} Latest build <a href="https://github.com/${repo}/commit/${latest.sha}">${esc(latest.sha)}</a> (${esc(latest.date)}): <strong>${exact(latest.total)}</strong>; across the ${chart.columns.length} builds shown, ${exact(Math.min(...totals))} to ${exact(Math.max(...totals))}.</p>
+<p class="about">${esc(glossary.scenarios[chart.scenario]?.says ?? "")}${machine} Latest build <a href="https://github.com/${repo}/commit/${latest.sha}">${esc(latest.sha)}</a> (${esc(latest.date)}): <strong>${exact(latest.total)}</strong>; across the ${chart.columns.length} builds shown, ${exact(Math.min(...totals))} to ${exact(Math.max(...totals))}.</p>
 ${chartSvg(chart, at)}
 ${speedBlock(chart, repo)}
 <ul class="legend">
@@ -765,8 +1065,11 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
 <p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 source entries are one synthetic patient's ten years, measured on every build; 16,833 source entries are a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
 <p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (source entries, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p></details>
-<p class="toc">${titled.map((chart) => `<a href="#${esc(chart.key)}">${esc(chart.title)}</a><br>`).join("\n")}${stored.length === 0 ? "" : `<a href="#stored">What a pod holds</a><br>`}</p>
+<p>Charts "on Windows" and "on macOS" are the same measurement on those systems' own GitHub-hosted machines, drawn from those builds alone: a time on one system is never plotted in a column of another, because the machines differ in processor, disk and file system, and the times only read against their own system's earlier ones. Those two are measured when a change is merged to main and every night, not on every pull request, so they have fewer columns. What the systems cost per file, and what the virus scanner was set to and doing while it was measured, is under the charts.</p>
+<p>Why the two are not measured on every pull request: a pull request is shown only when its slowest check is done. A Windows run took about 6 minutes (11 with the Defender comparison, which only a hand-started run adds) and a macOS run about 3 (November 2026, a hosted runner each), against about 9 minutes for the slowest check, so the Windows run would have become the slowest check of every pull request. They are measured on the main branch and by hand, and a hand-started run of any branch can name them.</p></details>
+<p class="toc">${[...titled.map((chart) => `<a href="#${esc(chart.id ?? chart.key)}">${esc(chart.title)}</a><br>`), ...(fileOps.length === 0 ? [] : ['<a href="#file-ops">What one file costs on each operating system</a><br>']), ...(stored.length === 0 ? [] : ['<a href="#stored">What a pod holds</a><br>'])].join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
+${fileOpsSection(fileOps)}
 ${storedBlock(stored, repo, glossary)}
 <p class="links"><a href="../">Documentation home</a> · <a href="runs/">Each build's flame graphs</a> · <a href="detail/">Every measurement, one small chart each</a> · <a href="stacked.json">The data of these charts</a></p>
 <div id="tip" hidden></div>
@@ -797,6 +1100,7 @@ export function entriesOf(runs) {
  */
 export function readBuilds(data, glossary, window = WINDOW) {
   const have = new Map();
+  const opsFrom = new Set();
   const files = [];
   for (const build of buildsIn(data).reverse()) {
     let file;
@@ -808,10 +1112,22 @@ export function readBuilds(data, glossary, window = WINDOW) {
       );
       continue;
     }
+    const said = systemOf(file.env);
+    if (said !== undefined && said !== build.os) {
+      process.stderr.write(
+        `warning: ${build.id} is left out of the charts: its name says ${SYSTEM_NAME[build.os]} and its environment says ${SYSTEM_NAME[said]}, and a series is never of two systems\n`,
+      );
+      continue;
+    }
     const keys = file.results
       .filter((row) => row.name.endsWith("/total"))
-      .map((row) => row.name.slice(0, -"/total".length));
-    if (keys.some((key) => (have.get(key) ?? 0) < window))
+      .map((row) => `${build.os}/${row.name.slice(0, -"/total".length)}`);
+    // The newest build of each system that measured what one file costs is kept for that table, whatever else it holds.
+    const newestOps =
+      !opsFrom.has(build.os) &&
+      file.results.some((row) => row.name.startsWith("file-ops-"));
+    if (newestOps) opsFrom.add(build.os);
+    if (newestOps || keys.some((key) => (have.get(key) ?? 0) < window))
       files.push({ build, file });
     for (const key of keys) have.set(key, (have.get(key) ?? 0) + 1);
   }
@@ -828,15 +1144,17 @@ export function pages({ data, out, repo, runs, glossary = readGlossary() }) {
       if (entries === undefined || entries.has(column.id))
         column.href = `runs/#${column.id}`;
   mkdirSync(out, { recursive: true });
+  const fileOps = fileOpsOf(files);
   const page = stackedPage(charts, {
     repo,
     glossary,
+    fileOps,
     stored: storedLatest(files, glossary),
   });
   writeFileSync(join(out, "index.html"), page);
   writeFileSync(
     join(out, "stacked.json"),
-    `${JSON.stringify({ bands: BANDS, window: WINDOW, charts: charts.map(({ key, steps, columns }) => ({ key, steps, columns })) }, null, 1)}\n`,
+    `${JSON.stringify({ bands: BANDS, window: WINDOW, charts: charts.map(({ key, os, steps, columns }) => ({ key, os, steps, columns })), fileOps }, null, 1)}\n`,
   );
   return charts;
 }

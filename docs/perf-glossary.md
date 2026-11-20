@@ -12,6 +12,7 @@ Generated from the files of `packages/cascade-runtime/test/perf-glossary/`; edit
 | `question-page` | Fetching one page of 20 answers to each of the app's questions, from the saved database. |
 | `close` | Closing a pod straight after it took in a record and drew the first screen. |
 | `floor` | The same input as a fresh import, loaded plainly into one SQLite file, to read a fresh import against. It is not a lower bound. |
+| `file-ops` | What one small file costs on the machine the run is on: asking whether it is there, creating it, creating and renaming it, and what the pod's folder does for a file; and writing the same bytes as one file. It is about the operating system and its disk, not about the runtime's code, so it is read from one system to another. |
 | `stored` | What a pod holds once a fresh import and its close are done, counted exactly by the kinds of file the pod's layout names: files, statements and bytes, and the pod's database by table and index. |
 
 ## What a pod holds
@@ -48,6 +49,12 @@ The `stored` scenario counts the pod a fresh import and its close left, in rows 
 |---|---|
 | `synthea-10y` | Synthea's realistic synthetic patient, a 10-year record of 647 source entries. No real person's data. |
 | `synthea-lifetime` | A synthetic patient's whole life, 16,833 source entries: the large size, run nightly. |
+| `3000-files` | 3,000 small files of 280 bytes each, made in a temporary folder on the machine's own disk, the machine as it is. |
+| `3000-files-scanner-off` | The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live checking of files switched off, to see what that checking costs. |
+| `3000-files-scanner-on` | The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live, file-opening and script checking switched on and the folders the runner leaves out of it taken off its list for the run, to see what the checking costs; the runner is put back as it was afterwards. |
+| `3000-files-scanner-excluded` | The same 3,000 small files, made while the scanner's live checking is on but the folder the files are made in is excluded from it, to see what an exclusion saves. |
+| `3000-files-scanner-in-excluded-folder` | The same 3,000 small files, made on a machine whose virus scanner (Windows Defender) is NOT changed in any way, in a folder inside one the scanner leaves alone. Read it beside the next one: it is a natural experiment on one machine, the same code and disk, with only the folder differing. |
+| `3000-files-scanner-in-scanned-folder` | The same 3,000 small files, made on the same machine, with its scanner not changed, in a folder outside every folder the scanner leaves alone (the system's temporary folder unless one was named). Read it beside the one made in an excluded folder: where the two differ by more than their ranges, the scanner's checking is the likely difference, and this page does not say it is the only one. |
 
 ## Plain and encrypted
 
@@ -67,6 +74,7 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `question-page/total` | Fetching one page of answers for every question in turn. |
 | `close/total` | Closing a pod straight after its import and first screen, which saves its database. |
 | `floor/total` | The same input a fresh import takes in, loaded plainly into SQLite: read and decompress the Bundle, parse it, flatten each resource to one row of a table named for its resource type (a plain value is a column, anything nested is kept as its JSON text) and insert every row into a SQLite file in one transaction, with the SQLite the runtime uses and none of its settings changed. Only the insert is SQL; reading, parsing and flattening are JavaScript. Nested values are kept as JSON text with no further tables, and SQLite's default journal and synchronous settings are kept. It does no mapping to the Cascade vocabulary, keeps no provenance, does no matching of records that are the same, builds no derived views and writes no files, and a faster load of the same input could exist, so it is not a lower bound. The encrypted import is compared with this same unencrypted load. It says what loading costs, not what the import's other work adds up to; the pages do not split the difference beyond the stages the flame graphs measure. |
+| `file-ops/total` | The file micro-bench has no total: it is a set of per-file times, one for each operation and each number of files in flight at once. |
 | `total` | The headline: the whole scenario from start to finish, the median of the runs. |
 | `open` | Opening the pod. |
 | `import` | Importing the whole record into the pod. |
@@ -77,6 +85,8 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `parse` | Floor stage: reading the compressed Bundle, decompressing it and parsing the JSON. A fresh import parses the Bundle too: the harness reads, decompresses and parses it once before the import's clock starts, but the import is handed the Bundle's bytes and, from reading its code, parses them again inside its own time (not traced). So this stage and the import's own parsing are about the same work, with this stage also counting reading and decompressing, which the import's clock does not. |
 | `flatten` | Floor stage: turning each parsed resource into one row of the table for its resource type, plain values as columns and anything nested as its JSON text. |
 | `insert` | Floor stage: creating a table for each resource type and inserting every row in one transaction into a SQLite file on disk, then closing the file. |
+| `one-file/whole` | The time to write the bytes of all 3,000 files as ONE file and rename it over its name: what a pod would pay if it kept its new files together in one file. In seconds for the whole, not per file. |
+| `one-file/whole-flushed` | The same one file, flushed to the drive before it is renamed, so the figure includes the time the system takes to make the bytes safe against a power cut. In seconds for the whole, not per file. |
 | `rss` | Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the second read for a reopened one, after a first read and before the pages for the question pages. |
 | `peak-rss` | The most memory the process held at any moment, in bytes. |
 | `probed-total` | The scenario's time in one run with the probe on, which slows some work; its stages are from this run and are for finding where time goes, never for adding up to the headline. |
@@ -97,6 +107,10 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `database/terms` | How many distinct terms the database holds, each kept once. |
 | `database/tables` | Bytes the database's tables take, from SQLite's dbstat table; not given where the SQLite build has none. |
 | `database/indexes` | Bytes the database's indexes take, from SQLite's dbstat table; not given where the SQLite build has none. |
+| `absent-check/in-flight-*` | The time to ask whether a file is there, when it is not, for one file; `<name>` such questions in flight at once. The runtime asks this before it writes a file. |
+| `create/in-flight-*` | The time to create one new small file and write its bytes; `<name>` files in flight at once. |
+| `create-rename/in-flight-*` | The time to create one small file under a temporary name and rename it over its real name, as a pod's folder does so that no reader sees half a file; `<name>` files in flight at once. |
+| `full-path/in-flight-*` | The time for what the pod's folder does for one file: look at the path, resolve the folder, create the file under a temporary name and rename it; `<name>` files in flight at once. |
 | `phase-*` | Import part: `<name>`. |
 | `question-*` | One page of 20 answers to: `<name>`. |
 | `predicates/*` | How many statements in the pod's files have a property from the `<name>` vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other: mainly rdfs for labels, oa for where in a document a revision's source sits, solid and obo). |
@@ -267,6 +281,14 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `records` | How many entries the person's source file holds (its Bundle's entries). It is not the number of records the pod keeps: that is the stored scenario's pod-records. |
 | `files-written` | How many files the import wrote to the pod. It is a few fewer than the files the pod holds (13 fewer at 647 source entries, 15 at the large size); not chased, the pod's creation and settings files may be the reason (unverified). |
 | `rows` | How many rows the floor inserted, one for each resource that has a type: a fresh import's count of source entries is every entry of the Bundle. |
+| `files` | How many small files each of the per-file times is the mean over, and the number of files whose bytes make the one file. |
+| `scanner-realtime-on` | Whether the system's virus scanner had its live checking of files on while the files were made: 1 for yes, 0 for no. Read back from Windows Defender itself, not assumed; the row's note lists every setting it was read with, the folders it leaves alone among them. |
+| `scanner-switch-off-allowed` | Whether the runner let the run switch the virus scanner's live checking off and the scanner confirmed it: 1 for yes, 0 for no; the row's note says why not. |
+| `scanner-switch-on-allowed` | Whether the runner let the run switch the virus scanner's live, file-opening and script checking on and take the runner's excluded folders off its list, and the scanner confirmed it: 1 for yes, 0 for no; the row's note says why not. |
+| `scanner-exclusion-allowed` | Whether the runner let the run exclude the folder from the virus scanner and the scanner listed it: 1 for yes, 0 for no; the row's note says why not. |
+| `scanner-restored` | Whether the virus scanner was read back as it was before the run changed it, every setting and every excluded folder: 1 for yes, 0 for no; the row's note says what it read. |
+| `work-folder` | Where the files were made: the folder's own path and the drive it is on, in the row's note. 1 when recorded. |
+| `scanner-folder-excluded` | Whether the folder the files were made in was on the scanner's list of excluded folders, or inside one, while they were made: 1 for yes, 0 for no. In the comparison that changes nothing it is checked by the folder's real path against the list read from Windows Defender, and the row's note names the folder and the list entry it is inside. |
 | `graph.scans` | How many times the in-memory facts were searched from end to end. |
 | `graph.quadsvisited` | How many individual facts those searches looked at. |
 | `store.queries` | How many questions were put to the pod's fact store. |
