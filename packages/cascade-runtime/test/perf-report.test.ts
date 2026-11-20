@@ -24,6 +24,10 @@ import { profileOf, syntheticPull } from "./import-bench.js";
 import {
   clockRow,
   commits,
+  folderFingerprint,
+  openedAt,
+  PINNED,
+  pinClock,
   countRow,
   envOf,
   floorRows,
@@ -81,6 +85,7 @@ interface Compare {
   summary(file: object, options?: object): string;
   speedOf(file: object, key: string): Speed | undefined;
   floorLine(speed: Speed | undefined): string | undefined;
+  shown(value: number | undefined, unit: string): string;
 }
 
 const scratch: string[] = [];
@@ -247,6 +252,130 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
     it("says that two files taken on different machines do not compare", () => {
       const other = { ...after, env: { ...after.env, cpus: 8 } };
       assert.match(compare.compare(before, other), /different cpus/);
+    });
+  });
+
+  describe("given a count of bytes, as a handoff's is", () => {
+    const bytes = (value: number): Row[] => [
+      {
+        name: "fresh-first-screen-x/count/handoff.1-document.bytes",
+        unit: "By",
+        value,
+        kind: "cost",
+      },
+      {
+        name: "fresh-first-screen-x/count/handoff.1-document.items",
+        unit: "{count}",
+        value: 3,
+        kind: "cost",
+      },
+    ];
+
+    it("is a row in bytes where the name ends in .bytes, and a count of things otherwise", () => {
+      const count = countRow("x-y/count/handoff.2-answer.bytes", 19_600_000);
+      assert.deepEqual([count.unit, count.kind], ["By", "cost"]);
+      assert.equal(refused(count), undefined);
+      assert.equal(
+        countRow("x-y/count/handoff.2-answer.items", 4).unit,
+        "{count}",
+      );
+      assert.equal(countRow("x-y/count/bytesome", 4).unit, "{count}");
+    });
+
+    it("is written as bytes by the probed run's count rows too", () => {
+      const rows = probedRows("x-y", {
+        spans: [],
+        counts: { "handoff:2-answer.bytes": 7, "handoff:2-answer.items": 2 },
+      });
+      const unitOf = (suffix: string) =>
+        rows.find(({ name }) => name.endsWith(suffix))?.unit;
+      assert.equal(unitOf(".bytes"), "By");
+      assert.equal(unitOf(".items"), "{count}");
+    });
+
+    it("is compared as an exact count, in whole bytes, with no word of faster or slower", () => {
+      const text = compare.compare(
+        file(bytes(19_600_000)),
+        file(bytes(19_500_000)),
+      );
+      assert.match(
+        text,
+        /count\/handoff\.1-document\.bytes\s+19,600,000 By\s+19,500,000 By\s+-0\.5% \(1\.0x\)/,
+      );
+      assert.doesNotMatch(text, /faster|slower/);
+      assert.doesNotMatch(text, /handoff\.1-document\.items/);
+    });
+
+    it("is shown in whole mebibytes as a headline size is, and a small one in tenths of one", () => {
+      assert.equal(compare.shown(300 * 1048576, "By"), "300 MiB");
+      assert.equal(compare.shown(1_500_000, "By"), "1.4 MiB");
+    });
+  });
+
+  describe("given a process whose clock is pinned", () => {
+    it("gives every date and id asked of it the same instant and the next number, and a date it is given as it was", async () => {
+      const unpin = pinClock();
+      try {
+        const asked = performance.now();
+        await sleep(20);
+        assert.equal(new Date().toISOString(), PINNED);
+        assert.equal(Date.now(), Date.parse(PINNED));
+        assert.equal(new Date(Date.now()).toISOString(), PINNED);
+        assert.equal(new Date().getTime(), Date.parse(PINNED));
+        assert.equal(new Date(0).toISOString(), "1970-01-01T00:00:00.000Z");
+        assert.equal(Date.parse("2020-01-01T00:00:00Z"), 1577836800000);
+        assert.equal(new Date() instanceof Date, true);
+        assert.equal(typeof Date(), "string");
+        assert.ok(performance.now() - asked >= 15, "durations still run");
+        const first = crypto.randomUUID();
+        assert.match(
+          first,
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+        assert.notEqual(crypto.randomUUID(), first);
+        unpin();
+        const again = pinClock();
+        assert.equal(crypto.randomUUID(), first, "the numbering starts again");
+        again();
+      } finally {
+        unpin();
+      }
+    });
+
+    it("puts the real clock and the real ids back", async () => {
+      pinClock()();
+      const before = Date.now();
+      await sleep(5);
+      assert.ok(Date.now() > before);
+      assert.notEqual(crypto.randomUUID(), crypto.randomUUID());
+      assert.notEqual(new Date().toISOString(), PINNED);
+    });
+
+    it("writes the same pod from the same record on two runs, which a clock left running does not", async () => {
+      const claimProfiles = await profileOf("first");
+      const folder = await mkdtemp(join(tmpdir(), "pinned-"));
+      scratch.push(folder);
+      const imported = async (name: string) => {
+        const pod = await openedAt(join(folder, name, "pod"), false);
+        await pod.import(syntheticPull(20), { claimProfiles });
+        await pod.close();
+        return folderFingerprint(join(folder, name, "pod"));
+      };
+      const unpin = pinClock();
+      let a, b;
+      try {
+        a = await imported("pinned-1");
+        unpin();
+        const unpinAgain = pinClock();
+        b = await imported("pinned-2");
+        unpinAgain();
+      } finally {
+        unpin();
+      }
+      assert.ok(a.files > 20, "files written");
+      assert.deepEqual(a, b);
+      const running = await imported("running-1");
+      assert.notEqual(running.sha256, (await imported("running-2")).sha256);
     });
   });
 
@@ -765,13 +894,13 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         await given("20-c.json", { measures: { x: "again" } });
         assert.throws(
           () => readGlossary(pathToFileURL(`${folder}/`)),
-          /20-c.json gives measures.x/,
+          /20-c\.json gives measures\.x/,
         );
         await rm(join(folder, "20-c.json"));
         await given("20-d.json", { about: "twice" });
         assert.throws(
           () => readGlossary(pathToFileURL(`${folder}/`)),
-          /20-d.json gives about/,
+          /20-d\.json gives about/,
         );
       } finally {
         await rm(folder, { recursive: true, force: true });

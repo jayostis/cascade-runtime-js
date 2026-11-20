@@ -33,8 +33,10 @@ import { perfFile } from "./perf-run.js";
  */
 
 export * from "./perf-child.js";
+export * from "./perf-clock.js";
 export * from "./perf-data.js";
 export * from "./perf-env.js";
+export * from "./perf-fingerprint.js";
 export * from "./perf-job.js";
 export * from "./perf-plan.js";
 export * from "./perf-rows.js";
