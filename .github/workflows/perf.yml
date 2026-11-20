@@ -26,7 +26,8 @@ on:
       scenario:
         description: "One scenario, or all"
         type: choice
-        options: [all, fresh-first-screen, reopen-first-answer, question-page, close]
+        options:
+          [all, fresh-first-screen, reopen-first-answer, question-page, close]
         default: all
       size:
         description: "One size, or the per-build size and, with `large`, the large one"
