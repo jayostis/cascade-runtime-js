@@ -7,7 +7,7 @@
   },
   "measures": {
     "open": "Opening the pod.",
-    "import": "Importing the whole record into the pod.",
+    "import": "Importing into the pod: the whole record for a new pod, and for a pod that holds the record already the same file again, with some entries changed, or with one more.",
     "first-screen": "Asking the questions the first screen shows."
   },
   "spans": {
@@ -23,6 +23,6 @@
   },
   "counts": {
     "records": "How many entries the person's source file holds (its Bundle's entries). It is not the number of records the pod keeps: that is the stored scenario's pod-records.",
-    "files-written": "How many files the import wrote to the pod. It is a few fewer than the files the pod holds (13 fewer at 647 source entries, 15 at the large size); not chased, the pod's creation and settings files may be the reason (unverified)."
+    "files-written": "How many files the import wrote to the pod: for a pod given a document again only new files, as no file once written changes. For a first import it is a few fewer than the files the pod holds (13 fewer at 647 source entries, 15 at the large size); not chased, the pod's creation and settings files may be the reason (unverified)."
   }
 }

@@ -6,6 +6,7 @@ import { type Loaded } from "./perf-floor.js";
 import { explainSpan } from "./perf-glossary.js";
 import { type DatasetId } from "./perf-data.js";
 import { type Scenario } from "./perf-plan.js";
+import { type Added, type Again } from "./perf-scenarios/after-first-import.js";
 import { type Stored } from "./perf-scenarios/stored.js";
 import { fixed, part, type Tabulated, tabulated } from "./perf-rows.js";
 import { chromeTrace } from "./perf-trace.js";
@@ -20,7 +21,22 @@ export const SECRET = "t-shirt abacus yo-yo zoom drop-down felt-tip";
 
 /** What one child process is asked to measure. */
 export interface Job {
-  readonly scenario: "fresh" | "reopen" | "question-page" | "floor" | "stored";
+  /**
+   * What the process does: `fresh` is the first import, `killed` the same without its close, ended by a signal (see
+   * perf-scenarios/reopen-after-kill.ts), `again` an import into a pod that holds one already (`again` says of what).
+   */
+  readonly scenario:
+    | "fresh"
+    | "killed"
+    | "again"
+    | "reopen"
+    | "question-page"
+    | "floor"
+    | "stored";
+  /** For `again`: how the document being imported differs from the first one. */
+  readonly again?: Again;
+  /** The scenario whose rows and trace this run is, where it is not the one the kind names: a reopen is also the question after an update. */
+  readonly as?: Scenario;
   readonly dataset: DatasetId;
   readonly encrypted: boolean;
   readonly probed: boolean;
@@ -44,6 +60,8 @@ export interface Measured {
   readonly rssBytes: number;
   readonly peakRssBytes: number;
   readonly wrote?: number;
+  /** What an import into a pod that held the record already added, for the `again` jobs. */
+  readonly added?: Added;
   /** What the floor loaded and how long each stage took, for the floor scenario. */
   readonly floor?: Loaded;
   /** What the pod holds, counted, for the stored scenario. */
@@ -266,3 +284,16 @@ export const samplesOf = (
   runs: readonly Measured[],
   pick: (each: Measured) => number | undefined,
 ) => runs.flatMap((each) => pick(each) ?? []);
+
+/** Seconds by the import's own parts, from the instant each began (the progress marks, in order) and the instant the import ended. */
+export function partsOf(
+  marks: readonly { part: string; at: number }[],
+  ended: number,
+): Record<string, number> {
+  const seconds: Record<string, number> = {};
+  marks.forEach(({ part: named, at }, index) => {
+    const next = marks[index + 1]?.at ?? ended;
+    seconds[named] = (seconds[named] ?? 0) + (next - at) / 1000;
+  });
+  return seconds;
+}

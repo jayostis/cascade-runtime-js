@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -88,7 +89,12 @@ export async function child(
       JSON.stringify({ ...job, out }),
     ],
     { maxBuffer: 1 << 26, timeout: 3 * 3_600_000 },
-  );
+  ).catch(async (error: unknown) => {
+    // A killed job ends itself with a signal, after it has written its result (perf-scenarios/reopen-after-kill.ts): that
+    // is its end. Any other failure, or one before the result is written, is a failure.
+    if (job.scenario === "killed" && existsSync(out)) return;
+    throw error;
+  });
   if (cpu !== undefined && profiled !== undefined) {
     cpu.notes.set(cpu.name, await keptCpu(profiled, cpu.into, cpu.name));
     await rm(profiled, { recursive: true, force: true });

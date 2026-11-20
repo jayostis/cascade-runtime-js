@@ -13,6 +13,11 @@ Generated from the files of `packages/cascade-runtime/test/perf-glossary/`; edit
 | `close` | Closing a pod straight after it took in a record and drew the first screen. |
 | `floor` | The same input as a fresh import, loaded plainly into one SQLite file, to read a fresh import against. It is not a lower bound. |
 | `stored` | What a pod holds once a fresh import and its close are done, counted exactly by the kinds of file the pod's layout names: files, statements and bytes, and the pod's database by table and index. |
+| `reimport-identical` | A pod that already holds a person's record is given the same file again, as when a person pulls from the same hospital twice. |
+| `reimport-changed` | A pod that already holds a person's record is given the same file with 10 of its laboratory results changed (a value and the time the source changed it), as when a hospital has corrected some results since the last pull. |
+| `add-one-record` | A pod that already holds a person's record is given the same file with one new laboratory result at its end, as when a hospital adds a result after the last pull. |
+| `reopen-after-kill` | A pod whose app was stopped without closing it (a crash, a killed process or a power cut after the import) is opened again and answers its first question: the pod has no saved database, so it is built again from every file it holds. |
+| `question-after-update` | A pod that took in an update (the file with 10 laboratory results changed) and was closed is opened again and answers its first question. |
 
 ## What a pod holds
 
@@ -67,9 +72,14 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `question-page/total` | Fetching one page of answers for every question in turn. |
 | `close/total` | Closing a pod straight after its import and first screen, which saves its database. |
 | `floor/total` | The same input a fresh import takes in, loaded plainly into SQLite: read and decompress the Bundle, parse it, flatten each resource to one row of a table named for its resource type (a plain value is a column, anything nested is kept as its JSON text) and insert every row into a SQLite file in one transaction, with the SQLite the runtime uses and none of its settings changed. Only the insert is SQL; reading, parsing and flattening are JavaScript. Nested values are kept as JSON text with no further tables, and SQLite's default journal and synchronous settings are kept. It does no mapping to the Cascade vocabulary, keeps no provenance, does no matching of records that are the same, builds no derived views and writes no files, and a faster load of the same input could exist, so it is not a lower bound. The encrypted import is compared with this same unencrypted load. It says what loading costs, not what the import's other work adds up to; the pages do not split the difference beyond the stages the flame graphs measure. |
+| `reimport-identical/total` | Opening a pod that already holds the record, importing the same file again and asking a first page of the lab results: what a person waits for when nothing has changed. |
+| `reimport-changed/total` | Opening a pod that already holds the record, importing the file with 10 laboratory results changed and asking a first page of the lab results: what a person waits for after a hospital updates some results. |
+| `add-one-record/total` | Opening a pod that already holds the record, importing the file with one more laboratory result and asking a first page of the lab results: what a person waits for after one new result arrives. |
+| `reopen-after-kill/total` | Opening a pod that was stopped before it closed and answering its first read: what a person waits for after the app was stopped without closing the pod. |
+| `question-after-update/total` | Opening a pod after an update that was closed properly and answering its first read, against the same read of a pod right after its first import: whether the first question after an update is slower. |
 | `total` | The headline: the whole scenario from start to finish, the median of the runs. |
 | `open` | Opening the pod. |
-| `import` | Importing the whole record into the pod. |
+| `import` | Importing into the pod: the whole record for a new pod, and for a pod that holds the record already the same file again, with some entries changed, or with one more. |
 | `first-screen` | Asking the questions the first screen shows. |
 | `first-read` | The first question asked of the reopened pod ('My active conditions'). |
 | `second-read` | A second question asked of the reopened pod ('My active medications'). |
@@ -77,7 +87,7 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `parse` | Floor stage: reading the compressed Bundle, decompressing it and parsing the JSON. A fresh import parses the Bundle too: the harness reads, decompresses and parses it once before the import's clock starts, but the import is handed the Bundle's bytes and, from reading its code, parses them again inside its own time (not traced). So this stage and the import's own parsing are about the same work, with this stage also counting reading and decompressing, which the import's clock does not. |
 | `flatten` | Floor stage: turning each parsed resource into one row of the table for its resource type, plain values as columns and anything nested as its JSON text. |
 | `insert` | Floor stage: creating a table for each resource type and inserting every row in one transaction into a SQLite file on disk, then closing the file. |
-| `rss` | Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the second read for a reopened one, after a first read and before the pages for the question pages. |
+| `rss` | Memory the process was holding when the scenario's work was done, in bytes: after the first screen and before closing for a new pod, after the first answer and before closing for a pod given a document again, after the second read for a reopened one, after a first read and before the pages for the question pages. |
 | `peak-rss` | The most memory the process held at any moment, in bytes. |
 | `probed-total` | The scenario's time in one run with the probe on, which slows some work; its stages are from this run and are for finding where time goes, never for adding up to the headline. |
 | `phase-loading-the-adapter` | Import part: loading the adapter that knows this kind of record. |
@@ -97,6 +107,7 @@ Each is a row named `<scenario>-<dataset>[-encrypted]/<measurement>`. `total` is
 | `database/terms` | How many distinct terms the database holds, each kept once. |
 | `database/tables` | Bytes the database's tables take, from SQLite's dbstat table; not given where the SQLite build has none. |
 | `database/indexes` | Bytes the database's indexes take, from SQLite's dbstat table; not given where the SQLite build has none. |
+| `first-answer` | A first page (20 answers) of the lab results, asked straight after the import, as an app does to redraw its screen. |
 | `phase-*` | Import part: `<name>`. |
 | `question-*` | One page of 20 answers to: `<name>`. |
 | `predicates/*` | How many statements in the pod's files have a property from the `<name>` vocabulary (cascade is Cascade's own, prov is PROV-O, pav is PAV, dct is Dublin Core terms, rdf is RDF itself, other is any other: mainly rdfs for labels, oa for where in a document a revision's source sits, solid and obo). |
@@ -241,6 +252,7 @@ Rows named `<scenario>-<dataset>/stage/<stage>`: where time goes inside one run 
 | `files.absent.check` | Checking that none of the files a step is about to write is in the pod already: a file whose name fixes its bytes that the pod's listing lacks is new, and any other file, and one the listing has, is read and compared. |
 | `files.absent.recheck` | Looking again, before each batch of files is written (a step's files, and those it rebuilds), for any file that is not known to be new. |
 | `archives.open` | Opening the archives that hold some of the pod's files: reading the directory at the end of each, never the files it holds. |
+| `scenario.first-answer` | Asking for a first page of the lab results straight after the import, so the screen can be redrawn. |
 | `bridge.query-*.rq` | The Bridge's query for `<name>`, which pulls those out of the converted source. Sits inside `arrivals.convert`. |
 | `build.query-*.ttl` | Building the `<name>` answer file by asking the pod's facts its question. Sits inside `build.queried`. |
 | `view.build-*.ttl` | Writing the `<name>` answer file from the question's rows. Sits inside `build.queried`. |
@@ -265,7 +277,7 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | Term | Meaning |
 |---|---|
 | `records` | How many entries the person's source file holds (its Bundle's entries). It is not the number of records the pod keeps: that is the stored scenario's pod-records. |
-| `files-written` | How many files the import wrote to the pod. It is a few fewer than the files the pod holds (13 fewer at 647 source entries, 15 at the large size); not chased, the pod's creation and settings files may be the reason (unverified). |
+| `files-written` | How many files the import wrote to the pod: for a pod given a document again only new files, as no file once written changes. For a first import it is a few fewer than the files the pod holds (13 fewer at 647 source entries, 15 at the large size); not chased, the pod's creation and settings files may be the reason (unverified). |
 | `rows` | How many rows the floor inserted, one for each resource that has a type: a fresh import's count of source entries is every entry of the Bundle. |
 | `graph.scans` | How many times the in-memory facts were searched from end to end. |
 | `graph.quadsvisited` | How many individual facts those searches looked at. |
@@ -302,6 +314,16 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `entries` | How many entries the source's Bundle holds, the same as the fresh import's count of records: the source's own count, which is not the number of records the pod keeps (see pod-records). |
 | `version-links` | How many of the statements in version files link a version to its record, one for each version: the pod's own statement, which counts as history, not as what the source said. |
 | `pod-records` | How many records the pod holds: a file for each thing the source described, the servers' included, each with versions and revisions beside it. Not the source's entries. |
+| `converts` | How many times the Bridge converted a document in this import: 0 where the pod already held the same file, which it knows by the file's hash, so the conversion is skipped; 1 for a file it had not seen. |
+| `statements-added` | How many statements (one fact each) the files this import wrote hold, not counting the rebuilt view files, which replace what the views held. |
+| `versions-added` | How many new versions of a record the import wrote: one for each record the source now says differently. |
+| `revisions-added` | How many new revisions the import wrote: one for each record whose latest version the new document changed. An entry the pod had seen before, unchanged, adds none. |
+| `records-added` | How many records the pod named for the first time in this import: things the source described that the pod had not met. |
+| `entries-changed` | How many source entries of the document were edited from the first one: 0 for the same file, 10 laboratory results for the changed file. The row's note says exactly what was edited. |
+| `entries-added` | How many source entries the document has more than the first one: 1 for the added laboratory result, otherwise 0. |
+| `database-found` | 1 if the pod's saved database was beside it when it was opened again, otherwise 0: a process stopped before it closed leaves none, and the pod is then built from every file. |
+| `files-read` | How many of the pod's files the reopened pod had to read to be built again: every file that holds statements, as the pod's layout says. |
+| `statements-read` | How many statements those files hold. |
 | `*.graph.quadsvisited` | How many individual facts the searches inside '`<name>`' looked at. |
 | `*.graph.scans` | How many times the in-memory facts were searched end to end inside '`<name>`'. |
 | `*.store.queries` | How many fact-store questions '`<name>`' put. |

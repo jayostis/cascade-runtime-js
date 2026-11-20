@@ -47,6 +47,7 @@ export * from "./perf-scenarios/close.js";
 export * from "./perf-scenarios/floor.js";
 export * from "./perf-scenarios/fresh-first-screen.js";
 export * from "./perf-scenarios/question-page.js";
+export * from "./perf-scenarios/reopen-after-kill.js";
 export * from "./perf-scenarios/reopen-first-answer.js";
 export * from "./perf-scenarios/stored.js";
 

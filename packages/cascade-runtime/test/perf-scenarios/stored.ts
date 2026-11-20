@@ -111,6 +111,8 @@ export interface Stored {
   readonly beside: { readonly files: number; readonly bytes: number };
   /** The pod's database; none for a pod whose database is sealed. */
   readonly database?: DatabaseFigures;
+  /** The files the layout says the pod loads (what a whole build of it reads), and the statements they hold. */
+  readonly loaded?: { readonly files: number; readonly statements: number };
 }
 
 /** The blocks a disk allocates in, for the count of what the files come to in whole blocks. */
@@ -364,6 +366,7 @@ export async function storedIn(
   ) as Record<PredicateVocabulary, number>;
   let podRecords = 0;
   let versionLinks = 0;
+  const loaded = { files: 0, statements: 0 };
   const paths = await files.list("");
   for (let from = 0; from < paths.length; from += AT_ONCE)
     await Promise.all(
@@ -375,6 +378,10 @@ export async function storedIn(
           predicates[each] += found.predicates[each];
         if (found.podRecord) podRecords += 1;
         versionLinks += found.versionLinks;
+        if (layout.loads(path)) {
+          loaded.files += 1;
+          loaded.statements += found.statements;
+        }
         const held = kinds[found.kind];
         held.files += 1;
         held.statements += found.statements;
@@ -398,6 +405,7 @@ export async function storedIn(
       ),
     },
     beside: totalOf(kept),
+    loaded,
     ...(database !== undefined && { database }),
   };
 }

@@ -7,6 +7,7 @@ import {
   measured,
   nameOf,
   openedAt,
+  partsOf,
   samplesOf,
   secs,
   stepper,
@@ -47,9 +48,13 @@ export const THEN = "profile/What needs review";
 
 /**
  * A new, empty pod takes the whole record in and answers the first screen, then closes: one child process, whose
- * close is the `close` scenario's measurement (perf-scenarios/close.ts).
+ * close is the `close` scenario's measurement (perf-scenarios/close.ts). With `closing` false it ends there, the pod
+ * left open, for the process that is stopped before it closes (perf-scenarios/reopen-after-kill.ts).
  */
-export async function measureFresh(job: Job): Promise<Measured> {
+export async function measureFresh(
+  job: Job,
+  closing = true,
+): Promise<Measured> {
   const { seconds, step } = stepper();
   const parts: Record<string, number> = {};
   const data = await loadDataset(job.dataset);
@@ -78,11 +83,7 @@ export async function measureFresh(job: Job): Promise<Measured> {
     if (done.refused !== undefined)
       throw new Error(`the import was refused: ${done.refused}`);
     wrote = done.wrote.length;
-    const ended = performance.now();
-    marks.forEach(({ part: named, at }, index) => {
-      const next = marks[index + 1]?.at ?? ended;
-      parts[named] = (parts[named] ?? 0) + (next - at) / 1000;
-    });
+    Object.assign(parts, partsOf(marks, performance.now()));
     // All together, as the kit's `asked` starts them: the questions, the tables newer than the pod's, and the profile's.
     await step("first-screen", async () => {
       await Promise.all([
@@ -93,7 +94,16 @@ export async function measureFresh(job: Job): Promise<Measured> {
     });
   });
   const rssBytes = process.memoryUsage.rss();
-  const closing = await maybeProbed(job, "close", notes, () =>
+  if (!closing)
+    return measured({
+      seconds,
+      parts,
+      rssBytes,
+      wrote,
+      seen: body.seen,
+      notes,
+    });
+  const closed = await maybeProbed(job, "close", notes, () =>
     step("close", () => (pod as NonNullable<typeof pod>).close()),
   );
   return measured({
@@ -102,7 +112,7 @@ export async function measureFresh(job: Job): Promise<Measured> {
     rssBytes,
     wrote,
     seen: body.seen,
-    closeSeen: closing.seen,
+    closeSeen: closed.seen,
     notes,
   });
 }
@@ -160,21 +170,29 @@ export function freshRows(ctx: Context, fresh: readonly Measured[]): Row[] {
       `the most the process reached, as the operating system keeps it; ${how}`,
     ),
   ];
-  const named = new Set(fresh.flatMap((each) => Object.keys(each.parts)));
-  const taken = new Set<string>();
-  for (const each of named)
-    rows.push(
-      clockRow(
-        `${name}/${unique(taken, `phase-${part(each.replace(/\s*\d+\/\d+$/, ""))}`)}`,
-        "s",
-        samples((one) => one.parts[each]),
-        `part of the import (onProgress marks); ${how}`,
-      ),
-    );
+  rows.push(...phaseRows(ctx, name, fresh));
   const wrote = fresh[0]?.wrote;
   if (wrote !== undefined)
     rows.push(countRow(`${name}/count/files-written`, wrote, about));
   return rows;
+}
+
+/** One row for each part of the import that any of the runs went through (the loading, converting, saving and judging marks). */
+export function phaseRows(
+  ctx: Context,
+  name: string,
+  runs: readonly Measured[],
+): Row[] {
+  const taken = new Set<string>();
+  return [...new Set(runs.flatMap((each) => Object.keys(each.parts)))].map(
+    (each) =>
+      clockRow(
+        `${name}/${unique(taken, `phase-${part(each.replace(/\s*\d+\/\d+$/, ""))}`)}`,
+        "s",
+        samplesOf(runs, (one) => one.parts[each]),
+        `part of the import (onProgress marks); ${ctx.how}`,
+      ),
+  );
 }
 
 /** The rows of the probed fresh run: its total and its stages. */

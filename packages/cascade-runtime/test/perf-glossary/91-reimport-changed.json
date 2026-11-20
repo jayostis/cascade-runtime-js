@@ -1,0 +1,8 @@
+{
+  "scenarios": {
+    "reimport-changed": {
+      "says": "A pod that already holds a person's record is given the same file with 10 of its laboratory results changed (a value and the time the source changed it), as when a hospital has corrected some results since the last pull.",
+      "total": "Opening a pod that already holds the record, importing the file with 10 laboratory results changed and asking a first page of the lab results: what a person waits for after a hospital updates some results."
+    }
+  }
+}

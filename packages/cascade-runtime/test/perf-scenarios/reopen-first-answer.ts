@@ -23,7 +23,7 @@ export async function measureReopen(job: Job): Promise<Measured> {
   let rssBytes = 0;
   const body = await maybeProbed(
     job,
-    "reopen-first-answer",
+    job.as ?? "reopen-first-answer",
     notes,
     async () => {
       const opened = await step("open", () =>

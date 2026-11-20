@@ -2180,6 +2180,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
     resource: {
       resourceType: string;
       id: string;
+      category?: { coding: { code: string }[] }[];
       meta?: { versionId?: string; lastUpdated?: string };
       valueQuantity?: { value: number };
       effectiveDateTime?: string;
@@ -2191,7 +2192,10 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
     entry: Entry[];
   }
   const DAY = 86_400_000;
-  /** A Bundle of a patient, 45 Observations (30 with a number, every third with none) and a Condition: the shapes the adapter maps. */
+  /**
+   * A Bundle of a patient, 45 Observations (every third with no number; of the others, 6 vital signs, which the pod does not keep
+   * as records, and 24 laboratory results) and a Condition.
+   */
   const bundleOf = (): Bundled => ({
     resourceType: "Bundle",
     entry: [
@@ -2206,6 +2210,11 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
           resource: {
             resourceType: "Observation",
             id,
+            category: [
+              {
+                coding: [{ code: n % 5 === 4 ? "vital-signs" : "laboratory" }],
+              },
+            ],
             meta: {
               versionId: "1",
               lastUpdated: `2017-02-${String(10 + (n % 10))}T07:29:38.825Z`,
@@ -2225,13 +2234,14 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
   const numbered = (bundle: Bundled) =>
     bundle.entry.flatMap(({ resource }, at) =>
       resource.resourceType === "Observation" &&
-      resource.valueQuantity !== undefined
+      resource.valueQuantity !== undefined &&
+      resource.category?.[0]?.coding[0]?.code === "laboratory"
         ? [at]
         : [],
     );
 
   describe("given a Bundle that is imported again with ten of its source entries changed", () => {
-    it("changes exactly ten Observations that carry a number, spread evenly through the Bundle, each in its value, version and change time and nothing else, and leaves the Bundle it was given as it was", () => {
+    it("changes exactly ten laboratory Observations that carry a number, spread evenly through the Bundle, each in its value, version and change time and nothing else, and leaves the Bundle it was given as it was", () => {
       const bundle = bundleOf();
       const before = structuredClone(bundle);
       const edited = changedBundle(bundle);
@@ -2242,7 +2252,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         JSON.stringify(entry) === JSON.stringify(bundle.entry[at]) ? [] : [at],
       );
       const eligible = numbered(bundle);
-      assert.equal(eligible.length, 30);
+      assert.equal(eligible.length, 24, "the vital signs are left out");
       assert.equal(CHANGED_ENTRIES, 10);
       assert.deepEqual(
         differing,
@@ -2286,7 +2296,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
     it("gives the same Bundle on every call, says in a sentence what it changed, and refuses a Bundle with fewer Observations to change than that", () => {
       assert.deepEqual(changedBundle(bundleOf()), changedBundle(bundleOf()));
       const { says } = changedBundle(bundleOf());
-      assert.match(says, /10 of the 30 Observations/);
+      assert.match(says, /10 of the 24 laboratory Observations/);
       for (const field of [
         "valueQuantity.value",
         "meta.versionId",
@@ -2299,7 +2309,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
   });
 
   describe("given a Bundle that is imported again with one more source entry", () => {
-    it("adds one Observation at the end, a copy of the last that carries a number with a new id and a day later, and changes no other entry", () => {
+    it("adds one Observation at the end, a copy of the last laboratory result that carries a number with a new id and a day later, and changes no other entry", () => {
       const bundle = bundleOf();
       const before = structuredClone(bundle);
       const edited = oneMoreBundle(bundle);

@@ -1,0 +1,8 @@
+{
+  "scenarios": {
+    "question-after-update": {
+      "says": "A pod that took in an update (the file with 10 laboratory results changed) and was closed is opened again and answers its first question.",
+      "total": "Opening a pod after an update that was closed properly and answering its first read, against the same read of a pod right after its first import: whether the first question after an update is slower."
+    }
+  }
+}
