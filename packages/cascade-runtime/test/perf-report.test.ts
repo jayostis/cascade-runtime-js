@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -7,6 +8,7 @@ import { tmpdir } from "node:os";
 import { after, before, describe, it } from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openPod } from "cascade-runtime";
@@ -85,11 +87,15 @@ interface Speed {
 }
 interface Compare {
   compare(before: object, after: object, options?: object): string;
+  comparison(file: object, options?: object): string;
+  cpuModelOf(file: object): string | undefined;
   summary(file: object, options?: object): string;
   speedOf(file: object, key: string): Speed | undefined;
   floorLine(speed: Speed | undefined): string | undefined;
   shown(value: number | undefined, unit: string): string;
 }
+
+const execFileAsync = promisify(execFile);
 
 const scratch: string[] = [];
 after(async () => {
@@ -1144,6 +1150,233 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
           else process.env[key] = value;
         });
       }
+    });
+  });
+
+  describe("given main's file and a pull request's file, both taken in one job", () => {
+    const EPYC = "AMD EPYC 9V74 80-Core Processor";
+    const total = (seconds: number): Row[] => [
+      {
+        name: "fresh-first-screen-x/total",
+        unit: "s",
+        value: seconds,
+        kind: "clock",
+        samples: 3,
+        range: `${seconds - 1}-${seconds + 1}`,
+      },
+      {
+        name: "fresh-first-screen-x/import",
+        unit: "s",
+        value: seconds - 2,
+        kind: "clock",
+        samples: 3,
+        range: `${seconds - 3}-${seconds - 1}`,
+      },
+    ];
+    const taken = (
+      cpu: string | undefined,
+      seconds: number,
+      commit: Record<string, string>,
+    ) => ({
+      env: {
+        os: "linux 6.8.0-1017-azure",
+        runner: `github-actions Linux;${cpu === undefined ? "" : ` ${cpu};`} other load: a shared hosted runner`,
+        cpus: 4,
+        node: "24.1.0",
+      },
+      commit,
+      results: total(seconds),
+    });
+    const sha = (digit: string) => digit.repeat(40);
+    const main = taken(EPYC, 10, { runtime: sha("a"), bridge: sha("b") });
+    const pull = taken(EPYC, 16, { runtime: sha("c"), bridge: sha("b") });
+
+    it("heads its table with main and this pull request, and gives the change in percent and the multiple", () => {
+      const text = compare.comparison(pull, { sameJob: main });
+      assert.match(text, /main\s+this pull request\s+change/);
+      assert.match(
+        text,
+        /fresh-first-screen-x\/total\s+10\.0 s\s+16\.0 s\s+\+60% \(1\.6x slower\)/,
+      );
+      assert.doesNotMatch(text, /before|after/i);
+    });
+
+    it("says in a sentence for each scenario what main took and what this pull request took", () => {
+      const text = compare.comparison(pull, { sameJob: main });
+      assert.match(
+        text,
+        /fresh-first-screen-x: main 10\.0 s, this pull request 16\.0 s: \+60% \(1\.6x slower\)/,
+      );
+    });
+
+    it("says that the two were measured in one job on one runner, and names the processor once", () => {
+      const text = compare.comparison(pull, { sameJob: main });
+      assert.match(text, /same job/);
+      assert.match(text, /both on AMD EPYC 9V74 80-Core Processor/);
+      assert.doesNotMatch(text, /not comparable/);
+    });
+
+    it("says that both read the Bridge build when it is the same one", () => {
+      const text = compare.comparison(pull, { sameJob: main });
+      assert.match(text, /Both runs read the Bridge build bbbbbbb/);
+    });
+
+    it("says that each side read its own Bridge when the builds differ, and how each side picked it", () => {
+      const own = taken(EPYC, 16, { runtime: sha("c"), bridge: sha("d") });
+      const text = compare.comparison(own, { sameJob: main });
+      assert.match(text, /main's run read the Bridge build bbbbbbb/);
+      assert.match(text, /this pull request's read ddddddd/);
+      assert.match(text, /Depends-On/);
+    });
+
+    it("names the other components whose commits differ between the two", () => {
+      const other = taken(EPYC, 16, {
+        runtime: sha("c"),
+        bridge: sha("b"),
+        vocabulary: sha("e"),
+      });
+      const base = taken(EPYC, 10, {
+        runtime: sha("a"),
+        bridge: sha("b"),
+        vocabulary: sha("f"),
+      });
+      const text = compare.comparison(other, { sameJob: base });
+      assert.match(text, /vocabulary: main fffffff, this pull request eeeeeee/);
+    });
+
+    it("says in plain words that totals are not comparable when the two runs landed on different CPUs, and still gives the table", () => {
+      const slower = taken("AMD EPYC 7763 64-Core Processor", 16, {
+        runtime: sha("c"),
+        bridge: sha("b"),
+      });
+      const text = compare.comparison(slower, { sameJob: main });
+      assert.match(
+        text,
+        /The two runs landed on different CPUs; totals are not comparable\./,
+      );
+      assert.match(text, /AMD EPYC 9V74/);
+      assert.match(text, /AMD EPYC 7763/);
+      assert.match(text, /fresh-first-screen-x\/total\s+10\.0 s\s+16\.0 s/);
+    });
+
+    it("does not say that two runs are on one CPU when a file records none", () => {
+      const unknown = taken(undefined, 16, {
+        runtime: sha("c"),
+        bridge: sha("b"),
+      });
+      const text = compare.comparison(unknown, { sameJob: main });
+      assert.match(text, /records no CPU model/);
+      assert.doesNotMatch(text, /both on/);
+    });
+
+    it("reads a CPU model from the runner a file names, and none from a file that names none", () => {
+      assert.equal(compare.cpuModelOf(main), EPYC);
+      assert.equal(compare.cpuModelOf(taken(undefined, 1, {})), undefined);
+      assert.equal(compare.cpuModelOf({ results: [] }), undefined);
+    });
+  });
+
+  describe("given a pull request whose job could not measure main", () => {
+    const row = (value: number): Row[] => [
+      {
+        name: "fresh-first-screen-x/total",
+        unit: "s",
+        value,
+        kind: "clock",
+        samples: 3,
+        range: `${value}-${value}`,
+      },
+    ];
+    const pull = file(row(10));
+    const latest = file(row(40));
+    let folder = "";
+    before(async () => {
+      folder = await mkdtemp(join(tmpdir(), "perf-main-"));
+      scratch.push(folder);
+      await writeFile(join(folder, "pr.json"), JSON.stringify(pull));
+      await writeFile(join(folder, "latest.json"), JSON.stringify(latest));
+      await writeFile(join(folder, "broken.json"), '{"results": [');
+    });
+    const against = async (...args: string[]) => {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL("../../../../scripts/perf-compare.mjs", import.meta.url),
+          ),
+          "against",
+          join(folder, "pr.json"),
+          "--markdown",
+          ...args,
+        ],
+        { encoding: "utf8" },
+      );
+      return stdout;
+    };
+
+    it("compares with the latest push to main instead, says that main's own run did not give a file, and says that it was taken on another run", () => {
+      const text = compare.comparison(pull, {
+        latest,
+        latestName: "runtime/2026/11/20/1-aaaaaaa-push.json",
+        sameJob: null,
+        markdown: true,
+      });
+      assert.match(text, /main's own run in this job did not give a file/);
+      assert.match(
+        text,
+        /Against `runtime\/2026\/11\/20\/1-aaaaaaa-push\.json`/,
+      );
+      assert.match(text, /another machine/);
+      assert.match(
+        text,
+        /\| fresh-first-screen-x\/total \| 40\.0 s \| 10\.0 s \|/,
+      );
+      assert.doesNotMatch(text, /this pull request \|/);
+    });
+
+    it("gives this pull request's own file alone when there is no file of main's at all", () => {
+      const text = compare.comparison(pull, { sameJob: null });
+      assert.match(text, /nothing to compare with/);
+      assert.match(text, /fresh-first-screen-x\/total/);
+    });
+
+    it("exits 0 and falls back when the file of main's run is missing", async () => {
+      const text = await against(
+        "--same-job",
+        join(folder, "missing.json"),
+        "--latest",
+        join(folder, "latest.json"),
+        "--latest-name",
+        "runtime/latest.json",
+      );
+      assert.match(text, /did not give a file/);
+      assert.match(text, /Against `runtime\/latest\.json`/);
+    });
+
+    it("exits 0 and falls back when the file of main's run is not a performance file", async () => {
+      const text = await against(
+        "--same-job",
+        join(folder, "broken.json"),
+        "--latest",
+        join(folder, "latest.json"),
+        "--latest-name",
+        "runtime/latest.json",
+      );
+      assert.match(text, /did not give a file/);
+      assert.match(text, /Against `runtime\/latest\.json`/);
+    });
+
+    it("uses main's file from the same job when it is there, and the latest push's only to say nothing of it", async () => {
+      const text = await against(
+        "--same-job",
+        join(folder, "latest.json"),
+        "--latest",
+        join(folder, "latest.json"),
+        "--latest-name",
+        "runtime/latest.json",
+      );
+      assert.match(text, /same job/);
+      assert.doesNotMatch(text, /Against `/);
     });
   });
 
