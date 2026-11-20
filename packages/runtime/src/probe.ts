@@ -1,18 +1,43 @@
+/**
+ * What a span name took: `calls`, `ms` the sum of every call's own time (calls that overlap each count in full, so it can
+ * pass the time that went by), and `wallMs` the time at least one call of the name was in progress, which cannot.
+ */
+export interface Spent {
+  calls: number;
+  ms: number;
+  wallMs: number;
+}
+
 /** What a probe has seen: time and calls by span, and counts by name. */
 export interface Seen {
-  readonly spans: ReadonlyMap<string, { calls: number; ms: number }>;
+  readonly spans: ReadonlyMap<string, Spent>;
   readonly counts: ReadonlyMap<string, number>;
 }
 
 /**
  * Counts and times the work of an import for a bench to report. Nothing is measured unless a run is made through
  * `probing`: every site is one check of `active`, so the runtime pays nothing when it is off.
+ *
+ * Calls of one name may overlap (the import seals every file at once), so each name has two times: the sum of its calls'
+ * own times and the wall-clock time some call of it was in progress (`Spent`).
  */
 class Probe implements Seen {
-  readonly spans = new Map<string, { calls: number; ms: number }>();
+  readonly spans = new Map<string, Spent>();
   readonly counts = new Map<string, number>();
   /** The spans open now, innermost last, which a count is credited to as well. */
   readonly open: string[] = [];
+  /** The calls of each name in progress now, and when the first of them began: what `wallMs` is made of. */
+  readonly #inFlight = new Map<string, { depth: number; since: number }>();
+
+  /** A call of the name begins now; returns the time, for `end`. */
+  begin(name: string): number {
+    const now = performance.now();
+    const flight = this.#inFlight.get(name);
+    if (flight === undefined)
+      this.#inFlight.set(name, { depth: 1, since: now });
+    else flight.depth += 1;
+    return now;
+  }
 
   add(name: string, by: number): void {
     this.counts.set(name, (this.counts.get(name) ?? 0) + by);
@@ -25,11 +50,31 @@ class Probe implements Seen {
     if (inner !== undefined) this.add(`${inner}.${name}`, by);
   }
 
+  /** The call of the name that began at `started` ends now. */
   end(name: string, started: number): void {
-    const span = this.spans.get(name) ?? { calls: 0, ms: 0 };
+    const now = performance.now();
+    const span = this.span(name);
     span.calls += 1;
-    span.ms += performance.now() - started;
-    this.spans.set(name, span);
+    span.ms += now - started;
+    const flight = this.#inFlight.get(name);
+    if (flight === undefined) {
+      span.wallMs += now - started;
+      return;
+    }
+    flight.depth -= 1;
+    if (flight.depth === 0) {
+      span.wallMs += now - flight.since;
+      this.#inFlight.delete(name);
+    }
+  }
+
+  span(name: string): Spent {
+    let span = this.spans.get(name);
+    if (span === undefined) {
+      span = { calls: 0, ms: 0, wallMs: 0 };
+      this.spans.set(name, span);
+    }
+    return span;
   }
 }
 
@@ -39,7 +84,9 @@ let active: Probe | undefined;
  * Runs the function with every count and span of the runtime recorded, and gives what was seen with its result. A
  * span's time includes the spans inside it. A graph scan and a store query are also credited to the innermost span
  * open, as `<span>.graph.scans` and `<span>.store.queries`, which is exact only where spans do not interleave: the
- * runtime's own are awaited one at a time.
+ * innermost open span is the last one begun, so work that runs at the same time as another (the files of an import
+ * sealed at once, the first screen's questions asked together) credits a count to whichever span began last. Its
+ * `ms` adds the time of every call, overlapping ones in full; its `wallMs` is the time some call of the name was open.
  */
 export async function probing<T>(
   run: () => Promise<T>,
@@ -87,7 +134,7 @@ export function scanned(quads: number): void {
 export function timed<T>(name: string, run: () => Promise<T>): Promise<T> {
   if (active === undefined) return run();
   const probe = active;
-  const started = performance.now();
+  const started = probe.begin(name);
   probe.open.push(name);
   return (async () => {
     try {
@@ -102,16 +149,21 @@ export function timed<T>(name: string, run: () => Promise<T>): Promise<T> {
 /**
  * Runs the function as the named span while probing, but not as an open one: a count made inside is credited to the
  * innermost span `timed` opened, as it would be without this one. For the time of a step whose counts are another's.
+ * A name given as a function is made only when probing, so a run that is not probed builds no string for it.
  */
-export function timedAside<T>(name: string, run: () => Promise<T>): Promise<T> {
+export function timedAside<T>(
+  name: string | (() => string),
+  run: () => Promise<T>,
+): Promise<T> {
   if (active === undefined) return run();
   const probe = active;
-  const started = performance.now();
+  const named = typeof name === "string" ? name : name();
+  const started = probe.begin(named);
   return (async () => {
     try {
       return await run();
     } finally {
-      probe.end(name, started);
+      probe.end(named, started);
     }
   })();
 }
@@ -124,7 +176,7 @@ export function queried<T>(run: () => T): T {
   if (active === undefined) return run();
   const probe = active;
   probe.addInside("store.queries", 1);
-  const started = performance.now();
+  const started = probe.begin("store.query");
   try {
     return run();
   } finally {
@@ -132,11 +184,24 @@ export function queried<T>(run: () => T): T {
   }
 }
 
+/**
+ * Records a span measured elsewhere (by another thread, or by the Bridge's own clock) as `calls` calls taking `ms`
+ * in all, while probing, which is also its wall time: what was measured elsewhere is not overlapped with itself here.
+ * Nothing when it is off.
+ */
+export function recorded(name: string, ms: number, calls = 1): void {
+  if (active === undefined) return;
+  const span = active.span(name);
+  span.calls += calls;
+  span.ms += ms;
+  span.wallMs += ms;
+}
+
 /** `timed` for a function that is not async. */
 export function timedSync<T>(name: string, run: () => T): T {
   if (active === undefined) return run();
   const probe = active;
-  const started = performance.now();
+  const started = probe.begin(name);
   probe.open.push(name);
   try {
     return run();

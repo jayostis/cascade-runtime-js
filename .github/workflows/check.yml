@@ -173,10 +173,11 @@ jobs:
   # The runtime on Oxigraph's native build, built here from native/oxigraph as the oxigraph-native workflow builds it
   # for Linux: the conformance command runs on each build and every test must have the same outcome on both, and the
   # suite runs on the native build. The start action only checks the counterparts out, as for `runtime tests`, so this
-  # job posts no table and keeps no report beside the `tests and conformance` job's.
+  # job posts no table and keeps no report beside the `tests and conformance` job's. It runs on a push to main as well:
+  # `runtime tests` runs the suite there on the WebAssembly build only, so without this nothing of the native build, or of
+  # the two builds' same-outcome check, runs on main until the next pull request.
   tests-native:
     name: tests and conformance (native)
-    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     env:
       CASCADE_TEST_OFFLINE: "1"

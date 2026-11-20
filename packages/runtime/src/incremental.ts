@@ -1288,57 +1288,59 @@ export class KeptBuild {
     const entryNames = new Set<string>();
     for (const { file, writtenAlways } of layout.views) {
       const path = file ?? "";
-      const view = address + path;
-      const made = files.get(path);
-      if (writtenAlways) {
-        if (made === undefined) continue;
-        const before = this.#always.get(path) ?? [];
-        if (sameTriples(before, made)) continue;
-        for (const [subject] of [...before, ...made])
-          if (subject.value !== view) entryNames.add(subject.value);
-        await this.#replacedSubjects(
-          view,
-          before.map(([subject]) => subject.value),
-          made,
-        );
-        this.#always.set(path, made);
-        changed.set(path, made);
-        continue;
-      }
-      let groups = this.#views.get(path);
-      const gone: string[] = [];
-      for (const hash of oldHashes) {
-        const entry = `${view}#${hash}`;
-        entryNames.add(entry);
-        const triples = groups?.get(entry);
-        if (triples === undefined) continue;
-        gone.push(...new Set(triples.map(([subject]) => subject.value)));
-        groups?.delete(entry);
-      }
-      const fresh: Triple[] = [];
-      if (made !== undefined) {
-        const madeGroups = byEntry(view, made);
-        if (groups === undefined) {
-          groups = new Map();
-          this.#views.set(path, groups);
+      await timedAside(`view.build:${path}`, async () => {
+        const view = address + path;
+        const made = files.get(path);
+        if (writtenAlways) {
+          if (made === undefined) return;
+          const before = this.#always.get(path) ?? [];
+          if (sameTriples(before, made)) return;
+          for (const [subject] of [...before, ...made])
+            if (subject.value !== view) entryNames.add(subject.value);
+          await this.#replacedSubjects(
+            view,
+            before.map(([subject]) => subject.value),
+            made,
+          );
+          this.#always.set(path, made);
+          changed.set(path, made);
+          return;
         }
-        const own = madeGroups.get("") ?? [];
-        const before = groups.get("") ?? [];
-        if (!sameTriples(before, own)) {
-          gone.push(view);
-          groups.set("", own);
-          fresh.push(...own);
-        }
-        for (const [entry, triples] of madeGroups) {
-          if (!newHashes.has(entry.slice(view.length + 1))) continue;
+        let groups = this.#views.get(path);
+        const gone: string[] = [];
+        for (const hash of oldHashes) {
+          const entry = `${view}#${hash}`;
           entryNames.add(entry);
-          groups.set(entry, triples);
-          fresh.push(...triples);
+          const triples = groups?.get(entry);
+          if (triples === undefined) continue;
+          gone.push(...new Set(triples.map(([subject]) => subject.value)));
+          groups?.delete(entry);
         }
-      }
-      if (gone.length === 0 && fresh.length === 0) continue;
-      await this.#replacedSubjects(view, gone, fresh);
-      if (groups !== undefined) changed.set(path, flat(groups));
+        const fresh: Triple[] = [];
+        if (made !== undefined) {
+          const madeGroups = byEntry(view, made);
+          if (groups === undefined) {
+            groups = new Map();
+            this.#views.set(path, groups);
+          }
+          const own = madeGroups.get("") ?? [];
+          const before = groups.get("") ?? [];
+          if (!sameTriples(before, own)) {
+            gone.push(view);
+            groups.set("", own);
+            fresh.push(...own);
+          }
+          for (const [entry, triples] of madeGroups) {
+            if (!newHashes.has(entry.slice(view.length + 1))) continue;
+            entryNames.add(entry);
+            groups.set(entry, triples);
+            fresh.push(...triples);
+          }
+        }
+        if (gone.length === 0 && fresh.length === 0) return;
+        await this.#replacedSubjects(view, gone, fresh);
+        if (groups !== undefined) changed.set(path, flat(groups));
+      });
     }
     this.#held = held;
 

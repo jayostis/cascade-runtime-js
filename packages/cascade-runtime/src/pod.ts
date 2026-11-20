@@ -1000,15 +1000,19 @@ class OpenPod implements Pod {
     acceptAskOptions(options);
     if (typeof question !== "string")
       return this.#next(() => this.#ask(question, options));
-    return this.#databaseFirst(
-      async () =>
-        (await this.#fromDatabase(question, options.lens)) ??
-        (await this.#keptBefore(question, options).then(
-          (rows) => (rows === undefined ? undefined : { rows }),
-          () => undefined,
-        )),
-      () => this.#ask(question, options),
-      (page) => page.rows,
+    return timedAside(
+      () => `question:${question}`,
+      () =>
+        this.#databaseFirst(
+          async () =>
+            (await this.#fromDatabase(question, options.lens)) ??
+            (await this.#keptBefore(question, options).then(
+              (rows) => (rows === undefined ? undefined : { rows }),
+              () => undefined,
+            )),
+          () => this.#ask(question, options),
+          (page) => page.rows,
+        ),
     );
   }
 
@@ -1048,18 +1052,22 @@ class OpenPod implements Pod {
     acceptPageOptions(options);
     const { size, after, lens } = options;
     const fromDatabase = this.#pageFromDatabase(question, lens, size, after);
-    return this.#databaseFirst(
-      fromDatabase,
-      async () => {
-        const answered = await fromDatabase();
-        if (answered !== undefined) return answered;
-        const rows = await this.#askedOfStore(
-          question,
-          lens ?? this.#parts.lens,
-        );
-        return pageOfRows(question, rows, size, after);
-      },
-      (answered) => answered,
+    return timedAside(
+      () => `question.page:${question}`,
+      () =>
+        this.#databaseFirst(
+          fromDatabase,
+          async () => {
+            const answered = await fromDatabase();
+            if (answered !== undefined) return answered;
+            const rows = await this.#askedOfStore(
+              question,
+              lens ?? this.#parts.lens,
+            );
+            return pageOfRows(question, rows, size, after);
+          },
+          (answered) => answered,
+        ),
     );
   }
 

@@ -1,6 +1,7 @@
 import { createSHA256, type IHasher } from "hash-wasm";
 import { canonize } from "rdf-canonize";
 import type { Triple } from "./rdf.js";
+import { timedAside } from "./probe.js";
 import { Refusal } from "./refusal.js";
 
 const NI = "ni:///sha-256;";
@@ -21,9 +22,11 @@ function base64url(bytes: Uint8Array): string {
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(
-    await globalThis.crypto.subtle.digest(
-      "SHA-256",
-      bytes as Uint8Array<ArrayBuffer>,
+    await timedAside("files.hash.sha256", () =>
+      globalThis.crypto.subtle.digest(
+        "SHA-256",
+        bytes as Uint8Array<ArrayBuffer>,
+      ),
     ),
   );
 }

@@ -7,6 +7,7 @@ import {
   writeAll,
 } from "./files.js";
 import { same } from "./pod.js";
+import { timedAside } from "./probe.js";
 import { Refusal } from "./step.js";
 import { looseNumbers, parseStrictJson } from "./strict-json.js";
 
@@ -410,15 +411,17 @@ async function seal(
   const iv = random(NONCE);
   const bytes = copied(plain);
   try {
-    const sealed = await globalThis.crypto.subtle.encrypt(
-      {
-        name: "AES-GCM",
-        iv,
-        tagLength: TAG * 8,
-        ...(aad === undefined ? {} : { additionalData: aad }),
-      },
-      key,
-      bytes,
+    const sealed = await timedAside("files.encrypt", () =>
+      globalThis.crypto.subtle.encrypt(
+        {
+          name: "AES-GCM",
+          iv,
+          tagLength: TAG * 8,
+          ...(aad === undefined ? {} : { additionalData: aad }),
+        },
+        key,
+        bytes,
+      ),
     );
     return joined(iv, new Uint8Array(sealed));
   } finally {
@@ -436,15 +439,17 @@ async function opened(
   const bytes = copied(sealed);
   try {
     return new Uint8Array(
-      await globalThis.crypto.subtle.decrypt(
-        {
-          name: "AES-GCM",
-          iv: bytes.subarray(0, NONCE),
-          tagLength: TAG * 8,
-          ...(aad === undefined ? {} : { additionalData: aad }),
-        },
-        key,
-        bytes.subarray(NONCE),
+      await timedAside("files.decrypt", () =>
+        globalThis.crypto.subtle.decrypt(
+          {
+            name: "AES-GCM",
+            iv: bytes.subarray(0, NONCE),
+            tagLength: TAG * 8,
+            ...(aad === undefined ? {} : { additionalData: aad }),
+          },
+          key,
+          bytes.subarray(NONCE),
+        ),
       ),
     );
   } catch (error) {
@@ -1293,7 +1298,12 @@ export class SealedIndex {
       indexBytes(counter, entries),
       INDEX_BOUND,
     );
-    if (!(await created(this.#files, indexAt(counter), bytes))) return "taken";
+    if (
+      !(await timedAside("files.commit.index", () =>
+        created(this.#files, indexAt(counter), bytes),
+      ))
+    )
+      return "taken";
     if (countersIn(await this.#files.list(SEALED_INDEX))[0] !== counter)
       return "unsure";
     this.#stored = bytes;

@@ -1,6 +1,7 @@
 import type { Database, DatabaseFunction, Statement } from "./database.js";
 import type { Files } from "./files.js";
 import type { BuildChange } from "./incremental.js";
+import { timedSync } from "./probe.js";
 import { iri, type Triple, written } from "./rdf.js";
 import {
   graphsOfDump,
@@ -108,22 +109,31 @@ export interface BesideDatabase {
 export function builtWholeIn(
   db: Database,
   whole: Omit<WholeBuild, "key">,
+  /** Runs each step of the build as the named one, for a worker that times them; the build is the same without it. */
+  step: BuildStep = (_, run) => run(),
 ): void {
   db.transaction(() => {
-    loadStatements(
-      db,
-      whole.schema,
-      graphsOfDump(whole.dump, new Set(whole.graphs)),
-      whole.fingerprint,
+    step("pod-database.build.load", () =>
+      loadStatements(
+        db,
+        whole.schema,
+        graphsOfDump(whole.dump, new Set(whole.graphs)),
+        whole.fingerprint,
+      ),
     );
     for (const part of SCREEN_PARTS)
-      for (const view of whole.views) {
-        const statements = view.get(part);
-        if (statements === undefined) continue;
-        for (const text of sqlStatements(statements)) db.prepare(text).run();
-      }
+      step(`pod-database.build.screens:${part}`, () => {
+        for (const view of whole.views) {
+          const statements = view.get(part);
+          if (statements === undefined) continue;
+          for (const text of sqlStatements(statements)) db.prepare(text).run();
+        }
+      });
   });
 }
+
+/** How a build is told to run one of its steps, by name. */
+export type BuildStep = (name: string, run: () => void) => void;
 
 const decoded = (bytes: Uint8Array | undefined, path: string): string => {
   if (bytes === undefined) throw new Error(`the vocabulary holds no ${path}`);
@@ -366,24 +376,29 @@ export class PodDatabase {
     const db = this.#db;
     db.transaction(() => {
       const keyed = new KeyedStatements(db);
-      for (const change of changes) {
-        if ("loaded" in change) {
-          keyed.removeGraph(change.graph);
-          keyed.add(change.graph, loaded.get(change.graph) ?? []);
-        } else if ("whole" in change) {
-          keyed.removeGraph(change.graph);
-          keyed.add(change.graph, held(change.whole));
-        } else {
-          keyed.removeSubjects(change.graph, change.gone);
-          keyed.add(change.graph, held(change.fresh));
+      timedSync("pod-database.keyed.graphs", () => {
+        for (const change of changes) {
+          if ("loaded" in change) {
+            keyed.removeGraph(change.graph);
+            keyed.add(change.graph, loaded.get(change.graph) ?? []);
+          } else if ("whole" in change) {
+            keyed.removeGraph(change.graph);
+            keyed.add(change.graph, held(change.whole));
+          } else {
+            keyed.removeSubjects(change.graph, change.gone);
+            keyed.add(change.graph, held(change.fresh));
+          }
         }
-      }
-      if (screened) {
-        keyed.scoped();
-        for (const part of RUN_PARTS)
-          for (const view of this.#screens.views) this.#ran(view.get(part));
-      }
-      ledgerNamed(db, fingerprint);
+      });
+      if (screened)
+        timedSync("pod-database.keyed.screens", () => {
+          keyed.scoped();
+          for (const part of RUN_PARTS)
+            for (const view of this.#screens.views) this.#ran(view.get(part));
+        });
+      timedSync("pod-database.keyed.ledger", () =>
+        ledgerNamed(db, fingerprint),
+      );
     });
   }
 
