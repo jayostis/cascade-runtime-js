@@ -43,6 +43,7 @@ export * from "./perf-plan.js";
 export * from "./perf-rows.js";
 export * from "./perf-run.js";
 export * from "./perf-scenarios/close.js";
+export * from "./perf-scenarios/file-ops.js";
 export * from "./perf-scenarios/floor.js";
 export * from "./perf-scenarios/fresh-first-screen.js";
 export * from "./perf-scenarios/question-page.js";

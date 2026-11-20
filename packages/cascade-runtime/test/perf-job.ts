@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { tablesBeside } from "cascade-runtime";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 import { type Loaded } from "./perf-floor.js";
+import { type FileOpsRun } from "./perf-scenarios/file-ops.js";
 import { explainSpan } from "./perf-glossary.js";
 import { type DatasetId } from "./perf-data.js";
 import { type Scenario } from "./perf-plan.js";
@@ -19,7 +20,8 @@ export const SECRET = "t-shirt abacus yo-yo zoom drop-down felt-tip";
 
 /** What one child process is asked to measure. */
 export interface Job {
-  readonly scenario: "fresh" | "reopen" | "question-page" | "floor";
+  readonly scenario:
+    "fresh" | "reopen" | "question-page" | "floor" | "file-ops";
   readonly dataset: DatasetId;
   readonly encrypted: boolean;
   readonly probed: boolean;
@@ -45,6 +47,8 @@ export interface Measured {
   readonly wrote?: number;
   /** What the floor loaded and how long each stage took, for the floor scenario. */
   readonly floor?: Loaded;
+  /** What the file micro-bench timed, for that scenario. */
+  readonly fileOps?: FileOpsRun;
   readonly seen?: Tabulated;
   /** The close alone, for a fresh run: its own probe. */
   readonly closeSeen?: Tabulated;

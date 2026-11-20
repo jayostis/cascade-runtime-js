@@ -1,0 +1,43 @@
+{
+  "scenarios": {
+    "file-ops": {
+      "chart": false,
+      "says": "What one small file costs on the machine the run is on: asking whether it is there, creating it, creating and renaming it, and what the pod's folder does for a file; and writing the same bytes as one file. It is about the operating system and its disk, not about the runtime's code, so it is read from one system to another.",
+      "total": "The file micro-bench has no total: it is a set of per-file times, one for each operation and each number of files in flight at once."
+    }
+  },
+  "datasets": {
+    "3000-files": "3,000 small files of 280 bytes each, made in a temporary folder on the machine's own disk, the machine as it is.",
+    "3000-files-scanner-off": "The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live checking of files switched off, to see whether the scanner is what makes creating a file slow.",
+    "3000-files-scanner-excluded": "The same 3,000 small files, made while the scanner's live checking is on but the folder the files are made in is excluded from it, to see whether an exclusion is enough."
+  },
+  "measureFamilies": [
+    {
+      "startsWith": "absent-check/in-flight-",
+      "says": "The time to ask whether a file is there, when it is not, for one file; {name} such questions in flight at once. The runtime asks this before it writes a file."
+    },
+    {
+      "startsWith": "create/in-flight-",
+      "says": "The time to create one new small file and write its bytes; {name} files in flight at once."
+    },
+    {
+      "startsWith": "create-rename/in-flight-",
+      "says": "The time to create one small file under a temporary name and rename it over its real name, as a pod's folder does so that no reader sees half a file; {name} files in flight at once."
+    },
+    {
+      "startsWith": "full-path/in-flight-",
+      "says": "The time for what the pod's folder does for one file: look at the path, resolve the folder, create the file under a temporary name and rename it; {name} files in flight at once."
+    }
+  ],
+  "measures": {
+    "one-file/whole": "The time to write the bytes of all 3,000 files as ONE file and rename it over its name: what a pod would pay if it kept its new files together in one file. In seconds for the whole, not per file.",
+    "one-file/whole-flushed": "The same one file, flushed to the drive before it is renamed, so the figure includes the time the system takes to make the bytes safe against a power cut. In seconds for the whole, not per file."
+  },
+  "counts": {
+    "files": "How many small files each of the per-file times is the mean over, and the number of files whose bytes make the one file.",
+    "scanner-realtime-on": "Whether the system's virus scanner had its live checking of files on while the files were made: 1 for yes, 0 for no. Read back from Windows Defender itself, not assumed.",
+    "scanner-switch-off-allowed": "Whether the runner let the run switch the virus scanner's live checking off and the scanner confirmed it: 1 for yes, 0 for no; the row's note says why not.",
+    "scanner-exclusion-allowed": "Whether the runner let the run exclude the folder from the virus scanner and the scanner listed it: 1 for yes, 0 for no; the row's note says why not.",
+    "scanner-folder-excluded": "Whether the folder the files were made in was on the scanner's list of excluded folders while they were made: 1 for yes, 0 for no."
+  }
+}

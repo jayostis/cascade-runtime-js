@@ -101,9 +101,12 @@ export function clockRow(
   unit: "s" | "By",
   samples: readonly number[],
   extra: string,
+  /**
+   * The places kept. Microseconds for a time: a question answered from the database takes under a millisecond, which three
+   * places would round to 0. The time of one file asks for nanoseconds.
+   */
+  places = unit === "s" ? 6 : 0,
 ): Row {
-  // Microseconds: a question answered from the database takes under a millisecond, which three places would round to 0.
-  const places = unit === "s" ? 6 : 0;
   return {
     name,
     unit,
