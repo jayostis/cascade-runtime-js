@@ -11,6 +11,7 @@ import {
 import { CorePod, type CorePodOptions } from "../src/core-pod.js";
 import { dataset, podFiles } from "../src/dataset.js";
 import { type Files, MemoryFiles } from "../src/files.js";
+import { boundValues } from "../src/incremental.js";
 import { randomId } from "../src/ids.js";
 import { LAYOUT_FILE, LAYOUT_GRAPH, Layout } from "../src/layout.js";
 import { matcherView, runMatcher } from "../src/matcher.js";
@@ -882,6 +883,122 @@ describe("Keeping one build of a pod across steps · CorePodOptions.build, CoreP
       assert.ok(runs.length > 0);
       for (const run of runs)
         assert.deepEqual(run.afterSelect, run.beforeSelect, run.step);
+    });
+  });
+
+  describe("when a step puts quads in the kept build, and the pod moves the build to a store of its own after enough of them replace others", () => {
+    /** How many times the pod moved its kept build to a store of its own over the replay of one example of the arrivals. */
+    async function compactionsOver(example: string): Promise<number> {
+      const build = await vocabularyBuild(await vocabulary(), await layout());
+      const { seen } = await probing(() =>
+        replayed("runtime/arrivals.feature", example, {
+          importers: [appleHealthExport],
+          build: {
+            lens: "everyday",
+            derive: deriveWith(build),
+            incremental: build,
+            renewAfterMoved: 1,
+          },
+        }),
+      );
+      return seen.counts.get("core-pod.compactions") ?? 0;
+    }
+
+    it("does not move the build when the only step is an import into a pod that held nothing, whatever the threshold, for nothing is there to replace", async () => {
+      assert.equal(
+        await compactionsOver(
+          "each record's first arrival is its first version and a revision that follows none",
+        ),
+        0,
+      );
+    });
+
+    it("moves the build once imports revise records, for each revision replaces what the views and the derived state held", async () => {
+      assert.ok(
+        (await compactionsOver(
+          "the peanut allergy changes and changes back, and its third revision sets its first version again",
+        )) > 0,
+      );
+    });
+  });
+
+  describe("boundValues()", () => {
+    /** A store that counts the SELECTs and the ASKs it answers. */
+    class Asked extends OxigraphStore {
+      selects = 0;
+      asks = 0;
+      override select(query: string, union: ReadonlySet<string>) {
+        this.selects += 1;
+        return super.select(query, union);
+      }
+      override ask(query: string, union: ReadonlySet<string>) {
+        this.asks += 1;
+        return super.ask(query, union);
+      }
+    }
+
+    const TYPED = "<urn:test:Typed>";
+    const iris = (count: number) =>
+      Array.from({ length: count }, (_, at) => `urn:test:r${at}`);
+
+    /** A union holding a typed triple for each of `typed`, and the answer of `boundValues()` over `bound`. */
+    async function over(
+      bound: readonly string[],
+      typed: readonly string[],
+      where: string | readonly string[],
+    ) {
+      const store = new Asked();
+      const union = new Union(store);
+      await union.add(
+        typed.map((subject) => [
+          iri(subject),
+          iri("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
+          iri("urn:test:Typed"),
+        ]),
+        "urn:test:graph",
+      );
+      store.selects = 0;
+      store.asks = 0;
+      const found = await boundValues(union, bound, where);
+      return { found, selects: store.selects, asks: store.asks };
+    }
+
+    const TYPED_PATTERN = `?bound a ${TYPED} BIND (?bound AS ?found)`;
+
+    it("asks once, and runs no batch, when more IRIs than one batch binds can match nothing", async () => {
+      const done = await over(
+        iris(300),
+        [],
+        [TYPED_PATTERN, "?bound <urn:test:none> ?x BIND (?bound AS ?found)"],
+      );
+      assert.deepEqual([...done.found], []);
+      assert.deepEqual([done.asks, done.selects], [1, 0]);
+    });
+
+    it("returns each IRI the patterns match, from every batch, after the one ask", async () => {
+      const bound = iris(300);
+      const done = await over(
+        bound,
+        ["urn:test:r3", "urn:test:r280", "urn:test:r999"],
+        TYPED_PATTERN,
+      );
+      assert.deepEqual([...done.found].sort(), [
+        "urn:test:r280",
+        "urn:test:r3",
+      ]);
+      assert.deepEqual([done.asks, done.selects], [1, 2]);
+    });
+
+    it("runs the batches when the ask is answered by something the bound IRIs do not reach", async () => {
+      const done = await over(iris(300), ["urn:test:elsewhere"], TYPED_PATTERN);
+      assert.deepEqual([...done.found], []);
+      assert.deepEqual([done.asks, done.selects], [1, 2]);
+    });
+
+    it("asks nothing when one batch holds every IRI", async () => {
+      const none = await over(iris(256), [], TYPED_PATTERN);
+      assert.deepEqual([...none.found], []);
+      assert.deepEqual([none.asks, none.selects], [0, 1]);
     });
   });
 

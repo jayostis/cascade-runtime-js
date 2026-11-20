@@ -62,7 +62,7 @@ function batches<T>(all: readonly T[]): T[][] {
  * patterns are alternatives, each given the IRIs itself: Oxigraph's JavaScript build evaluates a UNION whole before
  * joining it to the VALUES outside it.
  */
-async function boundValues(
+export async function boundValues(
   union: Union,
   iris: Iterable<string>,
   where: string | readonly string[],
