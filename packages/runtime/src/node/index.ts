@@ -1,6 +1,9 @@
 import { useOxigraph } from "../oxigraph-engine.js";
 import { chooseOxigraph } from "./oxigraph-native.js";
 
+// The archive reader needs no Node, but only a Node host keeps archives (X1), so a browser bundle never carries it.
+export * from "../archives.js";
+export * from "./archive-commands.js";
 export { BUILD, latestBuild } from "./bridge-build.js";
 export * from "./components.js";
 export * from "./encryption.js";

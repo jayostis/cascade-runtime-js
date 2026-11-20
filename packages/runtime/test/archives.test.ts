@@ -123,11 +123,11 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
 
     it("reads an entry, stored or deflated, as the file it holds, and part of one as readRange does", async () => {
       for (const [kind, files] of kinds) {
-        for (const path of [CARD, LOOSE, STORED, DEFLATED, SUBJECT])
+        for (const path of [CARD, LOOSE, STORED, DEFLATED, SUBJECT] as const)
           assert.equal(text(await files.read(path)), BODY[path], kind);
         assert.equal(
           text(await files.readRange(`${POD}${STORED}`, -4, 3)),
-          "n> ",
+          "> .",
           kind,
         );
         assert.equal(
@@ -217,6 +217,11 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
         "torn",
         zipOf([file(STORED)], { torn: true }),
         /no end of central directory record/,
+      ],
+      [
+        "bytes before its first entry",
+        new Uint8Array([0, 0, 0, 0, ...zipOf([file(STORED)])]),
+        /not where its end record says/,
       ],
       [
         "an encrypted entry",
@@ -318,20 +323,28 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
     );
   });
 
-  it("takes an entry for a folder as no file, and an archive of none as one holding nothing", async () => {
+  it("takes an entry for a folder as no file and an archive of none as one holding nothing, and finds an archive's end past its comment", async () => {
     const host = new MemoryFiles(POD);
     await archived(
       host,
       zipOf([{ path: "records/", bytes: new Uint8Array() }]),
     );
     await archived(host, zipOf([]));
-    assert.deepEqual(await new ArchivedFiles(host, ARCHIVES).list(""), []);
+    await archived(
+      host,
+      zipOf([{ path: SUBJECT, bytes: bytes(BODY[SUBJECT]) }], {
+        comment: "x".repeat(300),
+      }),
+    );
+    const files = new ArchivedFiles(host, ARCHIVES);
+    assert.deepEqual(await files.list(""), [SUBJECT]);
+    assert.equal(text(await files.read(SUBJECT)), BODY[SUBJECT]);
   });
 
   it("writes a file no archive holds through to the host; refuses one an archive holds with other bytes, and removes none an archive holds", async () => {
     const { host } = await memoryPod();
     const files = new ArchivedFiles(host, ARCHIVES);
-    await files.writeAll([[LOOSE.replace("aa01", "aa05"), bytes("<#e> .\n")]]);
+    await files.write(LOOSE.replace("aa01", "aa05"), bytes("<#e> .\n"));
     assert.equal(
       text(await host.read(LOOSE.replace("aa01", "aa05"))),
       "<#e> .\n",
@@ -343,6 +356,7 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
       (error: unknown) =>
         error instanceof Refusal && error.message.includes(STORED),
     );
+    assert.ok(files.remove);
     await assert.rejects(
       files.remove([STORED]),
       (error: unknown) =>

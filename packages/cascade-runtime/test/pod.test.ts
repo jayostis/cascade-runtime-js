@@ -4174,7 +4174,7 @@ describe("Opening a pod whose files are held in archives · openPod()", () => {
 
   it("opens with every file an archive may hold in one archive as the same pod, answering as before; a torn archive fails the open, naming it", async () => {
     const at = await copied((await alexPod()).folder, "packed-alex");
-    const bare: Parts = { ...kept };
+    const bare: { -readonly [K in keyof Parts]: Parts[K] } = { ...kept };
     delete bare.answers;
     delete bare.builtBeside;
     const asked = async () => {
