@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { before, describe, it } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
@@ -9,11 +10,19 @@ import {
   type LoadedAdapter,
 } from "../src/bridge.js";
 import { CorePod } from "../src/core-pod.js";
-import { MemoryFiles } from "../src/files.js";
+import {
+  EncryptedFiles,
+  madeNewPod,
+  newHeader,
+  SealedIndex,
+} from "../src/encryption.js";
+import { type Files, MemoryFiles } from "../src/files.js";
+import { same, StepWrites } from "../src/pod.js";
 import { StoryTime } from "../src/ids.js";
 import { Graph, parseGraph } from "../src/graph.js";
 import { iri, written } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { probing } from "../src/probe.js";
 import { type Replayed, replay } from "../src/replay.js";
 import type { Step, Story } from "../src/story.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
@@ -212,6 +221,7 @@ async function carriesSelector(done: Replayed): Promise<void> {
 /** Ada's first export, then one that holds the current version restamped, a new version, and the first again. */
 async function threeStatesOfOneRecord(
   describeTheRepeatAs?: string,
+  podFiles: Files = new MemoryFiles("https://pod.example/"),
 ): Promise<Replayed> {
   const files = await vocabulary();
   const ada = "runtime/scripted-input/ada/";
@@ -311,7 +321,7 @@ async function threeStatesOfOneRecord(
     vocabulary: files,
     folder: "s",
     title: "",
-    pod: new MemoryFiles(story.address),
+    pod: podFiles,
     newStore,
     layout: await layout(),
     importers: [appleHealthExport],
@@ -327,10 +337,10 @@ const ADA_EXPORTS = [
   "no-source-version-again",
 ] as const;
 
-/** Ada's exports imported in the order given, a day apart, and the paths of the documents' bytes the pod keeps. */
-async function adaStoredBytes(
+/** Ada's exports imported in the order given, a day apart. */
+async function adaImported(
   order: readonly (typeof ADA_EXPORTS)[number][],
-): Promise<string[]> {
+): Promise<Replayed> {
   const files = await vocabulary();
   const pod = await layout();
   const story: Story = {
@@ -366,7 +376,105 @@ async function adaStoredBytes(
     importers: [appleHealthExport],
   });
   assert.equal(done.stopped, undefined);
-  return (await done.pod.list("")).filter((path) => pod.inStoredBytes(path));
+  return done;
+}
+
+/** Ada's exports imported in the order given, and the paths of the documents' bytes the pod keeps. */
+async function adaStoredBytes(
+  order: readonly (typeof ADA_EXPORTS)[number][],
+): Promise<string[]> {
+  const pod = await layout();
+  return (await (await adaImported(order)).pod.list("")).filter((path) =>
+    pod.inStoredBytes(path),
+  );
+}
+
+/**
+ * What a replay left in the pod: the sha256 of every file's path and bytes in name order, and the lines the pod's RDF
+ * files hold, which is how many lines a build that makes each file once builds.
+ */
+async function leftInPod(
+  done: Replayed,
+): Promise<{ sha256: string; files: number; lines: number }> {
+  const pod = await layout();
+  const hash = createHash("sha256");
+  let lines = 0;
+  const paths = (await done.pod.list("")).sort();
+  for (const path of paths) {
+    const bytes = (await done.pod.read(path)) ?? new Uint8Array();
+    hash
+      .update(`${path}\n`)
+      .update(createHash("sha256").update(bytes).digest());
+    if (pod.isRdf(path))
+      lines += new TextDecoder().decode(bytes).split("\n").length - 1;
+  }
+  return { sha256: hash.digest("hex"), files: paths.length, lines };
+}
+
+/** The bytes loaded as a record's held revision, and every file `StepWrites.add` was given, over a run. */
+interface Held {
+  readonly held: [string, Uint8Array][];
+  readonly written: Map<string, Uint8Array[]>;
+  /** The same bytes as `written`, copied when given, to show nothing changed them later. */
+  readonly writtenCopies: Map<string, Uint8Array[]>;
+}
+
+/** Runs `run`, recording each file the revisions hold (loaded as `<path>#held`) and each file the step is given to write. */
+async function heldAndWritten(run: () => Promise<Replayed>): Promise<Held> {
+  const held: [string, Uint8Array][] = [];
+  const written = new Map<string, Uint8Array[]>();
+  const writtenCopies = new Map<string, Uint8Array[]>();
+  const add = StepWrites.prototype.add;
+  const load = OxigraphStore.prototype.loadTurtle;
+  StepWrites.prototype.add = function (path, bytes, ...rest) {
+    written.set(path, [...(written.get(path) ?? []), bytes]);
+    writtenCopies.set(path, [
+      ...(writtenCopies.get(path) ?? []),
+      bytes.slice(),
+    ]);
+    return add.call(this, path, bytes, ...rest);
+  };
+  OxigraphStore.prototype.loadTurtle = function (turtle, options) {
+    if (options.graph.endsWith("#held") && typeof turtle !== "string")
+      held.push([
+        options.graph.slice("https://pod.example/".length, -"#held".length),
+        turtle,
+      ]);
+    return load.call(this, turtle, options);
+  };
+  try {
+    assert.equal((await run()).stopped, undefined);
+  } finally {
+    StepWrites.prototype.add = add;
+    OxigraphStore.prototype.loadTurtle = load;
+  }
+  return { held, written, writtenCopies };
+}
+
+/** What `leftInPod` says of the pod a run left, and how many lines the line builder built over the run. */
+type Imported = Awaited<ReturnType<typeof leftInPod>> & { built: number };
+
+/** The lines the line builder built over `run`, and the files it left, the ids it mints the same on every run. */
+async function importedOnce(run: () => Promise<Replayed>): Promise<Imported> {
+  const real = Object.getOwnPropertyDescriptor(globalThis.crypto, "randomUUID");
+  let drawn = 0;
+  Object.defineProperty(globalThis.crypto, "randomUUID", {
+    configurable: true,
+    writable: true,
+    value: () => `00000000-0000-4000-8000-${String(++drawn).padStart(12, "0")}`,
+  });
+  try {
+    const { result, seen } = await probing(run);
+    return {
+      ...(await leftInPod(result)),
+      built: seen.counts.get("built.lines.total") ?? 0,
+    };
+  } finally {
+    if (real === undefined)
+      delete (globalThis.crypto as object as Record<string, unknown>)
+        .randomUUID;
+    else Object.defineProperty(globalThis.crypto, "randomUUID", real);
+  }
 }
 
 /**
@@ -526,6 +634,90 @@ describe("Turning an adapter's arrivals into revisions · CorePod.import(), reac
 
     it("keeps nothing of the same export imported again, its documents being kept already (A1)", () => {
       assert.deepEqual(again, []);
+    });
+  });
+
+  describe("given Ada's exports imported with the ids they mint pinned, and the lines the line builder builds counted", () => {
+    let one: Imported;
+    let four: Imported;
+    let states: Imported;
+    let statesAgain: Imported;
+
+    before(async () => {
+      one = await importedOnce(() => adaImported(["new-content"]));
+      four = await importedOnce(() => adaImported(["first-export"]));
+      states = await importedOnce(() => threeStatesOfOneRecord());
+      statesAgain = await importedOnce(() => threeStatesOfOneRecord());
+    });
+
+    it("builds the lines of the files of an import of one record once: as many as the pod's files hold", () => {
+      assert.equal(one.built, one.lines);
+    });
+
+    it("builds the lines of the files of an import of four records of one server once, the server's file as the records' files", () => {
+      assert.equal(four.built, four.lines);
+    });
+
+    it("builds a file once for each arrival that writes it, though the pod holds it already, and for nothing else", () => {
+      // The second step's two arrivals of the record each build its file (3 lines), and its server's file (2 lines) is
+      // built once for its three documents; one of the two names a version the first step stored (4 lines).
+      assert.equal(states.built, states.lines + 2 * 3 + 2 + 4);
+    });
+
+    it("leaves the same files when the same import is run again", () => {
+      assert.equal(statesAgain.sha256, states.sha256);
+    });
+  });
+
+  describe("given a record imported twice in one step, in a pod kept as plain files and in one sealed under a key", () => {
+    let plain: Held;
+    let sealed: Held;
+
+    before(async () => {
+      plain = await heldAndWritten(() => threeStatesOfOneRecord());
+      const memory = new MemoryFiles("https://pod.example/");
+      const made = await newHeader("abacus abdomen", async (secret, salt) =>
+        crypto.subtle
+          .digest("SHA-256", new Uint8Array([...secret, ...salt]))
+          .then((digest) => new Uint8Array(digest)),
+      );
+      assert.ok(await madeNewPod(memory, made));
+      const index = await SealedIndex.open(memory, made.key);
+      sealed = await heldAndWritten(() =>
+        threeStatesOfOneRecord(
+          undefined,
+          new EncryptedFiles(memory, made.key, { index }),
+        ),
+      );
+    });
+
+    it("keeps for the revision the bytes it wrote for the record's file", () => {
+      assert.ok(plain.held.length > 0);
+      for (const [path, bytes] of plain.held)
+        assert.ok(
+          plain.written.get(path)?.some((one) => same(one, bytes)),
+          `${path}: the held copy is not the bytes written`,
+        );
+    });
+
+    it("holds the record's file as plaintext in a sealed pod, and leaves the bytes it wrote what it wrote after sealing them", () => {
+      assert.ok(sealed.held.length > 0);
+      for (const [path, bytes] of sealed.held) {
+        assert.ok(
+          bytes.length > 0 && new TextDecoder().decode(bytes).includes("<"),
+          `${path}: the held copy is not plaintext Turtle`,
+        );
+        const written = sealed.written.get(path) ?? [];
+        assert.ok(
+          written.some((one) => same(one, bytes)),
+          `${path}: the held copy is not the bytes written`,
+        );
+        assert.deepEqual(
+          written.map((one) => [...one]),
+          sealed.writtenCopies.get(path)?.map((one) => [...one]),
+          `${path}: sealing changed the bytes it was given`,
+        );
+      }
     });
   });
 

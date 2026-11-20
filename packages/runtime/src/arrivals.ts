@@ -755,11 +755,8 @@ export class Revisions {
   /** Adds the record and its version, and holds the revision after each of the record's heads (A2, A5) until `write`. */
   async revise(arrival: Arrival, writes: StepWrites): Promise<string> {
     const record = arrival.record.value;
-    writes.add(
-      arrival.place.path(record),
-      ntriples(arrival.recordTriples),
-      CONTENT_WAVE,
-    );
+    const recordFile = ntriples(arrival.recordTriples);
+    writes.add(arrival.place.path(record), recordFile, CONTENT_WAVE);
     writes.add(
       this.layout.version(arrival.place, arrival.version.value),
       ntriples(arrival.versionTriples),
@@ -809,7 +806,7 @@ export class Revisions {
       )
         this.patients.add(object.value);
     const pending = this.#pending.get(record) ?? [
-      [arrival.place.path(record), ntriples(arrival.recordTriples)],
+      [arrival.place.path(record), recordFile],
     ];
     this.#pending.set(record, [...pending, revision]);
     this.#current.delete(record);
@@ -1265,6 +1262,7 @@ export async function fileExport(
   );
   const kept = new Map<string, Triple[]>();
   const wentBack: WentBack[] = [];
+  const served = new Set<string>();
   for (const [done, found] of documents.entries()) {
     const documentIri = await documentName(found.bytes);
     if (
@@ -1334,6 +1332,8 @@ export async function fileExport(
     );
     kept.set(documentIri, importDescription(graph, subject, name, found.path));
     for (const base of graph.objects(subject, SERVER_BASE_URL)) {
+      if (served.has(base.value)) continue;
+      served.add(base.value);
       const server = await serverRecord(layout, base.value);
       if (server !== undefined)
         writes.add(
