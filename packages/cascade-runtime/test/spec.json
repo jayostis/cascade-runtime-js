@@ -892,7 +892,6 @@
     "failure-annotations.test.ts",
     "guide.test.ts",
     "import-bench.test.ts",
-    "kinds-read.test.ts",
     "launcher-sandbox.test.ts",
     "options.test.ts",
     "outcomes.test.ts",

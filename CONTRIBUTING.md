@@ -59,12 +59,13 @@ and a failed example's report names its rule and the step that failed.
 `CASCADE_CONFORMANCE_REPORT=<report>` it asserts on that report instead and
 does not run the command; CI hands it the report its compatibility check wrote.
 
-To repeat a random-order run, transpile, then run the script on the package with the seed from the log, which it passes
-to node:
+CI runs the suite once, in two parts: `node scripts/test.mjs --listed --test-randomize` runs the test files each package's
+`test/spec.json` lists as `randomOrder` in a random order, and `node scripts/test.mjs --unlisted` runs the others as
+written. To repeat a random-order run, transpile, then run the first with the seed from the log:
 
 ```sh
 node scripts/transpile.mjs
-node scripts/random-order.mjs cascade-runtime --test-random-seed=N
+node scripts/test.mjs --listed --test-randomize --test-random-seed=N
 ```
 
 ## What a pull request must pass
@@ -74,9 +75,9 @@ and **`ready-to-merge`**. `compatibility` reports the result of the first three 
 nightly run); `ready-to-merge` is its own check.
 
 - **`tests and conformance`**: the conformance command over the vocabulary and the adapters, the type check, the lint,
-  and the test files each package's `test/spec.json` lists as `randomOrder`, run in a random order (a test that needs
-  another to run first fails here; the seed is in the log). Then the suite, and the check that its results read as a
-  specification: every test in a file a package lists as `shaped` sits under a capability heading listed in its
+  and the suite, run once: the test files each package's `test/spec.json` lists as `randomOrder` in a random order (a
+  test that needs another to run first fails here; the seed is in the log), then the others as written. Then the check
+  that its results read as a specification: every test in a file a package lists as `shaped` sits under a capability heading listed in its
   `test/spec.json`, word for word. That check runs in CI, not in `npm test`, so a new capability needs its heading added to
   `spec.json` by hand.
 - **`docs site`**: builds the package and the pages, and runs the browser tests in Chromium.
