@@ -10,6 +10,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { after, before, describe, it } from "node:test";
@@ -59,7 +60,9 @@ import {
   refused,
   RUNTIME_ROOT,
   SCENARIOS,
+  restoringOnSignals,
   type Scanner,
+  type ScannerSettings,
   THEN,
   type Row,
 } from "./perf-report.js";
@@ -1690,74 +1693,88 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         ["file-ops"],
       );
       assert.equal(parsedPlan([]).plan.scannerCompare, false);
-      assert.equal(parsedPlan(["--scanner-compare"]).plan.scannerCompare, true);
+      assert.equal(
+        parsedPlan(["--scanner-compare"], { GITHUB_ACTIONS: "true" }).plan
+          .scannerCompare,
+        true,
+      );
+      assert.equal(
+        parsedPlan(["--scanner-compare"], {
+          CASCADE_PERF_ALLOW_LOCAL_SCANNER: "1",
+        }).plan.scannerCompare,
+        true,
+      );
+      assert.throws(
+        () => parsedPlan(["--scanner-compare"], {}),
+        /GitHub Actions only.*CASCADE_PERF_ALLOW_LOCAL_SCANNER=1/,
+      );
     });
   });
 
-  describe("given the file micro-bench and a scanner whose real-time protection can be switched and a folder excluded", () => {
+  describe("given the file micro-bench and a scanner whose checking can be switched and a folder excluded", () => {
     const plan = parsedPlan(["--scenario", "file-ops"]).plan;
     const run = {
       files: 3000,
       perFile: { "create/in-flight-1": 1 },
       whole: 1,
     };
-    /** A scanner that remembers what was asked of it, and can refuse to be switched off. */
+    /** A laptop's scanner: everything on, nothing left alone. */
+    const checking: ScannerSettings = {
+      realtime: true,
+      fileOpening: true,
+      behaviour: true,
+      scripts: true,
+      excludedFolders: [],
+    };
+    /** The hosted image's: nothing checks, and both drives are left alone. */
+    const hosted: ScannerSettings = {
+      realtime: false,
+      fileOpening: false,
+      behaviour: false,
+      scripts: false,
+      excludedFolders: ["D:\\", "C:\\"],
+      mode: "Normal",
+    };
+    /** A scanner that remembers what it is set to, and can refuse to have its live checking switched off. */
     const scanner = (
-      options: { refuseOff?: boolean; startsOn?: boolean } = {},
+      options: { refuseOff?: boolean; start?: ScannerSettings } = {},
     ) => {
       const calls: string[] = [];
-      let on = options.startsOn ?? true;
-      let excluded = false;
+      let settings = options.start ?? checking;
       const fake: Scanner = {
-        realtimeOn: () => Promise.resolve(on),
-        setRealtime: (to) => {
-          calls.push(`realtime ${to ? "on" : "off"}`);
-          if (!to && options.refuseOff)
+        read: () => Promise.resolve(settings),
+        set: (to) => {
+          calls.push("set");
+          if (options.refuseOff && settings.realtime && !to.realtime)
             return Promise.reject(new Error("tamper protection"));
-          on = to;
-          return Promise.resolve();
-        },
-        excluded: () => Promise.resolve(excluded),
-        exclude: () => {
-          calls.push("exclude");
-          excluded = true;
-          return Promise.resolve();
-        },
-        unexclude: () => {
-          calls.push("unexclude");
-          excluded = false;
+          settings = to;
           return Promise.resolve();
         },
       };
-      return { fake, calls, state: () => ({ on, excluded }) };
+      return { fake, calls, state: () => settings };
+    };
+    const seenBy = (s: ReturnType<typeof scanner>, seen: string[]) => () => {
+      const now = s.state();
+      seen.push(
+        `${now.realtime ? "live" : "no-live"} ${now.fileOpening ? "opening" : "no-opening"} [${now.excludedFolders.join(",")}]`,
+      );
+      return Promise.resolve(run);
     };
 
-    it("measures as it is, then with it off, then with the folder excluded and it on, and leaves it as it found it", async () => {
+    it("measures as it is, then with live checking off, then with the folder excluded, and leaves a scanner that checked everything as it found it", async () => {
       const s = scanner();
       const seen: string[] = [];
       const rows = await fileOpsAt(
         { ...plan, scannerCompare: true },
         "work",
         () => undefined,
-        {
-          scanner: s.fake,
-          once: async () => {
-            seen.push(
-              `on=${await s.fake.realtimeOn()} excluded=${await s.fake.excluded("work")}`,
-            );
-            return run;
-          },
-        },
+        { scanner: s.fake, once: seenBy(s, seen) },
       );
       assert.deepEqual(
         [...new Set(seen)],
-        [
-          "on=true excluded=false",
-          "on=false excluded=false",
-          "on=true excluded=true",
-        ],
+        ["live opening []", "no-live opening []", "live opening [work]"],
       );
-      assert.deepEqual(s.state(), { on: true, excluded: false });
+      assert.deepEqual(s.state(), checking);
       const states = new Set(rows.map(({ name }) => name.split("/")[0]));
       assert.deepEqual(
         [...states].sort(),
@@ -1775,20 +1792,60 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         0,
       );
       assert.equal(
-        value("file-ops-3000-files-scanner-excluded/count/scanner-realtime-on"),
-        1,
-      );
-      assert.equal(
         value(
           "file-ops-3000-files-scanner-excluded/count/scanner-folder-excluded",
         ),
         1,
       );
+      assert.equal(value("file-ops-3000-files/count/scanner-restored"), 1);
+      assert.deepEqual(explained(rows).missing, []);
+    });
+
+    it("records what the runner's scanner is set to and where the files were made, switches all its checking on and takes its excluded folders off for a run, then excludes the folder, and puts every setting back", async () => {
+      const s = scanner({ start: hosted });
+      const seen: string[] = [];
+      const rows = await fileOpsAt(
+        { ...plan, scannerCompare: true },
+        "work",
+        () => undefined,
+        { scanner: s.fake, once: seenBy(s, seen) },
+      );
+      assert.deepEqual(
+        [...new Set(seen)],
+        [
+          "no-live no-opening [D:\\,C:\\]",
+          "live opening []",
+          "live opening [work]",
+        ],
+      );
+      assert.deepEqual(s.state(), hosted);
+      const row = (name: string) => rows.find((each) => each.name === name);
+      assert.equal(
+        row("file-ops-3000-files/count/scanner-realtime-on")?.value,
+        0,
+      );
+      assert.match(
+        row("file-ops-3000-files/count/scanner-realtime-on")?.extra ?? "",
+        /live checking off.*file-opening checking off.*excluded folders \[D:\\, C:\\\].*running mode Normal/,
+      );
+      assert.match(
+        row("file-ops-3000-files/count/work-folder")?.extra ?? "",
+        /made under work, on the drive/,
+      );
+      assert.equal(
+        row("file-ops-3000-files-scanner-on/count/scanner-realtime-on")?.value,
+        1,
+      );
+      assert.equal(
+        row("file-ops-3000-files/count/scanner-switch-on-allowed")?.value,
+        1,
+      );
+      assert.equal(row("file-ops-3000-files/count/scanner-restored")?.value, 1);
       assert.deepEqual(explained(rows).missing, []);
     });
 
     it("puts it back even when a measurement fails", async () => {
-      const s = scanner();
+      const s = scanner({ start: hosted });
       let calls = 0;
       await assert.rejects(
         fileOpsAt({ ...plan, scannerCompare: true }, "work", () => undefined, {
@@ -1802,7 +1859,27 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         }),
         /disk full/,
       );
-      assert.deepEqual(s.state(), { on: true, excluded: false });
+      assert.deepEqual(s.state(), hosted);
+    });
+
+    it("puts it back, and then exits, when the process is interrupted or told to stop, and takes its handlers off when the run is over", async () => {
+      const host = new EventEmitter() as EventEmitter & {
+        exit(code: number): void;
+      };
+      const exited = new Promise<number>((resolve) => {
+        host.exit = resolve;
+      });
+      let restored = false;
+      const stop = restoringOnSignals(() => {
+        restored = true;
+        return Promise.resolve();
+      }, host);
+      host.emit("SIGTERM");
+      assert.equal(await exited, 143);
+      assert.equal(restored, true);
+      stop();
+      assert.equal(host.listenerCount("SIGINT"), 0);
+      assert.equal(host.listenerCount("SIGTERM"), 0);
     });
 
     it("records that switching it off was refused, and measures no run it would have named off", async () => {
@@ -1826,51 +1903,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       );
       assert.equal(refusedRow?.value, 0);
       assert.match(refusedRow?.extra ?? "", /tamper protection/);
-      assert.deepEqual(explained(rows).missing, []);
-    });
-
-    it("switches live checking on to compare when the runner has it off, excludes the folder with it on, and puts it back off", async () => {
-      const s = scanner({ startsOn: false });
-      const seen: string[] = [];
-      const rows = await fileOpsAt(
-        { ...plan, scannerCompare: true },
-        "work",
-        () => undefined,
-        {
-          scanner: s.fake,
-          once: async () => {
-            seen.push(
-              `on=${await s.fake.realtimeOn()} excluded=${await s.fake.excluded("work")}`,
-            );
-            return run;
-          },
-        },
-      );
-      assert.deepEqual(
-        [...new Set(seen)],
-        [
-          "on=false excluded=false",
-          "on=true excluded=false",
-          "on=true excluded=true",
-        ],
-      );
-      assert.deepEqual(s.state(), { on: false, excluded: false });
-      const value = (name: string) =>
-        rows.find((row) => row.name === name)?.value;
-      assert.equal(value("file-ops-3000-files/count/scanner-realtime-on"), 0);
-      assert.equal(
-        value("file-ops-3000-files/count/scanner-switch-on-allowed"),
-        1,
-      );
-      assert.equal(
-        value("file-ops-3000-files-scanner-on/count/scanner-realtime-on"),
-        1,
-      );
-      assert.ok(
-        rows.some(({ name }) =>
-          name.startsWith("file-ops-3000-files-scanner-on/create/"),
-        ),
-      );
+      assert.deepEqual(s.state(), checking);
       assert.deepEqual(explained(rows).missing, []);
     });
 

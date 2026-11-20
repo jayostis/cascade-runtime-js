@@ -8,7 +8,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { promisify } from "node:util";
 import { child } from "../perf-child.js";
 import { PER_BUILD } from "../perf-data.js";
@@ -146,7 +146,10 @@ export async function measureFileOps(job: Job): Promise<Measured> {
   };
 }
 
-/** Whether the machine's virus scanner was as it is, with its live checking switched off or on, or on with the folder excluded from it. */
+/**
+ * Whether the machine's virus scanner was as it is, with its live checking switched off, with all its checking on and none
+ * of the runner's excluded folders, or with all of it on and the folder excluded.
+ */
 export type ScannerState = "as-is" | "off" | "on" | "excluded";
 
 const NAME = "file-ops-3000-files";
@@ -163,8 +166,8 @@ export function fileOpsRows(
       : state === "off"
         ? "the virus scanner's live checking switched off for the run"
         : state === "on"
-          ? "the virus scanner's live checking switched on for the run, which the runner has off"
-          : "the virus scanner's live checking on, the folder excluded from it"
+          ? "the virus scanner's live, file and script checking switched on for the run and the runner's excluded folders taken off its list"
+          : "the virus scanner's checking on, the folder excluded from it"
   }`;
   const samples = (pick: (run: FileOpsRun) => number | undefined) =>
     runs.flatMap((run) => pick(run) ?? []);
@@ -200,14 +203,49 @@ export function fileOpsRows(
   ];
 }
 
+/** What a virus scanner is set to: each kind of checking it does and the folders it leaves alone. */
+export interface ScannerSettings {
+  /** Live checking of every file as it is read or written. */
+  readonly realtime: boolean;
+  /** Checking of files as they are opened or downloaded. */
+  readonly fileOpening: boolean;
+  /** Watching what a program does. */
+  readonly behaviour: boolean;
+  /** Checking of scripts. */
+  readonly scripts: boolean;
+  readonly excludedFolders: readonly string[];
+  /** How the scanner runs, as it names it, where it says. */
+  readonly mode?: string;
+}
+
 /** What the machine's virus scanner can be asked and told, where it has one. */
 export interface Scanner {
-  /** Whether its live checking is on; undefined where that cannot be read. */
-  realtimeOn(): Promise<boolean | undefined>;
-  setRealtime(on: boolean): Promise<void>;
-  excluded(folder: string): Promise<boolean | undefined>;
-  exclude(folder: string): Promise<void>;
-  unexclude(folder: string): Promise<void>;
+  /** What it is set to; undefined where that cannot be read. */
+  read(): Promise<ScannerSettings | undefined>;
+  /** Sets every kind of checking and the excluded folders to these, and throws where the scanner is still not so set. */
+  set(settings: ScannerSettings): Promise<void>;
+}
+
+const folderKey = (folder: string): string =>
+  folder.toLowerCase().replace(/(?<=.)\\+$/, "");
+
+/** Whether two sets of settings are the same in everything a run changes. */
+export function sameSettings(a: ScannerSettings, b: ScannerSettings): boolean {
+  const folders = (settings: ScannerSettings) =>
+    [...new Set(settings.excludedFolders.map(folderKey))].sort().join("\n");
+  return (
+    a.realtime === b.realtime &&
+    a.fileOpening === b.fileOpening &&
+    a.behaviour === b.behaviour &&
+    a.scripts === b.scripts &&
+    folders(a) === folders(b)
+  );
+}
+
+/** The settings in a sentence, for the row that records them. */
+export function describeSettings(settings: ScannerSettings): string {
+  const kind = (on: boolean) => (on ? "on" : "off");
+  return `live checking ${kind(settings.realtime)}, file-opening checking ${kind(settings.fileOpening)}, behaviour monitoring ${kind(settings.behaviour)}, script scanning ${kind(settings.scripts)}, excluded folders [${settings.excludedFolders.join(", ")}]${settings.mode === undefined ? "" : `, running mode ${settings.mode}`}`;
 }
 
 const execute = promisify(execFile);
@@ -225,53 +263,61 @@ export function windowsScanner(
     ).stdout,
 ): Scanner {
   const quoted = (path: string) => `'${path.replaceAll("'", "''")}'`;
-  const realtimeOn = async (): Promise<boolean | undefined> => {
+  const read = async (): Promise<ScannerSettings | undefined> => {
     try {
-      const said = (
-        await powershell("(Get-MpComputerStatus).RealTimeProtectionEnabled")
-      )
-        .trim()
-        .toLowerCase();
-      return said === "true" ? true : said === "false" ? false : undefined;
+      const said = JSON.parse(
+        (
+          await powershell(
+            "$p = Get-MpPreference; $s = Get-MpComputerStatus; [pscustomobject]@{ realtime = [bool]$s.RealTimeProtectionEnabled; fileOpening = -not $p.DisableIOAVProtection; behaviour = -not $p.DisableBehaviorMonitoring; scripts = -not $p.DisableScriptScanning; excludedFolders = @($p.ExclusionPath | Where-Object { $_ }); mode = [string]$s.AMRunningMode } | ConvertTo-Json -Compress",
+          )
+        ).trim(),
+      ) as Record<string, unknown>;
+      const folders = Array.isArray(said.excludedFolders)
+        ? said.excludedFolders
+        : said.excludedFolders === undefined || said.excludedFolders === null
+          ? []
+          : [said.excludedFolders];
+      return {
+        realtime: said.realtime === true,
+        fileOpening: said.fileOpening === true,
+        behaviour: said.behaviour === true,
+        scripts: said.scripts === true,
+        excludedFolders: folders.map(String),
+        ...(typeof said.mode === "string" && said.mode !== ""
+          ? { mode: said.mode }
+          : {}),
+      };
     } catch {
       return undefined;
     }
   };
   return {
-    realtimeOn,
-    async setRealtime(on) {
+    read,
+    async set(settings) {
+      const now = await read();
+      const off = (on: boolean) => `$${on ? "false" : "true"}`;
       await powershell(
-        `Set-MpPreference -DisableRealtimeMonitoring $${on ? "false" : "true"}`,
+        `Set-MpPreference -DisableRealtimeMonitoring ${off(settings.realtime)} -DisableIOAVProtection ${off(settings.fileOpening)} -DisableBehaviorMonitoring ${off(settings.behaviour)} -DisableScriptScanning ${off(settings.scripts)}`,
       );
-      // The status follows the setting after a moment.
+      const wanted = new Set(settings.excludedFolders.map(folderKey));
+      const had = new Set((now?.excludedFolders ?? []).map(folderKey));
+      for (const folder of now?.excludedFolders ?? [])
+        if (!wanted.has(folderKey(folder)))
+          await powershell(
+            `Remove-MpPreference -ExclusionPath ${quoted(folder)}`,
+          );
+      for (const folder of settings.excludedFolders)
+        if (!had.has(folderKey(folder)))
+          await powershell(`Add-MpPreference -ExclusionPath ${quoted(folder)}`);
+      // The status follows the settings after a moment.
       for (let waited = 0; waited < 20; waited++) {
-        if ((await realtimeOn()) === on) return;
+        const after = await read();
+        if (after !== undefined && sameSettings(after, settings)) return;
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
       throw new Error(
-        `real-time protection is still ${on ? "off" : "on"} ten seconds after Set-MpPreference`,
+        `the scanner is still not set as asked ten seconds after Set-MpPreference: ${describeSettings((await read()) ?? settings)}`,
       );
-    },
-    async excluded(folder) {
-      try {
-        return (
-          (
-            await powershell(
-              `@((Get-MpPreference).ExclusionPath) -contains ${quoted(folder)}`,
-            )
-          )
-            .trim()
-            .toLowerCase() === "true"
-        );
-      } catch {
-        return undefined;
-      }
-    },
-    async exclude(folder) {
-      await powershell(`Add-MpPreference -ExclusionPath ${quoted(folder)}`);
-    },
-    async unexclude(folder) {
-      await powershell(`Remove-MpPreference -ExclusionPath ${quoted(folder)}`);
     },
   };
 }
@@ -279,12 +325,37 @@ export function windowsScanner(
 const message = (error: unknown): string =>
   (error instanceof Error ? error.message : String(error))
     .replace(/\s+/g, " ")
-    .slice(0, 300);
+    .slice(0, 400);
+
+/** What a process offers to put a scanner back when it is stopped. */
+export interface SignalHost {
+  once(signal: "SIGINT" | "SIGTERM", handler: () => void): unknown;
+  off(signal: "SIGINT" | "SIGTERM", handler: () => void): unknown;
+  exit(code: number): unknown;
+}
+
+/** Runs `restore` when the process is interrupted or told to stop, then exits; the returned function takes the handlers off. */
+export function restoringOnSignals(
+  restore: () => Promise<void>,
+  host: SignalHost = process as unknown as SignalHost,
+): () => void {
+  const installed = (["SIGINT", "SIGTERM"] as const).map((signal) => {
+    const handler = () => {
+      void restore().finally(() => host.exit(signal === "SIGINT" ? 130 : 143));
+    };
+    host.once(signal, handler);
+    return [signal, handler] as const;
+  });
+  return () => {
+    for (const [signal, handler] of installed) host.off(signal, handler);
+  };
+}
 
 /**
- * The micro-bench's rows: the machine as it is and, when the plan compares and the machine has a scanner whose live checking is
- * on, with the checking switched off and with the folder excluded. Whatever it changed is put back, whether or not a
- * measurement fails, and what the scanner allowed is recorded either way.
+ * The micro-bench's rows: the machine as it is and, when the plan compares and the machine has a scanner, with its live
+ * checking switched off (where it was on), with all its checking on and the runner's excluded folders taken off, and with the
+ * folder excluded. What the scanner is set to is recorded for each, and whatever was changed is put back and checked, whether or
+ * not a measurement fails or the process is stopped.
  */
 export async function fileOpsAt(
   plan: Plan,
@@ -294,6 +365,7 @@ export async function fileOpsAt(
     scanner?: Scanner;
     /** One process's measurement, in a folder of its own. */
     once?: (folder: string) => Promise<FileOpsRun>;
+    signals?: SignalHost;
   } = {},
 ): Promise<Row[]> {
   const scanner =
@@ -326,117 +398,129 @@ export async function fileOpsAt(
     return fileOpsRows(state, runs);
   };
   const rows = await batch("as-is");
-  const startedOn = await scanner?.realtimeOn();
-  if (scanner === undefined || startedOn === undefined) return rows;
+  // The folder the files were made in, as the system names it, and the drive it is on: where a person's pod would be is another.
+  const real = await realpath(work).catch(() => work);
+  rows.push(
+    countRow(
+      `${NAME}/count/work-folder`,
+      1,
+      `the files were made under ${real}, on the drive ${parse(real).root}`,
+    ),
+  );
+  const start = await scanner?.read();
+  if (scanner === undefined || start === undefined) return rows;
   rows.push(
     countRow(
       `${NAME}/count/scanner-realtime-on`,
-      startedOn ? 1 : 0,
-      "read from Windows Defender after the first measurement",
+      start.realtime ? 1 : 0,
+      describeSettings(start),
     ),
   );
   if (!plan.scannerCompare) return rows;
 
-  // Live checking is flipped to the other state for a run: off where the runner has it on, on where it has it off, to read what
-  // it costs either way. The folder's exclusion is read with it on.
-  const flipTo = !startedOn;
-  const flipName = flipTo ? "on" : "off";
-  let flipped = false;
-  let touched = false;
-  const restore = async (): Promise<void> => {
-    // A switch that took no effect has nothing to put back: a refusal to put back what was never changed is no failure.
-    await scanner.setRealtime(startedOn).catch((error: unknown) => {
-      if (flipped || !touched) throw error;
-      log(`real-time protection could not be put back: ${message(error)}`);
-    });
+  // Everything the scanner does is on, and nothing is left alone.
+  const scanning: ScannerSettings = {
+    ...start,
+    realtime: true,
+    fileOpening: true,
+    behaviour: true,
+    scripts: true,
+    excludedFolders: [],
   };
-  try {
+  let changed = false;
+  let restored: { ok: boolean; says: string } | undefined;
+  const restore = async (): Promise<void> => {
+    if (!changed || restored?.ok === true) return;
+    await scanner.set(start).catch((error: unknown) => {
+      log(`the scanner's settings could not be put back: ${message(error)}`);
+    });
+    const after = await scanner.read().catch(() => undefined);
+    restored = {
+      ok: after !== undefined && sameSettings(after, start),
+      says:
+        after === undefined
+          ? "the settings could not be read back"
+          : describeSettings(after),
+    };
+    if (!restored.ok)
+      log(
+        `THE SCANNER IS NOT AS IT WAS: ${restored.says}; it was ${describeSettings(start)}`,
+      );
+  };
+  /** Sets the scanner to `settings`, records whether it let that be, and measures when it did. */
+  const attempt = async (
+    state: Exclude<ScannerState, "as-is">,
+    settings: ScannerSettings,
+  ): Promise<boolean> => {
+    const allowedName = {
+      off: "scanner-switch-off-allowed",
+      on: "scanner-switch-on-allowed",
+      excluded: "scanner-exclusion-allowed",
+    }[state];
     let refusal = "";
+    changed = true;
     try {
-      touched = true;
-      await scanner.setRealtime(flipTo);
-      flipped = (await scanner.realtimeOn()) === flipTo;
-      if (!flipped)
-        refusal = `real-time protection was still ${startedOn ? "on" : "off"} after the switch`;
+      await scanner.set(settings);
     } catch (error) {
       refusal = message(error);
     }
+    const now = await scanner.read();
+    const took = now !== undefined && sameSettings(now, settings);
+    if (!took && refusal === "")
+      refusal = `the scanner read back ${now === undefined ? "nothing" : describeSettings(now)}`;
     rows.push(
       countRow(
-        `${NAME}/count/scanner-switch-${flipName}-allowed`,
-        flipped ? 1 : 0,
-        flipped
-          ? `Set-MpPreference -DisableRealtimeMonitoring $${flipTo ? "false" : "true"} took effect, read back from Get-MpComputerStatus`
+        `${NAME}/count/${allowedName}`,
+        took ? 1 : 0,
+        took
+          ? `set through Set-MpPreference, Add-MpPreference and Remove-MpPreference, read back from Get-MpPreference: ${describeSettings(settings)}`
           : `refused: ${refusal}`,
       ),
     );
-    if (flipped) {
-      rows.push(...(await batch(flipName)));
-      rows.push(
-        countRow(
-          `${NAME}-scanner-${flipName}/count/scanner-realtime-on`,
-          (await scanner.realtimeOn()) === true ? 1 : 0,
-          "read back after the run",
-        ),
-      );
-    }
-    if (startedOn) await restore();
-    if (startedOn || flipped)
-      rows.push(...(await excludedRows(scanner, work, batch)));
-  } finally {
-    await restore();
-  }
-  return rows;
-}
-
-/** The folder excluded from a scanner whose live checking is on, one run, and the exclusion removed again. */
-async function excludedRows(
-  scanner: Scanner,
-  work: string,
-  batch: (state: ScannerState) => Promise<Row[]>,
-): Promise<Row[]> {
-  const rows: Row[] = [];
-  let excluded = false;
-  let tried = false;
-  let why = "";
-  try {
-    try {
-      tried = true;
-      await scanner.exclude(work);
-      excluded = (await scanner.excluded(work)) === true;
-      if (!excluded) why = "Get-MpPreference did not list the folder";
-    } catch (error) {
-      why = message(error);
-    }
+    if (!took) return false;
+    rows.push(...(await batch(state)));
+    const during = await scanner.read();
     rows.push(
       countRow(
-        `${NAME}/count/scanner-exclusion-allowed`,
-        excluded ? 1 : 0,
-        excluded
-          ? "Add-MpPreference -ExclusionPath took effect, read back from Get-MpPreference"
-          : `refused: ${why}`,
+        `${NAME}-scanner-${state}/count/scanner-realtime-on`,
+        during?.realtime === true ? 1 : 0,
+        during === undefined ? "unreadable" : describeSettings(during),
       ),
     );
-    if (excluded) {
-      rows.push(...(await batch("excluded")));
+    if (state === "excluded")
       rows.push(
         countRow(
-          `${NAME}-scanner-excluded/count/scanner-realtime-on`,
-          (await scanner.realtimeOn()) === true ? 1 : 0,
-          "read back during the run",
-        ),
-        countRow(
           `${NAME}-scanner-excluded/count/scanner-folder-excluded`,
-          (await scanner.excluded(work)) === true ? 1 : 0,
-          "read back during the run",
+          (during?.excludedFolders ?? []).some(
+            (folder) => folderKey(folder) === folderKey(real),
+          )
+            ? 1
+            : 0,
+          `${real}, read back after the run`,
         ),
       );
-    }
+    return true;
+  };
+  const stopListening = restoringOnSignals(restore, deps.signals);
+  try {
+    if (start.realtime) await attempt("off", { ...start, realtime: false });
+    const everythingOn = sameSettings(start, scanning);
+    const onWorked = everythingOn ? true : await attempt("on", scanning);
+    await attempt("excluded", {
+      ...(onWorked ? scanning : start),
+      excludedFolders: [...(onWorked ? scanning : start).excludedFolders, real],
+    });
+    await restore();
+    rows.push(
+      countRow(
+        `${NAME}/count/scanner-restored`,
+        restored?.ok === true ? 1 : 0,
+        `read back after the last run: ${restored?.says ?? "nothing was changed"}`,
+      ),
+    );
   } finally {
-    if (tried)
-      await scanner.unexclude(work).catch((error: unknown) => {
-        if (excluded) throw error;
-      });
+    stopListening();
+    await restore();
   }
   return rows;
 }

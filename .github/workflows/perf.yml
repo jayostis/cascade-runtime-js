@@ -38,12 +38,13 @@ name: perf
 #   runtime/YYYY/MM/DD/<run>-<sha7>-<event>-<system>.json and its own series on the history page, never mixed with Linux's:
 #   the times of one system are not read against another's. They are not run on a pull request, which waits for its slowest
 #   check: these legs take longer than the whole check does (the pages say how long each takes). They make no flame graphs,
-#   which are kept for Linux builds.
+#   which are kept for Linux builds. They measure the per-build size only, on every kind of run: the large size is Linux's.
+#   The schedule has not yet run this workflow (its API history has no such run), so the nightly path of these legs is untried.
 # - A push, the nightly run and a hand-started run of everything also time what one small file costs (the `file-ops`
 #   scenario, `--file-ops`): asking whether it is there, creating it, renaming it, what the folder host does for a file, and one
-#   file for all of them. The Windows leg does it three times, as the runner is, with Windows Defender's live checking
-#   switched off and with the folder excluded (`--scanner-compare`), to settle whether Defender is what makes a file dear
-#   there. A pull request does not run it.
+#   file for all of them. A pull request does not run it. A hand-started run with `scanner` set also does it on the Windows leg
+#   with Windows Defender's checking as the runner has it, with all of it on and no folder left out, and with the folder
+#   excluded (`--scanner-compare`), and puts every setting back; no other run does, as those runs would pay for it every time.
 
 on:
   push:
@@ -76,6 +77,10 @@ on:
         default: per-build
       large:
         description: "Also run the large size"
+        type: boolean
+        default: false
+      scanner:
+        description: "On the Windows leg, also time the file micro-bench with Windows Defender's checking as the runner has it, all on, and the folder excluded"
         type: boolean
         default: false
       systems:
@@ -385,7 +390,7 @@ jobs:
   # commits them. They make no flame graphs and measure no main beside the build: the comparison with main is the Linux job's.
   # Nothing here fails on a slowdown, and a leg that fails does not stop the others or the Linux job.
   perf-systems:
-    name: performance file (${{ matrix.system }})
+    name: performance file (${{ matrix.system || 'Windows and macOS' }})
     if: ${{ github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.systems == 'linux') }}
     strategy:
       fail-fast: false
@@ -444,19 +449,19 @@ jobs:
           EVENT: ${{ github.event_name }}
           SCENARIO: ${{ inputs.scenario }}
           SIZE: ${{ inputs.size }}
-          LARGE: ${{ inputs.large }}
           SYSTEM: ${{ matrix.system }}
+          SCANNER: ${{ inputs.scanner }}
         run: |
           set -euo pipefail
+          # The per-build size only, on every kind of run: the nightly run's and `large`'s second size is measured on Linux, and has
+          # not been timed on these systems (it would run under the 90-minute limit with no figure to say how far under).
           sizes="synthea-10y"
-          if [ "$EVENT" = schedule ] || [ "$LARGE" = true ]; then sizes="synthea-10y,synthea-lifetime"; fi
           if [ -n "$SIZE" ] && [ "$SIZE" != per-build ]; then sizes="$SIZE"; fi
           args="--size $sizes"
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           if [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; then args="$args --file-ops"; fi
-          # Windows Defender's live checking is switched off, and the folder excluded, for two more runs of the file micro-bench; each
-          # is put back, and what the runner allowed is in the file.
-          if [ "$SYSTEM" = windows ] && { [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ] || [ "$SCENARIO" = file-ops ]; }; then args="$args --scanner-compare"; fi
+          # Windows Defender's settings are changed, and put back, for more runs of the file micro-bench, only when a person asks.
+          if [ "$SYSTEM" = windows ] && [ "$SCANNER" = true ]; then args="$args --scanner-compare"; fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
           echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
       - name: The performance file
@@ -558,9 +563,11 @@ jobs:
   # github-action-benchmark (pinned to a commit) over the artifact. A push that races another is retried.
   # One leg for each system, one after the other (they push to the same branch): Linux's file and the two others', each under
   # its own name and in its own series, so that no two systems are ever one series. A leg whose artifact is not there (the
-  # measurement failed, or was not asked for) keeps nothing and says so; the others go on.
+  # measurement failed, or was not asked for) keeps nothing and says so; the others go on. Linux's keep also waits for the
+  # Windows and macOS legs to end (`needs` names the whole job, not one leg of it), so it comes about 10 minutes after Linux's
+  # own measurement; only a delay.
   publish:
-    name: keep the file${{ matrix.system != 'linux' && format(' ({0})', matrix.system) || '' }}
+    name: keep the file${{ matrix.system && matrix.system != 'linux' && format(' ({0})', matrix.system) || '' }}
     if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     needs: [perf, perf-systems]
     strategy:
@@ -595,7 +602,9 @@ jobs:
       - uses: actions/download-artifact@v7
         id: got
         if: ${{ matrix.system != 'linux' || needs.perf.result == 'success' }}
-        continue-on-error: true
+        # Only a Windows or macOS leg may have nothing to download; a Linux file that cannot be fetched fails the leg, so that the
+        # push does not go on with latest-push.txt unchanged.
+        continue-on-error: ${{ matrix.system != 'linux' }}
         with:
           name: ${{ matrix.artifact }}
           path: file

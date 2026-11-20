@@ -92,7 +92,9 @@ export function chipOf(env) {
     ?.trim();
   if (model === undefined || model === "" || model.startsWith("other load:"))
     return undefined;
-  return /^Apple /.test(model) ? `${model}, Apple silicon` : model;
+  if (!/^Apple /.test(model)) return model;
+  const virtual = /\(Virtual\)/.test(model);
+  return `${model.replace(/\s*\(Virtual\)/, "")}, Apple silicon${virtual ? ", a virtual machine" : ""}`;
 }
 
 function filesUnder(folder) {
@@ -297,6 +299,7 @@ export function reduced(file, glossary = readGlossary()) {
           {
             name: row.name,
             value: row.value,
+            ...(typeof row.range === "string" && { range: row.range }),
             ...(typeof row.extra === "string" && { extra: row.extra }),
           },
         ];
@@ -765,12 +768,15 @@ export function fileOpsOf(files) {
       );
     if (newest === undefined) return [];
     const states = {};
+    const ranges = {};
     const notes = {};
     for (const row of newest.file.results ?? []) {
       const found = ROW_OF_FILES.exec(row.name);
       if (found === null) continue;
       const [, state = "as-is", rest] = found;
       (states[state] ??= {})[rest] = row.value;
+      if (typeof row.range === "string")
+        (ranges[state] ??= {})[rest] = row.range;
       if (rest.startsWith("count/") && typeof row.extra === "string")
         (notes[state] ??= {})[rest] = row.extra.split(" | ").at(-1);
     }
@@ -783,6 +789,7 @@ export function fileOpsOf(files) {
         sha: newest.build.sha,
         date: newest.build.date,
         states,
+        ranges,
         notes,
       },
     ];
@@ -797,89 +804,63 @@ export function micro(seconds) {
 
 const timesOf = (change) => `${change.toFixed(change >= 10 ? 0 : 1)}×`;
 
-/** How much less (or more) `after` is than `before`, as the pages say it elsewhere: `-75% (4.0×)`. */
-function lessBy(before, after) {
-  const pct = Math.round((Math.abs(after - before) / before) * 100);
-  const times = timesOf(after > before ? after / before : before / after);
-  return after <= before
-    ? `${pct}% less (${times} faster)`
-    : `${pct}% more (${times} slower)`;
+/** The range of a row, `0.000225-0.000375` in seconds, as `225-375 µs`. */
+function microRange(range) {
+  const [low, high] = String(range).split("-").map(Number);
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return undefined;
+  const plain = (seconds) => micro(seconds).replace(" µs", "");
+  return `${plain(low)}-${plain(high)} µs`;
 }
 
-/** What a system's scanner did to the cost of creating a file, in plain sentences, from the numbers it measured. */
-function scannerSentences(system, linux) {
-  const own = system.states["as-is"] ?? {};
-  const off = system.states.off;
-  const on = system.states.on;
-  const excluded = system.states.excluded;
-  const note = (state, key) => system.notes[state]?.[key];
-  const at = "create/in-flight-16";
-  const out = [];
-  if (own["count/scanner-realtime-on"] === 0)
-    out.push(
-      "Windows Defender's live checking of files was off on this runner as it came, so the first column is a runner with no scanning.",
+/**
+ * What a system's scanner was set to and what each state measured, as the run recorded it, and no verdict: the page gives the
+ * recorded settings and the numbers, and a reader decides what a difference between two times means.
+ */
+function scannerFacts(system) {
+  const own = system.notes["as-is"] ?? {};
+  const said = [];
+  if (own["count/scanner-realtime-on"] !== undefined)
+    said.push(
+      `What the runner allowed, as Windows Defender reported it before anything was changed: ${own["count/scanner-realtime-on"]}.`,
     );
-  if (on !== undefined && own[at] !== undefined && on[at] !== undefined)
-    out.push(
-      `With Windows Defender's live checking switched on, creating a file (16 at once) took ${micro(on[at])} instead of ${micro(own[at])}: ${lessBy(own[at], on[at])}.`,
+  if (own["count/work-folder"] !== undefined)
+    said.push(
+      `${own["count/work-folder"][0].toUpperCase()}${own["count/work-folder"].slice(1)}.`,
     );
-  else if (own["count/scanner-switch-on-allowed"] === 0)
-    out.push(
-      `The runner did not let Windows Defender's live checking be switched on (${note("as-is", "count/scanner-switch-on-allowed") ?? "no reason recorded"}), so that comparison could not be made.`,
+  for (const [key, text] of [
+    ["count/scanner-switch-off-allowed", "switch its live checking off"],
+    ["count/scanner-switch-on-allowed", "switch all its checking on"],
+    ["count/scanner-exclusion-allowed", "exclude the folder"],
+  ])
+    if (system.states["as-is"]?.[key] === 0)
+      said.push(
+        `The runner did not let the run ${text} (${own[key] ?? "no reason recorded"}), so that column is missing.`,
+      );
+  if (own["count/scanner-restored"] !== undefined)
+    said.push(
+      `Afterwards the settings were ${system.states["as-is"]["count/scanner-restored"] === 1 ? "read back as they were" : "NOT read back as they were"}: ${own["count/scanner-restored"]}.`,
     );
-  if (off !== undefined && own[at] !== undefined && off[at] !== undefined)
-    out.push(
-      `With Windows Defender's live checking switched off, creating a file (16 at once) took ${micro(off[at])} instead of ${micro(own[at])}: ${lessBy(own[at], off[at])}.`,
-    );
-  else if (own["count/scanner-switch-off-allowed"] === 0)
-    out.push(
-      `The runner did not let Windows Defender's live checking be switched off (${note("as-is", "count/scanner-switch-off-allowed") ?? "no reason recorded"}), so that comparison could not be made.`,
-    );
-  if (
-    excluded !== undefined &&
-    own[at] !== undefined &&
-    excluded[at] !== undefined
-  )
-    out.push(
-      `With the folder excluded from Defender's checking and the checking on, creating a file (16 at once) took ${micro(excluded[at])} instead of ${micro(own[at])}: ${lessBy(own[at], excluded[at])}.`,
-    );
-  else if (own["count/scanner-exclusion-allowed"] === 0)
-    out.push(
-      `The runner did not let a folder be excluded from Windows Defender (${note("as-is", "count/scanner-exclusion-allowed") ?? "no reason recorded"}), so that comparison could not be made.`,
-    );
-  const linuxAt = linux?.states["as-is"]?.[at];
-  const best = Math.min(
-    ...[own[at], off?.[at], on?.[at], excluded?.[at]].filter(
-      (value) => value !== undefined,
-    ),
-  );
-  if (
-    linuxAt !== undefined &&
-    Number.isFinite(best) &&
-    (off !== undefined || on !== undefined)
-  )
-    out.push(
-      `At its fastest here a file took ${micro(best)} to create, ${timesOf(best / linuxAt)} what it takes on Linux (${micro(linuxAt)}).`,
-    );
-  // What the checking itself costs: the same operation with it on and with it off, whichever of the two the runner came as.
-  const started = own["count/scanner-realtime-on"];
-  const withScan = started === 0 ? on?.[at] : own[at];
-  const without = started === 0 ? own[at] : off?.[at];
-  if (withScan !== undefined && without !== undefined) {
-    const ratio = withScan / without;
-    const shown =
-      ratio >= 1
-        ? `${timesOf(ratio)} as long as with it off`
-        : `${timesOf(1 / ratio)} faster than with it off`;
-    out.push(
-      ratio < 1.25
-        ? `So Windows Defender's checking is not what makes a file dear on Windows: with the checking on, creating a file took ${shown}.`
-        : ratio < 2
-          ? `So Windows Defender's checking is part of what makes a file dear on Windows, not all of it: with the checking on, creating a file took ${shown}.`
-          : `So Windows Defender's checking is a large part of what makes a file dear on Windows: with the checking on, creating a file took ${shown}.`,
-    );
-  }
-  return out;
+  return said;
+}
+
+/** How many times as long a system took to create a file as Linux, for each number of files at once. */
+function againstLinux(system, linux) {
+  const parts = AT_ONCE.flatMap((at) => {
+    const own = system.states["as-is"]?.[`create/in-flight-${at}`];
+    const base = linux.states["as-is"]?.[`create/in-flight-${at}`];
+    return own === undefined || base === undefined
+      ? []
+      : [
+          `${timesOf(own / base)} ${at === 1 ? "one at a time" : `at ${at} at once`}`,
+        ];
+  });
+  if (parts.length === 0) return undefined;
+  const [first, ...rest] = parts;
+  const tail =
+    rest.length === 0
+      ? ""
+      : `, ${rest.length === 1 ? rest[0] : `${rest.slice(0, -1).join(", ")} and ${rest.at(-1)}`}`;
+  return `On ${system.label}, creating a file took ${first.replace(" ", " as long as on Linux ")}${tail}.`;
 }
 
 /** The table of what one file costs, one column for each system, and the scanner table of each system that was asked. */
@@ -910,6 +891,9 @@ function fileOpsSection(systems) {
         return `<td class="n">${value === undefined ? "-" : micro(value / files(system))}</td>`;
       })
       .join("")}</tr>`;
+  const ratios = systems
+    .filter((system) => system !== linux && linux !== undefined)
+    .flatMap((system) => againstLinux(system, linux) ?? []);
   const scanned = systems.filter(
     ({ states, notes }) =>
       states.off !== undefined ||
@@ -922,32 +906,35 @@ function fileOpsSection(systems) {
       const states = [
         ["as-is", "As the runner has it"],
         ["off", "Live checking switched off"],
-        ["on", "Live checking switched on"],
-        ["excluded", "Folder excluded, checking on"],
+        ["on", "All checking switched on, no folder left out"],
+        ["excluded", "All checking on, the folder excluded"],
       ].filter(([state]) => system.states[state] !== undefined);
+      const timeOf = (state, key) => {
+        const value = system.states[state][key];
+        if (value === undefined) return '<td class="n">-</td>';
+        const range = microRange(system.ranges?.[state]?.[key]);
+        return `<td class="n">${micro(value)}${range === undefined ? "" : `<br><span class="note">range ${range}</span>`}</td>`;
+      };
       const lines = OPS_ROWS.map(
         ([op, text]) =>
           `<tr><td>${esc(text)}, 16 at once</td>${states
-            .map(
-              ([state]) =>
-                `<td class="n">${system.states[state][`${op}/in-flight-16`] === undefined ? "-" : micro(system.states[state][`${op}/in-flight-16`])}</td>`,
-            )
+            .map(([state]) => timeOf(state, `${op}/in-flight-16`))
             .join("")}</tr>`,
       );
-      return `<h3>${esc(system.label)}: is the virus scanner the cause?</h3>
-<p>${scannerSentences(system, linux).map(esc).join(" ")}</p>
+      return `<h3>${esc(system.label)}: what the virus scanner was doing</h3>
+<p>${scannerFacts(system).map(esc).join(" ")}</p>
 <div class="scroll"><table class="speed">
 <thead><tr><th></th>${states.map(([, text]) => `<th class="n">${esc(text)}</th>`).join("")}</tr></thead>
 <tbody>
 ${lines.join("\n")}
 </tbody>
 </table></div>
-<p class="note">Each time is the median of the runs for one file. The scanner was changed only for these runs and put back after them; the runner is thrown away after the job in any case.</p>`;
+<p class="note">Each time is the median of the runs for one file, with the range over the runs under it. Two columns differ only where their ranges do not overlap; this page picks no cause from them. The scanner was changed only for these runs and put back after them.</p>`;
     })
     .join("\n");
   return `<section class="chart" id="file-ops">
 <h2>What one file costs on each operating system</h2>
-<p class="about">An import writes tens of thousands of small files, so what a system charges for one small file matters. Each system below made the same 3,000 small files (280 bytes each) with the same code, and each column is that system's newest measured build. A time is the average cost of one file in microseconds, so a bigger number is slower. "At once" is how many files were being made at the same moment. These numbers are about the system and its disk, not about the runtime's own code. They are measured on the machines GitHub lends the builds, which are not a person's computer: read them as how much dearer a file is on one system than on another.</p>
+<p class="about">An import writes tens of thousands of small files, so what a system charges for one small file matters. Each system below made the same 3,000 small files (280 bytes each) with the same code, and each column is that system's newest measured build. A time is the average cost of one file in microseconds, so a bigger number is slower. "At once" is how many files were being made at the same moment. These numbers are about the system and its disk, not about the runtime's own code. They are measured on the machines GitHub lends the builds, which are not a person's computer: read them as how much dearer a file is on one system than on another. In this measurement every file has the same bytes, where the files of a pod differ in size. The macOS machine is a virtual machine on Apple silicon; Intel Macs are not measured.</p>
 <div class="scroll"><table class="speed">
 <thead><tr><th>One small file</th>${head}</tr></thead>
 <tbody>
@@ -957,6 +944,7 @@ ${asOne("one-file/whole-flushed", "The same one file, flushed to the drive first
 </tbody>
 </table></div>
 <p class="note">"As one file" is what a pod would pay if it kept its new files together in one file instead of one file each; its time for the whole file is divided by the 3,000 files it holds.</p>
+${ratios.length === 0 ? "" : `<p>${ratios.map(esc).join(" ")}</p>`}
 ${scanner}
 </section>`;
 }
@@ -1054,7 +1042,7 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <p>The column's height is the build's measured time: the median of ${runsText} with nothing watching. Which steps took that time comes from one more run with the probe on, which records how long each step was running by itself, not counting the steps it called. The probe slows some work and some steps run at once, so those own times are only shares: each is scaled so that the bands and "everything else" add up to the measured time. The ${BANDS} steps with the most time across the builds shown get a band each; every other step is in "everything else".</p>
 <p>Each band is named by what the step does in plain words; the step's technical name is beside it, and the whole sentence appears when you hold the pointer over it. A step's colour is chosen from a fixed palette by its name, so it is the same in every chart and does not change from one visit to the next; only when two steps charted together would get the same colour does one take the next free one. The sizes: 647 records is one synthetic patient's ten years, measured on every build; 16,833 records is a whole life, measured nightly, with the same pod encrypted as well. What each step means: <a href="https://github.com/${repo}/blob/main/docs/perf-glossary.md">the glossary</a>.</p>
 <p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (records, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p>
-<p>Charts "on Windows" and "on macOS" are the same measurement on those systems' own GitHub-hosted machines, drawn from those builds alone: a time on one system is never plotted in a column of another, because the machines differ in processor, disk and file system, and the times only read against their own system's earlier ones. Those two are measured when a change is merged to main and every night, not on every pull request, so they have fewer columns. What the systems cost per file, and whether Windows Defender is the reason a file is dearer on Windows, is under the charts.</p>
+<p>Charts "on Windows" and "on macOS" are the same measurement on those systems' own GitHub-hosted machines, drawn from those builds alone: a time on one system is never plotted in a column of another, because the machines differ in processor, disk and file system, and the times only read against their own system's earlier ones. Those two are measured when a change is merged to main and every night, not on every pull request, so they have fewer columns. What the systems cost per file, and what the virus scanner was set to and doing while it was measured, is under the charts.</p>
 <p>Why the two are not measured on every pull request: a pull request is shown only when its slowest check is done. A Windows run took about 10 minutes and a macOS run about 3 (November 2026, a hosted runner each), against about 9 minutes for the slowest check, so the Windows run would have become the slowest check of every pull request. They are measured on the main branch and by hand, and a hand-started run of any branch can name them.</p></details>
 <p class="toc">${[...titled.map((chart) => `<a href="#${esc(chart.id ?? chart.key)}">${esc(chart.title)}</a><br>`), ...(fileOps.length === 0 ? [] : ['<a href="#file-ops">What one file costs on each operating system</a><br>'])].join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}

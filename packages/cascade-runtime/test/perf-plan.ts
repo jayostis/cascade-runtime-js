@@ -34,7 +34,10 @@ export interface Plan {
   readonly cpuProfile?: boolean;
 }
 
-export function parsed(args: string[]): {
+export function parsed(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): {
   plan: Plan;
   out: string | undefined;
 } {
@@ -59,6 +62,16 @@ export function parsed(args: string[]): {
     Object.keys(DATASETS) as DatasetId[],
     "size",
   );
+  // The comparison changes the machine's virus scanner and puts it back in this process only: a stopped parent can leave it changed, which a
+  // hosted runner thrown away after the job does not mind and a person's computer does.
+  if (
+    args.includes("--scanner-compare") &&
+    env.GITHUB_ACTIONS !== "true" &&
+    env.CASCADE_PERF_ALLOW_LOCAL_SCANNER !== "1"
+  )
+    throw new Error(
+      "--scanner-compare changes Windows Defender's settings and puts them back; it runs on GitHub Actions only. To run it deliberately on this machine, from an administrator's shell, set CASCADE_PERF_ALLOW_LOCAL_SCANNER=1",
+    );
   const encryption = (value("--encryption") ?? "auto") as Plan["encryption"];
   if (!["plain", "encrypted", "both", "auto"].includes(encryption))
     throw new Error("--encryption is plain, encrypted, both or auto");

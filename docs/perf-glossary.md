@@ -21,9 +21,9 @@ Generated from the files of `packages/cascade-runtime/test/perf-glossary/`; edit
 | `synthea-10y` | Synthea's realistic synthetic patient, a 10-year record of 647 records. No real person's data. |
 | `synthea-lifetime` | A synthetic patient's whole life, 16,833 records: the large size, run nightly. |
 | `3000-files` | 3,000 small files of 280 bytes each, made in a temporary folder on the machine's own disk, the machine as it is. |
-| `3000-files-scanner-off` | The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live checking of files switched off, to see whether the scanner is what makes creating a file slow. |
-| `3000-files-scanner-on` | The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live checking of files switched ON for the run, on a runner that has it off, to see what the checking costs. |
-| `3000-files-scanner-excluded` | The same 3,000 small files, made while the scanner's live checking is on but the folder the files are made in is excluded from it, to see whether an exclusion is enough. |
+| `3000-files-scanner-off` | The same 3,000 small files, made while the system's virus scanner (Windows Defender) has its live checking of files switched off, to see what that checking costs. |
+| `3000-files-scanner-on` | The same 3,000 small files, made while the system's virus scanner (Windows Defender) has all its checking (live, file-opening, behaviour and script) switched on and the folders the runner leaves out of it taken off its list for the run, to see what the checking costs; the runner is put back as it was afterwards. |
+| `3000-files-scanner-excluded` | The same 3,000 small files, made while the scanner's live checking is on but the folder the files are made in is excluded from it, to see what an exclusion saves. |
 
 ## Plain and encrypted
 
@@ -234,10 +234,12 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `files-written` | How many files the import wrote to the pod. |
 | `rows` | How many rows the floor inserted, one for each resource that has a type: a fresh import's records count is every entry of the Bundle. |
 | `files` | How many small files each of the per-file times is the mean over, and the number of files whose bytes make the one file. |
-| `scanner-realtime-on` | Whether the system's virus scanner had its live checking of files on while the files were made: 1 for yes, 0 for no. Read back from Windows Defender itself, not assumed. |
+| `scanner-realtime-on` | Whether the system's virus scanner had its live checking of files on while the files were made: 1 for yes, 0 for no. Read back from Windows Defender itself, not assumed; the row's note lists every setting it was read with, the folders it leaves alone among them. |
 | `scanner-switch-off-allowed` | Whether the runner let the run switch the virus scanner's live checking off and the scanner confirmed it: 1 for yes, 0 for no; the row's note says why not. |
-| `scanner-switch-on-allowed` | Whether the runner let the run switch the virus scanner's live checking on, where it had it off, and the scanner confirmed it: 1 for yes, 0 for no; the row's note says why not. |
+| `scanner-switch-on-allowed` | Whether the runner let the run switch all the virus scanner's checking on and take the runner's excluded folders off its list, and the scanner confirmed it: 1 for yes, 0 for no; the row's note says why not. |
 | `scanner-exclusion-allowed` | Whether the runner let the run exclude the folder from the virus scanner and the scanner listed it: 1 for yes, 0 for no; the row's note says why not. |
+| `scanner-restored` | Whether the virus scanner was read back as it was before the run changed it, every setting and every excluded folder: 1 for yes, 0 for no; the row's note says what it read. |
+| `work-folder` | Where the files were made: the folder's own path and the drive it is on, in the row's note. 1 when recorded. |
 | `scanner-folder-excluded` | Whether the folder the files were made in was on the scanner's list of excluded folders while they were made: 1 for yes, 0 for no. |
 | `graph.scans` | How many times the in-memory facts were searched from end to end. |
 | `graph.quadsvisited` | How many individual facts those searches looked at. |
