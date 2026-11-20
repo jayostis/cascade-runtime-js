@@ -345,6 +345,12 @@ export class FolderFiles implements Files {
     return this.#again(pathOrIri, () => this.#write(pathOrIri, bytes));
   }
 
+  async writeMany(
+    files: Iterable<readonly [string, Uint8Array]>,
+  ): Promise<void> {
+    for (const [path, bytes] of files) await this.write(path, bytes);
+  }
+
   async #write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
     const local = this.#local(pathOrIri);
     const at = await this.#writable(pathOrIri);

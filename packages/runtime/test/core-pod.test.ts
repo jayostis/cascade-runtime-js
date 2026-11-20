@@ -7,6 +7,7 @@ import { parseGraph } from "../src/graph.js";
 import { randomId } from "../src/ids.js";
 import type { Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { StepWrites } from "../src/pod.js";
 import { iri, literal, type Triple, XSD } from "../src/rdf.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
 
@@ -58,6 +59,60 @@ async function created(pod: CorePod): Promise<string[]> {
   ).rows.flatMap((row) => row.get("at")?.value ?? []);
 }
 
+/** Each start and each end of the write of a file, in the order they happened. */
+interface Event {
+  readonly path: string;
+  readonly at: "start" | "end";
+}
+
+/** Files that take several writes at once, each taking a few milliseconds, and log every start and end. */
+class Overlapping extends MemoryFiles {
+  readonly log: Event[] = [];
+
+  async #put(path: string, bytes: Uint8Array): Promise<void> {
+    this.log.push({ path, at: "start" });
+    await new Promise((resolve) => setTimeout(resolve, 3));
+    await super.write(path, bytes);
+    this.log.push({ path, at: "end" });
+  }
+
+  override write(path: string, bytes: Uint8Array): Promise<void> {
+    return this.#put(path, bytes);
+  }
+
+  async writeMany(
+    files: Iterable<readonly [string, Uint8Array]>,
+  ): Promise<void> {
+    await Promise.all(
+      [...files].map(([path, bytes]) => this.#put(path, bytes)),
+    );
+  }
+}
+
+/** The log positions of the first start and the last end among the writes of the paths. */
+function within(
+  log: readonly Event[],
+  paths: readonly string[],
+): { first: number; last: number } {
+  const at = (kind: Event["at"]): number[] =>
+    log.flatMap((event, n) =>
+      event.at === kind && paths.includes(event.path) ? [n] : [],
+    );
+  if (at("start").length === 0) throw new Error(`${paths} were never written`);
+  return { first: Math.min(...at("start")), last: Math.max(...at("end")) };
+}
+
+/** Whether the write of one of the paths started while another of them was being written. */
+function overlaps(log: readonly Event[], paths: readonly string[]): boolean {
+  let open = 0;
+  for (const event of log) {
+    if (!paths.includes(event.path)) continue;
+    if (event.at === "end") open -= 1;
+    else if ((open += 1) > 1) return true;
+  }
+  return false;
+}
+
 /**
  * A step writes its files in an order, and to places, that leave the pod readable if the step stops part way: the file
  * describing the act goes last, so no pod names an act whose files are missing.
@@ -99,6 +154,132 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
       );
       assert.deepEqual(new Set(ranks), new Set([0, 1, 2]));
       assert.equal(ranks.filter((rank) => rank === 2).length, 1);
+    });
+  });
+
+  describe("given files that take several writes at once (`Files.writeMany`), CorePod.import()", () => {
+    let ranked: { path: string; rank: number }[];
+    let log: readonly Event[];
+
+    before(async () => {
+      let files: Overlapping | undefined;
+      const { pod, steps } = await replayed(
+        "runtime/arrivals.feature",
+        "each record's first arrival is its first version and a revision that follows none",
+        {
+          importers: [appleHealthExport],
+          pod: (address) => (files = new Overlapping(address)),
+        },
+      );
+      log = files?.log ?? [];
+      ranked = [];
+      for (const path of steps[1]?.wrote ?? []) {
+        if (!(await layout()).isRdf(path)) {
+          ranked.push({ path, rank: 0 });
+          continue;
+        }
+        const { triples } = await parseGraph(
+          (await pod.read(path)) ?? new Uint8Array(),
+          pod.iri + path,
+          newStore,
+        );
+        const said = (term: string): boolean =>
+          triples.some(([, p, o]) => p.value === term || o.value === term);
+        ranked.push({
+          path,
+          rank: said(`${PROV}used`) ? 2 : said(`${CASCADE}Revision`) ? 1 : 0,
+        });
+      }
+    });
+
+    it("starts none of its revisions before every content-addressed file is written, and its description before every revision is", () => {
+      const of = (rank: number): string[] =>
+        ranked.filter((file) => file.rank === rank).map(({ path }) => path);
+      for (const [before, after] of [
+        [0, 1],
+        [1, 2],
+      ] as const)
+        assert.ok(
+          within(log, of(before)).last < within(log, of(after)).first,
+          `a file of rank ${after} was started before every file of rank ${before} was written`,
+        );
+    });
+
+    it("writes the content-addressed files several at once", () => {
+      assert.ok(
+        overlaps(
+          log,
+          ranked.filter(({ rank }) => rank === 0).map(({ path }) => path),
+        ),
+        "no two were being written at once",
+      );
+    });
+  });
+
+  describe("given files that take several writes at once, StepWrites.commit()", () => {
+    const body = (path: string): Uint8Array => new TextEncoder().encode(path);
+    const waved = (
+      waves: readonly (number | undefined)[],
+    ): { writes: StepWrites; paths: string[] } => {
+      const writes = new StepWrites();
+      const paths = waves.map((_, n) => `files/${n}`);
+      waves.forEach((wave, n) =>
+        writes.add(paths[n] ?? "", body(`${n}`), wave),
+      );
+      return { writes, paths };
+    };
+
+    it("starts no file of a wave before every file of the wave before it is written, and its act's file after all, one wave at several at once", async () => {
+      const { writes, paths } = waved([1, 1, 1, 1, 2, 2, 3]);
+      writes.act({ name: "urn:act", path: "acts/a", triples: [] });
+      const pod = new Overlapping(ADDRESS);
+      const committed = await writes.commit(pod);
+      const waves = [
+        paths.slice(0, 4),
+        paths.slice(4, 6),
+        paths.slice(6),
+        ["acts/a"],
+      ];
+      for (const [n, wave] of waves.slice(1).entries())
+        assert.ok(
+          within(pod.log, waves[n] ?? []).last < within(pod.log, wave).first,
+          `${wave} started before ${waves[n]} was written`,
+        );
+      assert.ok(
+        overlaps(pod.log, waves[0] ?? []),
+        "the first wave was written one at a time",
+      );
+      assert.deepEqual(committed, [...paths, "acts/a"]);
+      assert.deepEqual(writes.committed, [...paths, "acts/a"]);
+    });
+
+    it("writes a file with no wave alone, in its place, and so splits the wave around it in two", async () => {
+      const { writes, paths } = waved([1, 1, undefined, 1, 1]);
+      const pod = new Overlapping(ADDRESS);
+      await writes.commit(pod);
+      const [one, two, alone, three, four] = paths;
+      const before = within(pod.log, [one ?? "", two ?? ""]);
+      const middle = within(pod.log, [alone ?? ""]);
+      const after = within(pod.log, [three ?? "", four ?? ""]);
+      assert.ok(before.last < middle.first, "the file was started too soon");
+      assert.ok(middle.last < after.first, "the file was written too late");
+    });
+
+    it("writes every file in one `writeAll` where the files have none that writes several at once, whatever the waves", async () => {
+      const { writes, paths } = waved([1, 1, 2, 3]);
+      writes.act({ name: "urn:act", path: "acts/a", triples: [] });
+      const files = new MemoryFiles(ADDRESS);
+      const batches: string[][] = [];
+      await writes.commit({
+        iri: ADDRESS,
+        read: (path) => files.read(path),
+        list: (folder) => files.list(folder),
+        write: (path) => Promise.reject(new Error(`${path} written alone`)),
+        writeAll: async (written) => {
+          batches.push([...written].map(([path]) => path));
+        },
+      });
+      assert.deepEqual(batches, [[...paths, "acts/a"]]);
     });
   });
 

@@ -40,7 +40,7 @@ export class StepWrites {
     return this.#committed;
   }
 
-  add(path: string, bytes: Uint8Array): void {
+  add(path: string, bytes: Uint8Array, _wave?: number): void {
     if (path === this.#act?.path)
       throw new Error(`${path} is the act's file, written last`);
     const held = this.#files.get(path);

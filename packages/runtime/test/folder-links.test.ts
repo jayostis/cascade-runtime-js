@@ -321,6 +321,72 @@ describe("Reading and writing files by path · Files, MemoryFiles, FolderFiles, 
     });
   });
 
+  /**
+   * `writeMany` writes the files of a folder several at once, never more than sixteen, and returns, or throws, with none
+   * still being written. Each file's lstat takes 5 ms, and the one named `bad.txt` is refused by it at once.
+   */
+  describe("given a folder that refuses links, and forty files written at once", () => {
+    const PATHS = Array.from({ length: 40 }, (_, n) => `many/${n}.txt`);
+
+    /** A folder whose lstat of each file waits, counts those waiting, and refuses `bad.txt`. */
+    async function slow() {
+      const { base } = await world();
+      const folder = join(base, "slow");
+      const count = { waiting: 0, most: 0 };
+      const files = new FolderFiles(folder, undefined, {
+        ...REFUSING,
+        fs: {
+          lstat: async (path) => {
+            if (!path.endsWith(".txt")) return lstat(path);
+            if (path.endsWith("bad.txt")) throw new Error("bad.txt is refused");
+            count.waiting += 1;
+            count.most = Math.max(count.most, count.waiting);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            count.waiting -= 1;
+            return lstat(path);
+          },
+        },
+      });
+      return { folder, files, count };
+    }
+
+    const written = async (folder: string): Promise<string[]> =>
+      (await readdir(folder, { recursive: true })).filter((name) =>
+        name.endsWith(".txt"),
+      );
+
+    it("writes every file, with more than one being written at a time and no more than sixteen", async () => {
+      const { folder, files, count } = await slow();
+      await files.writeMany(PATHS.map((path) => [path, bytes(path)]));
+      assert.equal((await written(folder)).length, 40);
+      for (const path of PATHS)
+        assert.equal(text(await files.read(path)), path);
+      assert.ok(count.most > 1, `${count.most} files were written at a time`);
+      assert.ok(count.most <= 16, `${count.most} files were written at a time`);
+    });
+
+    it("throws the first failure with no file still being written, none half written and the failing one not there", async () => {
+      const { folder, files } = await slow();
+      const given = PATHS.map((path, n): [string, Uint8Array] => [
+        n === 20 ? "many/bad.txt" : path,
+        bytes(path),
+      ]);
+      await assert.rejects(files.writeMany(given), /bad\.txt is refused/);
+      const once = await readdir(folder, { recursive: true });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.deepEqual(await readdir(folder, { recursive: true }), once);
+      assert.ok(
+        !once.some((name) => name.endsWith(".writing")),
+        "half written",
+      );
+      assert.ok(!once.some((name) => name.endsWith("bad.txt")));
+      assert.ok(
+        once.some((name) => name.endsWith(".txt")),
+        "none written",
+      );
+    });
+  });
+
   describe("given a path with a backslash or a colon in it", () => {
     const PATHS = [
       "subject\\real.txt",
