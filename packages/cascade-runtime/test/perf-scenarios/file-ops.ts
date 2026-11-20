@@ -366,6 +366,8 @@ export async function fileOpsAt(
     /** One process's measurement, in a folder of its own. */
     once?: (folder: string) => Promise<FileOpsRun>;
     signals?: SignalHost;
+    /** Called with the rows so far after each state, so that a run that is killed keeps what it had. */
+    keep?: (rows: readonly Row[]) => Promise<void>;
   } = {},
 ): Promise<Row[]> {
   const scanner =
@@ -490,6 +492,7 @@ export async function fileOpsAt(
     );
     if (!took) return false;
     rows.push(...(await batch(state)));
+    await deps.keep?.(rows);
     const during = await scanner.read();
     rows.push(
       countRow(

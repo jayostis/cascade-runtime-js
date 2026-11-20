@@ -75,8 +75,6 @@ async function main(args: string[]): Promise<void> {
   process.on("beforeExit", () => {
     if (!finished) say("the performance run has nothing left to wait for");
   });
-  for (const signal of ["SIGHUP", "SIGBREAK", "SIGINT", "SIGTERM"] as const)
-    process.on(signal, () => say(`the performance run was sent ${signal}`));
   const started = performance.now();
   const file = await perfFile(
     plan,

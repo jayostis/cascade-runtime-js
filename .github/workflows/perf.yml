@@ -465,6 +465,18 @@ jobs:
           echo "day=$(date -u +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
       - name: The performance file
         run: npm run --silent perf -- ${{ steps.what.outputs.args }} --out "$RUNNER_TEMP/perf.json"
+      # What Defender settings the runner is left with and what it did while the comparison ran: a run that ends without its file is
+      # read from here.
+      - name: What Windows Defender did
+        if: ${{ !cancelled() && matrix.system == 'windows' && inputs.scanner }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Get-MpComputerStatus | Format-List RealTimeProtectionEnabled, AMRunningMode, IoavProtectionEnabled, BehaviorMonitorEnabled
+          Get-MpPreference | Format-List DisableRealtimeMonitoring, DisableIOAVProtection, DisableBehaviorMonitoring, DisableScriptScanning, ExclusionPath
+          Get-MpThreatDetection | Format-List InitialDetectionTime, ProcessName, Resources
+          Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-Windows Defender/Operational'; StartTime = (Get-Date).AddMinutes(-20) } -MaxEvents 40 | Format-List TimeCreated, Id, Message
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-20); Level = 2 } -MaxEvents 20 | Format-List TimeCreated, ProviderName, Message
       - name: The summary
         if: ${{ !cancelled() }}
         run: |

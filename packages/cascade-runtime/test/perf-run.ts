@@ -299,7 +299,13 @@ export async function perfFile(
     );
     // What one file costs belongs to no size: once, first, before any import has used the machine.
     if (plan.scenarios.has("file-ops")) {
-      results.push(...(await fileOpsAt(plan, work, log)));
+      const kept = async (rows: readonly Row[]): Promise<void> =>
+        partial({
+          env: envOf(plan),
+          commit: await commits(),
+          results: explained([...results, ...rows]).rows,
+        });
+      results.push(...(await fileOpsAt(plan, work, log, { keep: kept })));
       await partial({
         env: envOf(plan),
         commit: await commits(),
