@@ -459,6 +459,7 @@ export async function fileOpsAt(
     }[state];
     let refusal = "";
     changed = true;
+    log(`scanner, ${state}: setting ${describeSettings(settings)}`);
     try {
       await scanner.set(settings);
     } catch (error) {
@@ -518,6 +519,9 @@ export async function fileOpsAt(
         `read back after the last run: ${restored?.says ?? "nothing was changed"}`,
       ),
     );
+  } catch (error) {
+    log(`the comparison failed: ${message(error)}`);
+    throw error;
   } finally {
     stopListening();
     await restore();

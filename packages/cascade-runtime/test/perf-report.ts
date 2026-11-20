@@ -60,6 +60,14 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   const { plan, out } = parsed(args);
+  // A run that ends without its file says how it ended.
+  let finished = false;
+  process.on("exit", (code) => {
+    if (!finished)
+      process.stderr.write(
+        `the performance run ended early, exit code ${code}\n`,
+      );
+  });
   const started = performance.now();
   const file = await perfFile(
     plan,
@@ -75,6 +83,7 @@ async function main(args: string[]): Promise<void> {
   const text = `${JSON.stringify(file, null, 2)}\n`;
   if (out === undefined) process.stdout.write(text);
   else await writeFile(out, text);
+  finished = true;
   process.stderr.write(
     `${file.results.length} rows${out === undefined ? "" : ` written to ${out}`}\n`,
   );

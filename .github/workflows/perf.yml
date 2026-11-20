@@ -67,7 +67,6 @@ on:
             reopen-first-answer,
             question-page,
             close,
-            file-ops,
           ]
         default: all
       size:
