@@ -1,5 +1,6 @@
 import { constants, type Stats } from "node:fs";
 import {
+  type FileHandle,
   link,
   lstat,
   mkdir,
@@ -86,6 +87,21 @@ async function retried<T>(doing: () => Promise<T>): Promise<T> {
 
 const renamedOver = (from: string, to: string): Promise<void> =>
   retried(() => rename(from, to));
+
+/**
+ * The handle each file's ranged reads share, and its size: opened by the first, and closed once a turn of the event loop
+ * passes with none in flight, so that a caller's next batch of reads, begun as the last ended, finds it open. Opening an
+ * archive costs far more than reading an entry of it (0.5 to 3.5 ms on Windows, by its size, against 0.02 ms). A rename
+ * or a removal that meets the handle in that turn is retried, as for any reader's.
+ */
+const sharedHandles = new Map<
+  string,
+  {
+    readonly handle: Promise<FileHandle>;
+    readonly size: Promise<number>;
+    reads: number;
+  }
+>();
 
 /** The replaces on each path in this process, one after another, so that no two look at a file at once. */
 const replacing = new Map<string, Promise<unknown>>();
@@ -308,9 +324,21 @@ export class FolderFiles implements Files {
     try {
       const opening = await this.#opening(pathOrIri);
       if (opening === undefined) return undefined;
-      const handle = await open(opening.path, opening.flag);
+      const key = `${opening.path}\0${String(opening.flag)}`;
+      let shared = sharedHandles.get(key);
+      if (shared === undefined) {
+        const handle = open(opening.path, opening.flag);
+        shared = {
+          handle,
+          size: handle.then(async (opened) => (await opened.stat()).size),
+          reads: 0,
+        };
+        shared.size.catch(() => undefined);
+        sharedHandles.set(key, shared);
+      }
+      shared.reads += 1;
       try {
-        const size = (await handle.stat()).size;
+        const [handle, size] = await Promise.all([shared.handle, shared.size]);
         const from = start < 0 ? Math.max(0, size + start) : start;
         const bytes = new Uint8Array(
           Math.max(0, Math.min(length, size - from)),
@@ -318,7 +346,18 @@ export class FolderFiles implements Files {
         const { bytesRead } = await handle.read(bytes, 0, bytes.length, from);
         return bytes.subarray(0, bytesRead);
       } finally {
-        await handle.close();
+        shared.reads -= 1;
+        if (shared.reads === 0) {
+          const ending = shared;
+          setImmediate(() => {
+            if (ending.reads > 0 || sharedHandles.get(key) !== ending) return;
+            sharedHandles.delete(key);
+            ending.handle.then(
+              (handle) => handle.close(),
+              () => undefined,
+            );
+          });
+        }
       }
     } catch (error) {
       if (absent(error)) return undefined;

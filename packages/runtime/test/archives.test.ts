@@ -381,12 +381,20 @@ describe("Reading a pod's files from archives · ArchivedFiles, archivedFiles()"
     assert.equal(archivedFiles(host, none), host);
   });
 
-  it("leaves no handle open on an archive in a folder, which can then be renamed", async () => {
+  it("leaves no handle open on an archive in a folder once its reads, one or several at once, have ended, so it can be renamed", async () => {
     const at = join(folder, "handles");
     const disk = new FolderFiles(at, POD);
     const path = await archived(disk, zipOf(IN_ARCHIVE));
     const files = new ArchivedFiles(disk, ARCHIVES);
     assert.equal(text(await files.read(STORED)), BODY[STORED]);
+    assert.deepEqual(
+      await Promise.all(
+        [STORED, DEFLATED, SUBJECT].map(async (each) =>
+          text(await files.read(each)),
+        ),
+      ),
+      [BODY[STORED], BODY[DEFLATED], BODY[SUBJECT]],
+    );
     await rename(join(at, ...path.split("/")), join(at, ARCHIVES, "moved.zip"));
     assert.deepEqual(await readdir(join(at, ARCHIVES)), ["moved.zip"]);
   });
