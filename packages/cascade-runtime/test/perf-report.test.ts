@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { before, describe, it } from "node:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { after, before, describe, it } from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { gzipSync } from "node:zlib";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openPod } from "cascade-runtime";
 import { wholeBuildJob } from "@cascade-runtime/runtime/node";
@@ -15,12 +19,14 @@ import {
   timed,
 } from "@cascade-runtime/runtime/probe";
 import { explain, glossaryMarkdown } from "./perf-glossary.js";
+import { flatten, loadPlainly } from "./perf-floor.js";
 import { profileOf, syntheticPull } from "./import-bench.js";
 import {
   clockRow,
   commits,
   countRow,
   envOf,
+  floorRows,
   tabulated,
   FIRST_SCREEN,
   KIT,
@@ -47,10 +53,32 @@ const history = (await import(
   ): { name: string; value: number; extra?: string }[];
 };
 
+interface Rates {
+  statements?: number;
+  files?: number;
+}
+interface Speed {
+  imported: number;
+  floor?: { total: number };
+  times?: number;
+  records?: number;
+  statements?: number;
+  files?: number;
+  queries?: number;
+  quads?: number;
+  rates: { saving: Rates; converting: Rates; judging: Rates };
+}
 interface Compare {
   compare(before: object, after: object, options?: object): string;
   summary(file: object, options?: object): string;
+  speedOf(file: object, key: string): Speed | undefined;
+  floorLine(speed: Speed | undefined): string | undefined;
 }
+
+const scratch: string[] = [];
+after(async () => {
+  for (const dir of scratch) await rm(dir, { recursive: true, force: true });
+});
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -320,9 +348,264 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
     });
   });
 
+  describe("given a record to load as plainly as SQL can", () => {
+    const entry = (resource: object) => ({ resource });
+    const gz = async (bundle: object): Promise<string> => {
+      const dir = await mkdtemp(join(tmpdir(), "perf-floor-test-"));
+      scratch.push(dir);
+      const path = join(dir, "bundle.json.gz");
+      await writeFile(path, gzipSync(JSON.stringify(bundle)));
+      return path;
+    };
+    const sqlite = (path: string) => {
+      const Database = createRequire(import.meta.url)(
+        "better-sqlite3-multiple-ciphers",
+      ) as new (file: string) => {
+        prepare(sql: string): { all(): Record<string, unknown>[] };
+        close(): void;
+      };
+      return new Database(path);
+    };
+
+    it("flattens each resource into one row of the table of its type, a scalar as a column and anything nested as JSON text", () => {
+      const tables = flatten([
+        entry({
+          resourceType: "Patient",
+          id: "p1",
+          active: true,
+          name: [{ family: "A" }],
+        }),
+        entry({
+          resourceType: "Observation",
+          id: "o1",
+          status: "final",
+          valueQuantity: { value: 3 },
+        }),
+        entry({ resourceType: "Patient", id: "p2", gender: "female" }),
+        {},
+      ]);
+      assert.deepEqual([...tables.keys()].sort(), ["Observation", "Patient"]);
+      const patient = tables.get("Patient");
+      assert.deepEqual(patient?.columns, ["id", "active", "name", "gender"]);
+      assert.deepEqual(patient?.rows, [
+        ["p1", 1, '[{"family":"A"}]', null],
+        ["p2", null, null, "female"],
+      ]);
+      assert.deepEqual(tables.get("Observation")?.rows, [
+        ["o1", "final", '{"value":3}'],
+      ]);
+    });
+
+    it("reads, parses, flattens and inserts a gzipped Bundle in one transaction, and says what each stage took and how many rows went in", async () => {
+      const bundle = {
+        resourceType: "Bundle",
+        entry: [
+          entry({ resourceType: "Patient", id: "p1", name: [{ family: "A" }] }),
+          entry({ resourceType: "Observation", id: "o1", status: "final" }),
+          entry({ resourceType: "Observation", id: "o2", status: "amended" }),
+        ],
+      };
+      const path = await gz(bundle);
+      const database = join(dirname(path), "floor.db");
+      const loaded = await loadPlainly(path, database);
+      assert.equal(loaded.rows, 3);
+      assert.equal(loaded.records, 3);
+      assert.equal(loaded.tables, 2);
+      for (const stage of [loaded.parse, loaded.flatten, loaded.insert])
+        assert.ok(Number.isFinite(stage) && stage >= 0);
+      assert.equal(
+        loaded.sha256,
+        createHash("sha256").update(JSON.stringify(bundle)).digest("hex"),
+      );
+      const opened = sqlite(database);
+      try {
+        assert.deepEqual(
+          opened
+            .prepare(`select id, status from "Observation" order by id`)
+            .all(),
+          [
+            { id: "o1", status: "final" },
+            { id: "o2", status: "amended" },
+          ],
+        );
+        assert.deepEqual(opened.prepare(`select name from "Patient"`).all(), [
+          { name: '[{"family":"A"}]' },
+        ]);
+      } finally {
+        opened.close();
+      }
+    });
+
+    it("loads a Bundle with no entry as an empty load, and one whose entries hold no resource as none inserted", async () => {
+      const first = await gz({ resourceType: "Bundle", entry: [] });
+      const empty = await loadPlainly(first, join(dirname(first), "floor.db"));
+      assert.deepEqual([empty.rows, empty.tables], [0, 0]);
+      const bare = await gz({ resourceType: "Bundle", entry: [{}, {}] });
+      const none = await loadPlainly(bare, join(dirname(bare), "floor.db"));
+      assert.deepEqual([none.rows, none.records], [0, 2]);
+    });
+
+    it("writes the floor's rows under floor-<size>: the median of each stage and their total, and the rows loaded", () => {
+      const run = (parse: number, flat: number, insert: number) => ({
+        parse,
+        flatten: flat,
+        insert,
+        rows: 647,
+        records: 647,
+        tables: 9,
+        sha256: "f".repeat(64),
+      });
+      const rows = floorRows("synthea-10y", "dataset=synthea-10y records=647", [
+        run(0.1, 0.2, 0.3),
+        run(0.2, 0.2, 0.5),
+        run(0.3, 0.3, 0.4),
+      ]);
+      const by = (name: string) =>
+        rows.find((each) => each.name === `floor-synthea-10y/${name}`);
+      assert.equal(by("parse")?.value, 0.2);
+      assert.equal(by("flatten")?.value, 0.2);
+      assert.equal(by("insert")?.value, 0.4);
+      assert.equal(by("total")?.value, 0.9);
+      assert.equal(by("total")?.samples, 3);
+      assert.equal(by("count/rows")?.value, 647);
+      assert.equal(by("count/rows")?.kind, "cost");
+      assert.deepEqual(
+        rows.filter((each) => refused(each) !== undefined),
+        [],
+      );
+      assert.deepEqual(
+        rows.filter(({ name }) => explain(name) === undefined),
+        [],
+      );
+    });
+
+    it("is a scenario a run can name on its own, and one the glossary says plainly does no mapping, provenance, matching, views or files", () => {
+      assert.ok((SCENARIOS as readonly string[]).includes("floor"));
+      const says = explain("floor-synthea-10y/total") ?? "";
+      for (const left of [
+        "no mapping to the Cascade vocabulary",
+        "no provenance",
+        "no matching",
+        "no derived views",
+        "no files",
+      ])
+        assert.ok(says.includes(left), left);
+    });
+  });
+
+  describe("given a fresh import and the plain load of the same input in one file", () => {
+    const row = (
+      name: string,
+      value: number,
+      unit: Row["unit"] = "s",
+    ): Row => ({
+      name,
+      unit,
+      value,
+      kind: unit === "{count}" ? "cost" : "clock",
+      ...(unit !== "{count}" && { samples: 3, range: `${value}-${value}` }),
+    });
+    const KEY = "fresh-first-screen-synthea-lifetime";
+    const rows = [
+      row(`${KEY}/import`, 42.3),
+      row(`${KEY}/total`, 50),
+      row(`${KEY}/phase-converting`, 15.7),
+      row(`${KEY}/phase-saving`, 6.7),
+      row(`${KEY}/phase-judging`, 10),
+      row(`${KEY}/count/records`, 16833, "{count}"),
+      row(`${KEY}/count/built.lines.written`, 294000, "{count}"),
+      row(`${KEY}/count/files-written`, 27223, "{count}"),
+      row(`${KEY}/count/store.queries`, 365, "{count}"),
+      row(`${KEY}/count/graph.quadsvisited`, 1300000, "{count}"),
+      row("floor-synthea-lifetime/total", 2.1),
+      row("floor-synthea-lifetime/parse", 0.6),
+      row("floor-synthea-lifetime/flatten", 0.4),
+      row("floor-synthea-lifetime/insert", 1.1),
+      row("floor-synthea-lifetime/count/rows", 16833, "{count}"),
+    ];
+    const near = (found: number | undefined, wanted: number) =>
+      assert.ok(Math.abs((found ?? NaN) - wanted) < 1e-6, `${found}`);
+
+    it("reads the import, the floor, how many times as long, what the run handled and each phase's rates from the rows", () => {
+      const speed = compare.speedOf(file(rows), KEY);
+      assert.equal(speed?.imported, 42.3);
+      assert.equal(speed?.floor?.total, 2.1);
+      near(speed?.times, 42.3 / 2.1);
+      assert.deepEqual(
+        [
+          speed?.records,
+          speed?.statements,
+          speed?.files,
+          speed?.queries,
+          speed?.quads,
+        ],
+        [16833, 294000, 27223, 365, 1300000],
+      );
+      near(speed?.rates.saving.statements, 294000 / 6.7);
+      near(speed?.rates.saving.files, 27223 / 6.7);
+      near(speed?.rates.converting.statements, 294000 / 15.7);
+      near(speed?.rates.judging.statements, 294000 / 10);
+      assert.equal(speed?.rates.converting.files, undefined);
+      assert.equal(compare.speedOf(file(rows), "close-synthea-10y"), undefined);
+    });
+
+    it("says it in one line, and has no line for a file with no floor", () => {
+      assert.equal(
+        compare.floorLine(compare.speedOf(file(rows), KEY)),
+        "Import takes 42.3 s; the plain SQL load of the same input takes 2.10 s (20x).",
+      );
+      const without = file(
+        rows.filter(({ name }) => !name.startsWith("floor-")),
+      );
+      assert.equal(compare.floorLine(compare.speedOf(without, KEY)), undefined);
+      assert.ok(compare.speedOf(without, KEY));
+    });
+
+    it("shows the line, a throughput table and a plain caption in a summary and in a comparison, and nothing for a file with no import", () => {
+      const text = compare.summary(file(rows), { markdown: true });
+      assert.match(text, /Import takes 42\.3 s; the plain SQL load .* \(20x\)/);
+      assert.match(
+        text,
+        /\| Records \| Statements \| Files written \| Store queries \| Quads visited \|/,
+      );
+      assert.match(
+        text,
+        /\| 16,833 \| 294,000 \| 27,223 \| 365 \| 1,300,000 \|/,
+      );
+      assert.match(text, /43,881/);
+      assert.match(text, /no mapping to the Cascade vocabulary/);
+      const compared = compare.compare(file(rows), file(rows), {
+        markdown: true,
+      });
+      assert.match(compared, /Import takes 42\.3 s/);
+      assert.doesNotMatch(
+        compare.summary(file([row("close-synthea-10y/total", 1)])),
+        /Import takes/,
+      );
+    });
+
+    it("keeps the floor's stages for the history page beside the headline times, and no count", () => {
+      const kept = history
+        .forHistory(file(rows))
+        .map(({ name }) => name)
+        .filter((name) => name.startsWith("floor-"));
+      assert.deepEqual(kept, [
+        "floor-synthea-lifetime/total",
+        "floor-synthea-lifetime/parse",
+        "floor-synthea-lifetime/flatten",
+        "floor-synthea-lifetime/insert",
+      ]);
+    });
+  });
+
   describe("given the glossary", () => {
     it("explains every scenario, size, headline measurement and phase row of the file", () => {
       for (const name of [
+        "floor-synthea-10y/total",
+        "floor-synthea-lifetime/parse",
+        "floor-synthea-10y/flatten",
+        "floor-synthea-10y/insert",
+        "floor-synthea-10y/count/rows",
         "fresh-first-screen-synthea-10y/total",
         "fresh-first-screen-synthea-lifetime-encrypted/import",
         "fresh-first-screen-synthea-10y/phase-converting",

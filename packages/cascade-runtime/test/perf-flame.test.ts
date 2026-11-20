@@ -730,6 +730,63 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         /<a href="\.\.\/runs\/">/,
       );
     });
+
+    it("shows a build the line of its import beside the plain SQL load and its throughput table, from that build's performance file, and nothing for a build whose file is not there", async () => {
+      const { pages } = await script<Runs>("perf-runs.mjs");
+      const data = await folder();
+      const perf = await folder();
+      const out = await folder();
+      const viewer = await folder();
+      await writeFile(join(viewer, "index.html"), "<html></html>");
+      await put(data, "2026/11/19", "100-aaaaaaa", "push", ["synthea-10y"]);
+      await put(data, "2026/11/20", "300-ccccccc", "push", ["synthea-10y"]);
+      const key = "fresh-first-screen-synthea-10y";
+      const row = (name: string, value: number, unit = "s") => ({
+        name,
+        unit,
+        value,
+      });
+      const day = join(perf, "runtime", "2026", "11", "20");
+      await mkdir(day, { recursive: true });
+      await writeFile(
+        join(day, "300-ccccccc-push.json"),
+        JSON.stringify({
+          results: [
+            row(`${key}/import`, 8),
+            row(`${key}/phase-saving`, 2),
+            row(`${key}/phase-converting`, 4),
+            row(`${key}/phase-judging`, 2),
+            row(`${key}/count/records`, 647, "{count}"),
+            row(`${key}/count/built.lines.written`, 10000, "{count}"),
+            row(`${key}/count/files-written`, 800, "{count}"),
+            row(`${key}/count/store.queries`, 90, "{count}"),
+            row(`${key}/count/graph.quadsvisited`, 5000, "{count}"),
+            row("floor-synthea-10y/total", 0.5),
+          ],
+        }),
+      );
+      pages({
+        data,
+        out,
+        viewerFolder: viewer,
+        repo: "owner/repo",
+        pagesAt: "https://owner.github.io/repo/perf",
+        perfData: perf,
+      });
+      const index = await readFile(join(out, "runs", "index.html"), "utf8");
+      const build = (id: string) =>
+        new RegExp(
+          `<details class="build" id="${id}"[\\s\\S]*?</details>`,
+        ).exec(index)?.[0] ?? "";
+      assert.match(
+        build("300-ccccccc"),
+        /Import takes 8\.00 s; the plain SQL load of the same input takes 500 ms \(16x\)\./,
+      );
+      assert.match(build("300-ccccccc"), /<td[^>]*>10,000<\/td>/);
+      assert.match(build("300-ccccccc"), /<td[^>]*>2,500<\/td>/);
+      assert.doesNotMatch(build("100-aaaaaaa"), /Import takes/);
+      assert.match(build("100-aaaaaaa"), /Where the time went/);
+    });
   });
 
   describe("given two files with the own time of a step", () => {
