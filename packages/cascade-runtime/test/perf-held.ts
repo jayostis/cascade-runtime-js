@@ -7,7 +7,8 @@ import {
 
 /**
  * The counts of a pod as a page reads them, for the tests of the pages: ten pod records in 41 files holding 1,000
- * statements and 10 MiB, of which 600 statements are versions, 300 history, 20 bookkeeping and 80 derived.
+ * statements and 10 MiB, of which 600 statements are in versions (10 of them the links to their records, which count as
+ * history), 300 in records and revisions, 20 bookkeeping and 80 derived.
  */
 export function held(): Stored {
   const kinds: Record<string, [number, number, number]> = {
@@ -27,6 +28,7 @@ export function held(): Stored {
       }),
     ) as Stored["kinds"],
     podRecords: 10,
+    versionLinks: 10,
     predicates: {
       cascade: 700,
       prov: 100,

@@ -823,8 +823,8 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         block,
         /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MB\)/,
       );
-      assert.match(block, /<td class="n">600<\/td>/);
-      assert.match(block, /<td class="n">60%<\/td>/);
+      assert.match(block, /<td class="n">590<\/td>/);
+      assert.match(block, /<td class="n">59%<\/td>/);
       assert.doesNotMatch(runsPage([run([])], options), /What a pod holds/);
     });
   });

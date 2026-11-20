@@ -568,8 +568,8 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
         block,
         /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MB\) and 1,050 statements/,
       );
-      assert.match(block, /<td[^>]*>650<\/td>/);
-      assert.doesNotMatch(block, /<td[^>]*>600<\/td>/);
+      assert.match(block, /<td[^>]*>640<\/td>/);
+      assert.doesNotMatch(block, /<td[^>]*>590<\/td>/);
       assert.match(block, /bbbbbbb/);
       assert.doesNotMatch(block, /threshold|alarm|limit/i);
     });

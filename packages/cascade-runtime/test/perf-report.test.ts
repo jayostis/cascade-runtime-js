@@ -136,6 +136,7 @@ const compare = (await import(
 interface StoredPage {
   entries: number;
   podRecords: number;
+  versionLinks: number;
   kinds: {
     id: string;
     files: number;
@@ -893,7 +894,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       );
       assert.match(
         text,
-        /\| Records \| Answer-file lines \| Files written \| Questions put to the fact store \| Individual facts looked at \| Saving: answer-file lines\/s \| Saving: files\/s \|/,
+        /\| Source entries \| Answer-file lines \| Files written \| Questions put to the fact store \| Individual facts looked at \| Saving: answer-file lines\/s \| Saving: files\/s \|/,
       );
       assert.match(
         text,
@@ -1765,6 +1766,11 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         );
       }
       assert.equal(stored.podRecords, 2, "the record and the server's");
+      assert.equal(
+        stored.versionLinks,
+        1,
+        "the one version's link to its record",
+      );
       assert.deepEqual(stored.predicates, {
         cascade: 4,
         prov: 4,
@@ -1849,6 +1855,11 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         assert.ok(stored.kinds[kind].files > 0, kind);
       assert.equal(stored.kinds["stored-documents"].files, 1);
       assert.equal(stored.kinds["stored-documents"].statements, 0);
+      assert.equal(
+        stored.versionLinks,
+        stored.kinds.versions.files,
+        "a version file states one link to its record",
+      );
       assert.ok(stored.podRecords >= stored.kinds.records.files);
       assert.ok(
         stored.podRecords <=
@@ -1900,6 +1911,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         );
       }
       assert.equal(sealed.podRecords, plain.podRecords);
+      assert.equal(sealed.versionLinks, plain.versionLinks);
       assert.ok(
         sealed.onDisk.bytes >
           Object.values(sealed.kinds).reduce((a, each) => a + each.bytes, 0),
@@ -1955,6 +1967,7 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.equal(value("bytes/all"), 10485760);
       assert.equal(value("count/entries"), 647);
       assert.equal(value("count/pod-records"), 10);
+      assert.equal(value("count/version-links"), 10);
       assert.equal(value("statements/versions"), 600);
       assert.equal(value("predicates/cascade"), 700);
       assert.equal(value("database/file"), 2097152);
@@ -2022,10 +2035,10 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
       assert.deepEqual(by("data"), {
         class: "data",
         files: 11,
-        statements: 600,
+        statements: 590,
         bytes: 3145728 + 5242880,
       });
-      assert.equal(by("history")?.statements, 300);
+      assert.equal(by("history")?.statements, 310);
       assert.equal(by("bookkeeping")?.statements, 20);
       assert.equal(by("derived")?.statements, 80);
     });
@@ -2040,7 +2053,10 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         line,
         /A fresh import of 647 source entries left 10 pod records in 41 files \(10\.0 MB\) and 1,000 statements/,
       );
-      assert.match(line, /60% of the statements are the source's own data/);
+      assert.match(
+        line,
+        /59% of the statements are the source's own data, 31% history/,
+      );
       assert.match(line, /4\.1 files and 100 statements for each pod record/);
       assert.match(line, /1\.5 statements for each source entry/);
     });
