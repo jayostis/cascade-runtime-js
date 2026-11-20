@@ -3346,6 +3346,12 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         const { plan } = parsed(["--scenario", scenario]);
         assert.deepEqual([...plan.scenarios], [scenario]);
       }
+      assert.equal(
+        parsed([]).plan.lightJobs,
+        false,
+        "every run of the jobs is the full one unless a build asks",
+      );
+      assert.equal(parsed(["--light-jobs"]).plan.lightJobs, true);
     });
 
     it("explains every row the jobs write, in the glossary, with a sentence of the job's own for its total", () => {

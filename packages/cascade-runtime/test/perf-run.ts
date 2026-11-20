@@ -245,7 +245,7 @@ async function scenariosAt(
       runs: readonly Measured[],
     ) => Row[],
     probedTotal: (probed: Measured) => number,
-    { repeats = plan.repeats, keep = false } = {},
+    { repeats = plan.repeats, keep = false, cpu = true } = {},
   ): Promise<{ runs: Measured[]; kept?: string }> => {
     const name = nameOf(scenario, dataset, encrypted);
     const runs: Measured[] = [];
@@ -279,7 +279,7 @@ async function scenariosAt(
           );
         }
       }
-      if (plan.profiles !== undefined && plan.cpuProfile) {
+      if (cpu && plan.profiles !== undefined && plan.cpuProfile) {
         log(`${where}: ${scenario}, CPU profile`);
         await onACopy(from, kind, more, { profile: name });
       }
@@ -312,6 +312,7 @@ async function scenariosAt(
     // The jobs of every day: the same document again, with ten source entries changed, and with one more, each as an import
     // into a copy. A job is a process of its own with its own seed for ids and a clock later than the first import's
     // (`label` and `n`: see `pinClock`), so what it writes never repeats a name the first import wrote.
+    const light = plan.lightJobs === true;
     let updated: string | undefined;
     for (const again of ["identical", "changed", "added"] as const) {
       const scenario = SCENARIO_OF[again];
@@ -324,7 +325,14 @@ async function scenariosAt(
         { again, label: scenario, n: 1 },
         (c, name, runs) => againRows(c, scenario, runs),
         (probed) => secs(probed, "open", "import", "first-answer"),
-        { repeats: wants(scenario) ? plan.repeats : 1, keep: forUpdate },
+        {
+          repeats:
+            wants(scenario) && !(light && again !== "identical")
+              ? plan.repeats
+              : 1,
+          keep: forUpdate,
+          cpu: !(light && again !== "identical"),
+        },
       );
       if (forUpdate) updated = made.kept;
     }
@@ -369,6 +377,7 @@ async function scenariosAt(
         { as: "reopen-after-kill" },
         reopenRows,
         reopenProbedTotal,
+        { repeats: light ? 1 : plan.repeats, cpu: !light },
       );
       rows.push(...killedRows(ctx, counted.stored, found));
       await rm(dirname(folder), { recursive: true, force: true });

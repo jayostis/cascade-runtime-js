@@ -50,6 +50,12 @@ export interface Plan {
   readonly profiles?: string;
   /** Whether each scenario also gets a CPU profile, when there is a folder: one more run of it, unprobed. */
   readonly cpuProfile?: boolean;
+  /**
+   * Whether the jobs that convert a document again or rebuild a pod from its files (the changed file, the added result and the
+   * reopen after a kill, each seconds long at the per-build size) are run once, with the probed run and no CPU profile, so that
+   * every build's job stays short; the others are run as often as any scenario. The nightly and hand-started runs leave it off.
+   */
+  readonly lightJobs?: boolean;
 }
 
 export function parsed(
@@ -135,6 +141,7 @@ export function parsed(
         profiles: value("--profiles") as string,
       }),
       cpuProfile: !args.includes("--no-cpu-profile"),
+      lightJobs: args.includes("--light-jobs"),
     },
     out: value("--out"),
   };

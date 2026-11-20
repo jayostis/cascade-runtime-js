@@ -257,6 +257,9 @@ jobs:
           if [ "$EVENT" = schedule ] || [ "$LARGE" = true ]; then sizes="synthea-10y,synthea-lifetime"; fi
           if [ -n "$SIZE" ] && [ "$SIZE" != per-build ]; then sizes="$SIZE"; fi
           args="--size $sizes"
+          # A pull request and a push to main run the jobs that convert a document again or rebuild a pod once, so each build's
+          # job stays short; the nightly and hand-started runs run them in full.
+          if [ "$EVENT" = pull_request ] || [ "$EVENT" = push ]; then args="$args --light-jobs"; fi
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
           # What one file costs is for a push, the nightly run and a hand-started run of everything, never for a pull request.
           if [ "$EVENT" != pull_request ] && { [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; }; then args="$args --file-ops"; fi
