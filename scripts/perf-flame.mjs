@@ -57,7 +57,7 @@ export function summary(
             ? `[${label}](${openIn(viewer, `${files}/${file}`, `${label}: ${titleOf(build)}`)})`
             : `${label}: ${file}`,
         );
-      else links.push(label + (markdown ? "" : `: ${file}`));
+      else links.push(`${label}: ${markdown ? "`" + file + "`" : file}`);
     };
     link("Where the time went", build.trace.file);
     if (build.cpu !== undefined) link("Which code took it", build.cpu.file);

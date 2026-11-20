@@ -15,7 +15,7 @@ import {
 } from "@cascade-runtime/runtime/probe";
 import { explainSpan, explain } from "./perf-glossary.js";
 import { keptCpu, part, probedRows, tabulated } from "./perf-report.js";
-import { chromeTrace, selfTimes } from "./perf-trace.js";
+import { chromeTrace, MAX_TRACKS, selfTimes } from "./perf-trace.js";
 
 const script = async <T>(name: string): Promise<T> =>
   (await import(
@@ -217,6 +217,26 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
         .filter((each) => each.name === "thread_name")
         .map((each) => each.args?.name);
       assert.ok(names.includes("a worker"), names.join());
+    });
+
+    it("makes no more than MAX_TRACKS tracks for calls that all overlap, and says how many it left out", () => {
+      // Each begins before the last ended and ends after it, so none nests in another.
+      const overlapping = Array.from({ length: MAX_TRACKS + 8 }, (_, at) =>
+        event("sealing", at, 1000 + at),
+      );
+      const trace = chromeTrace(overlapping, {
+        title: "t",
+        says: () => undefined,
+      });
+      const tracks = new Set(
+        (trace.file.traceEvents as { ph: string; tid: number }[])
+          .filter((each) => each.ph === "X")
+          .map((each) => each.tid),
+      );
+      assert.equal(tracks.size, MAX_TRACKS);
+      assert.equal(trace.overlapSkipped, 8);
+      assert.equal(trace.kept, MAX_TRACKS);
+      assert.match(String(trace.file.otherData.overlapLeftOut), /8 calls/);
     });
   });
 

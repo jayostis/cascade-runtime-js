@@ -89,14 +89,21 @@ export interface Trace {
     displayTimeUnit: "ms";
     otherData: Record<string, unknown>;
   };
-  /** Calls seen, calls written (the whole-run event not among them), and the shortest duration written, in milliseconds. */
+  /**
+   * Calls seen, calls written (the whole-run event not among them), the shortest duration written in milliseconds, and the
+   * calls left out because more than `MAX_TRACKS` tracks of one name would have been needed to draw them.
+   */
   readonly seen: number;
   readonly kept: number;
   readonly shortestMs: number;
+  readonly overlapSkipped: number;
 }
 
 /** The most events a trace is allowed by default: speedscope opens a few hundred thousand, slowly. */
 export const MAX_TRACE_EVENTS = 150_000;
+
+/** The most tracks side by side for one thread: an import that seals thousands of files at once would otherwise make thousands. */
+export const MAX_TRACKS = 32;
 
 const MAIN = "main thread";
 
@@ -106,24 +113,26 @@ const MAIN = "main thread";
  * that nest properly. A call goes on its parent's track where it nests in what is open there, else on the first track it
  * nests in, else on a new one, so work that ran at the same time shows as tracks side by side; a call measured
  * elsewhere (a worker thread, the Bridge's clock) is on a track of its own name. What each span is, in the glossary's
- * words, is in `otherData.says`.
+ * words, is in `otherData.says`. At most `MAX_TRACKS` tracks are made for one name; a call that would need one more is left out.
  */
 export function chromeTrace(
   events: readonly SpanEvent[],
   { title, says, maxEvents = MAX_TRACE_EVENTS }: TraceOptions,
 ): Trace {
   const seen = events.length;
+  const length = (at: number) => {
+    const { start, end } = events[at] as SpanEvent;
+    return end - start;
+  };
+  let kept = events.map((_, at) => at);
   let floor = 0;
   if (seen > maxEvents) {
-    const lengths = events
-      .map(({ start, end }) => end - start)
-      .sort((a, b) => a - b);
-    floor = lengths[seen - maxEvents] as number;
+    // The longest calls, the earlier of those of one length.
+    kept = kept
+      .sort((a, b) => length(b) - length(a) || a - b)
+      .slice(0, maxEvents);
+    floor = length(kept[kept.length - 1] as number);
   }
-  const kept: number[] = [];
-  events.forEach((event, at) => {
-    if (event.end - event.start >= floor) kept.push(at);
-  });
   let begun = Number.POSITIVE_INFINITY;
   let ended = Number.NEGATIVE_INFINITY;
   for (const at of kept) {
@@ -151,9 +160,10 @@ export function chromeTrace(
   const lanes = new Map<string, Lane[]>();
   const names = new Map<number, string>();
   let tids = 0;
-  const newLane = (where: string): Lane => {
-    const lane = { tid: ++tids, open: [] };
+  const newLane = (where: string): Lane | undefined => {
     const list = lanes.get(where) ?? [];
+    if (list.length >= MAX_TRACKS) return undefined;
+    const lane = { tid: ++tids, open: [] };
     list.push(lane);
     lanes.set(where, list);
     names.set(
@@ -165,6 +175,7 @@ export function chromeTrace(
   newLane(MAIN);
   const laneOf = new Map<number, Lane>();
   const out: TraceEvent[] = [];
+  let overlapSkipped = 0;
   const meant: Record<string, string> = {};
   /** Whether the call nests in what is open on the lane at its start: the ends of those that ended are dropped. */
   const fits = (lane: Lane, start: number, end: number): boolean => {
@@ -190,6 +201,10 @@ export function chromeTrace(
     const lane =
       candidates.find((each) => fits(each, startOf(at), endOf(at))) ??
       newLane(where);
+    if (lane === undefined) {
+      overlapSkipped += 1;
+      continue;
+    }
     lane.open.push(endOf(at));
     laneOf.set(at, lane);
     if (!(event.name in meant)) {
@@ -232,15 +247,19 @@ export function chromeTrace(
       otherData: {
         title,
         calls: seen,
-        written: kept.length,
+        written: out.length,
         ...(floor > 0 && {
-          leftOut: `${seen - kept.length} calls shorter than ${floor.toFixed(3)} ms are not drawn; their time is their parent's own`,
+          leftOut: `${seen - kept.length} of the shortest calls (${floor.toFixed(3)} ms or less) are not drawn; their time is their parent's own`,
+        }),
+        ...(overlapSkipped > 0 && {
+          overlapLeftOut: `${overlapSkipped} calls that ran at the same time as more than ${MAX_TRACKS} others are not drawn`,
         }),
         says: meant,
       },
     },
     seen,
-    kept: kept.length,
+    kept: out.length,
     shortestMs: floor,
+    overlapSkipped,
   };
 }

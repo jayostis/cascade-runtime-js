@@ -323,6 +323,8 @@ export interface TraceNote {
   readonly drawn: number;
   /** Calls shorter than this are not drawn, in milliseconds; 0 when all are. */
   readonly shortestMs: number;
+  /** Calls not drawn because too many ran at the same time. */
+  readonly overlapSkipped: number;
   readonly top: readonly {
     name: string;
     selfMs: number;
@@ -396,6 +398,7 @@ async function traced(
     seen: calls,
     kept,
     shortestMs,
+    overlapSkipped,
   } = chromeTrace(seen.events ?? [], {
     title: `${scenario} on ${job.dataset}${job.encrypted ? ", encrypted" : ""}: the probed run`,
     says: (span) => explainSpan(part(span)),
@@ -426,6 +429,7 @@ async function traced(
     calls,
     drawn: kept,
     shortestMs: fixed(shortestMs, 3),
+    overlapSkipped,
     top,
   };
 }

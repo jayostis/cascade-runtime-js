@@ -107,7 +107,7 @@ export function runsPage(runs, { repo, pages, viewer }) {
       };
       const own = build.trace.top[0];
       return `<tr><td>${esc(build.scenario)}</td><td>${esc(build.dataset)}${build.encrypted ? " encrypted" : ""}</td>
-<td>${link("Where the time went", build.trace.file, build.trace.bytes)}</td>
+<td>${link("Where the time went", build.trace.file, build.trace.bytes)}${build.trace.drawn < build.trace.calls ? ` <span class="size">draws ${build.trace.drawn.toLocaleString("en-US")} of ${build.trace.calls.toLocaleString("en-US")} calls</span>` : ""}</td>
 <td>${
         build.cpu === undefined
           ? ""
