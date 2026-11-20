@@ -41,6 +41,7 @@
     "Matching a 1.3 pod's sealing against known answers · SealedIndex.open(), EncryptedFiles",
     "Matching a 1.4 pod's key wrap against known answers · newHeader(), openHeader(), SealedIndex.open()",
     "Keeping a pod's sealed files under keyed names · SealedIndex.open(), EncryptedFiles",
+    "Reading a pod's files from archives · ArchivedFiles, archivedFiles()",
     "Holding graphs and querying them · OxigraphStore, Union, RestorableUnion",
     "Choosing and fetching Oxigraph's native or WebAssembly build · chooseOxigraph(), nativeOxigraph(), fetchNativeOxigraph(), OxigraphStore",
     "Opening a pod's SQLite database · openDatabase()",

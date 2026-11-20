@@ -240,6 +240,7 @@ Rows named `<scenario>-<dataset>/stage/<stage>`: where time goes inside one run 
 | `pod-database.keyed.ledger` | Recording what the saved database now holds. |
 | `files.absent.check` | Checking that none of the files a step is about to write is in the pod already: a file whose name fixes its bytes that the pod's listing lacks is new, and any other file, and one the listing has, is read and compared. |
 | `files.absent.recheck` | Looking again, before each batch of files is written (a step's files, and those it rebuilds), for any file that is not known to be new. |
+| `archives.open` | Opening the archives that hold some of the pod's files: reading the directory at the end of each, never the files it holds. |
 | `bridge.query-*.rq` | The Bridge's query for `<name>`, which pulls those out of the converted source. Sits inside `arrivals.convert`. |
 | `build.query-*.ttl` | Building the `<name>` answer file by asking the pod's facts its question. Sits inside `build.queried`. |
 | `view.build-*.ttl` | Writing the `<name>` answer file from the question's rows. Sits inside `build.queried`. |
@@ -295,6 +296,9 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `files.absent.check.read` | How many of those checks had to read the file from the pod, the rest being files whose name fixes their bytes, answered by the pod's listing. |
 | `files.absent.recheck` | How many files were looked at again before a batch was written. |
 | `files.absent.recheck.read` | How many of those looks had to read the file from the pod. |
+| `archives.opened` | How many archives of the pod's files were opened, each by reading its directory alone. |
+| `archives.entries` | How many files those archives' directories list. |
+| `archives.entries.read` | How many files were read out of an archive, each by one read of its part of the archive. |
 | `entries` | How many entries the source's Bundle holds, the same as the fresh import's count of records: the source's own count, which is not the number of records the pod keeps (see pod-records). |
 | `version-links` | How many of the statements in version files link a version to its record, one for each version: the pod's own statement, which counts as history, not as what the source said. |
 | `pod-records` | How many records the pod holds: a file for each thing the source described, the servers' included, each with versions and revisions beside it. Not the source's entries. |

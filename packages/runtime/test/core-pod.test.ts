@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
+import { archivedFiles } from "../src/archives.js";
 import { CorePod, type CorePodOptions } from "../src/core-pod.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
@@ -11,6 +12,7 @@ import { probing } from "../src/probe.js";
 import { StepWrites } from "../src/pod.js";
 import { iri, literal, type Triple, XSD } from "../src/rdf.js";
 import { layout, replayed, RUNTIME, vocabulary } from "./vocabulary.js";
+import { archived, zipOf } from "./zip.js";
 
 const CREATED = "http://purl.org/dc/terms/created";
 const ADDRESS = "https://pod.example/";
@@ -464,6 +466,25 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
       files.lists = 0;
       await new StepWrites().commit(pod.files);
       assert.equal(files.lists, 0);
+    });
+
+    it("takes a file an archive holds as in the pod: its name fixing its bytes, it is read, found, and not written loose", async () => {
+      const held =
+        "records/conditions/bb/bb000000-0000-4000-8000-000000000002.ttl";
+      const host = new Reading(ADDRESS);
+      const turtle = body("<urn:x:h> <urn:x:is> <urn:x:held> .\n");
+      await archived(host, zipOf([{ path: held, bytes: turtle }]));
+      const pod = new CorePod(
+        options(archivedFiles(host, await layout()), await layout(), {
+          now: "2026-02-01T08:00:00Z",
+        }),
+      );
+      await pod.create();
+      const writes = new StepWrites();
+      writes.add(held, turtle, undefined, "version");
+      const { seen } = await probing(() => writes.commit(pod.files));
+      assert.equal(seen.counts.get("files.absent.check.read"), 1);
+      assert.equal(await host.read(held), undefined);
     });
 
     it("refuses an act whose file is in the pod already, and writes none of the step's files", async () => {

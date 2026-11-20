@@ -1,0 +1,12 @@
+{
+  "spans": {
+    "archives.open": {
+      "says": "Opening the archives that hold some of the pod's files: reading the directory at the end of each, never the files it holds."
+    }
+  },
+  "counts": {
+    "archives.opened": "How many archives of the pod's files were opened, each by reading its directory alone.",
+    "archives.entries": "How many files those archives' directories list.",
+    "archives.entries.read": "How many files were read out of an archive, each by one read of its part of the archive."
+  }
+}

@@ -26,6 +26,7 @@ import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
 import { Layout } from "../layout.js";
 import { FolderFiles } from "./folder-files.js";
+import { catFile, unpack } from "./archive-commands.js";
 import { featuresOf } from "../features.js";
 import { folderOf } from "../files.js";
 import { importersNamed } from "../importers.js";
@@ -630,8 +631,36 @@ async function fetchOxigraph(): Promise<number> {
   return 0;
 }
 
+/** The pod layout of the vocabulary this checkout runs against. */
+async function layoutHere(): Promise<Layout> {
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const { files } = await localVocabulary(root, log);
+  return Layout.read(files, () => new OxigraphStore());
+}
+
+/** Prints a file of a pod, held at its own path or in an archive. */
+async function cat(args: string[]): Promise<number> {
+  const [pod, path] = args;
+  if (pod === undefined || path === undefined)
+    throw new Error("usage: cat <pod folder> <path of a file in it>");
+  process.stdout.write(await catFile(pod, await layoutHere(), path));
+  return 0;
+}
+
+/** Writes a pod's files, or an archive's, into an empty folder, each at its own path, to look at them. */
+async function unpackCommand(args: string[]): Promise<number> {
+  const [from, to] = args;
+  if (from === undefined || to === undefined)
+    throw new Error("usage: unpack <pod folder or archive> <empty folder>");
+  const written = await unpack(from, to, await layoutHere());
+  console.error(`${written} files written to ${to}`);
+  return 0;
+}
+
 const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   bridge,
+  cat,
+  unpack: unpackCommand,
   conformance,
   "fetch-oxigraph": fetchOxigraph,
   "build-example-pod": buildExamplePod,

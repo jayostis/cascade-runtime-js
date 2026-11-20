@@ -69,6 +69,7 @@ import {
 } from "cascade-runtime";
 import { kitDownload, kitStory, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
+import { packedFolder } from "./packed.js";
 import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
 import { checkFolderSecret, openFolderPod } from "../src/node/folder-pod.js";
@@ -4156,6 +4157,138 @@ async function sealedCopy(
     held.push([path, (await plain.read(path)) ?? new Uint8Array()]);
   await sealed.writeAll(held);
 }
+
+/**
+ * A host may keep the pod's files that never change in ZIP archives, in the folder the layout gives
+ * `cascade:holdsFilesInArchivesOfMediaType` (X1). A pod opens from every file at its own path and every entry of
+ * every archive, plain or sealed, and is the pod it was with them loose; an archive with no end record fails the open,
+ * naming it (N9).
+ */
+describe("Opening a pod whose files are held in archives · openPod()", () => {
+  const GRAPHS = {
+    query:
+      "SELECT (COUNT(DISTINCT ?g) AS ?graphs) WHERE { GRAPH ?g { ?s ?p ?o } }",
+  };
+  const archivable = (path: string): boolean =>
+    kept.layout.inSnapshotSet(path) && !kept.layout.inStoredBytes(path);
+
+  it("opens with every file an archive may hold in one archive as the same pod, answering as before; a torn archive fails the open, naming it", async () => {
+    const at = await copied((await alexPod()).folder, "packed-alex");
+    const bare: { -readonly [K in keyof Parts]: Parts[K] } = { ...kept };
+    delete bare.answers;
+    delete bare.builtBeside;
+    const asked = async () => {
+      const pod = await openPodWith(bare, at);
+      try {
+        return {
+          who: [pod.address, pod.subject],
+          rows: await pod.ask(QUESTION),
+          graphs: await pod.ask(GRAPHS),
+        };
+      } finally {
+        await pod.close();
+      }
+    };
+    const loose = await asked();
+    const files = new FolderFiles(at);
+    const archive = await packedFolder(
+      files,
+      (await files.list("")).filter(archivable),
+    );
+    assert.deepEqual(
+      (await readdir(at)).filter((name) =>
+        ["records", "provenance", "subject"].includes(name),
+      ),
+      [],
+    );
+    assert.deepEqual(await asked(), loose);
+
+    const whole = (await files.read(archive)) as Uint8Array;
+    await files.write(archive, whole.subarray(0, whole.length - 22));
+    await assert.rejects(openPodWith(bare, at), (error: unknown) =>
+      String(error).includes(archive),
+    );
+  });
+
+  it("opens a packed pod by the app's default path, its answers beside it, as the pod it was loose; a loose twin of an archived file with other bytes fails the first question, naming it", async () => {
+    const at = await copied((await alexPod()).folder, "packed-alex-default");
+    const asked = async () => {
+      const pod = await openPodWith(kept, at);
+      try {
+        return {
+          who: [pod.address, pod.subject],
+          rows: await pod.ask(QUESTION),
+          graphs: await pod.ask(GRAPHS),
+        };
+      } finally {
+        await pod.close();
+      }
+    };
+    const loose = await asked();
+    const files = new FolderFiles(at);
+    const held = (await files.list("")).filter(archivable);
+    await packedFolder(files, held);
+    assert.deepEqual(await asked(), loose);
+
+    const [twin] = held;
+    assert.ok(twin !== undefined);
+    await files.write(twin, new TextEncoder().encode("<#other> .\n"));
+    await assert.rejects(
+      async () => {
+        const pod = await openPodWith(kept, at);
+        try {
+          await pod.ask(GRAPHS);
+        } finally {
+          await pod.close();
+        }
+      },
+      (error: unknown) => String(error).includes(twin),
+    );
+  });
+
+  it("opens a sealed pod whose sealed files of the set are held in an archive, through its sealed index, answering as before", async () => {
+    const sealedAlex = await sealedAlexPod();
+    const at = await copied(sealedAlex.folder, "packed-sealed-alex");
+    const files = new FolderFiles(at);
+    const key = await openHeader(
+      (await files.read(HEADER)) ?? new Uint8Array(),
+      WORDS,
+      sealedAlex.derive,
+    );
+    const read: string[] = [];
+    const recording: Files = {
+      iri: files.iri,
+      read: (path) => {
+        read.push(
+          path.startsWith(files.iri) ? path.slice(files.iri.length) : path,
+        );
+        return files.read(path);
+      },
+      write: (path, bytes) => files.write(path, bytes),
+      list: (folder) => files.list(folder),
+    };
+    const sealed = new EncryptedFiles(recording, key, {
+      index: await SealedIndex.open(recording, key),
+    });
+    const logical = sealedAlex.logical.filter(archivable);
+    for (const path of logical) await sealed.read(path);
+    const keyed = [
+      ...new Set(read.filter((path) => /^sealed\/[0-9a-f]{2}\//.test(path))),
+    ];
+    assert.equal(keyed.length, logical.length);
+    await packedFolder(files, keyed);
+    const pod = await openFolderPod(
+      { ...kept, derive: sealedAlex.derive },
+      at,
+      { secret: WORDS },
+    );
+    try {
+      assert.deepEqual(await pod.ask(HELD), sealedAlex.rows);
+    } finally {
+      await pod.close();
+    }
+  });
+});
 
 /**
  * `replayKit` builds a kit's pod by performing its story, and `kitDownload` returns the path of one of its exports.
