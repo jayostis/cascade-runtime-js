@@ -1701,9 +1701,11 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         whole: 1,
       };
       /** A scanner that remembers what was asked of it, and can refuse to be switched off. */
-      const scanner = (options: { refuseOff?: boolean } = {}) => {
+      const scanner = (
+        options: { refuseOff?: boolean; startsOn?: boolean } = {},
+      ) => {
         const calls: string[] = [];
-        let on = true;
+        let on = options.startsOn ?? true;
         let excluded = false;
         const fake: Scanner = {
           realtimeOn: () => Promise.resolve(on),
@@ -1830,6 +1832,51 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         );
         assert.equal(refusedRow?.value, 0);
         assert.match(refusedRow?.extra ?? "", /tamper protection/);
+        assert.deepEqual(explained(rows).missing, []);
+      });
+
+      it("switches live checking on to compare when the runner has it off, excludes the folder with it on, and puts it back off", async () => {
+        const s = scanner({ startsOn: false });
+        const seen: string[] = [];
+        const rows = await fileOpsAt(
+          { ...plan, scannerCompare: true },
+          "work",
+          () => undefined,
+          {
+            scanner: s.fake,
+            once: async () => {
+              seen.push(
+                `on=${await s.fake.realtimeOn()} excluded=${await s.fake.excluded("work")}`,
+              );
+              return run;
+            },
+          },
+        );
+        assert.deepEqual(
+          [...new Set(seen)],
+          [
+            "on=false excluded=false",
+            "on=true excluded=false",
+            "on=true excluded=true",
+          ],
+        );
+        assert.deepEqual(s.state(), { on: false, excluded: false });
+        const value = (name: string) =>
+          rows.find((row) => row.name === name)?.value;
+        assert.equal(value("file-ops-3000-files/count/scanner-realtime-on"), 0);
+        assert.equal(
+          value("file-ops-3000-files/count/scanner-switch-on-allowed"),
+          1,
+        );
+        assert.equal(
+          value("file-ops-3000-files-scanner-on/count/scanner-realtime-on"),
+          1,
+        );
+        assert.ok(
+          rows.some(({ name }) =>
+            name.startsWith("file-ops-3000-files-scanner-on/create/"),
+          ),
+        );
         assert.deepEqual(explained(rows).missing, []);
       });
 
