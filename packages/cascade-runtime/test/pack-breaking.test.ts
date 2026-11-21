@@ -143,12 +143,12 @@ describe("Breaking changes in a build's notes · breakingOf(), mergedPullRequest
     it("returns the numbers of the merge commits and of the squash or rebase merges, oldest first, each once", () => {
       assert.deepEqual(
         mergedPullRequests([
-          "Merge pull request #12 from jayostis/feat/a",
+          "Merge pull request #12 from the-cascade-protocol/feat/a",
           "Merge branch 'main' into feat/a",
           "feat(runtime): a squash that mentions #13 in passing",
           "feat(runtime): a squash merge (#14)",
           "Merge pull request #9 from someone/fix/b",
-          "Merge pull request #12 from jayostis/feat/a",
+          "Merge pull request #12 from the-cascade-protocol/feat/a",
           "fix(runtime): a rebase merge (#14) ",
         ]),
         [12, 14, 9],

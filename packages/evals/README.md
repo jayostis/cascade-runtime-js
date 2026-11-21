@@ -7,7 +7,7 @@ every download in full (the **records** arm, the grab bag pasted into a chat). "
 is one question among several. Program checks come first; blind judges grade the rest. Runs happen on demand, never in
 CI, and never on a real person's records.
 
-Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis.github.io/cascade-runtime-js/evals/)**.
+Recorded runs: **[the-cascade-protocol.github.io/cascade-runtime-js/evals/](https://the-cascade-protocol.github.io/cascade-runtime-js/evals/)**.
 
 ## What is here
 

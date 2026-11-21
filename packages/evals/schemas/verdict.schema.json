@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/verdict.schema.json",
+  "$id": "https://github.com/the-cascade-protocol/cascade-runtime-js/packages/evals/schemas/verdict.schema.json",
   "title": "A judge's verdict",
   "description": "One grade per blinded answer to one question, by its label: every key item of that question found, partly or missed (a fact, absence, negation or gap) or raised or avoided (a trap or near-trap), every point of the answer beyond the key with its verdict, and each point's chain.",
   "type": "object",

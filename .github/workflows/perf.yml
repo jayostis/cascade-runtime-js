@@ -136,7 +136,7 @@ jobs:
       - id: tables-at
         uses: ./cascade-runtime-js/.github/actions/depends-on
         with:
-          repository: jayostis/cascade-reference-tables
+          repository: the-cascade-protocol/cascade-reference-tables
       - uses: actions/checkout@v7
         with:
           repository: ${{ steps.tables-at.outputs.repository }}
@@ -148,7 +148,7 @@ jobs:
       - id: kit-at
         uses: ./cascade-runtime-js/.github/actions/depends-on
         with:
-          repository: jayostis/cascade-starter-kit
+          repository: the-cascade-protocol/cascade-starter-kit
       - uses: actions/checkout@v7
         with:
           repository: ${{ steps.kit-at.outputs.repository }}
@@ -170,35 +170,35 @@ jobs:
         if: ${{ env.SAME_JOB == 'true' }}
         continue-on-error: true
         with:
-          repository: jayostis/cascade-vocabulary
+          repository: the-cascade-protocol/cascade-vocabulary
           path: main/cascade-vocabulary
           persist-credentials: false
       - uses: actions/checkout@v7
         if: ${{ env.SAME_JOB == 'true' }}
         continue-on-error: true
         with:
-          repository: jayostis/cascade-bridge-adapter-fhir-r4
+          repository: the-cascade-protocol/cascade-bridge-adapter-fhir-r4
           path: main/cascade-bridge-adapter-fhir-r4
           persist-credentials: false
       - uses: actions/checkout@v7
         if: ${{ env.SAME_JOB == 'true' }}
         continue-on-error: true
         with:
-          repository: jayostis/cascade-bridge-adapter-ccda
+          repository: the-cascade-protocol/cascade-bridge-adapter-ccda
           path: main/cascade-bridge-adapter-ccda
           persist-credentials: false
       - uses: actions/checkout@v7
         if: ${{ env.SAME_JOB == 'true' }}
         continue-on-error: true
         with:
-          repository: jayostis/cascade-reference-tables
+          repository: the-cascade-protocol/cascade-reference-tables
           path: main/cascade-reference-tables
           persist-credentials: false
       - uses: actions/checkout@v7
         if: ${{ env.SAME_JOB == 'true' }}
         continue-on-error: true
         with:
-          repository: jayostis/cascade-starter-kit
+          repository: the-cascade-protocol/cascade-starter-kit
           path: main/cascade-starter-kit
           persist-credentials: false
       - uses: actions/setup-node@v5
@@ -208,7 +208,7 @@ jobs:
           cache-dependency-path: cascade-runtime-js/package-lock.json
       # The vocabulary, the adapters (the record measured is the fhir-r4 adapter's bench/ input) and the Bridge's
       # sources, beside this checkout, as `runtime tests` has them.
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
       - run: npm ci
@@ -240,7 +240,7 @@ jobs:
           case "$how" in
             "the newest build of its default branch"*)
               if [ "$source" = release ]; then
-                echo "pin=https://github.com/jayostis/cascade-bridge-rs@$commit" >> "$GITHUB_OUTPUT"
+                echo "pin=https://github.com/the-cascade-protocol/cascade-bridge-rs@$commit" >> "$GITHUB_OUTPUT"
                 echo "Main reads the Bridge build $commit, the one this build's run picked (the newest of the default branch)."
               fi ;;
             *) echo "This build's Bridge was picked as: ${how:-not recorded}. Main reads the newest build of the default branch." ;;
@@ -429,7 +429,7 @@ jobs:
       - id: tables-at
         uses: ./cascade-runtime-js/.github/actions/depends-on
         with:
-          repository: jayostis/cascade-reference-tables
+          repository: the-cascade-protocol/cascade-reference-tables
       - uses: actions/checkout@v7
         with:
           repository: ${{ steps.tables-at.outputs.repository }}
@@ -439,7 +439,7 @@ jobs:
       - id: kit-at
         uses: ./cascade-runtime-js/.github/actions/depends-on
         with:
-          repository: jayostis/cascade-starter-kit
+          repository: the-cascade-protocol/cascade-starter-kit
       - uses: actions/checkout@v7
         with:
           repository: ${{ steps.kit-at.outputs.repository }}
@@ -451,7 +451,7 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
       # The SQLite binding's binding.gyp sends a lock-based install to node-gyp, which finds no Visual Studio it knows on windows;

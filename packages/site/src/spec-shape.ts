@@ -2,7 +2,7 @@ import type { TestCase } from "./junit.js";
 
 /**
  * Whether a package's test results read as a specification, judged over the cases of its JUnit report (`readJunit`) and
- * the `test/spec.json` beside its tests. The rules are the grammar on jayostis/cascade-runtime-js#635, the standard and its
+ * the `test/spec.json` beside its tests. The rules are the grammar on the-cascade-protocol/cascade-runtime-js#635, the standard and its
  * addendum; what a title means is for a reader to judge, and is not checked here.
  */
 export type ShapeRule =

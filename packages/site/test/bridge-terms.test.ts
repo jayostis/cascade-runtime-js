@@ -26,8 +26,8 @@ import {
 } from "../src/term-reference.js";
 import { readPage } from "./page.js";
 
-const TREE = "https://github.com/jayostis/cascade-bridge-spec/tree/abc123/";
-const BLOB = "https://github.com/jayostis/cascade-bridge-spec/blob/abc123/";
+const TREE = "https://github.com/the-cascade-protocol/cascade-bridge-spec/tree/abc123/";
+const BLOB = "https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/abc123/";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const ADAPTER = `${BRIDGE}Adapter`;
 const PROFILE = `${BRIDGE}Profile`;
@@ -210,7 +210,7 @@ describe("The Bridge's terms · bridgeTermReference(), bridgeTermsSection", () =
     it("links the term reference, which links it back", async () => {
       assert.ok(readPage(page).hrefs.includes("index.html"));
       const files = new MemoryFiles(
-        "https://github.com/jayostis/cascade-vocabulary/tree/abc123/",
+        "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc123/",
       );
       await files.write(
         "ontologies/cascade.ttl",
@@ -319,7 +319,7 @@ bridge:LooseShape a sh:NodeShape ;
     /** A vocabulary that declares `oa:hasSource` when `declaring`, which the Bridge's ontology also declares. */
     async function cascade(declaring: boolean): Promise<Files> {
       const vocabulary = new MemoryFiles(
-        "https://github.com/jayostis/cascade-vocabulary/tree/abc123/",
+        "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc123/",
       );
       await vocabulary.write(
         "ontologies/cascade.ttl",

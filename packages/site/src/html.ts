@@ -39,7 +39,7 @@ export function markup(
   );
 }
 
-const HUB = "https://jayostis.github.io/cascade-runtime-js";
+const HUB = "https://the-cascade-protocol.github.io/cascade-runtime-js";
 
 /** The stylesheet of the website's three faces. */
 export const FONTS =

@@ -55,7 +55,7 @@ export type Listed =
   | { readonly view: AdapterView }
   | { readonly repository: string; readonly unavailable: string };
 
-const BRIDGE_SPECIFICATION = "https://github.com/jayostis/cascade-bridge-spec";
+const BRIDGE_SPECIFICATION = "https://github.com/the-cascade-protocol/cascade-bridge-spec";
 
 /**
  * The page that opens the adapters: the builder's problem, why adapters are built this way, one fact followed through

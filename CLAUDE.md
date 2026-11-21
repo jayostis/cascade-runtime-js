@@ -2,7 +2,7 @@
 
 The reference implementation of cascade-vocabulary's runtime rules;
 [`README.md`](README.md) names the parts. The contract is
-[cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary): its
+[cascade-vocabulary](https://github.com/the-cascade-protocol/cascade-vocabulary): its
 `runtime/rules.md`, its feature files and its queries. This repository copies none of
 it; it resolves the vocabulary as `cascade-runtime.json` says.
 
@@ -38,7 +38,7 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
   naming the step's kind.
 
 - **A change the starter must follow lands as a pair.** The runtime PR's body
-  carries `Depends-On: https://github.com/jayostis/cascade-starter-kit/pull/<n>`, so `starter-kit` in
+  carries `Depends-On: https://github.com/the-cascade-protocol/cascade-starter-kit/pull/<n>`, so `starter-kit` in
   `check.yml` runs that PR's head on this PR's tarball. The merge gate merges a PR
   only once every PR it names has merged (cascade-bridge-spec `compatibility.md`), so
   the starter's PR merges first, and passes against the runtime on main until then.

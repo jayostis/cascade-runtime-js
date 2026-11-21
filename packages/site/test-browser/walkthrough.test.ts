@@ -42,7 +42,7 @@ function fixture(
           "",
         )}</table><h2 id="repositories">Every repository</h2>${REPOSITORIES.map(
         (name) =>
-          `<p id="repository-${name}"><a href="https://github.com/jayostis/${name}">${name}</a></p>`,
+          `<p id="repository-${name}"><a href="https://github.com/the-cascade-protocol/${name}">${name}</a></p>`,
       ).join("")}`,
     ),
   );

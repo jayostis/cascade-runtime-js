@@ -166,7 +166,7 @@ export function treeIri(followed: Followed, commit: string): string {
 
 /** The reference runtime's repository. */
 export const RUNTIME_REPOSITORY =
-  "https://github.com/jayostis/cascade-runtime-js";
+  "https://github.com/the-cascade-protocol/cascade-runtime-js";
 
 /** The reference runtime at a commit, as every act it performs names it (N7): N8's form. */
 export function runtimeIri(commit: string): string {

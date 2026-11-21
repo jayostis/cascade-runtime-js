@@ -38,7 +38,7 @@ import {
 const PACKAGE = "cascade-bridge-rs";
 /** The repository the Bridge's build is read from. */
 export const BRIDGE_REPOSITORY =
-  "https://github.com/jayostis/cascade-bridge-rs";
+  "https://github.com/the-cascade-protocol/cascade-bridge-rs";
 
 export interface BridgePackageFound {
   readonly source: "sibling" | "folder" | "release" | "packed";

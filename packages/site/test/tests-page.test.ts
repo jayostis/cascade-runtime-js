@@ -87,12 +87,12 @@ describe("A page of test results for each repository · testsSection", () => {
     it("names the run's commit, linked to it on GitHub", () => {
       assert.ok(
         built.page.hrefs.includes(
-          `https://github.com/jayostis/cascade-runtime-js/commit/${RUN.commit}`,
+          `https://github.com/the-cascade-protocol/cascade-runtime-js/commit/${RUN.commit}`,
         ),
       );
       assert.ok(
         built.page.hrefs.includes(
-          `https://github.com/jayostis/cascade-vocabulary/commit/${OTHER_RUN.commit}`,
+          `https://github.com/the-cascade-protocol/cascade-vocabulary/commit/${OTHER_RUN.commit}`,
         ),
       );
       assert.match(built.page.said, /0123456/);
@@ -268,7 +268,7 @@ describe("A page of test results for each repository · testsSection", () => {
       );
       assert.ok(
         readPage(partOf(markup, CTRF_NAME), PATH).hrefs.includes(
-          `https://github.com/jayostis/cascade-bridge-adapter-fhir-r4/blob/${RUN.commit}/fixtures/manifest.ttl#L42`,
+          `https://github.com/the-cascade-protocol/cascade-bridge-adapter-fhir-r4/blob/${RUN.commit}/fixtures/manifest.ttl#L42`,
         ),
       );
     });
@@ -379,13 +379,13 @@ describe("The suite list as checked in · test-suites.json", () => {
     it("reads the checked-in list without a refusal, the runtime's suite in it", () => {
       const listed = checkedIn();
       assert.ok(
-        listed.some((one) => one.repository === "jayostis/cascade-runtime-js"),
+        listed.some((one) => one.repository === "the-cascade-protocol/cascade-runtime-js"),
       );
     });
 
     it("lists for the runtime's suite exactly the folders of `packages/`", () => {
       const runtime = checkedIn().find(
-        (one) => one.repository === "jayostis/cascade-runtime-js",
+        (one) => one.repository === "the-cascade-protocol/cascade-runtime-js",
       );
       const folders = readdirSync(new URL("../../../", import.meta.url), {
         withFileTypes: true,

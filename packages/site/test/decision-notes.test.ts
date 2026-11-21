@@ -61,7 +61,7 @@ async function currencyVocabulary(): Promise<MemoryFiles> {
   await files.write(
     "decisions/README.md",
     text(
-      "# Decision notes\n\nOne note per question.\n\n## The sections\n\nA note has these.\n\n## The bar\n\nAdopt the standard.\n\n## The notes\n\n- [`currency.md`](currency.md): which revision.\n- [issue](https://github.com/jayostis/cascade-vocabulary/issues/130)\n",
+      "# Decision notes\n\nOne note per question.\n\n## The sections\n\nA note has these.\n\n## The bar\n\nAdopt the standard.\n\n## The notes\n\n- [`currency.md`](currency.md): which revision.\n- [issue](https://github.com/the-cascade-protocol/cascade-vocabulary/issues/130)\n",
     ),
   );
   await files.write("decisions/currency.md", text(CURRENCY_NOTE));

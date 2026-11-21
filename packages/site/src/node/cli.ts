@@ -75,7 +75,7 @@ const RUNTIME_CLI = join(
   "node",
   "cli.js",
 );
-const RUNTIME = "https://github.com/jayostis/cascade-runtime-js";
+const RUNTIME = "https://github.com/the-cascade-protocol/cascade-runtime-js";
 const EXAMPLE = "alex-rivera";
 const BRIDGE = "cascade-bridge-rs";
 const STAGE = join(ROOT, "build", "package");
@@ -83,10 +83,10 @@ const STARTER = "cascade-starter-kit";
 const PAGES = join(ROOT, "build", "pages");
 const SPEC = join(ROOT, "build", "spec");
 const BRIDGE_SPEC = {
-  repository: "https://github.com/jayostis/cascade-bridge-spec",
+  repository: "https://github.com/the-cascade-protocol/cascade-bridge-spec",
 };
 /** Where an adapter explorer's link to the hub's conformance report for the adapter points. */
-const HUB = "https://jayostis.github.io/cascade-runtime-js/";
+const HUB = "https://the-cascade-protocol.github.io/cascade-runtime-js/";
 const log = (line: string): void => console.error(line);
 /** The hub's folders of the term reference, the spec's pages and the queries' pages. */
 const TERMS = "terms/";

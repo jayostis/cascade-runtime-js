@@ -130,7 +130,7 @@ describe("Reading a report from each test runner · readJunit()", () => {
     it("links the module's file at the commit run", () => {
       assert.ok(
         hrefs.includes(
-          `https://github.com/jayostis/cascade-vocabulary/blob/${OTHER_RUN.commit}/tests/test_queries.py`,
+          `https://github.com/the-cascade-protocol/cascade-vocabulary/blob/${OTHER_RUN.commit}/tests/test_queries.py`,
         ),
       );
     });

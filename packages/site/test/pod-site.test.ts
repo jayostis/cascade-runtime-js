@@ -33,7 +33,7 @@ const THROUGH = "entry";
 const ENTRY_MEMBER = "https://ns.cascadeprotocol.org/cascade#entryMember";
 const RECORD = "https://ns.cascadeprotocol.org/cascade#Record";
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/0123abc/";
+const BLOB = "https://github.com/the-cascade-protocol/cascade-vocabulary/blob/0123abc/";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 

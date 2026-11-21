@@ -38,7 +38,7 @@ which commit of each it carries and which Bridge release, and the release notes
 name them. Nothing is fetched and no other folder is read when a pod is used.
 
 It is built from
-[cascade-runtime-js](https://github.com/jayostis/cascade-runtime-js) by
+[cascade-runtime-js](https://github.com/the-cascade-protocol/cascade-runtime-js) by
 `npm run build:package`, and every merge to its `main` attaches the tarball to a
 pre-release `build-<commit>`. It is not on npm.
 

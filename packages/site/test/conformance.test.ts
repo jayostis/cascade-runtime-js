@@ -16,7 +16,7 @@ import {
 } from "./kim-vocabulary.js";
 import { readPage } from "./page.js";
 
-const OTHER = "https://github.com/jayostis/cascade-vocabulary/tree/def/";
+const OTHER = "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/def/";
 
 /** The result of the first example of the naming feature's page. */
 const resultOfOne = (pages: SpecPages): string | undefined =>

@@ -45,7 +45,7 @@ const ALLOWED = new Map([
 /** Addresses known dead and not ours to fix here, each with the issue that tracks it; an entry goes when its issue closes. */
 const KNOWN_DEAD = new Map([]);
 
-const HUB = "https://jayostis.github.io/cascade-runtime-js/";
+const HUB = "https://the-cascade-protocol.github.io/cascade-runtime-js/";
 const RAW = "https://raw.githubusercontent.com/";
 const BACKOFF = Number(process.env["LINK_CHECK_BACKOFF_MS"] ?? 1000);
 const ATTEMPTS = 4;

@@ -57,7 +57,7 @@ export const extras = (t: ReturnType<typeof tally>) => {
 };
 
 export const REUSED_ISSUE =
-  "https://github.com/jayostis/cascade-runtime-js/issues/783";
+  "https://github.com/the-cascade-protocol/cascade-runtime-js/issues/783";
 
 /** Each answer text of one arm in a run, by case, model, repeat and question. */
 function answersOf(r: Results, arm: Arm): Map<string, string> {

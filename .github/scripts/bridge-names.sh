@@ -15,7 +15,7 @@
 set -euo pipefail
 checkout=${1:?the runtime checkout}
 whose=${2:-}
-bridge=jayostis/cascade-bridge-rs
+bridge=the-cascade-protocol/cascade-bridge-rs
 cache=$checkout/build/cache/cascade-bridge-rs
 read -r from commit < <(node -p "const r = JSON.parse(require('fs').readFileSync('$cache/expected.json', 'utf8')); r.source + ' ' + r.commit")
 tag="build-$commit"

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/key.schema.json",
+  "$id": "https://github.com/the-cascade-protocol/cascade-runtime-js/packages/evals/schemas/key.schema.json",
   "title": "A case's key, machine-readable half",
   "description": "One item per thing an answer to one of the case's questions is looked at for: an expected fact, absence or negation, a planted gap, or a trap or near-trap; the evidence it rests on (each a claim the citation checker verifies against the case's downloads), the links the reasoning must state, and what counts as found, partly found or wrong. Written before any run; the prose half (key.md) gives the rationale and the guidelines.",
   "type": "object",

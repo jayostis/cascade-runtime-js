@@ -33,7 +33,7 @@ import {
 import { SCRIPT } from "../src/hub/tests.js";
 
 const A = FILE("cascade-runtime", "a.test");
-const BASE = `https://github.com/jayostis/cascade-runtime-js/blob/${RUN.commit}/packages/cascade-runtime/test/`;
+const BASE = `https://github.com/the-cascade-protocol/cascade-runtime-js/blob/${RUN.commit}/packages/cascade-runtime/test/`;
 
 /**
  * A page reads top to bottom as a specification: each package, its capabilities in the order its `test/spec.json` gives,

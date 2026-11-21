@@ -250,7 +250,7 @@
           "pod": "visible"
         }
       ],
-      "keyUrl": "https://github.com/jayostis/cascade-runtime-js/blob/0123456/packages/evals/cases/tamsin-vale/key.md",
+      "keyUrl": "https://github.com/the-cascade-protocol/cascade-runtime-js/blob/0123456/packages/evals/cases/tamsin-vale/key.md",
       "build": {
         "seconds": 3.1,
         "modelCalls": 0,

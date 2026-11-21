@@ -15,8 +15,8 @@ import { STYLESHEET } from "../src/stylesheet.js";
 import { readPage } from "./page.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
-const TREE = "https://github.com/jayostis/cascade-vocabulary/tree/abc123/";
-const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/abc123/";
+const TREE = "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc123/";
+const BLOB = "https://github.com/the-cascade-protocol/cascade-vocabulary/blob/abc123/";
 const text = (value: string) => new TextEncoder().encode(value);
 const plain = (html = ""): string => html.replace(/<[^>]*>/g, "");
 const read = (tree: ReadonlyMap<string, Uint8Array>, path: string) =>

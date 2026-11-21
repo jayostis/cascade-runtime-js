@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/config.schema.json",
+  "$id": "https://github.com/the-cascade-protocol/cascade-runtime-js/packages/evals/schemas/config.schema.json",
   "title": "A run's config",
   "description": "What one run runs: its cases, arms, the model of each role, repeats, judges and the hard cap. The three tiers are configs/smoke.json, standard.json and full.json.",
   "type": "object",

@@ -35,7 +35,7 @@ if (command === "components") {
   const bridge = await parts.bridge();
   resolved.push({
     name: "cascade-bridge-rs",
-    repository: "https://github.com/jayostis/cascade-bridge-rs",
+    repository: "https://github.com/the-cascade-protocol/cascade-bridge-rs",
     commit: bridge.commit,
     source: bridge.source,
   });

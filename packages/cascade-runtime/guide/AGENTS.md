@@ -4,7 +4,7 @@
 
 A pod holds one person's health records, from their hospitals and what they
 entered themselves, with their judgments on them, read and written only through the calls
-of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
+of `cascade-runtime` below: <https://the-cascade-protocol.github.io/cascade-runtime-js/>.
 
 ## What a pod holds
 
@@ -45,7 +45,7 @@ names no record, a folder holding files but no pod, a call after `close`. Only
 ## The starter
 
 An app made with `create-cascade-app` comes from the starter kit,
-<https://github.com/jayostis/cascade-starter-kit>, and the `AGENTS.md` at its
+<https://github.com/the-cascade-protocol/cascade-starter-kit>, and the `AGENTS.md` at its
 root lists the starter's scripts and the variables its server reads.
 
 ## Open a pod
@@ -64,7 +64,7 @@ A missing or empty folder is a new pod, the only time `title` is read;
 is named for its folder; `await pod.retitle(name)` titles it, in its manifest and
 its `pod.json`, for every later open, and changes no kept answer. `subject` is whom the records are about, `owner`
 who keeps the pod, `address` a random base its names are made from: no identity
-is registered under either (that comes later, jayostis/cascade-vocabulary#62).
+is registered under either (that comes later, the-cascade-protocol/cascade-vocabulary#62).
 A pod's answers are kept beside it, never in it: in `.answers/<name>/` beside
 its folder. An ask by name returns what was kept until any step changes the
 pod or the tables; removing a pod's folder, remove its `.answers/<name>` too.
@@ -191,7 +191,7 @@ person said no or closed the sign-in.
 - Their addresses are `https:`, so a CSP's `connect-src` must allow
   `https://*.demo.invalid`.
 - A hard reload bypasses the worker. The starter kit's `try/` page,
-  <https://jayostis.github.io/cascade-starter-kit/try/>, shows all of this.
+  <https://the-cascade-protocol.github.io/cascade-starter-kit/try/>, shows all of this.
 - A real browser cannot open a `.demo.invalid` address, so the app serves a
   demo hospital's sign-in page itself: `demoFetch`'s `authorizeBase` puts each
   hospital's page under the app's own origin, and the app hands every request
@@ -906,7 +906,7 @@ each check, a name under cascade-reference-tables' `builders/` or a path from
 the file; what one builds is kept as a feed's versions are, from
 `pods/.builds/<name>/`. A builder runs through cascade-reference-tables, which
 the app installs itself:
-`npm install --save-exact https://github.com/jayostis/cascade-reference-tables/releases/download/package-builds/cascade-reference-tables-0.0.0-commit-abcb8bd9a99f3f2d9b33351b97416fc0b81f7bab.tgz`.
+`npm install --save-exact https://github.com/the-cascade-protocol/cascade-reference-tables/releases/download/package-builds/cascade-reference-tables-0.0.0-commit-abcb8bd9a99f3f2d9b33351b97416fc0b81f7bab.tgz`.
 A version that does not descend from the one held of its series is never kept.
 
 ## What it cannot do yet

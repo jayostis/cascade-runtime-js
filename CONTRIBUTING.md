@@ -82,7 +82,7 @@ nightly run); `ready-to-merge` is its own check.
   `spec.json` by hand.
 - **`docs site`**: builds the package and the pages, and runs the browser tests in Chromium.
 - **`starter-kit (...)`**: four jobs (`suites`, `browser`, `app`, and `app, chat,mcp`) in which this pull request's
-  package, packed, is run under the [starter kit](https://github.com/jayostis/cascade-starter-kit)'s tests, so a change
+  package, packed, is run under the [starter kit](https://github.com/the-cascade-protocol/cascade-starter-kit)'s tests, so a change
   that breaks the app a person starts from is seen before it merges.
 - **`ready-to-merge`**: holds a pull request until every pull request it depends on can merge (see "A change that spans
   two repositories").
@@ -143,7 +143,7 @@ npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the
 An eval run (the pod against the same records read as files, judged blind) is
 one command, and a finished run is committed by recording it. CI publishes
 every recorded run at
-[the eval runs](https://jayostis.github.io/cascade-runtime-js/evals/):
+[the eval runs](https://the-cascade-protocol.github.io/cascade-runtime-js/evals/):
 
 ```sh
 node packages/evals/dist/src/cli.js run --config small-models   # plans; prints the jobs and the estimate
@@ -157,21 +157,21 @@ the configs, and how it is scored.
 
 ### How fast it is
 
-[Performance history](https://jayostis.github.io/cascade-runtime-js/perf/) draws a chart for each measurement over main's builds and the nightly runs: the headline times (a fresh pod's import and first screen, a reopened pod's first answer, a page of answers, closing) and the slowest stages inside each. Lower is better; hover a point for what it measures, its range over three runs and the commit. Nothing alerts or fails on a slowdown. [What the performance numbers mean](docs/perf-glossary.md) lists every scenario, data set and stage in plain words. `npm run perf` makes the same file locally; a pull request is shown its before and after against main in a comment.
+[Performance history](https://the-cascade-protocol.github.io/cascade-runtime-js/perf/) draws a chart for each measurement over main's builds and the nightly runs: the headline times (a fresh pod's import and first screen, a reopened pod's first answer, a page of answers, closing) and the slowest stages inside each. Lower is better; hover a point for what it measures, its range over three runs and the commit. Nothing alerts or fails on a slowdown. [What the performance numbers mean](docs/perf-glossary.md) lists every scenario, data set and stage in plain words. `npm run perf` makes the same file locally; a pull request is shown its before and after against main in a comment.
 
-To see where the time of a build went, [each build's flame graphs](https://jayostis.github.io/cascade-runtime-js/perf/runs/) open in speedscope: a trace of a probed run, every step nested inside the step that called it (_Where the time went_), and a CPU profile of an unprobed run, every function the processor was sampled in (_Which code took it_). A pull request's are the artifact `perf-flame` of its `perf` run: download it, and drop a `.trace.json` or a `.cpuprofile` into [the viewer](https://jayostis.github.io/cascade-runtime-js/perf/speedscope/). Locally, `npm run perf -- --profiles <folder>` writes them. The rows `<scenario>/self/<step>` of the file are each step's own time, which leaves out the steps inside it and so points at what to change.
+To see where the time of a build went, [each build's flame graphs](https://the-cascade-protocol.github.io/cascade-runtime-js/perf/runs/) open in speedscope: a trace of a probed run, every step nested inside the step that called it (_Where the time went_), and a CPU profile of an unprobed run, every function the processor was sampled in (_Which code took it_). A pull request's are the artifact `perf-flame` of its `perf` run: download it, and drop a `.trace.json` or a `.cpuprofile` into [the viewer](https://the-cascade-protocol.github.io/cascade-runtime-js/perf/speedscope/). Locally, `npm run perf -- --profiles <folder>` writes them. The rows `<scenario>/self/<step>` of the file are each step's own time, which leaves out the steps inside it and so points at what to change.
 
 ### The developer story
 
 There are two, one per epic. `developer-story/allergies.mjs` is what an app would write against the package
 `cascade-runtime`: open a pod, look at Alex's first export, import it as hers
 and print her active allergies. It is the developer story of
-[#20](https://github.com/jayostis/cascade-runtime-js/issues/20) and that epic's
+[#20](https://github.com/the-cascade-protocol/cascade-runtime-js/issues/20) and that epic's
 acceptance test. `packages/runtime/test/developer-story.test.ts` runs it and
 compares its rows with the replay of her story through `J1`.
 
 `developer-story/medications.mjs` is the developer story of
-[#70](https://github.com/jayostis/cascade-runtime-js/issues/70) and its
+[#70](https://github.com/the-cascade-protocol/cascade-runtime-js/issues/70) and its
 acceptance test. Priya Natarajan's first Apple Health export and first C-CDA
 download from Kestrel Harbor Hospital, synthetic, are in her kit's
 `scripted-input/priya/downloads/` in the vocabulary. The script looks at each
@@ -193,7 +193,7 @@ each default branch when it ran, which `components/packed.json` records.
 Installed, it reads nothing outside its own folder. CI installs it into an empty
 folder on Linux, Windows and macOS and runs the developer story there, and every
 merge to `main` attaches it to the pre-release `build-<commit>` under
-[releases](https://github.com/jayostis/cascade-runtime-js/releases), from which
+[releases](https://github.com/the-cascade-protocol/cascade-runtime-js/releases), from which
 an app installs it by its URL. `cascade-mcp`, packed beside it, depends on it at
 the same commit: install the two tarballs in one `npm install`, then run
 `npx --no-install cascade-mcp --pods <folder>` in that folder. `--no-install` matters:
@@ -208,7 +208,7 @@ to delete.
 ### Which version of each component a run uses
 
 Nothing pins a version, as
-[cascade-bridge-spec's `compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md)
+[cascade-bridge-spec's `compatibility.md`](https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/main/compatibility.md)
 says. `cascade-runtime.json` names the vocabulary and the adapters by
 repository, and names the importers and the lens. For each, first match wins:
 
@@ -269,7 +269,7 @@ A change the runtime must follow from the vocabulary, or the starter kit must fo
 requests. Each names the other in its description, on a line of its own, with the full URL:
 
 ```
-Depends-On: https://github.com/jayostis/cascade-starter-kit/pull/123
+Depends-On: https://github.com/the-cascade-protocol/cascade-starter-kit/pull/123
 ```
 
 The short `owner/repo#123` form is rejected. The `tests and conformance` and `starter-kit` jobs then run the other
@@ -283,8 +283,8 @@ A named pull request must be from a branch of the repository itself: one from a 
 without write access to the other repository asks a maintainer to open the counterpart.
 
 The full rules are in cascade-bridge-spec's
-[`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md). For a change to a rule,
-the vocabulary's [`CONTRIBUTING.md`](https://github.com/jayostis/cascade-vocabulary/blob/main/CONTRIBUTING.md) says how
+[`compatibility.md`](https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/main/compatibility.md). For a change to a rule,
+the vocabulary's [`CONTRIBUTING.md`](https://github.com/the-cascade-protocol/cascade-vocabulary/blob/main/CONTRIBUTING.md) says how
 the other half is made.
 
 ## Licence

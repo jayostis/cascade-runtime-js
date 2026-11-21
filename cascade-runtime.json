@@ -1,20 +1,20 @@
 {
   "vocabulary": {
-    "repository": "https://github.com/jayostis/cascade-vocabulary"
+    "repository": "https://github.com/the-cascade-protocol/cascade-vocabulary"
   },
   "adapters": [
     {
-      "repository": "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4"
+      "repository": "https://github.com/the-cascade-protocol/cascade-bridge-adapter-fhir-r4"
     },
     {
-      "repository": "https://github.com/jayostis/cascade-bridge-adapter-ccda"
+      "repository": "https://github.com/the-cascade-protocol/cascade-bridge-adapter-ccda"
     }
   ],
   "importers": ["apple-health-export", "ccda-download", "fhir-pull"],
   "lens": "everyday",
   "tables": {
-    "repository": "https://github.com/jayostis/cascade-reference-tables",
-    "feeds": ["https://jayostis.github.io/cascade-reference-tables/feed.ttl"],
+    "repository": "https://github.com/the-cascade-protocol/cascade-reference-tables",
+    "feeds": ["https://the-cascade-protocol.github.io/cascade-reference-tables/feed.ttl"],
     "preference": {
       "https://ns.cascadeprotocol.org/cascade#CodeNames": [
         "urn:uuid:f71f6797-48ec-4875-9b87-4cb1be1d9be0"
