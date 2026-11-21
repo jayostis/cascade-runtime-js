@@ -344,11 +344,11 @@ describe("Picking the Bridge package for a CI run · pickBuild(), latestBuild(),
         run: onPull,
         pulls: (bridge) => ({
           [`${RUNTIME}/pull/1`]: pull(RUNTIME, {
-            body: named("Jayostis/Cascade-Bridge-RS/pull/7"),
+            body: named("The-Cascade-Protocol/Cascade-Bridge-RS/pull/7"),
           }),
-          "Jayostis/Cascade-Bridge-RS/pull/7": pull(BRIDGE, {
+          "The-Cascade-Protocol/Cascade-Bridge-RS/pull/7": pull(BRIDGE, {
             head: bridge.built,
-            from: "JAYOSTIS/cascade-bridge-rs",
+            from: "THE-CASCADE-PROTOCOL/cascade-bridge-rs",
           }),
         }),
         expected: (bridge) => bridge.built,
