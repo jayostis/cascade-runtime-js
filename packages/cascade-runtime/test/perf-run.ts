@@ -14,8 +14,11 @@ import { explain } from "./perf-glossary.js";
 import {
   type CpuNote,
   type Flame,
+  databaseKept,
+  type Job,
   type Measured,
   nameOf,
+  secs,
   type TraceNote,
 } from "./perf-job.js";
 import { type Plan, type Scenario } from "./perf-plan.js";
@@ -26,6 +29,7 @@ import {
   type PerfFile,
   type Row,
 } from "./perf-rows.js";
+import { againRows, SCENARIO_OF } from "./perf-scenarios/after-first-import.js";
 import { closeProbedRows, closeRows } from "./perf-scenarios/close.js";
 import { fileOpsAt } from "./perf-scenarios/file-ops.js";
 import { floorAt } from "./perf-scenarios/floor.js";
@@ -42,6 +46,7 @@ import {
   reopenProbedTotal,
   reopenRows,
 } from "./perf-scenarios/reopen-first-answer.js";
+import { killedRows } from "./perf-scenarios/reopen-after-kill.js";
 import { storedRows } from "./perf-scenarios/stored.js";
 
 /** One build of a scenario at a size, as `flame.json` lists it. */
@@ -96,6 +101,8 @@ async function scenariosAt(
   const about = `dataset=${dataset} sha256=${data.sha256} records=${data.records}${encrypted ? " encrypted" : ""}`;
   const wants = (scenario: Scenario) => plan.scenarios.has(scenario);
   const place = (label: string) => join(work, label, "pod");
+  const howOf = (runs: number) =>
+    `unprobed, ${runs === 1 ? "one run" : `median of ${runs} runs, each`} in a process of its own; ${about}`;
   const ctx: Context = {
     plan,
     dataset,
@@ -105,7 +112,7 @@ async function scenariosAt(
     flame,
     claim,
     about,
-    how: `unprobed, median of ${plan.repeats} runs, each in a process of its own; ${about}`,
+    how: howOf(plan.repeats),
     wants,
     place,
     unprobed: (label, kind) => ({
@@ -123,7 +130,14 @@ async function scenariosAt(
 
   // fresh: the headline runs, then the probed one. The last unprobed pod stays for the scenarios that open one.
   const needsPod =
-    wants("reopen-first-answer") || wants("question-page") || wants("stored");
+    wants("reopen-first-answer") ||
+    wants("question-page") ||
+    wants("reimport-identical") ||
+    wants("reimport-changed") ||
+    wants("add-one-record") ||
+    wants("reopen-after-kill") ||
+    wants("question-after-update") ||
+    wants("stored");
   const fresh: Measured[] = [];
   let kept: string | undefined;
   const freshRuns =
@@ -185,69 +199,189 @@ async function scenariosAt(
     await rm(dirname(place("fresh-cpu")), { recursive: true, force: true });
   }
 
-  // reopen and question-page, on the last pod a fresh run left.
-  for (const [scenario, kind, scenarioRows, probedTotal] of [
-    ["reopen-first-answer", "reopen", reopenRows, reopenProbedTotal],
-    ["question-page", "question-page", questionPageRows, questionPageTotal],
-  ] as const) {
-    if (!wants(scenario) || kept === undefined) continue;
+  // What a read or a job does to a pod it does to a copy of a pod an earlier run left, so that each is the first thing done
+  // after what left it, and none finds what an earlier run left in the folder (and no import is ever made into the pod the
+  // fresh runs left, which `stored` counts last).
+  let copies = 0;
+  const onACopy = async (
+    from: string,
+    kind: Job["scenario"],
+    more: Partial<Job>,
+    {
+      probed = false,
+      profile,
+      keep = false,
+    }: { probed?: boolean; profile?: string; keep?: boolean } = {},
+  ): Promise<{ ran: Measured; folder: string }> => {
+    const label = `${kind}-${copies++}`;
+    await cp(from, join(work, label), { recursive: true });
+    try {
+      const ran = await child(
+        {
+          ...ctx.unprobed(label, kind),
+          ...more,
+          probed,
+          ...(probed &&
+            plan.profiles !== undefined && { profiles: plan.profiles }),
+        },
+        work,
+        profile !== undefined && plan.profiles !== undefined
+          ? { into: plan.profiles, name: profile, notes: flame.cpu }
+          : undefined,
+      );
+      return { ran, folder: join(work, label) };
+    } finally {
+      if (!keep) await rm(join(work, label), { recursive: true, force: true });
+    }
+  };
+  const where = `${dataset}${encrypted ? " encrypted" : ""}`;
+  /** The rows of a scenario measured on copies of the pod in `from`: the runs, then the probed run and the CPU profile. */
+  const onCopiesOf = async (
+    scenario: Scenario,
+    from: string,
+    kind: Job["scenario"],
+    more: Partial<Job>,
+    scenarioRows: (
+      ctx: Context,
+      name: string,
+      runs: readonly Measured[],
+    ) => Row[],
+    probedTotal: (probed: Measured) => number,
+    { repeats = plan.repeats, keep = false, cpu = true } = {},
+  ): Promise<{ runs: Measured[]; kept?: string }> => {
     const name = nameOf(scenario, dataset, encrypted);
-    // Each run opens a copy of the pod the fresh run left, so that each is the first open after an import, as the
-    // headline says, and none finds what an earlier run left in the folder.
-    const keptFolder = dirname(kept);
-    let copies = 0;
-    const onACopy = async (
-      probed: boolean,
-      profiled = false,
-    ): Promise<Measured> => {
-      const label = `${kind}-${copies++}`;
-      await cp(keptFolder, join(work, label), { recursive: true });
-      try {
-        return await child(
-          {
-            ...ctx.unprobed(label, kind),
-            probed,
-            ...(probed &&
-              plan.profiles !== undefined && { profiles: plan.profiles }),
-          },
-          work,
-          profiled && plan.profiles !== undefined
-            ? { into: plan.profiles, name, notes: flame.cpu }
-            : undefined,
-        );
-      } finally {
-        await rm(join(work, label), { recursive: true, force: true });
-      }
-    };
     const runs: Measured[] = [];
-    for (let at = 0; at < plan.repeats; at++) {
-      log(
-        `${dataset}${encrypted ? " encrypted" : ""}: ${scenario} ${at + 1}/${plan.repeats}`,
-      );
-      runs.push(await onACopy(false));
+    let last: string | undefined;
+    for (let at = 0; at < repeats; at++) {
+      log(`${where}: ${scenario} ${at + 1}/${repeats}`);
+      if (last !== undefined) await rm(last, { recursive: true, force: true });
+      const made = await onACopy(from, kind, more, {
+        keep: keep && at === repeats - 1,
+      });
+      runs.push(made.ran);
+      last = keep && at === repeats - 1 ? made.folder : undefined;
     }
-    rows.push(...scenarioRows(ctx, name, runs));
-    if (plan.probe) {
-      log(`${dataset}${encrypted ? " encrypted" : ""}: ${scenario}, probed`);
-      const probed = await onACopy(true);
-      flame.traces.push(...(probed.traces ?? []));
-      if (probed.seen !== undefined) {
-        rows.push(
-          clockRow(
-            `${name}/probed-total`,
-            "s",
-            [probedTotal(probed)],
-            `probed run: some work runs one at a time, so these are slower than the same steps unprobed`,
-          ),
-          ...probedRows(name, probed.seen),
-        );
+    if (wants(scenario)) {
+      rows.push(
+        ...scenarioRows({ ...ctx, how: howOf(runs.length) }, name, runs),
+      );
+      if (plan.probe) {
+        log(`${where}: ${scenario}, probed`);
+        const { ran: probed } = await onACopy(from, kind, more, {
+          probed: true,
+        });
+        flame.traces.push(...(probed.traces ?? []));
+        if (probed.seen !== undefined) {
+          rows.push(
+            clockRow(
+              `${name}/probed-total`,
+              "s",
+              [probedTotal(probed)],
+              `probed run: some work runs one at a time, so these are slower than the same steps unprobed`,
+            ),
+            ...probedRows(name, probed.seen),
+          );
+        }
+      }
+      if (cpu && plan.profiles !== undefined && plan.cpuProfile) {
+        log(`${where}: ${scenario}, CPU profile`);
+        await onACopy(from, kind, more, { profile: name });
       }
     }
-    if (plan.profiles !== undefined && plan.cpuProfile) {
-      log(
-        `${dataset}${encrypted ? " encrypted" : ""}: ${scenario}, CPU profile`,
+    return { runs, ...(last !== undefined && { kept: last }) };
+  };
+
+  // reopen and question-page, on the last pod a fresh run left.
+  if (kept !== undefined) {
+    const fresh0 = dirname(kept);
+    if (wants("reopen-first-answer"))
+      await onCopiesOf(
+        "reopen-first-answer",
+        fresh0,
+        "reopen",
+        {},
+        reopenRows,
+        reopenProbedTotal,
       );
-      await onACopy(false, true);
+    if (wants("question-page"))
+      await onCopiesOf(
+        "question-page",
+        fresh0,
+        "question-page",
+        {},
+        questionPageRows,
+        questionPageTotal,
+      );
+
+    // The jobs of every day: the same document again, with ten source entries changed, and with one more, each as an import
+    // into a copy. A job is a process of its own with its own seed for ids and a clock later than the first import's
+    // (`label` and `n`: see `pinClock`), so what it writes never repeats a name the first import wrote.
+    const light = plan.lightJobs === true;
+    let updated: string | undefined;
+    for (const again of ["identical", "changed", "added"] as const) {
+      const scenario = SCENARIO_OF[again];
+      const forUpdate = again === "changed" && wants("question-after-update");
+      if (!wants(scenario) && !forUpdate) continue;
+      const made = await onCopiesOf(
+        scenario,
+        fresh0,
+        "again",
+        { again, label: scenario, n: 1 },
+        (c, name, runs) => againRows(c, scenario, runs),
+        (probed) => secs(probed, "open", "import", "first-answer"),
+        {
+          repeats: wants(scenario) && !light ? plan.repeats : 1,
+          keep: forUpdate,
+          cpu: !light,
+        },
+      );
+      if (forUpdate) updated = made.kept;
+    }
+    // The first question after an update: a reopen of the pod the changed document was imported into and closed.
+    if (updated !== undefined) {
+      await onCopiesOf(
+        "question-after-update",
+        updated,
+        "reopen",
+        { as: "question-after-update" },
+        reopenRows,
+        reopenProbedTotal,
+        { repeats: light ? 1 : plan.repeats, cpu: !light },
+      );
+      await rm(updated, { recursive: true, force: true });
+    }
+
+    // Reopening after the process was stopped before it closed: a new pod, imported into by a process that is killed after
+    // the import and the first screen, so that there is no database or kept build, and opened as often as the others.
+    if (wants("reopen-after-kill")) {
+      log(`${where}: reopen-after-kill, the import that is killed`);
+      const folder = place("killed");
+      await child(
+        { ...ctx.unprobed("killed", "killed"), label: "killed", n: 0 },
+        work,
+      );
+      const found = await databaseKept(folder, encrypted);
+      if (found)
+        throw new Error(
+          "the process that was killed left a database beside the pod: it was not stopped before it could be built",
+        );
+      const counted = await child(
+        { ...ctx.unprobed("killed", "stored"), folder },
+        work,
+      );
+      if (counted.stored === undefined)
+        throw new Error("the stored scenario counted nothing");
+      await onCopiesOf(
+        "reopen-after-kill",
+        dirname(folder),
+        "reopen",
+        { as: "reopen-after-kill" },
+        reopenRows,
+        reopenProbedTotal,
+        { repeats: light ? 1 : plan.repeats, cpu: !light },
+      );
+      rows.push(...killedRows(ctx, counted.stored, found));
+      await rm(dirname(folder), { recursive: true, force: true });
     }
   }
   // stored: the pod the fresh runs left, counted last, in a process of its own, once: its counts are exact. It reads the pod where

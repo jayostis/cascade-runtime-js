@@ -23,6 +23,15 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { readGlossary } from "./perf-glossary.mjs";
 import {
+  EDIT_ROW,
+  JOB_SCENARIOS,
+  JOBS_ROW,
+  jobsHtml,
+  jobsKeys,
+  jobsOf,
+  jobsTitle,
+} from "./perf-jobs.mjs";
+import {
   STORED_ROW,
   storedHtml,
   storedKeys,
@@ -270,6 +279,14 @@ export function reduced(file, glossary = readGlossary()) {
         return [{ name: row.name, value: row.value, samples: row.samples }];
       if (SPEED_ROW.test(row.name) || STORED_ROW.test(row.name))
         return [{ name: row.name, value: row.value }];
+      if (JOBS_ROW.test(row.name))
+        return [
+          {
+            name: row.name,
+            value: row.value,
+            ...(EDIT_ROW.test(row.name) && { extra: row.extra }),
+          },
+        ];
       if (!rest.startsWith("self/")) return [];
       return [
         { name: row.name, value: row.value, extra: sentenceOf(row.extra) },
@@ -664,6 +681,9 @@ table.held { border-collapse: collapse; width: 100%; font-size: .85rem; margin: 
 table.held th, table.held td { padding: .25rem .5rem; border-bottom: 1px solid #e3e6ea; vertical-align: bottom; text-align: left; }
 table.held th.n, table.held td.n { text-align: right; font-variant-numeric: tabular-nums; }
 section.stored details { margin: .4rem 0; }
+section.jobs h3 { font-size: 1rem; margin: 1.4rem 0 .2rem; }
+section.jobs ul.jobs { margin: .4rem 0; padding-left: 1.2rem; }
+section.jobs ul.jobs li { margin: .3rem 0; }
 section.stored h3 { font-size: 1rem; margin: 1.4rem 0 .2rem; }
 .speedbox { margin: .6rem 0; }
 .speedbox p { margin: .3rem 0; }
@@ -972,10 +992,89 @@ ${blocks.join("\n")}
 </section>`;
 }
 
+/**
+ * What the jobs of every day took at each size in the newest Linux build whose file measured them, for the section "What people
+ * do after the first import": the build and what its rows say, by size, plain before encrypted. A job the newest build left to
+ * the nightly run keeps the line of the newest build that measured it, which says so.
+ */
+export function jobsLatest(files, glossary = readGlossary()) {
+  const order = Object.keys(glossary.datasets);
+  const found = new Map();
+  for (const { build, file } of files) {
+    if ((build.os ?? "linux") !== "linux") continue;
+    for (const key of jobsKeys(file)) {
+      const page = jobsOf(file, key);
+      if (page === undefined) continue;
+      const older = new Map(found.get(key)?.older ?? []);
+      for (const line of found.get(key)?.page.lines ?? [])
+        older.set(line.id, {
+          build: found.get(key).build,
+          line,
+          edit: found.get(key).page.editedBy?.[line.id],
+        });
+      found.set(key, { build, page, older });
+    }
+  }
+  return [...found.values()]
+    .map(({ build, page, older }) => {
+      const has = new Set(page.lines.map(({ id }) => id));
+      const borrowed = [...older]
+        .filter(([id]) => !has.has(id))
+        .map(([id, { build: from, line, edit }]) => ({
+          id,
+          edit,
+          text: `${line.text.replace(/\.$/, "")} (measured in build ${from.sha} of ${from.date}, which the newest build leaves out).`,
+        }));
+      return {
+        build,
+        page: {
+          ...page,
+          edits: [
+            ...page.edits,
+            ...borrowed.flatMap(({ edit }) =>
+              edit === undefined ? [] : [edit],
+            ),
+          ].filter((text, place, all) => all.indexOf(text) === place),
+          lines: [
+            ...page.lines,
+            ...borrowed.map(({ id, text }) => ({ id, text })),
+          ].sort(
+            (a, b) => JOB_SCENARIOS.indexOf(a.id) - JOB_SCENARIOS.indexOf(b.id),
+          ),
+        },
+      };
+    })
+    .sort(
+      (a, b) =>
+        order.indexOf(a.page.dataset) - order.indexOf(b.page.dataset) ||
+        Number(a.page.encrypted) - Number(b.page.encrypted),
+    );
+}
+
+/** The section of what the jobs after the first import took, one block for each size. */
+function jobsBlock(jobs, repo) {
+  if (jobs.length === 0) return "";
+  const blocks = jobs.map(({ build, page }) =>
+    jobsHtml(page, {
+      heading: `<h3>${esc(jobsTitle(page))} <span class="note">Build <a href="https://github.com/${esc(repo)}/commit/${esc(build.sha)}">${esc(build.sha)}</a>, ${esc(build.date)}</span></h3>`,
+    }),
+  );
+  return `<section class="jobs" id="jobs">
+<h2>What people do after the first import</h2>
+${blocks.join("\n")}
+</section>`;
+}
+
 /** The page: the charts, how to read them, and the data they draw. */
 export function stackedPage(
   charts,
-  { repo, glossary = readGlossary(), fileOps = [], stored = [] } = {},
+  {
+    repo,
+    glossary = readGlossary(),
+    fileOps = [],
+    stored = [],
+    jobs = [],
+  } = {},
 ) {
   const repeats = [
     ...new Set(charts.map((chart) => chart.columns.at(-1)?.runs)),
@@ -1067,9 +1166,10 @@ ${chart.columns.some((column) => !column.measured) ? `<p class="note">Faded colu
 <p>Under the charts of a new pod, a line sets the import's time against a plain load of the same input into SQLite (not a lower bound), and a table lists what the import handled (source entries, answer-file lines, files, questions put to the fact store, individual facts looked at) and how fast saving wrote the lines and files. Those numbers are the measured ones, with no limit set on any of them.</p></details>
 <p>Charts "on Windows" and "on macOS" are the same measurement on those systems' own GitHub-hosted machines, drawn from those builds alone: a time on one system is never plotted in a column of another, because the machines differ in processor, disk and file system, and the times only read against their own system's earlier ones. Those two are measured when a change is merged to main and every night, not on every pull request, so they have fewer columns. What the systems cost per file, and what the virus scanner was set to and doing while it was measured, is under the charts.</p>
 <p>Why the two are not measured on every pull request: a pull request is shown only when its slowest check is done. A Windows run took about 6 minutes (11 with the Defender comparison, which only a hand-started run adds) and a macOS run about 3 (November 2026, a hosted runner each), against about 9 minutes for the slowest check, so the Windows run would have become the slowest check of every pull request. They are measured on the main branch and by hand, and a hand-started run of any branch can name them.</p></details>
-<p class="toc">${[...titled.map((chart) => `<a href="#${esc(chart.id ?? chart.key)}">${esc(chart.title)}</a><br>`), ...(fileOps.length === 0 ? [] : ['<a href="#file-ops">What one file costs on each operating system</a><br>']), ...(stored.length === 0 ? [] : ['<a href="#stored">What a pod holds</a><br>'])].join("\n")}</p>
+<p class="toc">${[...titled.map((chart) => `<a href="#${esc(chart.id ?? chart.key)}">${esc(chart.title)}</a><br>`), ...(fileOps.length === 0 ? [] : ['<a href="#file-ops">What one file costs on each operating system</a><br>']), ...(jobs.length === 0 ? [] : ['<a href="#jobs">What people do after the first import</a><br>']), ...(stored.length === 0 ? [] : ['<a href="#stored">What a pod holds</a><br>'])].join("\n")}</p>
 ${sections.length === 0 ? "<p>No build has been measured yet.</p>" : sections.join("\n")}
 ${fileOpsSection(fileOps)}
+${jobsBlock(jobs, repo)}
 ${storedBlock(stored, repo, glossary)}
 <p class="links"><a href="../">Documentation home</a> · <a href="runs/">Each build's flame graphs</a> · <a href="detail/">Every measurement, one small chart each</a> · <a href="stacked.json">The data of these charts</a></p>
 <div id="tip" hidden></div>
@@ -1150,6 +1250,7 @@ export function pages({ data, out, repo, runs, glossary = readGlossary() }) {
     glossary,
     fileOps,
     stored: storedLatest(files, glossary),
+    jobs: jobsLatest(files, glossary),
   });
   writeFileSync(join(out, "index.html"), page);
   writeFileSync(

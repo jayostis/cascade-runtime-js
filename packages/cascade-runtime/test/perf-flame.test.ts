@@ -15,6 +15,7 @@ import {
 } from "@cascade-runtime/runtime/probe";
 import { explainSpan, explain } from "./perf-glossary.js";
 import { rowsOfHeld } from "./perf-held.js";
+import { rowsOfJobs } from "./perf-jobs-held.js";
 import { keptCpu, part, probedRows, tabulated } from "./perf-report.js";
 import { chromeTrace, MAX_TRACKS, selfTimes } from "./perf-trace.js";
 
@@ -826,6 +827,51 @@ describe("Flame graphs of a build · perf-trace.ts, perf-flame.mjs, perf-runs.mj
       assert.match(block, /<td class="n">590<\/td>/);
       assert.match(block, /<td class="n">59%<\/td>/);
       assert.doesNotMatch(runsPage([run([])], options), /What a pod holds/);
+    });
+  });
+
+  describe("given a build whose performance file measured the jobs of every day", () => {
+    it("shows in the build's entry one plain line for each job under What people do after the first import, apart from the flame graphs", async () => {
+      const { runsPage } = await script<Runs>("perf-runs.mjs");
+      const { jobsOf } = await script<{
+        jobsOf(file: object, key: string): object | undefined;
+      }>("perf-jobs.mjs");
+      const jobs = jobsOf({ results: rowsOfJobs() }, "synthea-10y");
+      assert.ok(jobs !== undefined);
+      const run = (jobs: object[]) => ({
+        id: "1-aaaaaaa",
+        date: "2026-11-20",
+        event: "push",
+        run: "1",
+        sha: "aaaaaaa",
+        flame: { builds: [] },
+        kept: new Set<string>(),
+        speeds: [],
+        stored: [],
+        jobs,
+      });
+      const options = {
+        repo: "owner/repo",
+        pages: "https://site.test/perf",
+        viewer: "https://site.test/perf/speedscope/",
+      };
+      const page = runsPage([run([jobs])], options);
+      const block =
+        /<div class="box jobs">[\s\S]*?<\/ul>/.exec(page)?.[0] ?? "";
+      assert.match(block, /<h2>What people do after the first import<\/h2>/);
+      assert.match(
+        block,
+        /Importing the same file again took 800 ms \(0\.3 x the first import\) and wrote 0 files/,
+      );
+      assert.match(
+        block,
+        /Opening a pod after an update, and asking its first question, took 600 ms/,
+      );
+      assert.equal(block.match(/<li>/g)?.length, 5);
+      assert.doesNotMatch(
+        runsPage([run([])], options),
+        /after the first import/,
+      );
     });
   });
 

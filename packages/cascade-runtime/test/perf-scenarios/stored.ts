@@ -111,6 +111,8 @@ export interface Stored {
   readonly beside: { readonly files: number; readonly bytes: number };
   /** The pod's database; none for a pod whose database is sealed. */
   readonly database?: DatabaseFigures;
+  /** The files the layout says the pod loads (what a whole build of it reads), and the statements they hold. */
+  readonly loaded?: { readonly files: number; readonly statements: number };
 }
 
 /** The blocks a disk allocates in, for the count of what the files come to in whole blocks. */
@@ -121,7 +123,7 @@ const LARGEST = 10;
 const AT_ONCE = 64;
 
 /** The files of the pod, read through its sealed index where it has one. */
-async function podFiles(
+export async function podFiles(
   folder: string,
   encrypted: boolean,
 ): Promise<{ files: Files; layout: Layout }> {
@@ -199,6 +201,62 @@ const vocabularyOf = (property: string): PredicateVocabulary => {
     if (property.startsWith(stem)) return vocabulary;
   return "other";
 };
+
+/** What one file of a pod is, as its place in the layout and its statements say. */
+export interface Classified {
+  readonly kind: StoredKind;
+  readonly statements: number;
+  /** Whether it is a pod record's own file (a record that is not a version, a revision or a server). */
+  readonly podRecord: boolean;
+  /** The statements of a version file that link it to its record; 0 for any other kind. */
+  readonly versionLinks: number;
+  readonly predicates: Readonly<Record<PredicateVocabulary, number>>;
+}
+
+/** The kind of the file at `path` holding `bytes`, and what its statements are. */
+export function classified(
+  layout: Layout,
+  path: string,
+  bytes: Uint8Array,
+): Classified {
+  let kind = kindOfPlace(layout, path);
+  let statements = 0;
+  let podRecord = false;
+  let versionLinks = 0;
+  const predicates = Object.fromEntries(
+    PREDICATE_VOCABULARIES.map((each) => [each, 0]),
+  ) as Record<PredicateVocabulary, number>;
+  if (layout.loads(path)) {
+    let revision = false;
+    let version = false;
+    let links = 0;
+    for (const line of new TextDecoder().decode(bytes).split("\n")) {
+      if (line.trim() === "") continue;
+      statements += 1;
+      const property = PROPERTY.exec(line)?.[1];
+      if (property === undefined) {
+        predicates.other += 1;
+        continue;
+      }
+      predicates[vocabularyOf(property)] += 1;
+      if (property === REVISION_OF) revision = true;
+      else if (property === SPECIALIZATION_OF) {
+        version = true;
+        links += 1;
+      }
+    }
+    if (kind === "records" || kind === "servers") {
+      if (revision) kind = kind === "records" ? "revisions" : kind;
+      else if (version) {
+        if (kind === "records") {
+          kind = "versions";
+          versionLinks = links;
+        }
+      } else podRecord = true;
+    }
+  }
+  return { kind, statements, podRecord, versionLinks, predicates };
+}
 
 /** Every file under `folder`, with its size. */
 async function filesUnder(
@@ -308,46 +366,25 @@ export async function storedIn(
   ) as Record<PredicateVocabulary, number>;
   let podRecords = 0;
   let versionLinks = 0;
+  const loaded = { files: 0, statements: 0 };
   const paths = await files.list("");
   for (let from = 0; from < paths.length; from += AT_ONCE)
     await Promise.all(
       paths.slice(from, from + AT_ONCE).map(async (path) => {
         const bytes = await files.read(path);
         if (bytes === undefined) throw new Error(`${path} is listed and gone`);
-        let kind = kindOfPlace(layout, path);
-        let statements = 0;
+        const found = classified(layout, path, bytes);
+        for (const each of PREDICATE_VOCABULARIES)
+          predicates[each] += found.predicates[each];
+        if (found.podRecord) podRecords += 1;
+        versionLinks += found.versionLinks;
         if (layout.loads(path)) {
-          let revision = false;
-          let version = false;
-          let links = 0;
-          for (const line of new TextDecoder().decode(bytes).split("\n")) {
-            if (line.trim() === "") continue;
-            statements += 1;
-            const property = PROPERTY.exec(line)?.[1];
-            if (property === undefined) {
-              predicates.other += 1;
-              continue;
-            }
-            predicates[vocabularyOf(property)] += 1;
-            if (property === REVISION_OF) revision = true;
-            else if (property === SPECIALIZATION_OF) {
-              version = true;
-              links += 1;
-            }
-          }
-          if (kind === "records" || kind === "servers") {
-            if (revision) kind = kind === "records" ? "revisions" : kind;
-            else if (version) {
-              if (kind === "records") {
-                kind = "versions";
-                versionLinks += links;
-              }
-            } else podRecords += 1;
-          }
+          loaded.files += 1;
+          loaded.statements += found.statements;
         }
-        const held = kinds[kind];
+        const held = kinds[found.kind];
         held.files += 1;
-        held.statements += statements;
+        held.statements += found.statements;
         held.bytes += bytes.length;
       }),
     );
@@ -368,6 +405,7 @@ export async function storedIn(
       ),
     },
     beside: totalOf(kept),
+    loaded,
     ...(database !== undefined && { database }),
   };
 }

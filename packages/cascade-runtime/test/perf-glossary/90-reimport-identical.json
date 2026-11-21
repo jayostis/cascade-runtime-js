@@ -1,0 +1,8 @@
+{
+  "scenarios": {
+    "reimport-identical": {
+      "says": "A pod that already holds a person's record is given the same file again, as when a person pulls from the same hospital twice.",
+      "total": "Opening a pod that already holds the record, importing the same file again and asking a first page of the lab results: what a person waits for when nothing has changed."
+    }
+  }
+}

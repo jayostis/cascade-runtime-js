@@ -33,14 +33,18 @@ import {
 import { type Plan } from "./perf-plan.js";
 import { explain, glossaryMarkdown, readGlossary } from "./perf-glossary.js";
 import { type Database } from "@cascade-runtime/runtime";
-import { resolved } from "../src/node/resolved.js";
+import { databaseBeside, resolved } from "../src/node/resolved.js";
 import { flatten, loadPlainly } from "./perf-floor.js";
 import { held, rowsOfHeld } from "./perf-held.js";
+import { rowsOfJobs } from "./perf-jobs-held.js";
 import { profileOf, syntheticPull } from "./import-bench.js";
 import {
+  changedBundle,
+  CHANGED_ENTRIES,
   clockRow,
   commits,
   databaseFigures,
+  databaseKept,
   folderFingerprint,
   openedAt,
   parsed,
@@ -49,6 +53,8 @@ import {
   pinnedAt,
   pinOf,
   countRow,
+  oneMoreBundle,
+  perfFile,
   unitOfCounter,
   envOf,
   floorRows,
@@ -82,6 +88,7 @@ import {
   type ScannerSettings,
   THEN,
   type Row,
+  type Scenario,
   type Stored,
   type StoredKind,
 } from "./perf-report.js";
@@ -3146,6 +3153,418 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
         /stored-synthea-10y\/files\/versions/,
         "only what changed",
       );
+    });
+  });
+
+  interface Entry {
+    fullUrl: string;
+    resource: {
+      resourceType: string;
+      id: string;
+      category?: { coding: { code: string }[] }[];
+      meta?: { versionId?: string; lastUpdated?: string };
+      valueQuantity?: { value: number };
+      effectiveDateTime?: string;
+      issued?: string;
+    };
+  }
+  interface Bundled {
+    resourceType: "Bundle";
+    entry: Entry[];
+  }
+  const DAY = 86_400_000;
+  /**
+   * A Bundle of a patient, 45 Observations (every third with no number; of the others, 6 vital signs, which the pod does not keep
+   * as records, and 24 laboratory results) and a Condition.
+   */
+  const bundleOf = (): Bundled => ({
+    resourceType: "Bundle",
+    entry: [
+      {
+        fullUrl: "https://h.invalid/fhir/Patient/p1",
+        resource: { resourceType: "Patient", id: "p1" },
+      },
+      ...Array.from({ length: 45 }, (_, n): Entry => {
+        const id = `o${n}`;
+        return {
+          fullUrl: `https://h.invalid/fhir/Observation/${id}`,
+          resource: {
+            resourceType: "Observation",
+            id,
+            category: [
+              {
+                coding: [{ code: n % 5 === 4 ? "vital-signs" : "laboratory" }],
+              },
+            ],
+            meta: {
+              versionId: "1",
+              lastUpdated: `2017-02-${String(10 + (n % 10))}T07:29:38.825Z`,
+            },
+            effectiveDateTime: "2017-02-13T07:29:38+00:00",
+            issued: "2017-02-13T07:29:38.825+00:00",
+            ...(n % 3 !== 2 && { valueQuantity: { value: 5 + n } }),
+          },
+        };
+      }),
+      {
+        fullUrl: "https://h.invalid/fhir/Condition/c1",
+        resource: { resourceType: "Condition", id: "c1" },
+      },
+    ],
+  });
+  const numbered = (bundle: Bundled) =>
+    bundle.entry.flatMap(({ resource }, at) =>
+      resource.resourceType === "Observation" &&
+      resource.valueQuantity !== undefined &&
+      resource.category?.[0]?.coding[0]?.code === "laboratory"
+        ? [at]
+        : [],
+    );
+
+  describe("given a Bundle that is imported again with ten of its source entries changed", () => {
+    it("changes exactly ten laboratory Observations that carry a number, spread evenly through the Bundle, each in its value, version and change time and nothing else, and leaves the Bundle it was given as it was", () => {
+      const bundle = bundleOf();
+      const before = structuredClone(bundle);
+      const edited = changedBundle(bundle);
+      assert.deepEqual(bundle, before, "the given Bundle is not touched");
+      const after = edited.bundle as Bundled;
+      assert.equal(after.entry.length, bundle.entry.length);
+      const differing = after.entry.flatMap((entry, at) =>
+        JSON.stringify(entry) === JSON.stringify(bundle.entry[at]) ? [] : [at],
+      );
+      const eligible = numbered(bundle);
+      assert.equal(eligible.length, 24, "the vital signs are left out");
+      assert.equal(CHANGED_ENTRIES, 10);
+      assert.deepEqual(
+        differing,
+        Array.from(
+          { length: CHANGED_ENTRIES },
+          (_, i) =>
+            eligible[Math.floor((i * eligible.length) / CHANGED_ENTRIES)],
+        ),
+      );
+      for (const at of differing) {
+        const was = bundle.entry[at]?.resource as Entry["resource"];
+        const now = (after.entry[at] as Entry).resource;
+        assert.equal(
+          now.valueQuantity?.value,
+          (was.valueQuantity?.value ?? 0) + 1,
+        );
+        assert.equal(now.meta?.versionId, "2");
+        assert.equal(
+          Date.parse(now.meta?.lastUpdated ?? "") -
+            Date.parse(was.meta?.lastUpdated ?? ""),
+          DAY,
+        );
+        assert.deepEqual(
+          {
+            ...now,
+            valueQuantity: was.valueQuantity,
+            meta: was.meta,
+          },
+          was,
+          "nothing but those three fields differs",
+        );
+        assert.equal(
+          (after.entry[at] as Entry).fullUrl,
+          bundle.entry[at]?.fullUrl,
+        );
+      }
+      assert.equal(edited.changed, 10);
+      assert.equal(edited.added, 0);
+    });
+
+    it("gives the same Bundle on every call, says in a sentence what it changed, and refuses a Bundle with fewer Observations to change than that", () => {
+      assert.deepEqual(changedBundle(bundleOf()), changedBundle(bundleOf()));
+      const { says } = changedBundle(bundleOf());
+      assert.match(says, /10 of the 24 laboratory Observations/);
+      for (const field of [
+        "valueQuantity.value",
+        "meta.versionId",
+        "meta.lastUpdated",
+      ])
+        assert.ok(says.includes(field), field);
+      const small = { ...bundleOf(), entry: bundleOf().entry.slice(0, 8) };
+      assert.throws(() => changedBundle(small), /fewer than 10/);
+    });
+  });
+
+  describe("given a Bundle that is imported again with one more source entry", () => {
+    it("adds one Observation at the end, a copy of the last laboratory result that carries a number with a new id and a day later, and changes no other entry", () => {
+      const bundle = bundleOf();
+      const before = structuredClone(bundle);
+      const edited = oneMoreBundle(bundle);
+      assert.deepEqual(bundle, before);
+      const after = edited.bundle as Bundled;
+      assert.equal(after.entry.length, bundle.entry.length + 1);
+      assert.deepEqual(after.entry.slice(0, -1), bundle.entry);
+      const last = numbered(bundle).at(-1) as number;
+      const copied = (bundle.entry[last] as Entry).resource;
+      const added = after.entry.at(-1) as Entry;
+      assert.equal(added.resource.resourceType, "Observation");
+      assert.notEqual(added.resource.id, copied.id);
+      assert.ok(
+        !bundle.entry.some(({ resource }) => resource.id === added.resource.id),
+        "a new id",
+      );
+      assert.ok(added.fullUrl.endsWith(`/Observation/${added.resource.id}`));
+      assert.equal(
+        added.resource.valueQuantity?.value,
+        copied.valueQuantity?.value,
+      );
+      for (const field of ["effectiveDateTime", "issued"] as const)
+        assert.equal(
+          Date.parse(added.resource[field] ?? "") -
+            Date.parse(copied[field] ?? ""),
+          DAY,
+          field,
+        );
+      assert.equal(
+        Date.parse(added.resource.meta?.lastUpdated ?? "") -
+          Date.parse(copied.meta?.lastUpdated ?? ""),
+        DAY,
+      );
+      assert.equal(edited.added, 1);
+      assert.equal(edited.changed, 0);
+      assert.match(edited.says, /one Observation/);
+      assert.deepEqual(oneMoreBundle(bundleOf()), oneMoreBundle(bundleOf()));
+    });
+  });
+
+  describe("given the jobs of every day", () => {
+    it("finds the database a sealed pod keeps under its keyed name, which a look for pod.db finds nothing of", async () => {
+      const claimProfiles = await profileOf("first");
+      const folder = await mkdtemp(join(tmpdir(), "database-kept-"));
+      scratch.push(folder);
+      for (const [name, encrypted] of [
+        ["plain", false],
+        ["sealed", true],
+      ] as const) {
+        const at = join(folder, name, "pod");
+        const pod = await openedAt(at, encrypted);
+        await pod.import(syntheticPull(20), { claimProfiles });
+        await pod.close();
+        assert.equal(await databaseKept(at, encrypted), true, name);
+      }
+      assert.equal(
+        await databaseBeside(join(folder, "sealed", "pod")).exists(),
+        false,
+        "the plain name is not where a sealed pod keeps it",
+      );
+    });
+
+    it("names the jobs of a build that took each once as one run and the first import as a median, and reopens an encrypted pod that was killed, looking for its database where it keeps it", async () => {
+      const { results } = await perfFile({
+        scenarios: new Set<Scenario>([
+          "fresh-first-screen",
+          "reimport-changed",
+          "reopen-after-kill",
+        ]),
+        sizes: ["synthea-10y"],
+        encryption: "encrypted",
+        repeats: 2,
+        probe: false,
+        lightJobs: true,
+      });
+      const row = (name: string) => results.find((each) => each.name === name);
+      const extra = (name: string) => row(name)?.extra ?? "";
+      const sealed = "synthea-10y-encrypted";
+      assert.match(
+        extra(`reimport-changed-${sealed}/total`),
+        /one run in a process of its own/,
+      );
+      assert.doesNotMatch(
+        extra(`reimport-changed-${sealed}/total`),
+        /median of/,
+      );
+      assert.match(
+        extra(`fresh-first-screen-${sealed}/total`),
+        /median of 2 runs/,
+      );
+      assert.equal(
+        row(`reopen-after-kill-${sealed}/count/database-found`)?.value,
+        0,
+      );
+    });
+
+    it("lists each as a scenario of its own that a run may name alone", () => {
+      for (const scenario of [
+        "reimport-identical",
+        "reimport-changed",
+        "add-one-record",
+        "reopen-after-kill",
+        "question-after-update",
+      ]) {
+        assert.ok(
+          (SCENARIOS as readonly string[]).includes(scenario),
+          scenario,
+        );
+        const { plan } = parsed(["--scenario", scenario]);
+        assert.deepEqual([...plan.scenarios], [scenario]);
+      }
+      assert.equal(
+        parsed([]).plan.lightJobs,
+        false,
+        "every run of the jobs is the full one unless a build asks",
+      );
+      assert.equal(parsed(["--light-jobs"]).plan.lightJobs, true);
+      const light = [...parsed(["--light-jobs"]).plan.scenarios];
+      assert.ok(!light.includes("add-one-record"), "left to the nightly run");
+      assert.ok(light.includes("reimport-changed"));
+      assert.ok(
+        parsed([
+          "--light-jobs",
+          "--scenario",
+          "add-one-record",
+        ]).plan.scenarios.has("add-one-record"),
+        "named, it runs",
+      );
+      assert.ok(parsed([]).plan.scenarios.has("add-one-record"));
+    });
+
+    it("explains every row the jobs write, in the glossary, with a sentence of the job's own for its total", () => {
+      const names = rowsOfJobs().map(({ name }) => name);
+      assert.deepEqual(
+        names.filter((name) => explain(name) === undefined),
+        [],
+      );
+      assert.deepEqual(
+        rowsOfJobs().flatMap((row) => refused(row) ?? []),
+        [],
+      );
+      assert.match(
+        explain("reimport-identical-synthea-10y/total") ?? "",
+        /same file/i,
+      );
+      assert.match(
+        explain("reopen-after-kill-synthea-10y/total") ?? "",
+        /stopped|closed/i,
+      );
+    });
+
+    it("is said by the summary and the comparison in one line for each job, and a file of main's with none of them does not stop it", () => {
+      const jobs = file(rowsOfJobs());
+      const summary = compare.summary(jobs, { markdown: true });
+      assert.match(summary, /What people do after the first import/);
+      assert.match(
+        summary,
+        /- Importing the same file again took 800 ms \(0\.3 x the first import\) and wrote 0 files; the document was not converted again\./,
+      );
+      const against = compare.compare(file([]), jobs, {
+        markdown: true,
+        sameJob: true,
+      });
+      assert.match(against, /What people do after the first import/);
+      assert.match(
+        against,
+        /- Opening a pod after an update, and asking its first question, took 600 ms/,
+      );
+      assert.doesNotMatch(
+        compare.summary(file([]), { markdown: true }),
+        /after the first import/,
+      );
+    });
+
+    it("measures importing the same file again, with ten source entries changed, with one more, reopening after a kill and the first question after an update, each on a copy of the pod the first import left, which stays as it was", async () => {
+      const plan = (...scenarios: Scenario[]): Plan => ({
+        scenarios: new Set(scenarios),
+        sizes: ["synthea-10y"],
+        encryption: "plain",
+        repeats: 1,
+        probe: false,
+      });
+      const alone = (await perfFile(plan("fresh-first-screen", "stored")))
+        .results;
+      const { results } = await perfFile(
+        plan(
+          "fresh-first-screen",
+          "reimport-identical",
+          "reimport-changed",
+          "add-one-record",
+          "reopen-after-kill",
+          "question-after-update",
+          "stored",
+        ),
+      );
+      const at = (rows: readonly Row[], name: string): number | undefined =>
+        rows.find((row) => row.name === name)?.value;
+      const value = (scenario: string, measure: string) =>
+        at(results, `${scenario}-synthea-10y/${measure}`);
+      assert.deepEqual(
+        results.filter((row) => refused(row) !== undefined),
+        [],
+      );
+      assert.deepEqual(
+        results
+          .filter(({ name }) => explain(name) === undefined)
+          .map(({ name }) => name),
+        [],
+      );
+      // The pod the first import left was counted last and is what a first import alone leaves: no job wrote into it.
+      for (const measure of [
+        "files/all",
+        "statements/all",
+        "count/pod-records",
+      ])
+        assert.equal(
+          value("stored", measure),
+          at(alone, `stored-synthea-10y/${measure}`),
+          measure,
+        );
+      const identical = (measure: string) =>
+        value("reimport-identical", measure);
+      assert.equal(
+        identical("count/converts"),
+        0,
+        "the document is skipped by its hash",
+      );
+      assert.equal(identical("count/files-written"), 0);
+      assert.equal(identical("count/versions-added"), 0);
+      assert.equal(identical("count/revisions-added"), 0);
+      const changed = (measure: string) => value("reimport-changed", measure);
+      assert.equal(changed("count/converts"), 1);
+      assert.equal(changed("count/entries-changed"), 10);
+      assert.equal(changed("count/versions-added"), 10);
+      assert.equal(changed("count/revisions-added"), 10);
+      assert.equal(changed("count/records-added"), 0);
+      assert.ok((changed("count/files-written") ?? 0) >= 20);
+      assert.ok((changed("count/statements-added") ?? 0) > 0);
+      const added = (measure: string) => value("add-one-record", measure);
+      assert.equal(added("count/converts"), 1);
+      assert.equal(added("count/entries-added"), 1);
+      assert.equal(added("count/records-added"), 1);
+      assert.equal(added("count/versions-added"), 1);
+      assert.equal(added("count/revisions-added"), 1);
+      for (const scenario of [
+        "reimport-identical",
+        "reimport-changed",
+        "add-one-record",
+      ])
+        for (const measure of [
+          "total",
+          "open",
+          "import",
+          "first-answer",
+          "close",
+        ])
+          assert.ok(
+            (value(scenario, measure) ?? 0) > 0,
+            `${scenario} ${measure}`,
+          );
+      const killed = (measure: string) => value("reopen-after-kill", measure);
+      assert.equal(
+        killed("count/database-found"),
+        0,
+        "the process was killed before the database was built",
+      );
+      assert.ok((killed("count/files-read") ?? 0) > 1000);
+      assert.ok((killed("count/statements-read") ?? 0) > 10000);
+      for (const scenario of ["reopen-after-kill", "question-after-update"])
+        for (const measure of ["total", "open", "first-read", "second-read"])
+          assert.ok(
+            (value(scenario, measure) ?? 0) > 0,
+            `${scenario} ${measure}`,
+          );
     });
   });
 });

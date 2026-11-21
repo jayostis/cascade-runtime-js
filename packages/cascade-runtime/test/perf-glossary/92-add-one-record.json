@@ -1,0 +1,8 @@
+{
+  "scenarios": {
+    "add-one-record": {
+      "says": "A pod that already holds a person's record is given the same file with one new laboratory result at its end, as when a hospital adds a result after the last pull.",
+      "total": "Opening a pod that already holds the record, importing the file with one more laboratory result and asking a first page of the lab results: what a person waits for after one new result arrives."
+    }
+  }
+}

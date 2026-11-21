@@ -20,6 +20,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { jobsKeys, jobsOf, jobsTitle } from "./perf-jobs.mjs";
 import {
   CLASS_HEAD,
   KIND_HEAD,
@@ -394,6 +395,34 @@ export function speedSection(file, { markdown = false } = {}) {
 }
 
 /**
+ * What a file says of the jobs of every day after the first import, one line for each job it measured, read against the same
+ * file's first import and reopen. None for a file with none of them. Where the file measured two sizes, each size's lines come
+ * under its own title.
+ */
+export function jobsSection(file, { markdown = false } = {}) {
+  const pages = jobsKeys(file).flatMap((key) => jobsOf(file, key) ?? []);
+  if (pages.length === 0) return [];
+  const out = [
+    markdown
+      ? "**What people do after the first import**"
+      : "WHAT PEOPLE DO AFTER THE FIRST IMPORT",
+    "",
+  ];
+  for (const page of pages) {
+    if (pages.length > 1)
+      out.push(markdown ? `*${jobsTitle(page)}*` : `${jobsTitle(page)}:`, "");
+    for (const { text } of page.lines) out.push(markdown ? `- ${text}` : text);
+    out.push("");
+    for (const edit of page.edits)
+      out.push(
+        markdown ? `> What was edited: ${edit}` : `What was edited: ${edit}`,
+        "",
+      );
+  }
+  return out;
+}
+
+/**
  * What a file says of what each pod it counted holds: for each, the line of what a fresh import left, the classes of what is
  * held and, folded away in a markdown report, each kind. None for a file with no such rows.
  */
@@ -549,6 +578,7 @@ export function compare(
     );
   }
   out.push(...speedSection(after, { markdown }));
+  out.push(...jobsSection(after, { markdown }));
   out.push(...storedSection(after, { markdown }));
   out.push(...storedChanges(before, after, { markdown, was$, now$ }));
   const head = (title) =>
@@ -750,6 +780,7 @@ export function summary(
     "",
   );
   out.push(...speedSection(file, { markdown }));
+  out.push(...jobsSection(file, { markdown }));
   out.push(...storedSection(file, { markdown }));
   for (const [group, rows] of grouped(
     file.results.filter((row) => kindOf(row.name) === "stage"),

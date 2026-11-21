@@ -14,6 +14,11 @@ export const SCENARIOS = [
   "close",
   "floor",
   "stored",
+  "reimport-identical",
+  "reimport-changed",
+  "add-one-record",
+  "reopen-after-kill",
+  "question-after-update",
   "file-ops",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
@@ -45,6 +50,12 @@ export interface Plan {
   readonly profiles?: string;
   /** Whether each scenario also gets a CPU profile, when there is a folder: one more run of it, unprobed. */
   readonly cpuProfile?: boolean;
+  /**
+   * Whether each job of the day-to-day scenarios is run once, with the probed run and no CPU profile, and adding one result is
+   * left out of a run that names no scenario, so that each build's job stays short (they are seconds long even at the per-build
+   * size). The nightly and hand-started runs leave it off and run every job as often as any scenario; naming a scenario runs it.
+   */
+  readonly lightJobs?: boolean;
 }
 
 export function parsed(
@@ -111,7 +122,14 @@ export function parsed(
       scenarios: args.includes("--scanner-folders")
         ? new Set<Scenario>(["file-ops"])
         : new Set([
-            ...list(value("--scenario"), SCENARIOS, "scenario", ASKED_FOR),
+            ...list(
+              value("--scenario"),
+              SCENARIOS,
+              "scenario",
+              args.includes("--light-jobs")
+                ? ASKED_FOR.filter((each) => each !== "add-one-record")
+                : ASKED_FOR,
+            ),
             ...(args.includes("--file-ops") ? ["file-ops" as const] : []),
           ]),
       scannerCompare: args.includes("--scanner-compare"),
@@ -130,6 +148,7 @@ export function parsed(
         profiles: value("--profiles") as string,
       }),
       cpuProfile: !args.includes("--no-cpu-profile"),
+      lightJobs: args.includes("--light-jobs"),
     },
     out: value("--out"),
   };
