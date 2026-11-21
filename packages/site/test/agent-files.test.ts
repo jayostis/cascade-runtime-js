@@ -318,7 +318,7 @@ describe("Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md", 
       assert.ok(group, "llms.txt has a Contribute group");
       for (const { name, site } of REPOSITORIES) {
         assert.ok(
-          group.includes(`(https://github.com/jayostis/${name})`),
+          group.includes(`(https://github.com/the-cascade-protocol/${name})`),
           `the Contribute group lists ${name}`,
         );
         if (site !== undefined)

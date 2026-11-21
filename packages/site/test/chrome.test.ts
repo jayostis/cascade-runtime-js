@@ -18,7 +18,7 @@ import { chromeStyles, STYLESHEET, websiteChrome } from "../src/stylesheet.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const WEBSITE = "https://website.example";
-const HUB = "https://jayostis.github.io/cascade-runtime-js/";
+const HUB = "https://the-cascade-protocol.github.io/cascade-runtime-js/";
 
 type Pages = Map<string, string>;
 
@@ -47,7 +47,7 @@ async function built(chrome: Chrome): Promise<{ pages: Pages; css: string }> {
     name: "matching",
     at: "2026-03-03T08:00:00Z",
     ask: "npm run ask -- matching",
-    blob: "https://github.com/jayostis/cascade-vocabulary/blob/0123abc/",
+    blob: "https://github.com/the-cascade-protocol/cascade-vocabulary/blob/0123abc/",
     terms: "../terms/",
     spec: "../spec/",
     front: "../index.html",
@@ -269,7 +269,7 @@ describe("Every hub page carries the website's header, footer and tokens", () =>
         );
         assert.match(
           header,
-          /<a href="https:\/\/jayostis\.github\.io\/cascade-runtime-js\/" aria-current="page">Reference ↗<\/a>/,
+          /<a href="https:\/\/the-cascade-protocol\.github\.io\/cascade-runtime-js\/" aria-current="page">Reference ↗<\/a>/,
           path,
         );
       }

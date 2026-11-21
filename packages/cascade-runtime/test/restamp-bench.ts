@@ -9,7 +9,7 @@ import { syntheticPull } from "./import-bench.js";
 
 /**
  * What a pull whose bytes change and whose state does not writes to a pod (A10, ruling 5.5 of
- * jayostis/cascade-vocabulary#415): a synthetic pull of the D0 bench's shape is imported, imported again with its
+ * the-cascade-protocol/cascade-vocabulary#415): a synthetic pull of the D0 bench's shape is imported, imported again with its
  * Bundle restamped in its `meta`, and imported once more; the files and bytes each import added to the pod's folder are
  * printed. The restamped import writes 3 files, the Bundle's bytes among them, and the same bytes again write none.
  *

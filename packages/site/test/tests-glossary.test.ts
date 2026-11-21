@@ -190,7 +190,7 @@ describe("A package's glossary on its page · glossaryOf(), Links", () => {
   describe("with a term of the vocabulary that is a property", () => {
     it("links it to its page in `properties/`, a class's staying beside it", async () => {
       const vocabulary = new MemoryFiles(
-        "https://github.com/jayostis/cascade-vocabulary/tree/abc123/",
+        "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc123/",
       );
       await vocabulary.write(
         "ontologies/cascade.ttl",

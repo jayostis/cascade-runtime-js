@@ -167,7 +167,7 @@ function personPage(
   const own = entries.filter((e) => e.results.cases.some((c) => c.id === id));
   const c = own[0]!.results.cases.find((it) => it.id === id)!;
   const { name } = c.person;
-  const body = `<p class="small muted">A synthetic person · as of ${esc(c.today)} · <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals/cases/${esc(id)}">the case files and answer key</a></p>
+  const body = `<p class="small muted">A synthetic person · as of ${esc(c.today)} · <a href="https://github.com/the-cascade-protocol/cascade-runtime-js/tree/main/packages/evals/cases/${esc(id)}">the case files and answer key</a></p>
 <h1>${esc(name)}</h1>
 <dl class="story"><dt>Who</dt><dd>${esc(c.description.who)}</dd>
 <dt>The records</dt><dd>${esc(c.description.sources)}</dd>
@@ -197,7 +197,7 @@ function frontPage(
   const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a>${compare ? ` · <a href="${hrefTo(from, "compare.html")}">runs side by side</a>` : ""}${calibration ? ` · <a href="${hrefTo(from, "calibration.html")}">judge calibration</a>` : ""}</p>
 <h1>The same question, two ways of giving a model a person&rsquo;s records. Which answer would you rather build on?</h1>
 <p class="lead">Cascade joins a person's downloaded health records into one <b>pod</b>: one entry per real thing, with its history across sources, read by a model through tools. The <b>grab bag</b> is the same downloads read whole, as if pasted into the chat. The same model answers the same questions both ways. Below: how each model did, then every run, one row per model per sitting. Open a row to read both answers and the evidence behind each.</p>
-<div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a>${compare ? `<a href="${hrefTo(from, "compare.html")}">Runs side by side</a>` : ""}${calibration ? `<a href="${hrefTo(from, "calibration.html")}">How far the judges are trusted</a>` : ""}${people(
+<div class="links"><a href="https://github.com/the-cascade-protocol/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a>${compare ? `<a href="${hrefTo(from, "compare.html")}">Runs side by side</a>` : ""}${calibration ? `<a href="${hrefTo(from, "calibration.html")}">How far the judges are trusted</a>` : ""}${people(
     entries,
   )
     .map(
@@ -291,7 +291,7 @@ ${builds(runs)}
 <p>A full run is cases × questions × 2 arms × models × repeats, a person's questions batched into chat sessions, in tiers (smoke, full). Results are counts and paired comparisons on the same question, never percentages of a small number.${compare ? ` <a href="${hrefTo("how_it_works.html", "compare.html")}">The runs side by side</a> set each run's counts next to the others'.` : ""}</p>
 <h2>The key</h2>
 <p>Each person's key says what a careful reader would say and would not, with the records that support each line, written before any run. It is a reference, not the truth: what an answer raises beyond it is shown as possibly good, with the judges' view, never as wrong.</p>
-<p class="small muted">Case files and keys: <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals/cases">packages/evals/cases</a>. Harness: <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals#readme">packages/evals</a>.</p>`;
+<p class="small muted">Case files and keys: <a href="https://github.com/the-cascade-protocol/cascade-runtime-js/tree/main/packages/evals/cases">packages/evals/cases</a>. Harness: <a href="https://github.com/the-cascade-protocol/cascade-runtime-js/tree/main/packages/evals#readme">packages/evals</a>.</p>`;
   return page({
     path: "how_it_works.html",
     title: "How the test works — Cascade evals",

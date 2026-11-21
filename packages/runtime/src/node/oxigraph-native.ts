@@ -31,7 +31,7 @@ export const OXIGRAPH_NATIVE_SHA256: Readonly<Record<string, string>> = {
     "b61d91cc6b39eb866104b26315072c811f98d03a9bf969d1376fd6be528c7716",
 };
 const RELEASES =
-  "https://github.com/jayostis/cascade-runtime-js/releases/download";
+  "https://github.com/the-cascade-protocol/cascade-runtime-js/releases/download";
 /** Which engine a run uses: `native`, `wasm`, or, unset or `auto`, native where it loads and wasm elsewhere. */
 export const OXIGRAPH_CHOICE = "CASCADE_OXIGRAPH";
 /** A native build's file, read in place of the one fetched and with no sha256 checked: a build its owner made or bundled. */

@@ -7,7 +7,7 @@ import { SECTIONS } from "../src/node/hub/index.js";
 import { addressOf, buildTree, pageOf, type Row } from "../src/sections.js";
 import { readPage } from "./page.js";
 
-const OWNER = "https://github.com/jayostis";
+const OWNER = "https://github.com/the-cascade-protocol";
 const KITS = ["alex-rivera", "sam-okafor"];
 
 /** The real sections' rows over a front page, each section writing only the pages its rows and entry link. */
@@ -22,7 +22,7 @@ async function frontPage(): Promise<string> {
     tests: async () =>
       ["cascade-runtime-js", "cascade-vocabulary"].map((name) => ({
         suite: {
-          repository: `jayostis/${name}`,
+          repository: `the-cascade-protocol/${name}`,
           title: `The tests of ${name}`,
           about: "a runner over it",
           workflow: "check.yml",
@@ -178,7 +178,7 @@ describe("The front page · hubFiles()", () => {
     it("links the reference tables' own site beside their repository", () => {
       assert.deepEqual(readPage(repositoryRows()[7]?.[2] ?? "").hrefs, [
         `${OWNER}/cascade-reference-tables`,
-        "https://jayostis.github.io/cascade-reference-tables/",
+        "https://the-cascade-protocol.github.io/cascade-reference-tables/",
       ]);
     });
 

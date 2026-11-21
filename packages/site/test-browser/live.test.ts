@@ -163,7 +163,7 @@ describe("The deployed site of a commit · npm run test:live", () => {
           await answered(`${site}start.html?at=${Date.now()}`)
         ).text();
         const command =
-          /https:\/\/github\.com\/jayostis\/cascade-starter-kit\/releases\/download\/build-[0-9a-f]{40}\/create-cascade-app-[^\s"<>]+\.tgz/.exec(
+          /https:\/\/github\.com\/the-cascade-protocol\/cascade-starter-kit\/releases\/download\/build-[0-9a-f]{40}\/create-cascade-app-[^\s"<>]+\.tgz/.exec(
             start,
           )?.[0];
         assert.ok(

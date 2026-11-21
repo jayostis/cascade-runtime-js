@@ -5,7 +5,7 @@ import { STYLESHEET_FILE } from "./site.js";
 export const MCP_FOLDER = "mcp/";
 export const MCP_PAGE = `${MCP_FOLDER}index.html`;
 const SOURCE =
-  "https://github.com/jayostis/cascade-runtime-js/tree/main/packages/mcp";
+  "https://github.com/the-cascade-protocol/cascade-runtime-js/tree/main/packages/mcp";
 
 /** The keywords of a tool's input schema that the page shows. */
 export interface ToolInput {

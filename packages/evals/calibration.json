@@ -1,6 +1,6 @@
 {
   "date": "2026-10-30",
-  "issue": "https://github.com/jayostis/cascade-runtime-js/issues/550",
+  "issue": "https://github.com/the-cascade-protocol/cascade-runtime-js/issues/550",
   "note": "calibration.md",
   "reference": {
     "scorer": "claude-opus-5-5",

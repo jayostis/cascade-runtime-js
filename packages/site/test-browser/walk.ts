@@ -29,7 +29,7 @@ export const ROWS: ReadonlyMap<string, readonly Target[]> = new Map([
     "want-see",
     [
       {
-        href: "https://jayostis.github.io/cascade-starter-kit/try/",
+        href: "https://the-cascade-protocol.github.io/cascade-starter-kit/try/",
         title: "Cascade",
       },
       { href: "examples.html", title: "Cascade example pods" },
@@ -119,7 +119,7 @@ export const REPOSITORIES: readonly string[] = [
   "cascade-sandbox",
 ];
 
-const OWNER = "https://github.com/jayostis";
+const OWNER = "https://github.com/the-cascade-protocol";
 
 /** Follows a link by clicking it, and says what is wrong where the page it reaches is not the one expected. */
 async function click(

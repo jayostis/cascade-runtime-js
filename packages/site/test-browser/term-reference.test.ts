@@ -15,7 +15,7 @@ import {
   termShapes,
 } from "../src/term-reference.js";
 
-const TREE = "https://github.com/jayostis/cascade-vocabulary/tree/abc123/";
+const TREE = "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc123/";
 const text = (value: string) => new TextEncoder().encode(value);
 
 /** `count` properties said of one class each, so the index has `count` folded groups of one, and a long page. */

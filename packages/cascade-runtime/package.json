@@ -7,7 +7,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jayostis/cascade-runtime-js.git",
+    "url": "git+https://github.com/the-cascade-protocol/cascade-runtime-js.git",
     "directory": "packages/cascade-runtime"
   },
   "engines": {
@@ -85,7 +85,7 @@
     }
   },
   "devDependencies": {
-    "@the-cascade-protocol/sandbox": "https://github.com/jayostis/cascade-sandbox/releases/download/build-f7e9c651d130e8409db0f679954aa6f6e757c6c3/the-cascade-protocol-sandbox-0.0.0-commit-f7e9c651d130e8409db0f679954aa6f6e757c6c3.tgz",
+    "@the-cascade-protocol/sandbox": "https://github.com/the-cascade-protocol/cascade-sandbox/releases/download/build-f7e9c651d130e8409db0f679954aa6f6e757c6c3/the-cascade-protocol-sandbox-0.0.0-commit-f7e9c651d130e8409db0f679954aa6f6e757c6c3.tgz",
     "esbuild": "0.28.2",
     "vite": "8.3.3"
   }

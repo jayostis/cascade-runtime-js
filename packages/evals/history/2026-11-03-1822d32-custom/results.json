@@ -52,28 +52,28 @@
     "components": [
       {
         "name": "cascade-vocabulary",
-        "repository": "https://github.com/jayostis/cascade-vocabulary",
+        "repository": "https://github.com/the-cascade-protocol/cascade-vocabulary",
         "commit": "c768091e0e62c7b66695d9e65cf7c55410ed6e1b",
         "source": "sibling",
         "uncommitted": 0
       },
       {
         "name": "cascade-bridge-adapter-fhir-r4",
-        "repository": "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4",
+        "repository": "https://github.com/the-cascade-protocol/cascade-bridge-adapter-fhir-r4",
         "commit": "9fd1a2c75495e966bc57ed74f56e96952277f463",
         "source": "sibling",
         "uncommitted": 0
       },
       {
         "name": "cascade-bridge-adapter-ccda",
-        "repository": "https://github.com/jayostis/cascade-bridge-adapter-ccda",
+        "repository": "https://github.com/the-cascade-protocol/cascade-bridge-adapter-ccda",
         "commit": "763bd43b9186e3c24e8688e748b7692ef575601d",
         "source": "sibling",
         "uncommitted": 0
       },
       {
         "name": "cascade-bridge-rs",
-        "repository": "https://github.com/jayostis/cascade-bridge-rs",
+        "repository": "https://github.com/the-cascade-protocol/cascade-bridge-rs",
         "commit": "b4047ec5ee8f622cc586e6bd36e213cd4b6faa8e",
         "source": "release"
       }
@@ -305,7 +305,7 @@
           "pod": "visible"
         }
       ],
-      "keyUrl": "https://github.com/jayostis/cascade-runtime-js/blob/1822d32ed0eaec61f63dfe31e196ddee2b696064/packages/evals/cases/tamsin-vale/key.md",
+      "keyUrl": "https://github.com/the-cascade-protocol/cascade-runtime-js/blob/1822d32ed0eaec61f63dfe31e196ddee2b696064/packages/evals/cases/tamsin-vale/key.md",
       "build": {
         "seconds": 6.3,
         "modelCalls": 0,
@@ -644,7 +644,7 @@
           "pod": "visible"
         }
       ],
-      "keyUrl": "https://github.com/jayostis/cascade-runtime-js/blob/1822d32ed0eaec61f63dfe31e196ddee2b696064/packages/evals/cases/priya-natarajan/key.md",
+      "keyUrl": "https://github.com/the-cascade-protocol/cascade-runtime-js/blob/1822d32ed0eaec61f63dfe31e196ddee2b696064/packages/evals/cases/priya-natarajan/key.md",
       "build": {
         "seconds": 21.4,
         "modelCalls": 0,

@@ -30,12 +30,12 @@ export const suite = (
   runner,
 });
 export const RUNTIME = suite(
-  `jayostis/${R}`,
+  `the-cascade-protocol/${R}`,
   "node:test",
   "The runtime's tests",
 );
 export const VOCABULARY = suite(
-  `jayostis/${V}`,
+  `the-cascade-protocol/${V}`,
   "pytest",
   "The vocabulary's tests",
 );
@@ -43,7 +43,7 @@ export const VOCABULARY = suite(
 /** An adapter's fixture cases: no test runner ran them, and cascade-bridge-spec's start action wrote their CTRF. */
 export const CTRF_SUITE: Suite = {
   ...suite(
-    "jayostis/cascade-bridge-adapter-fhir-r4",
+    "the-cascade-protocol/cascade-bridge-adapter-fhir-r4",
     "ctrf",
     "The FHIR R4 adapter's fixture cases",
   ),
@@ -100,12 +100,12 @@ export const CTRF_REPORT = JSON.stringify({
 export const RUN = {
   commit: "0123456789abcdef0123456789abcdef01234567",
   at: "2026-11-04T22:12:35Z",
-  url: "https://github.com/jayostis/cascade-runtime-js/actions/runs/42",
+  url: "https://github.com/the-cascade-protocol/cascade-runtime-js/actions/runs/42",
 };
 export const OTHER_RUN = {
   commit: "fedcba9876543210fedcba9876543210fedcba98",
   at: "2026-11-03T03:17:00Z",
-  url: "https://github.com/jayostis/cascade-vocabulary/actions/runs/41",
+  url: "https://github.com/the-cascade-protocol/cascade-vocabulary/actions/runs/41",
 };
 
 /**

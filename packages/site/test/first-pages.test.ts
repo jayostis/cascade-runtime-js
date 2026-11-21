@@ -132,7 +132,7 @@ describe("A newcomer's first pages · startSection, examplesSection, trySection"
 
     it("gives the starter kit's command at the commit built, then the prompt for a coding agent", () => {
       assert.deepEqual(quick.code, [
-        `npx --yes --package=https://github.com/jayostis/cascade-starter-kit/releases/download/build-${COMMIT}/create-cascade-app-0.0.0-commit-${COMMIT}.tgz create-cascade-app my-app`,
+        `npx --yes --package=https://github.com/the-cascade-protocol/cascade-starter-kit/releases/download/build-${COMMIT}/create-cascade-app-0.0.0-commit-${COMMIT}.tgz create-cascade-app my-app`,
         agentPrompt("my-app"),
       ]);
     });
@@ -212,7 +212,7 @@ describe("A newcomer's first pages · startSection, examplesSection, trySection"
 
   describe("with `try/index.html`", () => {
     let text: string;
-    const here = "https://jayostis.github.io/cascade-runtime-js/try/";
+    const here = "https://the-cascade-protocol.github.io/cascade-runtime-js/try/";
     const sentFrom = async (
       registrations: string[],
       unregistered: string[],
@@ -263,7 +263,7 @@ describe("A newcomer's first pages · startSection, examplesSection, trySection"
     it("unregisters the browser's background script (a service worker) of its own folder and no other", async () => {
       const unregistered: string[] = [];
       await sentFrom(
-        [here, "https://jayostis.github.io/cascade-starter-kit/try/"],
+        [here, "https://the-cascade-protocol.github.io/cascade-starter-kit/try/"],
         unregistered,
       );
       assert.deepEqual(unregistered, [here]);

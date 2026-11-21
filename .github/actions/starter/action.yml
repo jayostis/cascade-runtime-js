@@ -32,28 +32,28 @@ runs:
         if [ -n "$PULL" ]; then
           body=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PULL}" --jq '.body // ""')
           pair=$(printf '%s\n' "$body" | tr -d '\r' \
-            | grep -iEo '^[[:space:]]*Depends-On:[[:space:]]*(https://github\.com/)?jayostis/cascade-starter-kit(#|/pull/)[0-9]+' \
+            | grep -iEo '^[[:space:]]*Depends-On:[[:space:]]*(https://github\.com/)?the-cascade-protocol/cascade-starter-kit(#|/pull/)[0-9]+' \
             | head -n 1 | grep -Eo '[0-9]+$' || true)
         fi
-        git clone --quiet https://github.com/jayostis/cascade-starter-kit.git "$starter"
+        git clone --quiet https://github.com/the-cascade-protocol/cascade-starter-kit.git "$starter"
         if [ -n "$pair" ]; then
-          state=$(gh api "repos/jayostis/cascade-starter-kit/pulls/${pair}" --jq '.state + " " + (.merged | tostring)')
+          state=$(gh api "repos/the-cascade-protocol/cascade-starter-kit/pulls/${pair}" --jq '.state + " " + (.merged | tostring)')
           case "$state" in
             "open false")
               git -C "$starter" fetch --quiet origin "pull/${pair}/head"
               git -C "$starter" checkout --quiet FETCH_HEAD
-              what="the head of jayostis/cascade-starter-kit#${pair}, named on Depends-On and open"
+              what="the head of the-cascade-protocol/cascade-starter-kit#${pair}, named on Depends-On and open"
               ;;
             "closed true")
-              what="the main of jayostis/cascade-starter-kit, where jayostis/cascade-starter-kit#${pair}, named on Depends-On, has merged"
+              what="the main of the-cascade-protocol/cascade-starter-kit, where the-cascade-protocol/cascade-starter-kit#${pair}, named on Depends-On, has merged"
               ;;
             *)
-              echo "::error title=starter-kit::jayostis/cascade-starter-kit#${pair}, named on Depends-On, is closed without merging; name another pull request or remove the line"
+              echo "::error title=starter-kit::the-cascade-protocol/cascade-starter-kit#${pair}, named on Depends-On, is closed without merging; name another pull request or remove the line"
               exit 1
               ;;
           esac
         else
-          what="the main of jayostis/cascade-starter-kit"
+          what="the main of the-cascade-protocol/cascade-starter-kit"
         fi
         sha=$(git -C "$starter" rev-parse HEAD)
         echo "::notice title=starter-kit::this tarball is checked against ${what} (${sha})"

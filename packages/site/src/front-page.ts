@@ -30,7 +30,7 @@ export const WANT_ORDER = Object.keys(WANTS) as readonly Want[];
 /** The place on the front page that lists every repository, which the contribute row links. */
 export const REPOSITORIES_ANCHOR = "#repositories";
 
-export const OWNER = "https://github.com/jayostis";
+export const OWNER = "https://github.com/the-cascade-protocol";
 
 export interface Repository {
   readonly name: string;
@@ -78,7 +78,7 @@ export const REPOSITORIES: readonly Repository[] = [
     name: "cascade-reference-tables",
     about:
       "The reference tables the matcher joins records of the same thing by, their builders, and the feed apps read.",
-    site: "https://jayostis.github.io/cascade-reference-tables/",
+    site: "https://the-cascade-protocol.github.io/cascade-reference-tables/",
   },
   {
     name: "cascade-sandbox",
@@ -94,7 +94,7 @@ export const EXAMPLES_PAGE = "examples.html";
 export const TRY_PAGE = "try/index.html";
 /** The page that keeps pods in the browser, published by the starter kit, on the same origin as these pages. */
 export const STARTER_TRY =
-  "https://jayostis.github.io/cascade-starter-kit/try/";
+  "https://the-cascade-protocol.github.io/cascade-starter-kit/try/";
 export const POD_ENTRY = "manifest.ttl";
 
 /** An example's site, placed in the folder named after its kit. */

@@ -10,7 +10,7 @@ export type RenderMarkdown = (
 ) => string;
 
 const FILES =
-  "https://github.com/jayostis/cascade-runtime-js/blob/main/packages/evals/";
+  "https://github.com/the-cascade-protocol/cascade-runtime-js/blob/main/packages/evals/";
 
 /** A link written in the markdown: another file of the package goes to where it is kept. */
 const where = (href: string) =>

@@ -12,7 +12,7 @@ import { findRoot } from "@cascade-runtime/runtime/node";
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const SITE = "https://hub.test/cascade/";
 const SCRATCH = mkdtempSync(join(tmpdir(), "link-check-"));
-const GITHUB = "https://github.com/jayostis/cascade-vocabulary";
+const GITHUB = "https://github.com/the-cascade-protocol/cascade-vocabulary";
 
 let origin = "";
 let close = async (): Promise<void> => {};
@@ -125,7 +125,7 @@ async function check(
       "--site",
       SITE,
       "--checkout",
-      `jayostis/cascade-vocabulary=${join(folder, "checkout")}`,
+      `the-cascade-protocol/cascade-vocabulary=${join(folder, "checkout")}`,
       ...more,
     ])),
     sha,
@@ -163,7 +163,7 @@ const tree = (): Record<string, string> => ({
     `<h2 id="repositories">r</h2><table>${["a", "b", "c", "d", "e", "f", "g"]
       .map(
         (name) =>
-          `<tr id="repository-${name}"><td><a href="${origin}/${name === "a" ? "someone-else" : "jayostis"}/${name}">${name}</a></td></tr>`,
+          `<tr id="repository-${name}"><td><a href="${origin}/${name === "a" ? "someone-else" : "the-cascade-protocol"}/${name}">${name}</a></td></tr>`,
       )
       .join("")}</table>`,
   ),
@@ -523,22 +523,22 @@ describe("Checking a site's links · scripts/link-check.mjs", () => {
 
     before(async () => {
       READMES.clear();
-      READMES.set("jayostis/f", "503");
+      READMES.set("the-cascade-protocol/f", "503");
       READMES.set(
         "someone-else/a",
         `# a\n\n## Docs\n\n- [The hub](${HUB}): home\n- [Terms](${HUB}terms/#foaf:name): terms\n- [Elsewhere](${origin}/ok)\n- [Local](docs/guide.md)\n\n## Other\n\n[ignored](${origin}/gone)`,
       );
-      READMES.set("jayostis/b", `# b\n\nno docs block here\n\n[x](${HUB})`);
+      READMES.set("the-cascade-protocol/b", `# b\n\nno docs block here\n\n[x](${HUB})`);
       READMES.set(
-        "jayostis/g",
+        "the-cascade-protocol/g",
         `# g\n\nintro\n\n\`\`\`\n## Docs in a fence\n\`\`\`\n\n## What it is\n\n## Docs\n\n- [The hub](${HUB})`,
       );
       READMES.set(
-        "jayostis/c",
+        "the-cascade-protocol/c",
         `# c\n\n## Docs\n\n- [Terms first](${HUB}terms/)\n- [The hub](${HUB})`,
       );
       READMES.set(
-        "jayostis/d",
+        "the-cascade-protocol/d",
         `# d\n\n## Docs\n\n- [The hub](${HUB})\n- [Dead](${origin}/gone)\n- [Anchor](${HUB}terms/#nope)\n- [Gone](docs/missing.md)\n\n### More\n\n- [Deeper](deeper/missing.md)\n\n## Other`,
       );
       result = await check(tree(), {}, [

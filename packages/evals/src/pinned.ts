@@ -12,14 +12,14 @@ import { runtimeRoot, WORK } from "./paths.js";
 
 /** The repositories a run can pin, and where each is fetched from. */
 export const PINNABLE: Readonly<Record<string, string>> = {
-  "cascade-vocabulary": "https://github.com/jayostis/cascade-vocabulary",
+  "cascade-vocabulary": "https://github.com/the-cascade-protocol/cascade-vocabulary",
   "cascade-bridge-adapter-fhir-r4":
-    "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4",
+    "https://github.com/the-cascade-protocol/cascade-bridge-adapter-fhir-r4",
   "cascade-bridge-adapter-ccda":
-    "https://github.com/jayostis/cascade-bridge-adapter-ccda",
-  "cascade-bridge-rs": "https://github.com/jayostis/cascade-bridge-rs",
-  "cascade-bridge-spec": "https://github.com/jayostis/cascade-bridge-spec",
-  "cascade-runtime-js": "https://github.com/jayostis/cascade-runtime-js",
+    "https://github.com/the-cascade-protocol/cascade-bridge-adapter-ccda",
+  "cascade-bridge-rs": "https://github.com/the-cascade-protocol/cascade-bridge-rs",
+  "cascade-bridge-spec": "https://github.com/the-cascade-protocol/cascade-bridge-spec",
+  "cascade-runtime-js": "https://github.com/the-cascade-protocol/cascade-runtime-js",
 };
 
 /** A pinned environment: the commits, the folder of the clones, and the built runtime's package entry. */

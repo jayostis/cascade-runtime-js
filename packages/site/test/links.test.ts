@@ -4,7 +4,7 @@ import { noteHref, noteLinkOf, ruleHref, termHref } from "../src/links.js";
 
 const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
 const HOST = "https://ns.cascadeprotocol.org/";
-const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/abc123";
+const BLOB = "https://github.com/the-cascade-protocol/cascade-vocabulary/blob/abc123";
 
 /** Asserts that `call` refuses each base that is the vocabulary's host, however it is written. */
 function refusesHost(call: (base: string) => unknown): void {
@@ -185,8 +185,8 @@ describe("Linking a vocabulary term, a rule or a decision note · termHref(), ru
 
   describe("`noteLinkOf()`", () => {
     const links = {
-      blob: "https://github.com/jayostis/cascade-vocabulary/blob/abc/",
-      tree: "https://github.com/jayostis/cascade-vocabulary/tree/abc/",
+      blob: "https://github.com/the-cascade-protocol/cascade-vocabulary/blob/abc/",
+      tree: "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc/",
     };
     /** A link written in `decisions/currency.md`, as the note's page or, with no `notes`, as GitHub's. */
     const at = (href: string, notes?: string) =>

@@ -5,7 +5,7 @@ const APP = "my-app";
 const COMMAND = "create-cascade-app";
 /** Where `create-cascade-app` is released, a `build-<commit>` pre-release for each commit of its main. */
 export const STARTER_REPOSITORY =
-  "https://github.com/jayostis/cascade-starter-kit";
+  "https://github.com/the-cascade-protocol/cascade-starter-kit";
 
 /** The word as a shell reads it: quoted when it holds a space or a character a shell would act on. */
 function shellWord(word: string): string {

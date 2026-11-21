@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/case.schema.json",
+  "$id": "https://github.com/the-cascade-protocol/cascade-runtime-js/packages/evals/schemas/case.schema.json",
   "title": "An eval case",
   "description": "A synthetic person, a 'today', the downloads made for them (the vocabulary kit's copies plus a generator's), the order a pod imports them in and the order the records arm reads them in, the description a report shows, and the questions the person asks, in sessions. Only synthetic people: `synthetic` must be true.",
   "type": "object",

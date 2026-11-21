@@ -66,7 +66,7 @@ function anyToolInput() {
 }
 
 export const replySchema = {
-  $id: "https://github.com/jayostis/cascade-runtime-js/packages/cascade-runtime/src/reply-schema.ts",
+  $id: "https://github.com/the-cascade-protocol/cascade-runtime-js/packages/cascade-runtime/src/reply-schema.ts",
   title: "A reply to one question about a person's pod",
   description:
     "The reply as the person reads it, a short answer for the doctor card, and its items: each a point of the reply, with the pod's entries it rests on (each named by its handle, with the field the point rests on, which a program reads from the pod and shows), what the pod lacks (each with what it looks for, what was looked through and the call that looked), the model's own medical knowledge if it used any, and the links it draws between its facts.",
@@ -289,7 +289,7 @@ export const replySchema = {
 
 export const recordsReplySchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "https://github.com/jayostis/cascade-runtime-js/packages/cascade-runtime/src/reply-schema.ts/records",
+  $id: "https://github.com/the-cascade-protocol/cascade-runtime-js/packages/cascade-runtime/src/reply-schema.ts/records",
   title: "A subject's answer to one question",
   description:
     "The reply as the person reads it, a short answer for the doctor card, and its items: each a point of the reply, with the facts the records state (each cited, with the fields a program checks against the cited record), what the records lack (each with what it looks for and what was looked through, and for the pod the query that looked), the model's own medical knowledge if it used any, and the links it draws between its facts.",

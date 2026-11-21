@@ -455,7 +455,7 @@ export async function finish(given: string, log: (line: string) => void) {
         lookingFor,
         pod,
       })),
-      keyUrl: `https://github.com/jayostis/cascade-runtime-js/blob/${plan.harness.commit}/packages/evals/cases/${caseId}/key.md`,
+      keyUrl: `https://github.com/the-cascade-protocol/cascade-runtime-js/blob/${plan.harness.commit}/packages/evals/cases/${caseId}/key.md`,
       build: prepared.build ?? null,
     });
     const provenanceOf = await podProvenance(join(prepared.pods, prepared.pod));

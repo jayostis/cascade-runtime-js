@@ -28,8 +28,8 @@ import {
 } from "../src/term-reference.js";
 import { readPage } from "./page.js";
 
-const TREE = "https://github.com/jayostis/cascade-vocabulary/tree/abc123/";
-const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/abc123/";
+const TREE = "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc123/";
+const BLOB = "https://github.com/the-cascade-protocol/cascade-vocabulary/blob/abc123/";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const VACCINE_CODE = `${CASCADE}vaccineCode`;
 const VACCINATION = `${CASCADE}Vaccination`;

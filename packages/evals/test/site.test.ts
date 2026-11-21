@@ -1666,7 +1666,7 @@ describe("Comparing the recorded runs, and reading the judges' calibration · re
       const cal = page("calibration.html", (await saved()).site);
       assert.match(
         cal,
-        /data-link-file="https:\/\/github\.com\/jayostis\/cascade-runtime-js\/blob\/main\/packages\/evals\/calibration\.json"/,
+        /data-link-file="https:\/\/github\.com\/the-cascade-protocol\/cascade-runtime-js\/blob\/main\/packages\/evals\/calibration\.json"/,
       );
       assert.match(cal, /data-link-web="https:\/\/example\.org\/x"/);
     });

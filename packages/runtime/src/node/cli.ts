@@ -72,7 +72,7 @@ import {
 
 const RUNTIME = "cascade-runtime-js";
 const KIT = "conformance/";
-const SPEC = "https://github.com/jayostis/cascade-bridge-spec";
+const SPEC = "https://github.com/the-cascade-protocol/cascade-bridge-spec";
 const log = (line: string): void => console.error(line);
 
 function folderMap(pairs: readonly string[]): Map<string, string> {

@@ -18,9 +18,9 @@ import { buildTree } from "../src/sections.js";
 import { readPage } from "./page.js";
 
 const FHIR_REPOSITORY =
-  "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4";
+  "https://github.com/the-cascade-protocol/cascade-bridge-adapter-fhir-r4";
 const CCDA_REPOSITORY =
-  "https://github.com/jayostis/cascade-bridge-adapter-ccda";
+  "https://github.com/the-cascade-protocol/cascade-bridge-adapter-ccda";
 const COMMIT = "4aeb5230a1b2c3d4e5f60718293a4b5c6d7e8f90";
 const FHIR_TREE = `${FHIR_REPOSITORY}/tree/${COMMIT}/`;
 const INDEX = "adapters/index.html";
@@ -137,7 +137,7 @@ async function vocabulary(
   changed: Readonly<Record<string, string | undefined>> = {},
 ): Promise<Files> {
   const files = new MemoryFiles(
-    "https://github.com/jayostis/cascade-vocabulary/tree/abc123/",
+    "https://github.com/the-cascade-protocol/cascade-vocabulary/tree/abc123/",
   );
   await files.write("ontologies/cascade.ttl", encoder.encode(ONTOLOGY));
   for (const [path, text] of Object.entries({ ...PRIYA, ...changed }))
@@ -402,7 +402,7 @@ describe("The hub publishes each adapter's explorer as it is · adaptersSection"
   });
 });
 
-const SPEC = "https://github.com/jayostis/cascade-bridge-spec";
+const SPEC = "https://github.com/the-cascade-protocol/cascade-bridge-spec";
 
 /**
  * A builder with one more source format to bring in asks whether that means one more engine. The adapters page answers
@@ -461,7 +461,7 @@ describe("The adapters page says what an adapter is on one screen · adaptersInd
 
     it("links each source file and the record's file on GitHub at the vocabulary's commit", () => {
       const base =
-        "https://github.com/jayostis/cascade-vocabulary/blob/abc123/";
+        "https://github.com/the-cascade-protocol/cascade-vocabulary/blob/abc123/";
       for (const path of [FHIR_ALLERGY, KESTREL, FERNHILL, RECORD])
         assert.ok(page.hrefs.includes(base + path), path);
     });

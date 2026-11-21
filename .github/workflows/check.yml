@@ -58,7 +58,7 @@ jobs:
       - id: tables-at
         uses: ./cascade-runtime-js/.github/actions/depends-on
         with:
-          repository: jayostis/cascade-reference-tables
+          repository: the-cascade-protocol/cascade-reference-tables
       - uses: actions/checkout@v7
         with:
           repository: ${{ steps.tables-at.outputs.repository }}
@@ -83,7 +83,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       # Checks the vocabulary and the adapters out beside this repository, and runs the conformance command on them once.
       - id: start
-        uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
       - name: The report the conformance command wrote
         if: ${{ !cancelled() }}
         shell: bash
@@ -198,7 +198,7 @@ jobs:
       - id: tables-at
         uses: ./cascade-runtime-js/.github/actions/depends-on
         with:
-          repository: jayostis/cascade-reference-tables
+          repository: the-cascade-protocol/cascade-reference-tables
       - uses: actions/checkout@v7
         with:
           repository: ${{ steps.tables-at.outputs.repository }}
@@ -226,7 +226,7 @@ jobs:
           cargo build --release --locked
           cp target/release/liboxigraph_native.so "$RUNNER_TEMP/oxigraph-native.linux-x64.node"
           echo "CASCADE_OXIGRAPH_NATIVE=$RUNNER_TEMP/oxigraph-native.linux-x64.node" >> "$GITHUB_ENV"
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
       - run: npm ci
@@ -281,7 +281,7 @@ jobs:
       - run: node scripts/sync-chrome.mjs --check
       # Checks the vocabulary and the adapters out beside this repository, and merges into it the pull requests a
       # Depends-On: line names here, before the install reads the lockfile; the package and the pages read those.
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
       - run: npm ci
@@ -319,10 +319,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           node scripts/link-check.mjs --tree build/pages --no-external --save-external build/external-links.json
-          --checkout jayostis/cascade-runtime-js=.
-          --checkout jayostis/cascade-vocabulary=../cascade-vocabulary
-          --checkout jayostis/cascade-bridge-adapter-fhir-r4=../cascade-bridge-adapter-fhir-r4
-          --checkout jayostis/cascade-bridge-adapter-ccda=../cascade-bridge-adapter-ccda
+          --checkout the-cascade-protocol/cascade-runtime-js=.
+          --checkout the-cascade-protocol/cascade-vocabulary=../cascade-vocabulary
+          --checkout the-cascade-protocol/cascade-bridge-adapter-fhir-r4=../cascade-bridge-adapter-fhir-r4
+          --checkout the-cascade-protocol/cascade-bridge-adapter-ccda=../cascade-bridge-adapter-ccda
       # Each example pod's explorer data holds together: every file a node with a writer, every act's files there, every
       # view file naming its definition, no label undefined, and the object within its budget of 400 KB.
       - name: Every pod's explorer data holds together
@@ -430,7 +430,7 @@ jobs:
       - run: node scripts/link-check.mjs --only-external build/external-links.json
 
   # The reverse check: the starter kit's own tests and checks, run on this commit's tarball. A change the starter must
-  # follow lands as a pair: this pull request's body carries `Depends-On: https://github.com/jayostis/cascade-starter-kit/pull/<n>`
+  # follow lands as a pair: this pull request's body carries `Depends-On: https://github.com/the-cascade-protocol/cascade-starter-kit/pull/<n>`
   # (the start action refuses the short form), and the starter is then taken at that pull request's head instead of its main.
   starter-kit:
     name: starter-kit
@@ -703,7 +703,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - id: start
-        uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
       # The start action names the report it wrote and keeps its table.md two folders up. A run that wrote none keeps
       # nothing, and the pages show every result as not run.
       - name: Keep the report and its table
@@ -767,7 +767,7 @@ jobs:
       - id: tables-at
         uses: ./cascade-runtime-js/.github/actions/depends-on
         with:
-          repository: jayostis/cascade-reference-tables
+          repository: the-cascade-protocol/cascade-reference-tables
       - uses: actions/checkout@v7
         with:
           repository: ${{ steps.tables-at.outputs.repository }}
@@ -780,7 +780,7 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
       - run: npm ci
@@ -938,7 +938,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           # llms.txt links absolutely under the address the deploy serves; the pull request's artifact leaves it unset.
-          PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
+          PAGES_URL: https://the-cascade-protocol.github.io/cascade-runtime-js/
       # The check `docs site` runs on a pull request, over the tree this job deploys.
       - name: Every pod's explorer data holds together
         run: node scripts/explorer-check.mjs --tree build/pages
@@ -1070,7 +1070,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - run: npm run test:live
         env:
-          PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
+          PAGES_URL: https://the-cascade-protocol.github.io/cascade-runtime-js/
           COMMIT: ${{ github.sha }}
 
   # The deployed site once its deploy is served, and nightly: every link of every page, each README's Docs block and the
@@ -1083,7 +1083,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
+      PAGES_URL: https://the-cascade-protocol.github.io/cascade-runtime-js/
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1154,7 +1154,7 @@ jobs:
           cache-dependency-path: cascade-runtime-js/package-lock.json
       # Before the install, which reads the lockfile of the pull requests the start step merges into this checkout.
       - if: ${{ github.event_name == 'pull_request' }}
-        uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
       - run: npm ci

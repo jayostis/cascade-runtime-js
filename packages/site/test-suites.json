@@ -1,6 +1,6 @@
 [
   {
-    "repository": "jayostis/cascade-runtime-js",
+    "repository": "the-cascade-protocol/cascade-runtime-js",
     "title": "The runtime's tests",
     "about": "npm test, node:test over every package",
     "workflow": "check.yml",
@@ -20,7 +20,7 @@
     ]
   },
   {
-    "repository": "jayostis/cascade-vocabulary",
+    "repository": "the-cascade-protocol/cascade-vocabulary",
     "title": "The vocabulary's tests",
     "about": "pytest over the shapes, queries, kits and features",
     "workflow": "check.yml",
@@ -29,7 +29,7 @@
     "runner": "pytest"
   },
   {
-    "repository": "jayostis/cascade-starter-kit",
+    "repository": "the-cascade-protocol/cascade-starter-kit",
     "title": "The starter kit's tests",
     "about": "npm test, node:test over the kit",
     "workflow": "check.yml",
@@ -38,7 +38,7 @@
     "runner": "node:test"
   },
   {
-    "repository": "jayostis/cascade-sandbox",
+    "repository": "the-cascade-protocol/cascade-sandbox",
     "title": "The sandbox's tests",
     "about": "npm test, node:test over the sandbox",
     "workflow": "check.yml",
@@ -47,7 +47,7 @@
     "runner": "node:test"
   },
   {
-    "repository": "jayostis/cascade-reference-tables",
+    "repository": "the-cascade-protocol/cascade-reference-tables",
     "title": "The reference tables' tests",
     "about": "npm test, node:test over the tables' host",
     "workflow": "check.yml",
@@ -57,7 +57,7 @@
     "tests": "host/test/"
   },
   {
-    "repository": "jayostis/cascade-bridge-rs",
+    "repository": "the-cascade-protocol/cascade-bridge-rs",
     "title": "The Rust Bridge's tests",
     "about": "cargo nextest over every crate",
     "workflow": "ci.yml",
@@ -66,7 +66,7 @@
     "runner": "nextest"
   },
   {
-    "repository": "jayostis/cascade-bridge-spec",
+    "repository": "the-cascade-protocol/cascade-bridge-spec",
     "title": "The Bridge specification's tests",
     "about": "pytest over the specification's files, the adapter profile and the compatibility tool",
     "workflow": "validate.yml",
@@ -75,7 +75,7 @@
     "runner": "pytest"
   },
   {
-    "repository": "jayostis/cascade-bridge-adapter-fhir-r4",
+    "repository": "the-cascade-protocol/cascade-bridge-adapter-fhir-r4",
     "title": "The FHIR R4 adapter's fixture cases",
     "about": "each fixture case of the adapter, run by each host of each engine it must pass with",
     "workflow": "validate.yml",
@@ -85,7 +85,7 @@
     "tests": "fixtures/"
   },
   {
-    "repository": "jayostis/cascade-bridge-adapter-ccda",
+    "repository": "the-cascade-protocol/cascade-bridge-adapter-ccda",
     "title": "The C-CDA adapter's fixture cases",
     "about": "each fixture case of the adapter, run by each host of each engine it must pass with",
     "workflow": "validate.yml",

@@ -57,7 +57,7 @@ async function commit(folder: string, message: string): Promise<string> {
 
 /** A cascade-bridge-rs whose `main` has its second commit built, with `alpha/naming` built, `unbuilt`, and two pull request heads, one built. */
 async function bridgeOrigin(root: string) {
-  const origin = join(root, "jayostis", "cascade-bridge-rs");
+  const origin = join(root, "the-cascade-protocol", "cascade-bridge-rs");
   await mkdir(origin, { recursive: true });
   await git(origin, "init", "--quiet", "--initial-branch=main");
   const one = await commit(origin, "one");
@@ -88,9 +88,9 @@ function sharedBridge(): Promise<Bridge> {
   return shared;
 }
 
-const RUNTIME = "jayostis/cascade-runtime-js";
-const BRIDGE = "jayostis/cascade-bridge-rs";
-const OTHER = "jayostis/cascade-vocabulary";
+const RUNTIME = "the-cascade-protocol/cascade-runtime-js";
+const BRIDGE = "the-cascade-protocol/cascade-bridge-rs";
+const OTHER = "the-cascade-protocol/cascade-vocabulary";
 
 function pull(
   path: string,
@@ -344,11 +344,11 @@ describe("Picking the Bridge package for a CI run · pickBuild(), latestBuild(),
         run: onPull,
         pulls: (bridge) => ({
           [`${RUNTIME}/pull/1`]: pull(RUNTIME, {
-            body: named("Jayostis/Cascade-Bridge-RS/pull/7"),
+            body: named("The-Cascade-Protocol/Cascade-Bridge-RS/pull/7"),
           }),
-          "Jayostis/Cascade-Bridge-RS/pull/7": pull(BRIDGE, {
+          "The-Cascade-Protocol/Cascade-Bridge-RS/pull/7": pull(BRIDGE, {
             head: bridge.built,
-            from: "JAYOSTIS/cascade-bridge-rs",
+            from: "THE-CASCADE-PROTOCOL/cascade-bridge-rs",
           }),
         }),
         expected: (bridge) => bridge.built,
@@ -444,7 +444,7 @@ describe("Picking the Bridge package for a CI run · pickBuild(), latestBuild(),
           [`${BRIDGE}/pull/9`]: pull(BRIDGE, { head: bridge.unbuilt }),
         }),
         reason:
-          /no build-\w+ release for the head of jayostis\/cascade-bridge-rs\/pull\/9/,
+          /no build-\w+ release for the head of the-cascade-protocol\/cascade-bridge-rs\/pull\/9/,
       },
       {
         leaf: "rejects a named Bridge PR closed without merging",
@@ -669,7 +669,7 @@ function packageOf(manifest: unknown): Blob {
 }
 
 describe("The Bridge build a release publishes · releasedBuild()", () => {
-  const repository = "https://github.com/jayostis/cascade-bridge-rs";
+  const repository = "https://github.com/the-cascade-protocol/cascade-bridge-rs";
   const commit = "a".repeat(40);
   const base = `${repository}/releases/download/build-${commit}`;
   const real = globalThis.fetch;
@@ -714,7 +714,7 @@ describe("The Bridge build a release publishes · releasedBuild()", () => {
   const tarball = (): Response =>
     new Response(packageOf({ cascadeBridge: { commit } }));
   const api =
-    "https://api.github.com/repos/jayostis/cascade-bridge-rs/releases/tags";
+    "https://api.github.com/repos/the-cascade-protocol/cascade-bridge-rs/releases/tags";
 
   describe("given a release that holds the package under its fixed name", () => {
     it("downloads it without asking the API", async () => {
