@@ -1,0 +1,558 @@
+{
+  "builds": [
+    {
+      "name": "fresh-first-screen-synthea-lifetime",
+      "scenario": "fresh-first-screen",
+      "dataset": "synthea-lifetime",
+      "encrypted": false,
+      "trace": {
+        "file": "fresh-first-screen-synthea-lifetime.trace.json",
+        "bytes": 8994761,
+        "calls": 101110,
+        "drawn": 101051,
+        "shortestMs": 0,
+        "merged": 59,
+        "mergedEvents": 2,
+        "runMs": 44364.389,
+        "top": [
+          {
+            "name": "store.query",
+            "selfMs": 5503.929,
+            "calls": 365,
+            "says": "Questions put to the pod's fact store, many of them: the time one or more of them was in progress."
+          },
+          {
+            "name": "bridge.stage:mapping",
+            "selfMs": 4345.364,
+            "calls": 1,
+            "says": "The Bridge runs the adapter's mappings over the source record's facts to produce the pod's facts. Sits inside arrivals.convert."
+          },
+          {
+            "name": "bridge.stage:lift",
+            "selfMs": 3917.825,
+            "calls": 1,
+            "says": "The Bridge lifts the source record into facts. Sits inside arrivals.convert."
+          },
+          {
+            "name": "files.write.file",
+            "selfMs": 3568.627,
+            "calls": 27248,
+            "says": "Writing one file into the pod's folder."
+          },
+          {
+            "name": "arrivals.accepting",
+            "selfMs": 2969.848,
+            "calls": 1,
+            "says": "Finding which adapter accepts this document. Sits inside scenario.import."
+          },
+          {
+            "name": "files.write.rename",
+            "selfMs": 2727.103,
+            "calls": 27248,
+            "says": "Moving a finished file into place, so a half-written file is never seen."
+          },
+          {
+            "name": "union.loadFiles",
+            "selfMs": 2372.283,
+            "calls": 11,
+            "says": "Loading the pod's files into memory as facts."
+          },
+          {
+            "name": "arrivals.convert",
+            "selfMs": 2315.317,
+            "calls": 1,
+            "says": "Converting the source record into the pod's own format with the adapter. Sits inside scenario.import."
+          },
+          {
+            "name": "bridge.stage:index",
+            "selfMs": 2262.011,
+            "calls": 1,
+            "says": "The Bridge builds a lookup index of the source facts for its compiled queries. Sits inside arrivals.convert."
+          },
+          {
+            "name": "question:pod/My procedures",
+            "selfMs": 1923.012,
+            "calls": 1,
+            "says": "The answer to: pod my procedures."
+          }
+        ],
+        "bridgeQueries": [
+          {
+            "name": "record.rq",
+            "ms": 1122.935,
+            "calls": 16833,
+            "says": "The Bridge's query for record, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "coding-system-table.rq",
+            "ms": 628.123,
+            "calls": 16833,
+            "says": "The Bridge's query for coding system table, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "narrative-text.rq",
+            "ms": 416.799,
+            "calls": 16833,
+            "says": "The Bridge's query for narrative text, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "absent-reasons.rq",
+            "ms": 399.251,
+            "calls": 16833,
+            "says": "The Bridge's query for absent reasons, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "lab-result.rq",
+            "ms": 211.447,
+            "calls": 16833,
+            "says": "The Bridge's query for lab result, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "report-results.rq",
+            "ms": 193.237,
+            "calls": 16833,
+            "says": "The Bridge's query for report results, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "lab-result-codes.rq",
+            "ms": 179.499,
+            "calls": 16833,
+            "says": "The Bridge's query for lab result codes, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "report.rq",
+            "ms": 173.488,
+            "calls": 16833,
+            "says": "The Bridge's query for report, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "lab-result-quantities.rq",
+            "ms": 166.811,
+            "calls": 16833,
+            "says": "The Bridge's query for lab result quantities, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "note-or-document.rq",
+            "ms": 130.791,
+            "calls": 16833,
+            "says": "The Bridge's query for note or document, which pulls those out of the converted source. Sits inside arrivals.convert."
+          }
+        ]
+      },
+      "cpu": {
+        "file": "fresh-first-screen-synthea-lifetime.cpuprofile",
+        "bytes": 3757315,
+        "workers": [
+          {
+            "file": "fresh-first-screen-synthea-lifetime.wasm-worker.cpuprofile",
+            "bytes": 218502,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime.wasm-worker-2.cpuprofile",
+            "bytes": 199126,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime.wasm-worker-3.cpuprofile",
+            "bytes": 3294679,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime.pod-database-worker.cpuprofile",
+            "bytes": 242329,
+            "role": "pod-database-worker"
+          }
+        ]
+      }
+    },
+    {
+      "name": "close-synthea-lifetime",
+      "scenario": "close",
+      "dataset": "synthea-lifetime",
+      "encrypted": false,
+      "trace": {
+        "file": "close-synthea-lifetime.trace.json",
+        "bytes": 6211,
+        "calls": 29,
+        "drawn": 29,
+        "shortestMs": 0,
+        "merged": 0,
+        "mergedEvents": 0,
+        "runMs": 5920.246,
+        "top": [
+          {
+            "name": "pod-database.build.load",
+            "selfMs": 3380.568,
+            "calls": 1,
+            "says": "Loading the pod's facts into the saved database. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "core-pod.keepBuild.dump",
+            "selfMs": 1345.836,
+            "calls": 1,
+            "says": "Gathering the pod's facts to put in the saved database. Sits inside core-pod.keepbuild."
+          },
+          {
+            "name": "core-pod.keepBuild",
+            "selfMs": 405.248,
+            "calls": 1,
+            "says": "Preparing the content of the saved database. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "pod-database.build.worker",
+            "selfMs": 267.672,
+            "calls": 1,
+            "says": "Starting the helper that builds the saved database. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "scenario.close",
+            "selfMs": 209.483,
+            "calls": 1,
+            "says": "Closing the pod, saving its database for the next time it opens."
+          },
+          {
+            "name": "pod-database.build.screens:fill",
+            "selfMs": 155.363,
+            "calls": 1,
+            "says": "Filling in the database's ready-made answer tables. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "core-pod.keepDatabase",
+            "selfMs": 39.439,
+            "calls": 1,
+            "says": "Saving the pod's database so the next opening is fast. Sits inside scenario.close."
+          },
+          {
+            "name": "files.write.file",
+            "selfMs": 32.901,
+            "calls": 1,
+            "says": "Writing one file into the pod's folder."
+          },
+          {
+            "name": "pod-database.build.sync",
+            "selfMs": 28.109,
+            "calls": 1,
+            "says": "Making the saved database safely written to disk. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "pod-database.build.screens:finish",
+            "selfMs": 23.098,
+            "calls": 1,
+            "says": "Finishing the database's ready-made answer tables. Sits inside core-pod.keepdatabase."
+          }
+        ],
+        "bridgeQueries": []
+      },
+      "cpu": {
+        "file": "fresh-first-screen-synthea-lifetime.cpuprofile",
+        "bytes": 3757315,
+        "workers": [
+          {
+            "file": "fresh-first-screen-synthea-lifetime.wasm-worker.cpuprofile",
+            "bytes": 218502,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime.wasm-worker-2.cpuprofile",
+            "bytes": 199126,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime.wasm-worker-3.cpuprofile",
+            "bytes": 3294679,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime.pod-database-worker.cpuprofile",
+            "bytes": 242329,
+            "role": "pod-database-worker"
+          }
+        ],
+        "processOf": "fresh-first-screen"
+      }
+    },
+    {
+      "name": "fresh-first-screen-synthea-lifetime-encrypted",
+      "scenario": "fresh-first-screen",
+      "dataset": "synthea-lifetime",
+      "encrypted": true,
+      "trace": {
+        "file": "fresh-first-screen-synthea-lifetime-encrypted.trace.json",
+        "bytes": 8216926,
+        "calls": 119393,
+        "drawn": 92143,
+        "shortestMs": 0,
+        "merged": 27250,
+        "mergedEvents": 3,
+        "runMs": 45815.952,
+        "top": [
+          {
+            "name": "store.query",
+            "selfMs": 5491.786,
+            "calls": 365,
+            "says": "Questions put to the pod's fact store, many of them: the time one or more of them was in progress."
+          },
+          {
+            "name": "bridge.stage:mapping",
+            "selfMs": 4323.449,
+            "calls": 1,
+            "says": "The Bridge runs the adapter's mappings over the source record's facts to produce the pod's facts. Sits inside arrivals.convert."
+          },
+          {
+            "name": "bridge.stage:lift",
+            "selfMs": 3945.286,
+            "calls": 1,
+            "says": "The Bridge lifts the source record into facts. Sits inside arrivals.convert."
+          },
+          {
+            "name": "files.write.file",
+            "selfMs": 3629.885,
+            "calls": 27257,
+            "says": "Writing one file into the pod's folder."
+          },
+          {
+            "name": "files.write.rename",
+            "selfMs": 3061.226,
+            "calls": 27249,
+            "says": "Moving a finished file into place, so a half-written file is never seen."
+          },
+          {
+            "name": "arrivals.accepting",
+            "selfMs": 3007.828,
+            "calls": 1,
+            "says": "Finding which adapter accepts this document. Sits inside scenario.import."
+          },
+          {
+            "name": "union.loadFiles",
+            "selfMs": 2387.552,
+            "calls": 11,
+            "says": "Loading the pod's files into memory as facts."
+          },
+          {
+            "name": "files.encrypt",
+            "selfMs": 2370.598,
+            "calls": 27253,
+            "says": "Scrambling a file with the pod's secret before it is written (encrypted pods only)."
+          },
+          {
+            "name": "arrivals.convert",
+            "selfMs": 2328.564,
+            "calls": 1,
+            "says": "Converting the source record into the pod's own format with the adapter. Sits inside scenario.import."
+          },
+          {
+            "name": "bridge.stage:index",
+            "selfMs": 2244.55,
+            "calls": 1,
+            "says": "The Bridge builds a lookup index of the source facts for its compiled queries. Sits inside arrivals.convert."
+          }
+        ],
+        "bridgeQueries": [
+          {
+            "name": "record.rq",
+            "ms": 1118.413,
+            "calls": 16833,
+            "says": "The Bridge's query for record, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "coding-system-table.rq",
+            "ms": 631.402,
+            "calls": 16833,
+            "says": "The Bridge's query for coding system table, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "narrative-text.rq",
+            "ms": 418.597,
+            "calls": 16833,
+            "says": "The Bridge's query for narrative text, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "absent-reasons.rq",
+            "ms": 396.391,
+            "calls": 16833,
+            "says": "The Bridge's query for absent reasons, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "lab-result.rq",
+            "ms": 210.705,
+            "calls": 16833,
+            "says": "The Bridge's query for lab result, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "report-results.rq",
+            "ms": 191.566,
+            "calls": 16833,
+            "says": "The Bridge's query for report results, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "lab-result-codes.rq",
+            "ms": 179.082,
+            "calls": 16833,
+            "says": "The Bridge's query for lab result codes, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "report.rq",
+            "ms": 173.409,
+            "calls": 16833,
+            "says": "The Bridge's query for report, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "lab-result-quantities.rq",
+            "ms": 164.603,
+            "calls": 16833,
+            "says": "The Bridge's query for lab result quantities, which pulls those out of the converted source. Sits inside arrivals.convert."
+          },
+          {
+            "name": "note-or-document.rq",
+            "ms": 129.573,
+            "calls": 16833,
+            "says": "The Bridge's query for note or document, which pulls those out of the converted source. Sits inside arrivals.convert."
+          }
+        ]
+      },
+      "cpu": {
+        "file": "fresh-first-screen-synthea-lifetime-encrypted.cpuprofile",
+        "bytes": 3759467,
+        "workers": [
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.argon2-worker.cpuprofile",
+            "bytes": 179299,
+            "role": "argon2-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.wasm-worker.cpuprofile",
+            "bytes": 191030,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.wasm-worker-2.cpuprofile",
+            "bytes": 189279,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.wasm-worker-3.cpuprofile",
+            "bytes": 3254274,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.pod-database-worker.cpuprofile",
+            "bytes": 243293,
+            "role": "pod-database-worker"
+          }
+        ]
+      }
+    },
+    {
+      "name": "close-synthea-lifetime-encrypted",
+      "scenario": "close",
+      "dataset": "synthea-lifetime",
+      "encrypted": true,
+      "trace": {
+        "file": "close-synthea-lifetime-encrypted.trace.json",
+        "bytes": 6701,
+        "calls": 33,
+        "drawn": 33,
+        "shortestMs": 0,
+        "merged": 0,
+        "mergedEvents": 0,
+        "runMs": 6372.32,
+        "top": [
+          {
+            "name": "pod-database.build.load",
+            "selfMs": 3465.226,
+            "calls": 1,
+            "says": "Loading the pod's facts into the saved database. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "core-pod.keepBuild.dump",
+            "selfMs": 1350.542,
+            "calls": 1,
+            "says": "Gathering the pod's facts to put in the saved database. Sits inside core-pod.keepbuild."
+          },
+          {
+            "name": "core-pod.keepBuild",
+            "selfMs": 405.153,
+            "calls": 1,
+            "says": "Preparing the content of the saved database. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "pod-database.build.worker",
+            "selfMs": 368.443,
+            "calls": 1,
+            "says": "Starting the helper that builds the saved database. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "scenario.close",
+            "selfMs": 210.34,
+            "calls": 1,
+            "says": "Closing the pod, saving its database for the next time it opens."
+          },
+          {
+            "name": "core-pod.keepBuild.write",
+            "selfMs": 180.273,
+            "calls": 1,
+            "says": "Writing the gathered facts into the saved database. Sits inside core-pod.keepbuild."
+          },
+          {
+            "name": "pod-database.build.screens:fill",
+            "selfMs": 150.383,
+            "calls": 1,
+            "says": "Filling in the database's ready-made answer tables. Sits inside core-pod.keepdatabase."
+          },
+          {
+            "name": "files.encrypt",
+            "selfMs": 98.377,
+            "calls": 2,
+            "says": "Scrambling a file with the pod's secret before it is written (encrypted pods only)."
+          },
+          {
+            "name": "files.write.file",
+            "selfMs": 55.893,
+            "calls": 2,
+            "says": "Writing one file into the pod's folder."
+          },
+          {
+            "name": "pod-database.build.sync",
+            "selfMs": 25.398,
+            "calls": 1,
+            "says": "Making the saved database safely written to disk. Sits inside core-pod.keepdatabase."
+          }
+        ],
+        "bridgeQueries": []
+      },
+      "cpu": {
+        "file": "fresh-first-screen-synthea-lifetime-encrypted.cpuprofile",
+        "bytes": 3759467,
+        "workers": [
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.argon2-worker.cpuprofile",
+            "bytes": 179299,
+            "role": "argon2-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.wasm-worker.cpuprofile",
+            "bytes": 191030,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.wasm-worker-2.cpuprofile",
+            "bytes": 189279,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.wasm-worker-3.cpuprofile",
+            "bytes": 3254274,
+            "role": "wasm-worker"
+          },
+          {
+            "file": "fresh-first-screen-synthea-lifetime-encrypted.pod-database-worker.cpuprofile",
+            "bytes": 243293,
+            "role": "pod-database-worker"
+          }
+        ],
+        "processOf": "fresh-first-screen"
+      }
+    }
+  ]
+}
