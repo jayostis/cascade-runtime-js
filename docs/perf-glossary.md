@@ -341,8 +341,8 @@ Rows named `<scenario>-<dataset>/count/<count>`.
 | `versions-added` | How many new versions of a record the import wrote: one for each record the source now says differently. |
 | `revisions-added` | How many new revisions the import wrote: one for each record whose latest version the new document changed. An entry the pod had seen before, unchanged, adds none. |
 | `records-added` | How many records the pod named for the first time in this import: things the source described that the pod had not met. |
-| `entries-changed` | How many source entries of the document were edited from the first one: 0 for the same file, 10 laboratory results for the changed file. The row's note says exactly what was edited. |
-| `entries-added` | How many source entries the document has more than the first one: 1 for the added laboratory result, otherwise 0. |
+| `entries-changed` | How many source entries of the document were edited from the first one: 10 laboratory results for the changed file, a row of that job alone. The row's note says exactly what was edited. |
+| `entries-added` | How many source entries the document has more than the first one: 1 for the added laboratory result, a row of that job alone. |
 | `database-found` | 1 if the pod's saved database was beside it when it was opened again, otherwise 0: a process stopped before it closed leaves none, and the pod is then built from every file. |
 | `files-read` | How many of the pod's files the reopened pod had to read to be built again: every file that holds statements, as the pod's layout says. |
 | `statements-read` | How many statements those files hold. |

@@ -376,8 +376,18 @@ export function againRows(
     outputRow(`${name}/count/versions-added`, added.versions, about),
     outputRow(`${name}/count/revisions-added`, added.revisions, about),
     outputRow(`${name}/count/records-added`, added.records, about),
-    outputRow(`${name}/count/entries-changed`, added.changed, added.says),
-    outputRow(`${name}/count/entries-added`, added.entriesAdded, added.says),
+    ...(scenario === "reimport-changed"
+      ? [outputRow(`${name}/count/entries-changed`, added.changed, added.says)]
+      : []),
+    ...(scenario === "add-one-record"
+      ? [
+          outputRow(
+            `${name}/count/entries-added`,
+            added.entriesAdded,
+            added.says,
+          ),
+        ]
+      : []),
   );
   return rows;
 }

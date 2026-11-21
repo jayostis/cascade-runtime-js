@@ -9,12 +9,19 @@ const clock = (name: string, value: number, unit: Row["unit"] = "s"): Row => ({
   samples: 3,
   range: `${value}-${value}`,
 });
-const count = (name: string, value: number): Row => ({
+const count = (name: string, value: number, extra?: string): Row => ({
   name,
   unit: "{count}",
   value,
   kind: "output",
+  ...(extra !== undefined && { extra }),
 });
+
+/** What a job's entries row says was edited, as the harness writes it after the dataset's own words. */
+const EDITED: Readonly<Record<string, string>> = {
+  "entries-changed": "ten laboratory results had their values raised",
+  "entries-added": "one laboratory result was copied a day later",
+};
 
 /**
  * The rows of a build whose file measured the jobs of every day at one size, as the harness names them: the first import and
@@ -36,7 +43,7 @@ export const rowsOfJobs = (dataset = "synthea-10y"): Row[] => {
     clock(`${scenario}-${dataset}/first-answer`, 0.05),
     clock(`${scenario}-${dataset}/close`, 0.4),
     ...Object.entries(counts).map(([name, value]) =>
-      count(`${scenario}-${dataset}/count/${name}`, value),
+      count(`${scenario}-${dataset}/count/${name}`, value, EDITED[name]),
     ),
   ];
   return [
@@ -54,8 +61,6 @@ export const rowsOfJobs = (dataset = "synthea-10y"): Row[] => {
         "versions-added": 0,
         "revisions-added": 0,
         "records-added": 0,
-        "entries-changed": 0,
-        "entries-added": 0,
       },
     ),
     ...again(
@@ -69,7 +74,6 @@ export const rowsOfJobs = (dataset = "synthea-10y"): Row[] => {
         "revisions-added": 10,
         "records-added": 0,
         "entries-changed": 10,
-        "entries-added": 0,
       },
     ),
     ...again(
@@ -82,7 +86,6 @@ export const rowsOfJobs = (dataset = "synthea-10y"): Row[] => {
         "versions-added": 1,
         "revisions-added": 1,
         "records-added": 1,
-        "entries-changed": 0,
         "entries-added": 1,
       },
     ),

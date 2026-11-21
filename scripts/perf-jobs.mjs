@@ -173,6 +173,11 @@ export function jobsOf(file, key) {
     encrypted: sealed !== undefined,
     entries: at("fresh-first-screen", "count/records"),
     lines,
+    editedBy: Object.fromEntries(
+      [...edits.entries()]
+        .filter(([, text]) => typeof text === "string" && text !== "")
+        .map(([name, text]) => [name.slice(0, name.indexOf(`-${key}/`)), text]),
+    ),
     edits: [...edits.entries()]
       .filter(([, text]) => typeof text === "string" && text !== "")
       .map(([, text]) => text)

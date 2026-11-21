@@ -1007,7 +1007,11 @@ export function jobsLatest(files, glossary = readGlossary()) {
       if (page === undefined) continue;
       const older = new Map(found.get(key)?.older ?? []);
       for (const line of found.get(key)?.page.lines ?? [])
-        older.set(line.id, { build: found.get(key).build, line });
+        older.set(line.id, {
+          build: found.get(key).build,
+          line,
+          edit: found.get(key).page.editedBy?.[line.id],
+        });
       found.set(key, { build, page, older });
     }
   }
@@ -1016,15 +1020,25 @@ export function jobsLatest(files, glossary = readGlossary()) {
       const has = new Set(page.lines.map(({ id }) => id));
       const borrowed = [...older]
         .filter(([id]) => !has.has(id))
-        .map(([id, { build: from, line }]) => ({
+        .map(([id, { build: from, line, edit }]) => ({
           id,
+          edit,
           text: `${line.text.replace(/\.$/, "")} (measured in build ${from.sha} of ${from.date}, which the newest build leaves out).`,
         }));
       return {
         build,
         page: {
           ...page,
-          lines: [...page.lines, ...borrowed].sort(
+          edits: [
+            ...page.edits,
+            ...borrowed.flatMap(({ edit }) =>
+              edit === undefined ? [] : [edit],
+            ),
+          ].filter((text, place, all) => all.indexOf(text) === place),
+          lines: [
+            ...page.lines,
+            ...borrowed.map(({ id, text }) => ({ id, text })),
+          ].sort(
             (a, b) => JOB_SCENARIOS.indexOf(a.id) - JOB_SCENARIOS.indexOf(b.id),
           ),
         },

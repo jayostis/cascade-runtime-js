@@ -955,6 +955,12 @@ describe("The stacked performance page · perf-stacked.mjs", () => {
         1,
       );
       assert.equal(text.match(/which the newest build leaves out/g)?.length, 1);
+      assert.match(
+        text,
+        /What was edited: one laboratory result was copied a day later/,
+        "what the borrowed job edited is carried with its line",
+      );
+      assert.match(text, /What was edited: ten laboratory results/);
     });
 
     it("shows a job's line only when the build measured it and the first import it is read against, and a build that measured none has no section", async () => {

@@ -1,6 +1,12 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tablesBeside } from "cascade-runtime";
+import {
+  DATABASE_BESIDE,
+  HEADER,
+  keptBesideName,
+  openHeader,
+} from "@cascade-runtime/runtime";
 import { probing, type Seen, timed } from "@cascade-runtime/runtime/probe";
 import { type Loaded } from "./perf-floor.js";
 import { type FileOpsRun } from "./perf-scenarios/file-ops.js";
@@ -140,6 +146,26 @@ export async function openedAt(folder: string, encrypted: boolean) {
     tables: await tablesBeside(dirname(folder)),
   };
   return openFolderPod(parts, folder, encrypted ? { secret: SECRET } : {});
+}
+
+/**
+ * Whether the pod in the folder has a database beside it, looked for under the name the runtime keeps it under: `pod.db`,
+ * or, for a sealed pod, the keyed name its secret gives.
+ */
+export async function databaseKept(
+  folder: string,
+  encrypted: boolean,
+): Promise<boolean> {
+  if (!encrypted) return databaseBeside(folder).exists();
+  const key = await openHeader(
+    await readFile(join(folder, ...HEADER.split("/"))),
+    SECRET,
+    (await resolved()).derive,
+  );
+  return databaseBeside(
+    folder,
+    await keptBesideName(key, DATABASE_BESIDE),
+  ).exists();
 }
 
 /** A scenario at a size, the first part of the names of its rows and files. */

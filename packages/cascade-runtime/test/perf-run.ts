@@ -14,6 +14,7 @@ import { explain } from "./perf-glossary.js";
 import {
   type CpuNote,
   type Flame,
+  databaseKept,
   type Job,
   type Measured,
   nameOf,
@@ -47,7 +48,6 @@ import {
 } from "./perf-scenarios/reopen-first-answer.js";
 import { killedRows } from "./perf-scenarios/reopen-after-kill.js";
 import { storedRows } from "./perf-scenarios/stored.js";
-import { databaseBeside } from "../src/node/resolved.js";
 
 /** One build of a scenario at a size, as `flame.json` lists it. */
 export interface FlameBuild {
@@ -101,6 +101,8 @@ async function scenariosAt(
   const about = `dataset=${dataset} sha256=${data.sha256} records=${data.records}${encrypted ? " encrypted" : ""}`;
   const wants = (scenario: Scenario) => plan.scenarios.has(scenario);
   const place = (label: string) => join(work, label, "pod");
+  const howOf = (runs: number) =>
+    `unprobed, ${runs === 1 ? "one run" : `median of ${runs} runs, each`} in a process of its own; ${about}`;
   const ctx: Context = {
     plan,
     dataset,
@@ -110,7 +112,7 @@ async function scenariosAt(
     flame,
     claim,
     about,
-    how: `unprobed, median of ${plan.repeats} runs, each in a process of its own; ${about}`,
+    how: howOf(plan.repeats),
     wants,
     place,
     unprobed: (label, kind) => ({
@@ -260,7 +262,9 @@ async function scenariosAt(
       last = keep && at === repeats - 1 ? made.folder : undefined;
     }
     if (wants(scenario)) {
-      rows.push(...scenarioRows(ctx, name, runs));
+      rows.push(
+        ...scenarioRows({ ...ctx, how: howOf(runs.length) }, name, runs),
+      );
       if (plan.probe) {
         log(`${where}: ${scenario}, probed`);
         const { ran: probed } = await onACopy(from, kind, more, {
@@ -356,8 +360,7 @@ async function scenariosAt(
         { ...ctx.unprobed("killed", "killed"), label: "killed", n: 0 },
         work,
       );
-      const database = await databaseBeside(folder);
-      const found = await database.exists();
+      const found = await databaseKept(folder, encrypted);
       if (found)
         throw new Error(
           "the process that was killed left a database beside the pod: it was not stopped before it could be built",

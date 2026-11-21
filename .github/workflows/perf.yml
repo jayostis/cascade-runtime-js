@@ -34,7 +34,7 @@ name: perf
 # - Every run also measures what people do after the first import (the `reimport-identical`, `reimport-changed`, `add-one-record`,
 #   `reopen-after-kill` and `question-after-update` scenarios), each on a copy of the pod the first import left: /perf/, /perf/runs/, the
 #   summary and the comment have a line for each under "What people do after the first import". A pull request and a push run each
-#   once and leave out `add-one-record`; the nightly run runs all five three times.
+#   once and leave out `add-one-record`, on Linux and on the Windows and macOS legs alike; the nightly run runs all five three times.
 # - A hand-started run can name one scenario (`fresh-first-screen,floor` is the import and its floor) and one size.
 # - Linux is not the only system a person runs this on. A push to main, the nightly run and a hand-started run that asks for
 #   `windows`, `macos` or `all` systems also run the same per-build scenario on a GitHub-hosted Windows runner and a macOS one
@@ -475,6 +475,8 @@ jobs:
           if [ -n "$SIZE" ] && [ "$SIZE" != per-build ]; then sizes="$SIZE"; fi
           args="--size $sizes"
           if [ -n "$SCENARIO" ] && [ "$SCENARIO" != all ]; then args="$args --scenario $SCENARIO"; fi
+          # A push to main runs each job of every day once, as the Linux job does; the nightly and hand-started runs run them in full.
+          if [ "$EVENT" = push ]; then args="$args --light-jobs"; fi
           if [ -z "$SCENARIO" ] || [ "$SCENARIO" = all ]; then args="$args --file-ops"; fi
           # Windows Defender's settings are changed, and put back, for more runs of the file micro-bench, only when a person asks, and
           # only with every scenario: the file micro-bench runs with `all` alone, and the comparison is part of it.

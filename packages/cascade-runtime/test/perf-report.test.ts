@@ -33,7 +33,7 @@ import {
 import { type Plan } from "./perf-plan.js";
 import { explain, glossaryMarkdown, readGlossary } from "./perf-glossary.js";
 import { type Database } from "@cascade-runtime/runtime";
-import { resolved } from "../src/node/resolved.js";
+import { databaseBeside, resolved } from "../src/node/resolved.js";
 import { flatten, loadPlainly } from "./perf-floor.js";
 import { held, rowsOfHeld } from "./perf-held.js";
 import { rowsOfJobs } from "./perf-jobs-held.js";
@@ -44,6 +44,7 @@ import {
   clockRow,
   commits,
   databaseFigures,
+  databaseKept,
   folderFingerprint,
   openedAt,
   parsed,
@@ -3331,6 +3332,61 @@ describe("The performance file · perf-report.ts, perf-compare.mjs", () => {
   });
 
   describe("given the jobs of every day", () => {
+    it("finds the database a sealed pod keeps under its keyed name, which a look for pod.db finds nothing of", async () => {
+      const claimProfiles = await profileOf("first");
+      const folder = await mkdtemp(join(tmpdir(), "database-kept-"));
+      scratch.push(folder);
+      for (const [name, encrypted] of [
+        ["plain", false],
+        ["sealed", true],
+      ] as const) {
+        const at = join(folder, name, "pod");
+        const pod = await openedAt(at, encrypted);
+        await pod.import(syntheticPull(20), { claimProfiles });
+        await pod.close();
+        assert.equal(await databaseKept(at, encrypted), true, name);
+      }
+      assert.equal(
+        await databaseBeside(join(folder, "sealed", "pod")).exists(),
+        false,
+        "the plain name is not where a sealed pod keeps it",
+      );
+    });
+
+    it("names the jobs of a build that took each once as one run and the first import as a median, and reopens an encrypted pod that was killed, looking for its database where it keeps it", async () => {
+      const { results } = await perfFile({
+        scenarios: new Set<Scenario>([
+          "fresh-first-screen",
+          "reimport-changed",
+          "reopen-after-kill",
+        ]),
+        sizes: ["synthea-10y"],
+        encryption: "encrypted",
+        repeats: 2,
+        probe: false,
+        lightJobs: true,
+      });
+      const row = (name: string) => results.find((each) => each.name === name);
+      const extra = (name: string) => row(name)?.extra ?? "";
+      const sealed = "synthea-10y-encrypted";
+      assert.match(
+        extra(`reimport-changed-${sealed}/total`),
+        /one run in a process of its own/,
+      );
+      assert.doesNotMatch(
+        extra(`reimport-changed-${sealed}/total`),
+        /median of/,
+      );
+      assert.match(
+        extra(`fresh-first-screen-${sealed}/total`),
+        /median of 2 runs/,
+      );
+      assert.equal(
+        row(`reopen-after-kill-${sealed}/count/database-found`)?.value,
+        0,
+      );
+    });
+
     it("lists each as a scenario of its own that a run may name alone", () => {
       for (const scenario of [
         "reimport-identical",
